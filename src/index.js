@@ -265,10 +265,10 @@ async function runMultiAgent(env, message) {
     "12. Avoid repeated tasks, filler, and unnecessary sections.",
     "13. Do not invent facts or claim to browse the web.",
     "14. Use readable Markdown when useful.",
-    "15. Finish the answer completely without ending mid-sentence.
-16. Match the requested number of points exactly; do not add an unrequested conclusion or repeat the key points.
-17. Number ordered lists sequentially with one consistent Markdown format (1., 2., 3., ...).
-18. Qualify context-dependent metrics and avoid presenting illustrative examples as universal requirements."
+    "15. Finish the answer completely without ending mid-sentence.",
+    "16. Match the requested number of points exactly; do not add an unrequested conclusion or repeat the key points.",
+    "17. Number ordered lists sequentially with one consistent Markdown format (1., 2., 3., ...).",
+    "18. Qualify context-dependent metrics and avoid presenting illustrative examples as universal requirements."
   ].join("\n");
 
   let finalResponse = await runAgent(
