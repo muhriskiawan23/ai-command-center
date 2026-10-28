@@ -145,15 +145,9 @@ async function runAgent(env, agentId, userMessage, context = "") {
   });
 
   if (typeof response !== "string" || (agentId !== "coordinator" && (countWords(cleaned).length < 20 || cleaned.length < 100 || meaningfulLines.length < 2))) {
-    // Keep the workflow usable even if the model repeats an empty-Markdown response.
-    const safeFallbacks = {
-      researcher: "Temuan utama: tujuan pengguna adalah menyusun jawaban yang praktis dan sesuai batasan yang disebutkan. Prioritaskan fakta yang tersedia, pisahkan asumsi dari fakta, dan hindari klaim yang belum diverifikasi. Rekomendasi perlu diterjemahkan menjadi langkah konkret, keluaran yang jelas, dan indikator keberhasilan yang dapat diamati.",
-      analyst: "Analisis: pilih langkah yang paling mudah dijalankan terlebih dahulu. Setiap langkah harus memiliki tindakan spesifik, hasil yang bisa diperiksa, serta ukuran keberhasilan yang realistis. Hindari aktivitas yang membutuhkan biaya atau sumber daya yang tidak disebutkan pengguna, dan sesuaikan rencana berdasarkan hasil awal.",
-      fact_checker: "Pemeriksaan: pastikan seluruh saran menjawab permintaan awal dan tidak melanggar batasan pengguna. Jangan menyatakan target sebagai jaminan; perlakukan target sebagai tolok ukur awal. Hapus klaim yang tidak didukung dan pastikan setiap rekomendasi bisa dilaksanakan dengan sumber daya yang tersedia.",
-      writer: "Saya belum dapat menghasilkan jawaban yang cukup lengkap dari model. Coba kirim ulang permintaan ini; proses tidak akan menampilkan keluaran Markdown kosong sebagai hasil yang berhasil.",
-      coordinator: "Validasi jawaban: gunakan informasi yang tersedia, tandai asumsi dengan jelas, dan pastikan rekomendasi akhir konkret serta dapat diuji."
-    };
-    cleaned = safeFallbacks[agentId] || "Model tidak menghasilkan isi yang cukup. Coba ulangi permintaan dengan konteks dan tujuan yang lebih spesifik.";
+    // Do not mark a generic placeholder as a successful agent result.
+    // Let the request boundary return a sanitized error after the retry fails.
+    throw new Error(`Agent ${agentId} returned unusable output after retry`);
   }
 
   return cleaned;
