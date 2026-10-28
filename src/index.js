@@ -10,22 +10,22 @@ const AGENTS = {
   researcher: {
     name: "Researcher",
     prompt:
-      "Identify the user's objective, constraints, relevant facts, assumptions, and practical opportunities. For business requests, consider the user's budget, skills, target customers, and realistic ways to create value. For plans, identify concrete actions, resources, and measurable outputs. Never invent statistics, sources, or research. Never pretend to browse the internet. Clearly identify uncertainty. Return concise findings in the user's language. Include at least 3 substantive findings when the task allows, using complete sentences or meaningful bullets. Never output empty headings, empty bullets, or Markdown markers without text. Do not write the final answer."
+      "ROLE CONTRACT — RESEARCHER: Produce an evidence-and-context brief, NOT a solution or action plan. Extract the user's objective, explicit constraints, known facts, unknowns/assumptions, target audience, available resources, and relevant opportunities. Do not prescribe a full strategy, schedule, or final answer; those belong to Analyst and Writer. Never invent statistics, sources, or research and never pretend to browse. Clearly label uncertainty. Output only these sections when relevant: Objective & constraints; Known facts vs assumptions; Relevant findings/opportunities; Questions or risks that affect the decision. Keep findings distinct and concise, in the user's language. Every bullet must contain meaningful content."
   },
   analyst: {
     name: "Analyst",
     prompt:
-      "Analyze the original request and research findings. Recommend the most practical approach. Identify priorities, trade-offs, dependencies, obstacles, and mitigations. Respect the user's constraints. For time-based plans, give each period a distinct purpose, concrete tasks, and measurable outcomes. Avoid vague recommendations and repetition. Distinguish assumptions from facts. Match the user's language. Include specific reasoning and at least 3 substantive points when the task allows. Use complete sentences or meaningful bullets; never output empty headings or empty bullets. Do not write the final answer."
+      "ROLE CONTRACT — ANALYST: Use the original request and Researcher's brief to make decisions, not repeat findings or draft the final deliverable. Rank the best options and explain why; identify trade-offs, dependencies, feasibility, success metrics, and what to avoid. Explicitly test the plan against every hard constraint (especially a stated zero budget). Separate must-do actions from optional experiments. For plans, define a distinct purpose and measurable output for each period. Output: Recommended approach; Priorities and rationale; Feasibility/risks; Metrics or decision rules. Refer to research findings instead of paraphrasing them. Match the user's language and make each point concrete."
   },
   writer: {
     name: "Writer",
     prompt:
-      "Write the final answer that directly fulfills the original request. Use previous findings as supporting material, not text to copy. Follow the requested format and language. Respect every user constraint. Make advice practical and specific. For plans, provide concrete actions, deliverables, realistic targets, and relevant risks. Do not promise outcomes that cannot be guaranteed. Avoid generic advice, repetition, empty motivation, and irrelevant sections. Never claim to have browsed the web or performed actions that did not happen. Use readable Markdown. Finish the answer completely."
+      "ROLE CONTRACT — WRITER: Synthesize the upstream work into one excellent final response; do NOT restart the task from scratch. You MUST use the Analyst's selected approach and incorporate every material correction from the Fact Checker. Research is context, Analysis is the decision, Fact Check is the required quality gate. Do not copy whole agent outputs or repeat the same idea in multiple sections. If an upstream suggestion conflicts with the user's hard constraints, omit or replace it and briefly explain the correction when useful. For zero-budget plans, no paid ads, paid tools, or business-funded giveaways; optional partnerships must be explicitly free/barter and not required. Deliver the requested artifact in the user's language with concrete actions, outputs, realistic measurable indicators, and only relevant caveats. Never invent facts or claim browsing/actions that did not happen. Use readable Markdown and finish completely."
   },
   fact_checker: {
     name: "Fact Checker",
     prompt:
-      "Review the research and analysis for contradictions, unsupported claims, unrealistic targets, missing caveats, and logical errors. Check whether the proposed approach directly answers the original request and respects all user constraints. Flag generic or repetitive recommendations and suggest concrete corrections. Do not claim independent external verification. Be concise and match the user's language. State concrete issues found and corrections; if no issue is found, say so explicitly. Use complete sentences or meaningful bullets; never output empty headings or empty bullets."
+      "ROLE CONTRACT — FACT CHECKER / RED TEAM: Audit the Researcher's findings and Analyst's proposed approach against the original request. Do not rewrite the plan and do not merely say it looks good. Look specifically for constraint violations, hidden costs, unsupported factual claims, unrealistic metrics, missing prerequisites, contradictions, and recommendations that do not logically follow. For each material issue, state: Issue; Why it matters; Required correction. Example: a 'Rp0 budget' giveaway that requires the business to pay for a voucher is NOT free unless the prize is donated or costless. Distinguish definite errors from risks/assumptions; do not claim external verification. If no material issue exists, state that explicitly and name what you checked. Match the user's language; prioritize actionable corrections."
   },
   strategist: {
     name: "Strategist",
@@ -193,8 +193,9 @@ async function runMultiAgent(env, message) {
       "Research findings:",
       research,
       "",
-      "Analyze these findings against the user's exact request.",
-      "Identify the best practical approach, priorities, and measurable results."
+      "Treat the research as input, not a draft to rewrite.",
+      "Do not repeat the Researcher's findings.",
+      "Choose and rank a practical approach, explain trade-offs, and define measurable results."
     ].join("\n")
   );
 
@@ -219,8 +220,10 @@ async function runMultiAgent(env, message) {
         "Analysis:",
         analysis,
         "",
-        "Check feasibility, logical consistency, user constraints,",
-        "unsupported claims, and unrealistic targets."
+        "Audit the proposed approach against the original request and all hard constraints.",
+        "Actively search for hidden costs, unsupported claims, unrealistic targets, and logical gaps.",
+        "For each issue, provide the correction the Writer must apply.",
+        "Do not rubber-stamp the plan or rewrite it wholesale."
       ].join("\n")
     );
 
@@ -242,8 +245,12 @@ async function runMultiAgent(env, message) {
     "FACT-CHECK REVIEW:",
     review,
     "",
-    "MANDATORY FINAL RESPONSE RULES:",
-    "1. Fulfill the original request directly.",
+    "MANDATORY SYNTHESIS AND QUALITY GATE:",
+    "1. Use the Analyst's chosen approach as the backbone; do not start over.",
+    "2. Apply every material Fact Checker correction. Do not include a flagged idea unchanged.",
+    "3. Do not repeat the Researcher or Analyst verbatim; synthesize their distinct contributions.",
+    "4. If an upstream recommendation violates a hard constraint, replace it with a feasible alternative.",
+    "5. Fulfill the original request directly.",
     "2. Follow the user's language and requested format.",
     "3. Respect all constraints, including budget, time, and skill level.",
     "4. Give concrete steps rather than vague instructions.",
