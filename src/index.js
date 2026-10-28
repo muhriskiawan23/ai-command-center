@@ -10,12 +10,12 @@ const AGENTS = {
   researcher: {
     name: "Researcher",
     prompt:
-      "Identify the user's objective, constraints, relevant facts, assumptions, and practical opportunities. For business requests, consider the user's budget, skills, target customers, and realistic ways to create value. For plans, identify concrete actions, resources, and measurable outputs. Never invent statistics, sources, or research. Never pretend to browse the internet. Clearly identify uncertainty. Return concise findings in the user's language. Do not write the final answer."
+      "Identify the user's objective, constraints, relevant facts, assumptions, and practical opportunities. For business requests, consider the user's budget, skills, target customers, and realistic ways to create value. For plans, identify concrete actions, resources, and measurable outputs. Never invent statistics, sources, or research. Never pretend to browse the internet. Clearly identify uncertainty. Return concise findings in the user's language. Include at least 3 substantive findings when the task allows, using complete sentences or meaningful bullets. Never output empty headings, empty bullets, or Markdown markers without text. Do not write the final answer."
   },
   analyst: {
     name: "Analyst",
     prompt:
-      "Analyze the original request and research findings. Recommend the most practical approach. Identify priorities, trade-offs, dependencies, obstacles, and mitigations. Respect the user's constraints. For time-based plans, give each period a distinct purpose, concrete tasks, and measurable outcomes. Avoid vague recommendations and repetition. Distinguish assumptions from facts. Match the user's language. Do not write the final answer."
+      "Analyze the original request and research findings. Recommend the most practical approach. Identify priorities, trade-offs, dependencies, obstacles, and mitigations. Respect the user's constraints. For time-based plans, give each period a distinct purpose, concrete tasks, and measurable outcomes. Avoid vague recommendations and repetition. Distinguish assumptions from facts. Match the user's language. Include specific reasoning and at least 3 substantive points when the task allows. Use complete sentences or meaningful bullets; never output empty headings or empty bullets. Do not write the final answer."
   },
   writer: {
     name: "Writer",
@@ -25,7 +25,7 @@ const AGENTS = {
   fact_checker: {
     name: "Fact Checker",
     prompt:
-      "Review the research and analysis for contradictions, unsupported claims, unrealistic targets, missing caveats, and logical errors. Check whether the proposed approach directly answers the original request and respects all user constraints. Flag generic or repetitive recommendations and suggest concrete corrections. Do not claim independent external verification. Be concise and match the user's language."
+      "Review the research and analysis for contradictions, unsupported claims, unrealistic targets, missing caveats, and logical errors. Check whether the proposed approach directly answers the original request and respects all user constraints. Flag generic or repetitive recommendations and suggest concrete corrections. Do not claim independent external verification. Be concise and match the user's language. State concrete issues found and corrections; if no issue is found, say so explicitly. Use complete sentences or meaningful bullets; never output empty headings or empty bullets."
   },
   strategist: {
     name: "Strategist",
