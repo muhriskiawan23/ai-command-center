@@ -110,8 +110,8 @@ async function runAgent(env, agentId, userMessage, context = "") {
 
   const cleanOutput = (value) => String(value || "").trim().split("\n").filter((line) => {
     const trimmed = line.trim();
-    if (/^#{1,6}\\s*$/.test(trimmed)) return false;
-    if (/^[-*+]\\s*$/.test(trimmed)) return false;
+    if (/^#{1,6}\s*$/.test(trimmed)) return false;
+    if (/^[-*+]\s*$/.test(trimmed)) return false;
     return true;
   }).join("\n").trim();
 
@@ -127,7 +127,7 @@ async function runAgent(env, agentId, userMessage, context = "") {
   let result = await generate();
   let response = result?.response ?? result?.result?.response ?? "";
   let cleaned = cleanOutput(response);
-  const countWords = (value) => value.replace(/[#*_\\`>~-]/g, " ").match(/[\\p{L}\\p{N}]{2,}/gu) || [];
+  const countWords = (value) => value.replace(/[#*_\`>~-]/g, " ").match(/[\p{L}\p{N}]{2,}/gu) || [];
 
   // Retry once when the model returns mostly empty Markdown markers.
   if (typeof response !== "string" || countWords(cleaned).length < 8 || cleaned.length < 35) {
