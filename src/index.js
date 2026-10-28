@@ -3,52 +3,52 @@ const AGENTS = {
   coordinator: {
     name: "Coordinator",
     prompt:
-      "You are the Coordinator. Organize tasks, combine agent outputs, resolve conflicts carefully, and deliver a useful final answer. Respond in the user's language."
+      "You are the Coordinator of a multi-agent AI system. Coordinate the work and deliver the most useful final answer. Match the user's language. Be concise but sufficiently detailed. Avoid repetition, generic filler, and unnecessary introductions."
   },
   researcher: {
     name: "Researcher",
     prompt:
-      "You are a Researcher. Identify relevant facts, assumptions, missing information, and useful context from the supplied request and materials. Do not invent sources or pretend to browse the internet. Respond in the user's language."
+      "Identify relevant facts, assumptions, constraints, and missing information. Use supplied information and general knowledge. Never pretend to browse the internet or invent sources. Return concise findings. Match the user's language."
   },
   analyst: {
     name: "Analyst",
     prompt:
-      "You are an Analyst. Analyze the request and supplied research. Compare options, explain trade-offs, identify risks, and derive practical conclusions. Do not treat assumptions as facts. Respond in the user's language."
+      "Analyze the request and research findings. Identify options, trade-offs, risks, and practical conclusions. Separate facts from assumptions. Avoid repeating the research. Match the user's language."
   },
   writer: {
     name: "Writer",
     prompt:
-      "You are a professional Writer. Turn the supplied request and agent findings into a clear, polished, actionable final answer. Preserve important caveats and do not invent evidence. Respond in the user's language."
+      "Write the final answer in the user's language. Be clear, practical, and direct. For simple questions, answer briefly. For complex requests, provide enough detail to be actionable without being verbose. Use headings and bullet points when useful. Avoid repetition and generic filler. Normally aim for 250-500 words for complex requests, but use fewer when sufficient. Finish every answer completely. Use normal Markdown, never escape Markdown formatting characters unnecessarily."
   },
   fact_checker: {
     name: "Fact Checker",
     prompt:
-      "You are a Fact Checker. Review the supplied draft and evidence for unsupported claims, contradictions, logical gaps, and uncertainty. You cannot independently verify external facts unless evidence is supplied. Clearly state what needs verification. Respond in the user's language."
+      "Check the supplied findings for contradictions, unsupported claims, missing caveats, and logical errors. Do not claim to independently verify external facts. Report only important issues. Be concise and match the user's language."
   },
   strategist: {
     name: "Strategist",
     prompt:
-      "You are a Strategist. Develop practical strategies, prioritize actions, and explain risks and trade-offs. Respond in the user's language."
+      "Develop practical strategies with clear priorities, trade-offs, and risks. Focus on valuable actions. Avoid generic advice and repetition. Match the user's language."
   },
   coder: {
     name: "Coder",
     prompt:
-      "You are a senior software engineer. Produce correct, secure, maintainable code and explain important implementation details. Respond in the user's language."
+      "Act as a senior software engineer. Provide correct, secure, maintainable solutions. Explain important implementation details concisely and provide complete code when requested. Match the user's language."
   },
   planner: {
     name: "Planner",
     prompt:
-      "You are a Planner. Break goals into ordered steps, dependencies, and measurable milestones. Respond in the user's language."
+      "Break the user's goal into prioritized, realistic steps with dependencies and measurable outcomes. Avoid unnecessary tasks. Match the user's language."
   },
   critic: {
     name: "Critic",
     prompt:
-      "You are a constructive Critic. Identify weaknesses, edge cases, hidden assumptions, and practical improvements. Respond in the user's language."
+      "Identify important weaknesses, edge cases, risks, and improvements. Prioritize actionable feedback. Match the user's language."
   },
   summarizer: {
     name: "Summarizer",
     prompt:
-      "You are a Summarizer. Condense information into accurate key points while preserving important context and caveats. Respond in the user's language."
+      "Summarize information accurately. Preserve key points and caveats while removing repetition and unnecessary detail. Match the user's language."
   }
 };
 
@@ -69,20 +69,24 @@ async function runAgent(env, agentId, userMessage, context = "") {
     {
       role: "user",
       content: context
-        ? `Original request:\n${userMessage}\n\nPrevious agents' findings:\n${context}\n\nPerform your assigned task using the supplied material.`
+        ? `Original request:\n${userMessage}\n\nPrevious findings:\n${context}\n\nComplete your assigned task. Be accurate, concise, and avoid repetition.`
         : userMessage
     }
   ];
 
+  const tokenLimits = {
+    researcher: 450,
+    analyst: 550,
+    fact_checker: 300,
+    writer: 1200
+  };
+
   const result = await env.AI.run(MODEL, {
     messages,
-    max_tokens: agentId === "writer" ? 1200 : 800
+    max_tokens: tokenLimits[agentId] || 700
   });
 
-  const response =
-    result?.response ??
-    result?.result?.response ??
-    "";
+  const response = result?.response ?? result?.result?.response ?? "";
 
   if (typeof response !== "string" || !response.trim()) {
     throw new Error(`${agent.name} did not return a text response.`);
@@ -94,7 +98,7 @@ async function runAgent(env, agentId, userMessage, context = "") {
 async function runMultiAgent(env, message) {
   const steps = [];
 
-  // 1. Researcher gathers context and separates facts from assumptions.
+  // Step 1: Research
   const research = await runAgent(env, "researcher", message);
   steps.push({
     agent: AGENTS.researcher.name,
@@ -102,12 +106,12 @@ async function runMultiAgent(env, message) {
     output: research
   });
 
-  // 2. Analyst works from the original request and research findings.
+  // Step 2: Analysis
   const analysis = await runAgent(
     env,
     "analyst",
     message,
-    `Researcher findings:\n${research}`
+    `Research findings:\n${research}`
   );
   steps.push({
     agent: AGENTS.analyst.name,
@@ -115,26 +119,36 @@ async function runMultiAgent(env, message) {
     output: analysis
   });
 
-  // 3. Fact Checker reviews the findings and analysis.
-  const review = await runAgent(
-    env,
-    "fact_checker",
-    message,
-    `Researcher findings:\n${research}\n\nAnalyst findings:\n${analysis}`
-  );
-  steps.push({
-    agent: AGENTS.fact_checker.name,
-    status: "completed",
-    output: review
-  });
+  // Step 3: Fact-check only when useful
+  // Simple requests can skip this step to reduce latency.
+  const needsFactCheck =
+    message.length > 500 ||
+    /\b(analisis|analisa|risiko|investasi|keuangan|finansial|hukum|medis|kesehatan|bandingkan|evaluasi|strategi|fakta|data|penelitian|kode|security|keamanan)\b/i.test(message);
 
-  // 4. Writer integrates all prior work into the final answer.
+  let review = "Fact-check dilewati untuk menjaga respons tetap cepat.";
+  if (needsFactCheck) {
+    review = await runAgent(
+      env,
+      "fact_checker",
+      message,
+      `Research findings:\n${research}\n\nAnalysis:\n${analysis}`
+    );
+
+    steps.push({
+      agent: AGENTS.fact_checker.name,
+      status: "completed",
+      output: review
+    });
+  }
+
+  // Step 4: Final answer
   const finalResponse = await runAgent(
     env,
     "writer",
     message,
-    `Researcher findings:\n${research}\n\nAnalyst findings:\n${analysis}\n\nFact Checker review:\n${review}\n\nWrite the final answer. Correct issues identified by the Fact Checker, preserve uncertainty, and give practical recommendations.`
+    `Research findings:\n${research}\n\nAnalysis:\n${analysis}\n\nFact-check review:\n${review}\n\nWrite the final answer. Address important issues raised by the review. Avoid repetition. Use readable Markdown. Be complete but concise, and do not end mid-sentence.`
   );
+
   steps.push({
     agent: AGENTS.writer.name,
     status: "completed",
@@ -155,7 +169,10 @@ export default {
     const url = new URL(request.url);
 
     if (request.method === "GET" && url.pathname === "/api/health") {
-      return json({ ok: true, service: "AI Command Center" });
+      return json({
+        ok: true,
+        service: "AI Command Center"
+      });
     }
 
     if (request.method === "GET" && url.pathname === "/api/agents") {
@@ -197,6 +214,7 @@ export default {
       try {
         if (agentId === "coordinator") {
           const result = await runMultiAgent(env, message);
+
           return json({
             ...result,
             model: MODEL
