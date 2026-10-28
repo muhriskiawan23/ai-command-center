@@ -264,12 +264,39 @@ async function runMultiAgent(env, message) {
     "11. Finish the answer completely without ending mid-sentence."
   ].join("\n");
 
-  const finalResponse = await runAgent(
+  let finalResponse = await runAgent(
     env,
     "writer",
     message,
     finalContext
   );
+
+  // Deterministic repair pass for a common hard-constraint failure:
+  // a zero-budget promotion plan that sneaks in business-funded incentives.
+  const zeroBudgetPromotion =
+    /(?:rp\s*0|modal\s*(?:sebesar\s*)?0|tanpa\s+(?:modal|biaya)|zero[- ]budget|no[- ]budget)/i.test(message) &&
+    /(?:promosi|marketing|kampanye|konten|media\s+sosial|mahasiswa|warkop|bisnis)/i.test(message);
+  const incentivePattern = /\b(?:voucher|giveaway|merchandise|diskon|potongan\s+harga|hadiah|gratis\s+makan|makan\s+gratis|doorprize|influencer\s+berbayar|paid\s+ads|iklan\s+berbayar)\b/i;
+  if (zeroBudgetPromotion && incentivePattern.test(finalResponse)) {
+    const draftToRepair = finalResponse;
+    finalResponse = await runAgent(
+      env,
+      "writer",
+      message,
+      [
+        finalContext,
+        "",
+        "BLOCKING QUALITY-GATE REPAIR",
+        "The previous draft violated the user's strict zero-budget constraint.",
+        "Rewrite the full answer. Remove every prize, voucher, giveaway, merchandise, discount, free food, paid influencer, or paid advertising recommendation unless the user explicitly confirmed it is donated and costs the business nothing.",
+        "Use only actions that require no spending, such as organic posts, story polls, menu votes, customer feedback with consent, and tracking baseline metrics.",
+        "Do not merely disclaim the costs. Replace the ideas with feasible zero-cost alternatives.",
+        "",
+        "DRAFT TO REPAIR:",
+        draftToRepair
+      ].join("\n")
+    );
+  }
 
   steps.push({
     agent: AGENTS.writer.name,
