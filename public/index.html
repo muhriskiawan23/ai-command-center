@@ -41,7 +41,12 @@
     .workflow-panel{margin-top:20px;padding-top:16px;border-top:1px solid #29334e}
     .workflow-panel h3{margin:0 0 8px}
     .step-card{margin:10px 0;border:1px solid #29334e;border-radius:10px;background:#0e1628;overflow:hidden}
-    .step-card summary{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;cursor:pointer;font-weight:600;list-style:none}
+    .step-card summary{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;cursor:pointer;font-weight:600;list-style:none;flex-wrap:wrap}
+    .step-card summary>span:first-child{min-width:0;overflow-wrap:anywhere}
+    .step-status{flex-shrink:0;margin-left:auto}
+    .step-output{white-space:normal}
+    .step-output strong{color:#fff}
+    .step-output hr{border:0;border-top:1px solid #29334e;margin:14px 0}
     .step-card summary::-webkit-details-marker{display:none}
     .step-card summary:after{content:"+";color:#91a4ff;font-size:18px}
     .step-card[open] summary:after{content:"−"}
@@ -156,9 +161,7 @@
         const output=document.createElement("div");
         output.className="step-output";
         if(typeof step.output==="string"&&step.output.trim()) {
-          // Preserve the agent's original text exactly; don't let Markdown
-          // parsing accidentally drop list items or blank-line content.
-          output.textContent=step.output;
+          output.innerHTML=renderMarkdown(step.output);
         } else {
           output.textContent="Agent tidak mengembalikan output.";
         }
