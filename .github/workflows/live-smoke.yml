@@ -84,5 +84,17 @@ jobs:
           if (typeof data.response !== "string" || data.response.trim().length < 20) {
             throw new Error("Chat response is missing or too short");
           }
+          if (data.workflow !== "multi-agent") {
+            throw new Error("Expected coordinator to use the multi-agent workflow");
+          }
+          const requiredAgents = ["Researcher", "Analyst", "Fact Checker", "Writer"];
+          if (!Array.isArray(data.agentsUsed) || requiredAgents.some(name => !data.agentsUsed.includes(name))) {
+            throw new Error("One or more required multi-agent steps are missing");
+          }
+          const numberedItems = [...data.response.matchAll(/^\s*(\d+)\.\s+\S/gm)]
+            .map(match => Number(match[1]));
+          if (numberedItems.length !== 3 || numberedItems.some((number, index) => number !== index + 1)) {
+            throw new Error("Chat response must contain exactly three sequential numbered points");
+          }
           NODE
           rm -f "$response_file"
