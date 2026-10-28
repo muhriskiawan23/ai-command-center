@@ -102,3 +102,37 @@ test("unknown non-GET endpoints return a JSON 404", async () => {
   assert.equal(res.status, 404);
   assert.match(res.headers.get("Content-Type"), /application\/json/);
 });
+
+test("multi-agent workflow retries a final answer that violates an exact numbered-item request", async () => {
+  let calls = 0;
+  const mockEnv = {
+    AI: {
+      async run(model, options) {
+        calls += 1;
+        if (calls === 5) {
+          return {
+            response: "1. Tentukan tujuan dan batasan.\n2. Jalankan langkah utama dan ukur hasilnya.\n3. Evaluasi hasil lalu perbaiki pendekatan."
+          };
+        }
+        return {
+          response: "Analisis ini mempertimbangkan tujuan, batasan, risiko, dan langkah konkret.\nRekomendasi utama adalah memvalidasi asumsi terlebih dahulu, mengukur hasil, lalu memperbaiki pendekatan berdasarkan data yang terkumpul."
+        };
+      }
+    },
+    ASSETS: { async fetch() { return new Response("asset"); } }
+  };
+
+  const res = await worker.fetch(
+    chat("Buat analisis risiko dalam tepat 3 poin singkat."),
+    mockEnv
+  );
+  const data = await res.json();
+
+  assert.equal(res.status, 200);
+  assert.equal(data.workflow, "multi-agent");
+  assert.equal(calls, 5);
+  assert.deepEqual(
+    data.response.split("\n").map((line) => Number(line.match(/^\\s*(\\d+)[.)]/)?.[1])),
+    [1, 2, 3]
+  );
+});
