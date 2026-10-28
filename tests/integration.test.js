@@ -132,7 +132,7 @@ test("multi-agent workflow retries a final answer that violates an exact numbere
   assert.equal(data.workflow, "multi-agent");
   assert.equal(calls, 5);
   assert.deepEqual(
-    data.response.split("\n").map((line) => Number(line.match(/^\\s*(\\d+)[.)]/)?.[1])),
+    data.response.split("\n").map((line) => Number(line.match(/^\s*(\d+)[.)]/)?.[1])),
     [1, 2, 3]
   );
 });
