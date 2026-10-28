@@ -160,7 +160,8 @@ function shouldUseMultiAgent(message) {
     /(?:rp\s*0|modal\s*(?:sebesar\s*)?0|tanpa\s+(?:modal|biaya)|zero[- ]budget|no[- ]budget)/i.test(message) &&
     /(?:promosi|marketing|kampanye|konten|media\s+sosial|mahasiswa|warkop|bisnis)/i.test(message);
   const explicitLongOutput = /\b(?:\d{3,}\s*(?:kata|words|halaman|pages)|(?:minimal|setidaknya|sekitar|at least|about)\s+\d{3,}\s*(?:kata|words))\b/i.test(message);
-  return message.length > 700 || complexIntent.test(message) || needsFactCheck(message) || zeroBudgetPromotion || explicitLongOutput;
+  const exactFormatRequest = requestedNumberedItemCount(message) !== null;
+  return message.length > 700 || complexIntent.test(message) || needsFactCheck(message) || zeroBudgetPromotion || explicitLongOutput || exactFormatRequest;
 }
 
 function requestedNumberedItemCount(message) {
