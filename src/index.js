@@ -164,14 +164,14 @@ function shouldUseMultiAgent(message) {
 }
 
 function requestedNumberedItemCount(message) {
-  const match = message.match(/\\b(?:tepat|persis|exactly)\\s+(\\d{1,2})\\s+(?:poin|point|points|butir|langkah|steps|items)\\b/i);
+  const match = message.match(/\b(?:tepat|persis|exactly)\s+(\d{1,2})\s+(?:poin|point|points|butir|langkah|steps|items)\b/i);
   return match ? Number(match[1]) : null;
 }
 
 function hasExactlySequentialNumberedItems(response, expectedCount) {
   const numbers = response
-    .split("\\n")
-    .map((line) => line.match(/^\\s*(\\d{1,2})[.)]\\s+\\S/))
+    .split("\n")
+    .map((line) => line.match(/^\s*(\d{1,2})[.)]\s+\S/))
     .filter(Boolean)
     .map((match) => Number(match[1]));
 
@@ -334,7 +334,7 @@ async function runMultiAgent(env, message) {
         `The user explicitly requested exactly ${requestedCount} numbered items.`,
         `Rewrite the complete answer with exactly ${requestedCount} numbered items, numbered sequentially from 1 to ${requestedCount}.`,
         "Do not add an introduction, conclusion, or extra numbered items outside that list."
-      ].join("\\n")
+      ].join("\n")
     );
   }
 
