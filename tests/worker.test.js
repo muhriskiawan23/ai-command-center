@@ -135,3 +135,27 @@ test("empty coordinator output is retried and then rejected instead of returned 
   assert.equal(data.error, "AI gagal memproses permintaan. Silakan coba lagi beberapa saat.");
   assert.equal("response" in data, false);
 });
+
+test("malformed model output is retried and returns a sanitized 502", async () => {
+  let calls = 0;
+  const malformedEnv = {
+    AI: {
+      async run() {
+        calls += 1;
+        return { unexpected: "provider response shape changed" };
+      }
+    },
+    ASSETS: { async fetch() { return new Response("asset"); } }
+  };
+  const res = await worker.fetch(new Request("https://example.test/api/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message: "Jelaskan secara singkat." })
+  }), malformedEnv);
+  const data = await res.json();
+  assert.equal(res.status, 502);
+  assert.equal(calls, 2);
+  assert.equal(data.error, "AI gagal memproses permintaan. Silakan coba lagi beberapa saat.");
+  assert.equal(JSON.stringify(data).includes("provider response shape changed"), false);
+  assert.equal("response" in data, false);
+});
