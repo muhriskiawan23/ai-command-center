@@ -108,27 +108,40 @@ async function runAgent(env, agentId, userMessage, context = "") {
     coordinator: 700
   };
 
-  const result = await env.AI.run(MODEL, {
-    messages,
-    max_tokens: tokenLimits[agentId] || 700
-  });
-
-  const response =
-    result?.response ??
-    result?.result?.response ??
-    "";
-
-  if (typeof response !== "string" || !response.trim()) {
-    throw new Error(`${agent.name} returned an empty response.`);
-  }
-
-  const cleaned = response.trim().split("\n").filter((line) => {
+  const cleanOutput = (value) => String(value || "").trim().split("\n").filter((line) => {
     const trimmed = line.trim();
-    if (/^#{1,6}\s*$/.test(trimmed)) return false;
-    if (/^[-*+]\s*$/.test(trimmed)) return false;
+    if (/^#{1,6}\\s*$/.test(trimmed)) return false;
+    if (/^[-*+]\\s*$/.test(trimmed)) return false;
     return true;
   }).join("\n").trim();
-  if (!cleaned) throw new Error(agent.name + " returned no usable content.");
+
+  const generate = (extraInstruction = "") => env.AI.run(MODEL, {
+    messages: extraInstruction
+      ? [...messages, { role: "user", content: extraInstruction }]
+      : messages,
+    max_tokens: tokenLimits[agentId] || 700,
+    temperature: 0.4,
+    repetition_penalty: 1.1
+  });
+
+  let result = await generate();
+  let response = result?.response ?? result?.result?.response ?? "";
+  let cleaned = cleanOutput(response);
+  const countWords = (value) => value.replace(/[#*_\\`>~-]/g, " ").match(/[\\p{L}\\p{N}]{2,}/gu) || [];
+
+  // Retry once when the model returns mostly empty Markdown markers.
+  if (typeof response !== "string" || countWords(cleaned).length < 8 || cleaned.length < 35) {
+    result = await generate(
+      "RETRY REQUIRED: Your previous answer contained empty Markdown headings or bullets and was unusable. Return substantive content in plain text or simple numbered points. Do not output empty headings, empty bullets, or Markdown-only lines. Include at least 3 concrete findings when appropriate. Every bullet must contain a complete sentence. Answer in the user's language."
+    );
+    response = result?.response ?? result?.result?.response ?? "";
+    cleaned = cleanOutput(response);
+  }
+
+  if (typeof response !== "string" || countWords(cleaned).length < 8 || cleaned.length < 35) {
+    throw new Error(agent.name + " returned insufficient usable content after retry.");
+  }
+
   return cleaned;
 }
 
