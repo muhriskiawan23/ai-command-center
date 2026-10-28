@@ -144,7 +144,7 @@ async function runAgent(env, agentId, userMessage, context = "") {
     return text.length >= 12 && countWords(text).length >= 3;
   });
 
-  if (typeof response !== "string" || countWords(cleaned).length < 20 || cleaned.length < 100 || (meaningfulLines.length < 2 && agentId !== "coordinator")) {
+  if (typeof response !== "string" || (agentId !== "coordinator" && (countWords(cleaned).length < 20 || cleaned.length < 100 || meaningfulLines.length < 2))) {
     // Keep the workflow usable even if the model repeats an empty-Markdown response.
     const safeFallbacks = {
       researcher: "Temuan utama: tujuan pengguna adalah menyusun jawaban yang praktis dan sesuai batasan yang disebutkan. Prioritaskan fakta yang tersedia, pisahkan asumsi dari fakta, dan hindari klaim yang belum diverifikasi. Rekomendasi perlu diterjemahkan menjadi langkah konkret, keluaran yang jelas, dan indikator keberhasilan yang dapat diamati.",
