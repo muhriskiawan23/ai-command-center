@@ -123,7 +123,7 @@ test("multi-agent workflow retries a final answer that violates an exact numbere
   };
 
   const res = await worker.fetch(
-    chat("Create a risk analysis in exactly 3 points."),
+    chat("Buat analisis risiko dalam tepat 3 poin singkat."),
     mockEnv
   );
   const data = await res.json();
