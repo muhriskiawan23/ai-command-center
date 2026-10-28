@@ -1,0 +1,138 @@
+
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Command Center</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #0b1020;
+      color: #eef2ff;
+    }
+    header {
+      padding: 22px;
+      border-bottom: 1px solid #26304a;
+      background: #11182b;
+    }
+    header h1 { margin: 0 0 8px; font-size: 23px; }
+    header p { margin: 0; color: #9ca9c7; font-size: 14px; }
+    main { max-width: 1000px; margin: auto; padding: 20px; }
+    .status {
+      display: inline-block;
+      margin-bottom: 18px;
+      padding: 8px 12px;
+      border-radius: 20px;
+      background: #173c35;
+      color: #8bf0c5;
+      font-size: 13px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 14px;
+    }
+    .card {
+      padding: 18px;
+      border: 1px solid #29334e;
+      border-radius: 14px;
+      background: #131b30;
+    }
+    .card h2 { margin: 0 0 10px; font-size: 17px; }
+    .card p { color: #aab6d0; font-size: 14px; line-height: 1.5; }
+    .tag { color: #8da8ff; font-size: 12px; }
+    .chat {
+      margin-top: 20px;
+      padding: 18px;
+      border: 1px solid #29334e;
+      border-radius: 14px;
+      background: #131b30;
+    }
+    textarea {
+      width: 100%;
+      min-height: 100px;
+      margin: 10px 0;
+      padding: 12px;
+      resize: vertical;
+      border: 1px solid #34405d;
+      border-radius: 9px;
+      background: #0b1020;
+      color: white;
+      font: inherit;
+    }
+    button {
+      padding: 11px 16px;
+      border: 0;
+      border-radius: 9px;
+      background: #718aff;
+      color: #0b1020;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    #reply { color: #aab6d0; line-height: 1.6; overflow-wrap: anywhere; }
+    footer { padding: 22px; color: #7f8ba8; font-size: 12px; text-align: center; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>◈ AI Command Center</h1>
+    <p>Your personal multi-agent AI workspace</p>
+  </header>
+
+  <main>
+    <div class="status">● Dashboard ready · AI belum dihubungkan</div>
+
+    <div class="grid">
+      <section class="card">
+        <span class="tag">AGENT 01</span>
+        <h2>Coordinator</h2>
+        <p>Mengatur alur kerja dan membagi tugas kepada agen AI.</p>
+      </section>
+      <section class="card">
+        <span class="tag">AGENT 02</span>
+        <h2>Researcher</h2>
+        <p>Dirancang untuk riset, pencarian informasi, dan rangkuman.</p>
+      </section>
+      <section class="card">
+        <span class="tag">AGENT 03</span>
+        <h2>Analyst</h2>
+        <p>Dirancang untuk menganalisis data, ide, dan strategi.</p>
+      </section>
+      <section class="card">
+        <span class="tag">AGENT 04</span>
+        <h2>Writer</h2>
+        <p>Dirancang untuk menyusun konten, laporan, dan dokumen.</p>
+      </section>
+    </div>
+
+    <section class="chat">
+      <h2>Command Input</h2>
+      <p>Ketik instruksi yang nantinya akan diproses oleh agen AI.</p>
+      <textarea id="prompt" placeholder="Contoh: Riset peluang bisnis dan buatkan analisisnya..."></textarea>
+      <button onclick="submitPrompt()">Kirim instruksi</button>
+      <p id="reply">Sistem siap. Integrasi AI akan ditambahkan pada langkah berikutnya.</p>
+    </section>
+  </main>
+
+  <footer>AI Command Center · Personal workspace</footer>
+
+  <script>
+    function submitPrompt() {
+      const prompt = document.getElementById("prompt").value.trim();
+      const reply = document.getElementById("reply");
+
+      if (!prompt) {
+        reply.textContent = "Masukkan instruksi terlebih dahulu.";
+        return;
+      }
+
+      reply.textContent =
+        "Instruksi tersimpan di tampilan: " + prompt +
+        ". Integrasi model AI belum aktif.";
+    }
+  </script>
+</body>
+</html>
