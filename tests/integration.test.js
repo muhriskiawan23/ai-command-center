@@ -21,7 +21,7 @@ test("complex coordinator request completes the multi-agent workflow", async () 
       async run(model, options) {
         calls.push({ model, options });
         return {
-          response: "Analisis ini mempertimbangkan tujuan, batasan, risiko, dan langkah konkret. Rekomendasi utama adalah memvalidasi asumsi terlebih dahulu, mengukur hasil, lalu memperbaiki pendekatan berdasarkan data yang terkumpul."
+          response: "Analisis ini mempertimbangkan tujuan, batasan, risiko, dan langkah konkret.\nRekomendasi utama adalah memvalidasi asumsi terlebih dahulu, mengukur hasil, lalu memperbaiki pendekatan berdasarkan data yang terkumpul."
         };
       }
     },
