@@ -5,7 +5,7 @@ const AGENTS = {
   coordinator: {
     name: "Coordinator",
     prompt:
-      "You are the Coordinator of a multi-agent AI system. Ensure the final answer fulfills the user's actual request. Match the user's language and requested format. Prioritize useful, specific, actionable results. Respect all user constraints, especially budget, time, skill level, and available resources. Avoid repetition, generic filler, unnecessary introductions, and unsupported claims."
+      "You are BOR AI's Coordinator. Fulfill the user's actual request directly, in their language and requested format. Prioritize accurate, relevant, specific, actionable answers. Treat user-provided facts as context, not proof of external claims. Never invent sources, browsing, tool use, calculations, or actions. If information is missing or uncertain, say so and distinguish facts, assumptions, and estimates. For calculations, show enough work to make the result auditable. Respect every explicit constraint, especially budget, time, skill level, and available resources. Avoid repetition, generic filler, and unsupported certainty."
   },
   researcher: {
     name: "Researcher",
@@ -159,6 +159,12 @@ async function runAgent(env, agentId, userMessage, context = "") {
   return cleaned;
 }
 
+// Use a single model call for straightforward requests; reserve orchestration for complex tasks.
+function shouldUseMultiAgent(message) {
+  const complexIntent = /\b(analisis|analisa|bandingkan|evaluasi|strategi|rencana|perencanaan|penelitian|risiko|debug|refactor|arsitektur|forecast|prediksi|proposal|roadmap|audit|business plan|coding|kode)\b/i;
+  return message.length > 700 || complexIntent.test(message);
+}
+
 function needsFactCheck(message) {
   return (
     message.length > 500 ||
@@ -251,17 +257,17 @@ async function runMultiAgent(env, message) {
     "3. Do not repeat the Researcher or Analyst verbatim; synthesize their distinct contributions.",
     "4. If an upstream recommendation violates a hard constraint, replace it with a feasible alternative.",
     "5. Fulfill the original request directly.",
-    "2. Follow the user's language and requested format.",
-    "3. Respect all constraints, including budget, time, and skill level.",
-    "4. Give concrete steps rather than vague instructions.",
-    "5. Make targets measurable and realistic; do not guarantee results.",
-    "6. For a no-budget request, do not require paid ads, subscriptions,",
-    "   or paid tools. Prefer genuinely free alternatives.",
-    "7. For a time-based plan, give each day a distinct task and output.",
-    "8. Avoid repeated tasks, filler, and unnecessary sections.",
-    "9. Do not invent facts or claim to browse the web.",
-    "10. Use readable Markdown when useful.",
-    "11. Finish the answer completely without ending mid-sentence."
+    "6. Follow the user's language and requested format.",
+    "7. Respect all constraints, including budget, time, and skill level.",
+    "8. Give concrete steps rather than vague instructions.",
+    "9. Make targets measurable and realistic; do not guarantee results.",
+    "10. For a no-budget request, do not require paid ads, subscriptions,",
+    "    or paid tools. Prefer genuinely free alternatives.",
+    "11. For a time-based plan, give each day a distinct task and output.",
+    "12. Avoid repeated tasks, filler, and unnecessary sections.",
+    "13. Do not invent facts or claim to browse the web.",
+    "14. Use readable Markdown when useful.",
+    "15. Finish the answer completely without ending mid-sentence."
   ].join("\n");
 
   let finalResponse = await runAgent(
@@ -377,12 +383,19 @@ export default {
       }
 
       try {
-        if (agentId === "coordinator") {
+        if (agentId === "coordinator" && shouldUseMultiAgent(message)) {
           const result = await runMultiAgent(env, message);
+          return json({ ...result, model: MODEL });
+        }
 
+        if (agentId === "coordinator") {
+          const response = await runAgent(env, "coordinator", message);
           return json({
-            ...result,
-            model: MODEL
+            agent: AGENTS.coordinator.name,
+            model: MODEL,
+            workflow: "single-agent",
+            agentsUsed: [AGENTS.coordinator.name],
+            response
           });
         }
 
@@ -402,10 +415,7 @@ export default {
         console.error("AI request failed:", error);
 
         return json({
-          error: "AI gagal memproses permintaan.",
-          detail: String(
-            error?.message || error
-          ).slice(0, 500)
+          error: "AI gagal memproses permintaan. Silakan coba lagi beberapa saat."
         }, 502);
       }
     }
