@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="id">
 <head>
@@ -7,209 +6,84 @@
   <meta name="theme-color" content="#0b1020">
   <title>AI Command Center</title>
   <style>
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      font-family: Inter, Arial, sans-serif;
-      background: #0b1020;
-      color: #eef2ff;
-    }
-    header {
-      padding: 22px;
-      border-bottom: 1px solid #26304a;
-      background: #11182b;
-    }
-    header h1 { margin: 0 0 8px; font-size: 23px; }
-    header p { margin: 0; color: #9ca9c7; font-size: 14px; }
-    main { max-width: 1000px; margin: auto; padding: 20px; }
-    .status {
-      display: inline-flex;
-      align-items: center;
-      margin-bottom: 18px;
-      padding: 8px 12px;
-      border-radius: 20px;
-      background: #173c35;
-      color: #8bf0c5;
-      font-size: 13px;
-    }
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-      gap: 14px;
-    }
-    .card, .chat {
-      padding: 18px;
-      border: 1px solid #29334e;
-      border-radius: 14px;
-      background: #131b30;
-    }
-    .card h2 { margin: 0 0 10px; font-size: 17px; }
-    .card p { color: #aab6d0; font-size: 14px; line-height: 1.5; }
-    .tag { color: #8da8ff; font-size: 12px; }
-    .chat { margin-top: 20px; }
-    label { display: block; margin-top: 14px; font-size: 14px; }
-    textarea, select {
-      display: block;
-      width: 100%;
-      margin: 10px 0;
-      padding: 12px;
-      border: 1px solid #34405d;
-      border-radius: 9px;
-      background: #0b1020;
-      color: white;
-      font: inherit;
-    }
-    textarea { min-height: 120px; resize: vertical; line-height: 1.5; }
-    button {
-      padding: 11px 16px;
-      border: 0;
-      border-radius: 9px;
-      background: #91a4ff;
-      color: #0b1020;
-      font-weight: bold;
-      cursor: pointer;
-    }
-    button:disabled { opacity: .6; cursor: wait; }
-    .muted { color: #9ca9c7; font-size: 13px; line-height: 1.5; }
-    #reply {
-      color: #dce5fa;
-      line-height: 1.75;
-      overflow-wrap: anywhere;
-      white-space: normal;
-    }
-    #reply h1, #reply h2, #reply h3, #reply h4 {
-      color: #fff;
-      line-height: 1.35;
-      margin: 22px 0 10px;
-    }
-    #reply h1 { font-size: 23px; }
-    #reply h2 { font-size: 20px; }
-    #reply h3 { font-size: 17px; }
-    #reply p { margin: 10px 0; }
-    #reply ul, #reply ol { padding-left: 25px; }
-    #reply li { margin: 5px 0; }
-    #reply pre {
-      overflow-x: auto;
-      padding: 14px;
-      border-radius: 9px;
-      background: #080d19;
-      white-space: pre-wrap;
-    }
-    #reply code {
-      padding: 2px 5px;
-      border-radius: 4px;
-      background: #202a42;
-      font-family: Consolas, monospace;
-    }
-    #reply pre code { padding: 0; background: transparent; }
-    #reply blockquote {
-      margin: 12px 0;
-      padding: 8px 14px;
-      border-left: 3px solid #718aff;
-      color: #b9c7e5;
-      background: #10182a;
-    }
-    .reply-panel {
-      margin-top: 20px;
-      padding-top: 8px;
-      border-top: 1px solid #29334e;
-    }
-    .reply-heading {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-    }
-    .reply-heading h3 { margin-bottom: 8px; }
-    .secondary {
-      padding: 7px 10px;
-      background: #202a42;
-      color: #dce5fa;
-      font-size: 12px;
-    }
-    footer {
-      padding: 22px;
-      color: #7f8ba8;
-      font-size: 12px;
-      text-align: center;
-    }
-    @media (max-width: 600px) {
-      header { padding: 18px; }
-      main { padding: 14px; }
-      .card, .chat { padding: 15px; }
-      .reply-heading { align-items: flex-start; }
-    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Inter,Arial,sans-serif;background:#0b1020;color:#eef2ff}
+    header{padding:22px;border-bottom:1px solid #26304a;background:#11182b}
+    header h1{margin:0 0 8px;font-size:23px}
+    header p{margin:0;color:#9ca9c7;font-size:14px}
+    main{max-width:1000px;margin:auto;padding:20px}
+    .status{display:inline-flex;align-items:center;margin-bottom:18px;padding:8px 12px;border-radius:20px;background:#173c35;color:#8bf0c5;font-size:13px}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px}
+    .card,.chat{padding:18px;border:1px solid #29334e;border-radius:14px;background:#131b30}
+    .card h2{margin:0 0 10px;font-size:17px}
+    .card p{color:#aab6d0;font-size:14px;line-height:1.5}
+    .tag{color:#8da8ff;font-size:12px}
+    .chat{margin-top:20px}
+    label{display:block;margin-top:14px;font-size:14px}
+    textarea,select{display:block;width:100%;margin:10px 0;padding:12px;border:1px solid #34405d;border-radius:9px;background:#0b1020;color:white;font:inherit}
+    textarea{min-height:120px;resize:vertical;line-height:1.5}
+    button{padding:11px 16px;border:0;border-radius:9px;background:#91a4ff;color:#0b1020;font-weight:bold;cursor:pointer}
+    button:disabled{opacity:.6;cursor:wait}
+    .muted{color:#9ca9c7;font-size:13px;line-height:1.5}
+    #reply,.step-output{color:#dce5fa;line-height:1.75;overflow-wrap:anywhere}
+    #reply h1,#reply h2,#reply h3,#reply h4,.step-output h1,.step-output h2,.step-output h3{color:#fff;line-height:1.35;margin:22px 0 10px}
+    #reply p,.step-output p{margin:10px 0}
+    #reply ul,#reply ol,.step-output ul,.step-output ol{padding-left:25px}
+    #reply li,.step-output li{margin:5px 0}
+    #reply pre,.step-output pre{overflow-x:auto;padding:14px;border-radius:9px;background:#080d19;white-space:pre-wrap}
+    #reply code,.step-output code{padding:2px 5px;border-radius:4px;background:#202a42;font-family:Consolas,monospace}
+    #reply pre code,.step-output pre code{padding:0;background:transparent}
+    #reply blockquote,.step-output blockquote{margin:12px 0;padding:8px 14px;border-left:3px solid #718aff;color:#b9c7e5;background:#10182a}
+    .reply-panel{margin-top:20px;padding-top:8px;border-top:1px solid #29334e}
+    .reply-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}
+    .reply-heading h3{margin-bottom:8px}
+    .secondary{padding:7px 10px;background:#202a42;color:#dce5fa;font-size:12px}
+    .workflow-panel{margin-top:20px;padding-top:16px;border-top:1px solid #29334e}
+    .workflow-panel h3{margin:0 0 8px}
+    .step-card{margin:10px 0;border:1px solid #29334e;border-radius:10px;background:#0e1628;overflow:hidden}
+    .step-card summary{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;cursor:pointer;font-weight:600;list-style:none}
+    .step-card summary::-webkit-details-marker{display:none}
+    .step-card summary:after{content:"+";color:#91a4ff;font-size:18px}
+    .step-card[open] summary:after{content:"−"}
+    .step-status{color:#8bf0c5;font-size:12px;font-weight:500}
+    .step-status.skipped{color:#9ca9c7}
+    .step-output{padding:0 14px 14px}
+    footer{padding:22px;color:#7f8ba8;font-size:12px;text-align:center}
+    [hidden]{display:none!important}
+    @media(max-width:600px){header{padding:18px}main{padding:14px}.card,.chat{padding:15px}.reply-heading{align-items:flex-start}}
   </style>
 </head>
 <body>
-  <header>
-    <h1>◈ AI Command Center</h1>
-    <p>Your personal multi-agent AI workspace</p>
-  </header>
-
+  <header><h1>◈ AI Command Center</h1><p>Your personal multi-agent AI workspace</p></header>
   <main>
     <div class="status" id="status">● Menghubungkan ke AI...</div>
-
     <div class="grid">
-      <section class="card">
-        <span class="tag">AGENT 01</span>
-        <h2>Coordinator</h2>
-        <p>Mengatur alur kerja dan menggabungkan hasil analisis agen AI.</p>
-      </section>
-      <section class="card">
-        <span class="tag">AGENT 02</span>
-        <h2>Researcher</h2>
-        <p>Mengidentifikasi informasi, asumsi, dan konteks yang relevan.</p>
-      </section>
-      <section class="card">
-        <span class="tag">AGENT 03</span>
-        <h2>Analyst</h2>
-        <p>Menganalisis pilihan, data, risiko, dan strategi.</p>
-      </section>
-      <section class="card">
-        <span class="tag">AGENT 04</span>
-        <h2>Writer</h2>
-        <p>Menyusun jawaban akhir yang terstruktur dan mudah dipahami.</p>
-      </section>
+      <section class="card"><span class="tag">AGENT 01</span><h2>Coordinator</h2><p>Mengatur alur kerja dan menggabungkan hasil analisis agen AI.</p></section>
+      <section class="card"><span class="tag">AGENT 02</span><h2>Researcher</h2><p>Mengidentifikasi informasi, asumsi, dan konteks yang relevan.</p></section>
+      <section class="card"><span class="tag">AGENT 03</span><h2>Analyst</h2><p>Menganalisis pilihan, data, risiko, dan strategi.</p></section>
+      <section class="card"><span class="tag">AGENT 04</span><h2>Writer</h2><p>Menyusun jawaban akhir yang terstruktur dan mudah dipahami.</p></section>
     </div>
-
     <section class="chat">
-      <h2>Command Input</h2>
-      <p class="muted">Pilih agen, masukkan instruksi, lalu kirim.</p>
-
+      <h2>Command Input</h2><p class="muted">Pilih agen, masukkan instruksi, lalu kirim.</p>
       <label for="agent">Agen AI</label>
       <select id="agent">
-        <option value="coordinator">Coordinator · Multi-Agent</option>
-        <option value="researcher">Researcher</option>
-        <option value="analyst">Analyst</option>
-        <option value="writer">Writer</option>
-        <option value="fact_checker">Fact Checker</option>
-        <option value="strategist">Strategist</option>
-        <option value="coder">Coder</option>
-        <option value="planner">Planner</option>
-        <option value="critic">Critic</option>
-        <option value="summarizer">Summarizer</option>
+        <option value="coordinator">Coordinator · Multi-Agent</option><option value="researcher">Researcher</option><option value="analyst">Analyst</option><option value="writer">Writer</option><option value="fact_checker">Fact Checker</option><option value="strategist">Strategist</option><option value="coder">Coder</option><option value="planner">Planner</option><option value="critic">Critic</option><option value="summarizer">Summarizer</option>
       </select>
-
       <label for="prompt">Instruksi untuk AI</label>
-      <textarea id="prompt" maxlength="12000"
-        placeholder="Contoh: Analisis peluang bisnis dengan modal Rp500.000..."></textarea>
-
+      <textarea id="prompt" maxlength="12000" placeholder="Contoh: Analisis peluang bisnis dengan modal Rp500.000..."></textarea>
       <button id="send" type="button">Kirim instruksi</button>
       <p class="muted" id="agentInfo">Siap menerima instruksi.</p>
-
       <div class="reply-panel">
-        <div class="reply-heading">
-          <h3>Respons AI</h3>
-          <button class="secondary" id="copyReply" type="button">Salin jawaban</button>
-        </div>
+        <div class="reply-heading"><h3>Respons AI</h3><button class="secondary" id="copyReply" type="button">Salin jawaban</button></div>
         <div id="reply" aria-live="polite">Memeriksa koneksi...</div>
       </div>
+      <section class="workflow-panel" id="workflowPanel" hidden>
+        <h3>Proses Multi-Agent</h3><p class="muted">Buka setiap tahap untuk melihat hasil kerja masing-masing agent.</p>
+        <div id="workflowSteps"></div>
+      </section>
     </section>
   </main>
-
   <footer>AI Command Center · Personal workspace</footer>
-
   <script>
     const API = "";
     const statusEl = document.getElementById("status");
@@ -219,247 +93,116 @@
     const sendBtn = document.getElementById("send");
     const agentInfo = document.getElementById("agentInfo");
     const copyBtn = document.getElementById("copyReply");
+    const workflowPanel = document.getElementById("workflowPanel");
+    const workflowSteps = document.getElementById("workflowSteps");
 
-    // Render a safe subset of Markdown without external libraries.
-    // HTML is escaped before Markdown formatting is applied.
     function escapeHTML(value) {
-      return value.replace(/[&<>"']/g, char => ({
-        "&": "&amp;",
-        "<": "&lt;",
-        ">": "&gt;",
-        '"': "&quot;",
-        "'": "&#39;"
+      return String(value).replace(/[&<>"']/g, char => ({
+        "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
       })[char]);
     }
 
     function renderMarkdown(input) {
-      let source = String(input || "")
-        .replace(/\r\n?/g, "\n")
-        .replace(/\\([#*_\-`>])/g, "$1")
-        .replace(/\\([()[\]])/g, "$1");
-
+      let source = String(input || "").replace(/\r\n?/g,"\n")
+        .replace(/\\([#*_\-`>])/g,"$1").replace(/\\([()[\]])/g,"$1");
       const codeBlocks = [];
-
-      source = source.replace(/```([\w+-]*)[ \t]*\n([\s\S]*?)```/g,
-        (_, language, code) => {
-          const placeholder = `@@CODEBLOCK${codeBlocks.length}@@`;
-          codeBlocks.push(
-            `<pre><code>${escapeHTML(code.replace(/\n$/, ""))}</code></pre>`
-          );
-          return placeholder;
-        });
-
-      source = escapeHTML(source);
-
-      source = source.replace(
-        /`([^`\n]+)`/g,
-        "<code>$1</code>"
-      );
-
-      source = source.replace(
-        /\*\*(.+?)\*\*/g,
-        "<strong>$1</strong>"
-      );
-      source = source.replace(
-        /__(.+?)__/g,
-        "<strong>$1</strong>"
-      );
-      source = source.replace(
-        /(^|[^*])\*([^*\n]+)\*(?!\*)/g,
-        "$1<em>$2</em>"
-      );
-      source = source.replace(
-        /(^|[^_])_([^_\n]+)_(?!_)/g,
-        "$1<em>$2</em>"
-      );
-
-      const lines = source.split("\n");
-      const html = [];
-      let paragraph = [];
-      let listType = null;
-      let quote = [];
-
-      function flushParagraph() {
-        if (paragraph.length) {
-          html.push("<p>" + paragraph.join("<br>") + "</p>");
-          paragraph = [];
-        }
+      source = source.replace(/```([\w+-]*)[ \t]*\n([\s\S]*?)```/g,(_,language,code)=>{
+        const placeholder=`@@CODEBLOCK${codeBlocks.length}@@`;
+        codeBlocks.push(`<pre><code>${escapeHTML(code.replace(/\n$/,""))}</code></pre>`);
+        return placeholder;
+      });
+      source = escapeHTML(source)
+        .replace(/`([^`\n]+)`/g,"<code>$1</code>")
+        .replace(/\*\*(.+?)\*\*/g,"<strong>$1</strong>")
+        .replace(/__(.+?)__/g,"<strong>$1</strong>")
+        .replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g,"$1<em>$2</em>")
+        .replace(/(^|[^_])_([^_\n]+)_(?!_)/g,"$1<em>$2</em>");
+      const html=[];let paragraph=[],listType=null,quote=[];
+      const flushParagraph=()=>{if(paragraph.length){html.push("<p>"+paragraph.join("<br>")+"</p>");paragraph=[];}};
+      const flushList=()=>{if(listType){html.push(`</${listType}>`);listType=null;}};
+      const flushQuote=()=>{if(quote.length){html.push("<blockquote>"+quote.join("<br>")+"</blockquote>");quote=[];}};
+      for(const line of source.split("\n")){
+        const codeMatch=line.match(/^@@CODEBLOCK(\d+)@@$/);
+        if(codeMatch){flushParagraph();flushList();flushQuote();html.push(codeBlocks[Number(codeMatch[1])]||"");continue;}
+        if(!line.trim()){flushParagraph();flushList();flushQuote();continue;}
+        const heading=line.match(/^(#{1,4})\s+(.+)$/);
+        if(heading){flushParagraph();flushList();flushQuote();const n=heading[1].length;html.push(`<h${n}>${heading[2]}</h${n}>`);continue;}
+        if(/^\s*([-*_])(?:\s*\1){2,}\s*$/.test(line)){flushParagraph();flushList();flushQuote();html.push("<hr>");continue;}
+        const qm=line.match(/^&gt;\s?(.*)$/);
+        if(qm){flushParagraph();flushList();quote.push(qm[1]);continue;}else flushQuote();
+        const ul=line.match(/^\s*[-*+]\s+(.+)$/),ol=line.match(/^\s*\d+[.)]\s+(.+)$/);
+        if(ul||ol){flushParagraph();const wanted=ul?"ul":"ol";if(listType!==wanted){flushList();html.push(`<${wanted}>`);listType=wanted;}html.push("<li>"+(ul||ol)[1]+"</li>");continue;}
+        flushList();paragraph.push(line);
       }
-
-      function flushList() {
-        if (listType) {
-          html.push(`</${listType}>`);
-          listType = null;
-        }
-      }
-
-      function flushQuote() {
-        if (quote.length) {
-          html.push("<blockquote>" + quote.join("<br>") + "</blockquote>");
-          quote = [];
-        }
-      }
-
-      for (const line of lines) {
-        const codeMatch = line.match(/^@@CODEBLOCK(\d+)@@$/);
-        if (codeMatch) {
-          flushParagraph();
-          flushList();
-          flushQuote();
-          html.push(codeBlocks[Number(codeMatch[1])] || "");
-          continue;
-        }
-
-        if (!line.trim()) {
-          flushParagraph();
-          flushList();
-          flushQuote();
-          continue;
-        }
-
-        const heading = line.match(/^(#{1,4})\s+(.+)$/);
-        if (heading) {
-          flushParagraph();
-          flushList();
-          flushQuote();
-          const level = heading[1].length;
-          html.push(`<h${level}>${heading[2]}</h${level}>`);
-          continue;
-        }
-
-        if (/^\s*([-*_])(?:\s*\1){2,}\s*$/.test(line)) {
-          flushParagraph();
-          flushList();
-          flushQuote();
-          html.push("<hr>");
-          continue;
-        }
-
-        const quoteMatch = line.match(/^&gt;\s?(.*)$/);
-        if (quoteMatch) {
-          flushParagraph();
-          flushList();
-          quote.push(quoteMatch[1]);
-          continue;
-        } else {
-          flushQuote();
-        }
-
-        const unordered = line.match(/^\s*[-*+]\s+(.+)$/);
-        const ordered = line.match(/^\s*\d+[.)]\s+(.+)$/);
-
-        if (unordered || ordered) {
-          flushParagraph();
-          const wantedType = unordered ? "ul" : "ol";
-          if (listType !== wantedType) {
-            flushList();
-            html.push(`<${wantedType}>`);
-            listType = wantedType;
-          }
-          html.push("<li>" + (unordered || ordered)[1] + "</li>");
-          continue;
-        }
-
-        flushList();
-        paragraph.push(line);
-      }
-
-      flushParagraph();
-      flushList();
-      flushQuote();
-
-      return html.join("\n")
-        .replace(/@@CODEBLOCK(\d+)@@/g, (_, index) =>
-          codeBlocks[Number(index)] || ""
-        );
+      flushParagraph();flushList();flushQuote();
+      return html.join("\n").replace(/@@CODEBLOCK(\d+)@@/g,(_,i)=>codeBlocks[Number(i)]||"");
     }
 
-    async function checkHealth() {
-      try {
-        const response = await fetch(API + "/api/health");
-        if (!response.ok) throw new Error("HTTP " + response.status);
-        const data = await response.json();
-
-        statusEl.textContent = data.ok
-          ? "● Backend terhubung · AI siap diuji"
-          : "● Backend belum siap";
-      } catch {
-        statusEl.textContent = "● Koneksi backend bermasalah";
+    function renderWorkflow(steps) {
+      workflowSteps.replaceChildren();
+      if(!Array.isArray(steps)||steps.length===0){workflowPanel.hidden=true;return;}
+      workflowPanel.hidden=false;
+      for(const [index,step] of steps.entries()){
+        const details=document.createElement("details");
+        details.className="step-card";
+        details.open=index===steps.length-1;
+        const summary=document.createElement("summary");
+        const name=document.createElement("span");
+        name.textContent=step.agent||`Agent ${index+1}`;
+        const status=document.createElement("span");
+        status.className="step-status"+(step.status==="skipped"?" skipped":"");
+        status.textContent=step.status==="completed"?"Selesai":step.status==="skipped"?"Dilewati":(step.status||"Status tidak diketahui");
+        summary.append(name,status);
+        const output=document.createElement("div");
+        output.className="step-output";
+        if(typeof step.output==="string"&&step.output.trim()) output.innerHTML=renderMarkdown(step.output);
+        else output.textContent="Agent tidak mengembalikan output.";
+        details.append(summary,output);
+        workflowSteps.append(details);
       }
     }
 
-    async function submitPrompt() {
-      const prompt = promptEl.value.trim();
-      const agent = agentEl.value;
-
-      if (!prompt) {
-        replyEl.textContent = "Masukkan instruksi terlebih dahulu.";
-        return;
-      }
-
-      sendBtn.disabled = true;
-      sendBtn.textContent = "Sedang memproses...";
-      replyEl.textContent = "AI sedang menyusun jawaban. Mohon tunggu...";
-      agentInfo.textContent = "Agen aktif: " + agentEl.options[agentEl.selectedIndex].text;
-
-      const startedAt = Date.now();
-
-      try {
-        const response = await fetch(API + "/api/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message: prompt, agent })
-        });
-
-        const data = await response.json();
-
-        if (!response.ok) {
-          throw new Error(data.error || data.message || "HTTP " + response.status);
-        }
-
-        if (typeof data.response !== "string" || !data.response.trim()) {
-          throw new Error("Respons AI tidak berisi jawaban yang dikenali.");
-        }
-
-        replyEl.innerHTML = renderMarkdown(data.response);
-
-        const elapsed = ((Date.now() - startedAt) / 1000).toFixed(1);
-        const agentsUsed = Array.isArray(data.agentsUsed)
-          ? " · Alur: " + data.agentsUsed.join(" → ")
-          : "";
-
-        agentInfo.textContent =
-          "Dijawab oleh " + (data.agent || agent) +
-          (data.model ? " · Model: " + data.model : "") +
-          " · " + elapsed + " detik" + agentsUsed;
-      } catch (error) {
-        replyEl.textContent = "Gagal mendapatkan jawaban AI: " + error.message;
-        agentInfo.textContent = "Periksa koneksi atau log backend jika masalah berlanjut.";
-      } finally {
-        sendBtn.disabled = false;
-        sendBtn.textContent = "Kirim instruksi";
-      }
+    async function checkHealth(){
+      try{
+        const response=await fetch(API+"/api/health");
+        if(!response.ok)throw new Error("HTTP "+response.status);
+        const data=await response.json();
+        statusEl.textContent=data.ok?"● Backend terhubung · AI siap diuji":"● Backend belum siap";
+      }catch{statusEl.textContent="● Koneksi backend bermasalah";}
     }
 
-    sendBtn.addEventListener("click", submitPrompt);
+    async function submitPrompt(){
+      const prompt=promptEl.value.trim(),agent=agentEl.value;
+      if(!prompt){replyEl.textContent="Masukkan instruksi terlebih dahulu.";return;}
+      sendBtn.disabled=true;sendBtn.textContent="Sedang memproses...";
+      replyEl.textContent="AI sedang menyusun jawaban. Mohon tunggu...";
+      workflowPanel.hidden=true;workflowSteps.replaceChildren();
+      agentInfo.textContent="Agen aktif: "+agentEl.options[agentEl.selectedIndex].text;
+      const startedAt=Date.now();
+      try{
+        const response=await fetch(API+"/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:prompt,agent})});
+        const data=await response.json();
+        if(!response.ok)throw new Error(data.error||data.message||"HTTP "+response.status);
+        if(typeof data.response!=="string"||!data.response.trim())throw new Error("Respons AI tidak berisi jawaban yang dikenali.");
+        replyEl.innerHTML=renderMarkdown(data.response);
+        renderWorkflow(data.steps);
+        const elapsed=((Date.now()-startedAt)/1000).toFixed(1);
+        const agentsUsed=Array.isArray(data.agentsUsed)?" · Alur: "+data.agentsUsed.join(" → "):"";
+        agentInfo.textContent="Dijawab oleh "+(data.agent||agent)+(data.model?" · Model: "+data.model:"")+" · "+elapsed+" detik"+agentsUsed;
+      }catch(error){
+        workflowPanel.hidden=true;workflowSteps.replaceChildren();
+        replyEl.textContent="Gagal mendapatkan jawaban AI: "+error.message;
+        agentInfo.textContent="Periksa koneksi atau log backend jika masalah berlanjut.";
+      }finally{sendBtn.disabled=false;sendBtn.textContent="Kirim instruksi";}
+    }
 
-    promptEl.addEventListener("keydown", event => {
-      if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
-        submitPrompt();
-      }
+    sendBtn.addEventListener("click",submitPrompt);
+    promptEl.addEventListener("keydown",event=>{if((event.ctrlKey||event.metaKey)&&event.key==="Enter")submitPrompt();});
+    copyBtn.addEventListener("click",async()=>{
+      const text=replyEl.innerText||replyEl.textContent||"";
+      try{await navigator.clipboard.writeText(text);copyBtn.textContent="Tersalin!";setTimeout(()=>{copyBtn.textContent="Salin jawaban";},1500);}
+      catch{copyBtn.textContent="Gagal menyalin";}
     });
-
-    copyBtn.addEventListener("click", async () => {
-      const text = replyEl.innerText || replyEl.textContent || "";
-      try {
-        await navigator.clipboard.writeText(text);
-        copyBtn.textContent = "Tersalin!";
-        setTimeout(() => { copyBtn.textContent = "Salin jawaban"; }, 1500);
-      } catch {
-        copyBtn.textContent = "Gagal menyalin";
-      }
-    });
-
     checkHealth();
   </script>
 </body>
