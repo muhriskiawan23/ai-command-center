@@ -47,7 +47,7 @@
     .step-card[open] summary:after{content:"−"}
     .step-status{color:#8bf0c5;font-size:12px;font-weight:500}
     .step-status.skipped{color:#9ca9c7}
-    .step-output{padding:0 14px 14px}
+    .step-output{padding:0 14px 14px;white-space:pre-wrap;overflow-wrap:anywhere}
     footer{padding:22px;color:#7f8ba8;font-size:12px;text-align:center}
     [hidden]{display:none!important}
     @media(max-width:600px){header{padding:18px}main{padding:14px}.card,.chat{padding:15px}.reply-heading{align-items:flex-start}}
@@ -78,7 +78,7 @@
         <div id="reply" aria-live="polite">Memeriksa koneksi...</div>
       </div>
       <section class="workflow-panel" id="workflowPanel" hidden>
-        <h3>Proses Multi-Agent</h3><p class="muted">Buka setiap tahap untuk melihat hasil kerja masing-masing agent.</p>
+        <h3>Proses Multi-Agent</h3><p class="muted">Buka setiap tahap untuk melihat output asli masing-masing agent. Format teks dipertahankan agar tidak ada isi yang hilang.</p>
         <div id="workflowSteps"></div>
       </section>
     </section>
@@ -155,8 +155,13 @@
         summary.append(name,status);
         const output=document.createElement("div");
         output.className="step-output";
-        if(typeof step.output==="string"&&step.output.trim()) output.innerHTML=renderMarkdown(step.output);
-        else output.textContent="Agent tidak mengembalikan output.";
+        if(typeof step.output==="string"&&step.output.trim()) {
+          // Preserve the agent's original text exactly; don't let Markdown
+          // parsing accidentally drop list items or blank-line content.
+          output.textContent=step.output;
+        } else {
+          output.textContent="Agent tidak mengembalikan output.";
+        }
         details.append(summary,output);
         workflowSteps.append(details);
       }
