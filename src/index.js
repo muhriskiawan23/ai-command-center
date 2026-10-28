@@ -338,6 +338,12 @@ async function runMultiAgent(env, message) {
     );
   }
 
+  // A repair attempt is not a pass: fail closed if the final answer still violates
+  // an explicit format contract instead of returning a knowingly invalid response.
+  if (requestedCount !== null && !hasExactlySequentialNumberedItems(finalResponse, requestedCount)) {
+    throw new Error("Writer failed exact numbered-item quality gate");
+  }
+
   steps.push({
     agent: AGENTS.writer.name,
     status: "completed",
