@@ -50,8 +50,8 @@
     .step-card summary::-webkit-details-marker{display:none}
     .step-card summary:after{content:"+";color:#91a4ff;font-size:18px}
     .step-card[open] summary:after{content:"−"}
-    .step-status{color:#8bf0c5;font-size:12px;font-weight:500}
-    .step-status.skipped{color:#9ca9c7}
+    .step-status{display:inline-flex;align-items:center;flex-shrink:0;margin-left:auto;padding:4px 8px;border-radius:999px;background:#173c35;color:#8bf0c5;font-size:12px;font-weight:600;white-space:nowrap}
+    .step-status.skipped{background:#202a42;color:#9ca9c7}
     .step-output{padding:0 14px 14px;white-space:pre-wrap;overflow-wrap:anywhere}
     footer{padding:22px;color:#7f8ba8;font-size:12px;text-align:center}
     [hidden]{display:none!important}
@@ -110,6 +110,13 @@
     function renderMarkdown(input) {
       let source = String(input || "").replace(/\r\n?/g,"\n")
         .replace(/\\([#*_\-`>])/g,"$1").replace(/\\([()[\]])/g,"$1");
+      // Remove empty Markdown markers sometimes emitted by agents.
+      source = source.split("\n").filter(line => {
+        const trimmed=line.trim();
+        if (/^#{1,6}\s*$/.test(trimmed)) return false;
+        if (/^[-*+]\s*$/.test(trimmed)) return false;
+        return true;
+      }).join("\n");
       const codeBlocks = [];
       source = source.replace(/```([\w+-]*)[ \t]*\n([\s\S]*?)```/g,(_,language,code)=>{
         const placeholder=`@@CODEBLOCK${codeBlocks.length}@@`;
