@@ -144,7 +144,7 @@ async function runAgent(env, agentId, userMessage, context = "") {
     return text.length >= 12 && countWords(text).length >= 3;
   });
 
-  if (typeof response !== "string" || (agentId !== "coordinator" && (countWords(cleaned).length < 20 || cleaned.length < 100 || meaningfulLines.length < 2))) {
+  if (typeof response !== "string" || (agentId === "coordinator" && !cleaned) || (agentId !== "coordinator" && (countWords(cleaned).length < 20 || cleaned.length < 100 || meaningfulLines.length < 2))) {
     // Do not mark a generic placeholder as a successful agent result.
     // Let the request boundary return a sanitized error after the retry fails.
     throw new Error(`Agent ${agentId} returned unusable output after retry`);
