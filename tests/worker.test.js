@@ -112,3 +112,26 @@ test("unusable specialist output fails honestly instead of returning a generic f
   assert.equal(data.error, "AI gagal memproses permintaan. Silakan coba lagi beberapa saat.");
   assert.equal(JSON.stringify(data).includes("Analisis: pilih langkah"), false);
 });
+
+test("empty coordinator output is retried and then rejected instead of returned as success", async () => {
+  let calls = 0;
+  const emptyEnv = {
+    AI: {
+      async run() {
+        calls += 1;
+        return { response: "   " };
+      }
+    },
+    ASSETS: { async fetch() { return new Response("asset"); } }
+  };
+  const res = await worker.fetch(new Request("https://example.test/api/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message: "Jelaskan secara singkat." })
+  }), emptyEnv);
+  const data = await res.json();
+  assert.equal(res.status, 502);
+  assert.equal(calls, 2);
+  assert.equal(data.error, "AI gagal memproses permintaan. Silakan coba lagi beberapa saat.");
+  assert.equal("response" in data, false);
+});
