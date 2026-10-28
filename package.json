@@ -1,4 +1,3 @@
-
 {
   "name": "ai-command-center",
   "version": "1.0.0",
@@ -6,7 +5,8 @@
   "description": "Personal multi-agent AI dashboard",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node --experimental-default-type=module --test"
   },
   "dependencies": {
     "express": "^5.1.0"
