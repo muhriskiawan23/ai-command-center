@@ -3,52 +3,52 @@ const AGENTS = {
   coordinator: {
     name: "Coordinator",
     prompt:
-      "You are the Coordinator. Understand the user's request, organize the work, and provide a clear, useful answer. Respond in the user's language."
+      "You are the Coordinator. Organize tasks, combine agent outputs, resolve conflicts carefully, and deliver a useful final answer. Respond in the user's language."
   },
   researcher: {
     name: "Researcher",
     prompt:
-      "You are a Researcher. Separate known facts from assumptions, identify missing information, and never invent sources. Respond in the user's language."
+      "You are a Researcher. Identify relevant facts, assumptions, missing information, and useful context from the supplied request and materials. Do not invent sources or pretend to browse the internet. Respond in the user's language."
   },
   analyst: {
     name: "Analyst",
     prompt:
-      "You are an Analyst. Reason carefully, compare options, explain trade-offs, and give actionable conclusions. Respond in the user's language."
+      "You are an Analyst. Analyze the request and supplied research. Compare options, explain trade-offs, identify risks, and derive practical conclusions. Do not treat assumptions as facts. Respond in the user's language."
   },
   writer: {
     name: "Writer",
     prompt:
-      "You are a professional Writer. Produce clear, polished, well-structured writing suited to the user's goal and audience. Respond in the user's language."
+      "You are a professional Writer. Turn the supplied request and agent findings into a clear, polished, actionable final answer. Preserve important caveats and do not invent evidence. Respond in the user's language."
   },
   fact_checker: {
     name: "Fact Checker",
     prompt:
-      "You are a Fact Checker. Identify unsupported claims, inconsistencies, and uncertainty. Do not claim external verification unless evidence is provided."
+      "You are a Fact Checker. Review the supplied draft and evidence for unsupported claims, contradictions, logical gaps, and uncertainty. You cannot independently verify external facts unless evidence is supplied. Clearly state what needs verification. Respond in the user's language."
   },
   strategist: {
     name: "Strategist",
     prompt:
-      "You are a Strategist. Develop practical strategies, prioritize actions, and explain risks and expected trade-offs."
+      "You are a Strategist. Develop practical strategies, prioritize actions, and explain risks and trade-offs. Respond in the user's language."
   },
   coder: {
     name: "Coder",
     prompt:
-      "You are a senior software engineer. Produce correct, secure, maintainable code and explain important implementation details."
+      "You are a senior software engineer. Produce correct, secure, maintainable code and explain important implementation details. Respond in the user's language."
   },
   planner: {
     name: "Planner",
     prompt:
-      "You are a Planner. Break goals into ordered steps, dependencies, and measurable milestones."
+      "You are a Planner. Break goals into ordered steps, dependencies, and measurable milestones. Respond in the user's language."
   },
   critic: {
     name: "Critic",
     prompt:
-      "You are a constructive Critic. Find weaknesses, edge cases, hidden assumptions, and ways to improve the proposed answer."
+      "You are a constructive Critic. Identify weaknesses, edge cases, hidden assumptions, and practical improvements. Respond in the user's language."
   },
   summarizer: {
     name: "Summarizer",
     prompt:
-      "You are a Summarizer. Condense information into accurate key points while preserving important context and caveats."
+      "You are a Summarizer. Condense information into accurate key points while preserving important context and caveats. Respond in the user's language."
   }
 };
 
@@ -59,6 +59,95 @@ function json(data, status = 200) {
     status,
     headers: { "Cache-Control": "no-store" }
   });
+}
+
+async function runAgent(env, agentId, userMessage, context = "") {
+  const agent = AGENTS[agentId];
+
+  const messages = [
+    { role: "system", content: agent.prompt },
+    {
+      role: "user",
+      content: context
+        ? `Original request:\n${userMessage}\n\nPrevious agents' findings:\n${context}\n\nPerform your assigned task using the supplied material.`
+        : userMessage
+    }
+  ];
+
+  const result = await env.AI.run(MODEL, {
+    messages,
+    max_tokens: agentId === "writer" ? 1200 : 800
+  });
+
+  const response =
+    result?.response ??
+    result?.result?.response ??
+    "";
+
+  if (typeof response !== "string" || !response.trim()) {
+    throw new Error(`${agent.name} did not return a text response.`);
+  }
+
+  return response.trim();
+}
+
+async function runMultiAgent(env, message) {
+  const steps = [];
+
+  // 1. Researcher gathers context and separates facts from assumptions.
+  const research = await runAgent(env, "researcher", message);
+  steps.push({
+    agent: AGENTS.researcher.name,
+    status: "completed",
+    output: research
+  });
+
+  // 2. Analyst works from the original request and research findings.
+  const analysis = await runAgent(
+    env,
+    "analyst",
+    message,
+    `Researcher findings:\n${research}`
+  );
+  steps.push({
+    agent: AGENTS.analyst.name,
+    status: "completed",
+    output: analysis
+  });
+
+  // 3. Fact Checker reviews the findings and analysis.
+  const review = await runAgent(
+    env,
+    "fact_checker",
+    message,
+    `Researcher findings:\n${research}\n\nAnalyst findings:\n${analysis}`
+  );
+  steps.push({
+    agent: AGENTS.fact_checker.name,
+    status: "completed",
+    output: review
+  });
+
+  // 4. Writer integrates all prior work into the final answer.
+  const finalResponse = await runAgent(
+    env,
+    "writer",
+    message,
+    `Researcher findings:\n${research}\n\nAnalyst findings:\n${analysis}\n\nFact Checker review:\n${review}\n\nWrite the final answer. Correct issues identified by the Fact Checker, preserve uncertainty, and give practical recommendations.`
+  );
+  steps.push({
+    agent: AGENTS.writer.name,
+    status: "completed",
+    output: finalResponse
+  });
+
+  return {
+    agent: "Coordinator",
+    workflow: "multi-agent",
+    agentsUsed: steps.map(step => step.agent),
+    steps,
+    response: finalResponse
+  };
 }
 
 export default {
@@ -100,37 +189,31 @@ export default {
       }
 
       if (message.length > 12000) {
-        return json({ error: "Pesan terlalu panjang (maksimal 12.000 karakter)." }, 400);
+        return json({
+          error: "Pesan terlalu panjang (maksimal 12.000 karakter)."
+        }, 400);
       }
 
       try {
-        const result = await env.AI.run(MODEL, {
-          messages: [
-            { role: "system", content: AGENTS[agentId].prompt },
-            { role: "user", content: message }
-          ],
-          max_tokens: 1200
-        });
-
-        const response =
-          result?.response ??
-          result?.result?.response ??
-          "";
-
-        if (!response) {
+        if (agentId === "coordinator") {
+          const result = await runMultiAgent(env, message);
           return json({
-            error: "Model tidak mengembalikan teks. Coba lagi atau periksa model yang tersedia."
-          }, 502);
+            ...result,
+            model: MODEL
+          });
         }
+
+        const response = await runAgent(env, agentId, message);
 
         return json({
           agent: AGENTS[agentId].name,
           model: MODEL,
+          workflow: "single-agent",
           response
         });
       } catch (error) {
         return json({
-          error: "Workers AI gagal memproses permintaan.",
+          error: "AI gagal memproses permintaan.",
           detail: String(error?.message || error).slice(0, 500)
         }, 502);
       }
