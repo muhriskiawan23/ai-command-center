@@ -81,3 +81,18 @@ test("model errors return a generic public message without internal details", as
   assert.equal("detail" in data, false);
   assert.equal(JSON.stringify(data).includes("internal-secret-detail"), false);
 });
+
+test("short coordinator answers are preserved instead of replaced by generic fallback", async () => {
+  const shortEnv = {
+    AI: { async run() { return { response: "Hai!" }; } },
+    ASSETS: { async fetch() { return new Response("asset"); } }
+  };
+  const res = await worker.fetch(new Request("https://example.test/api/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message: "Sapa saya dengan singkat." })
+  }), shortEnv);
+  const data = await res.json();
+  assert.equal(res.status, 200);
+  assert.equal(data.response, "Hai!");
+});
