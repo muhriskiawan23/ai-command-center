@@ -96,3 +96,19 @@ test("short coordinator answers are preserved instead of replaced by generic fal
   assert.equal(res.status, 200);
   assert.equal(data.response, "Hai!");
 });
+
+test("unusable specialist output fails honestly instead of returning a generic fallback as success", async () => {
+  const weakEnv = {
+    AI: { async run() { return { response: "OK" }; } },
+    ASSETS: { async fetch() { return new Response("asset"); } }
+  };
+  const res = await worker.fetch(new Request("https://example.test/api/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message: "Buat analisis", agent: "analyst" })
+  }), weakEnv);
+  const data = await res.json();
+  assert.equal(res.status, 502);
+  assert.equal(data.error, "AI gagal memproses permintaan. Silakan coba lagi beberapa saat.");
+  assert.equal(JSON.stringify(data).includes("Analisis: pilih langkah"), false);
+});
