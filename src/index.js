@@ -122,7 +122,14 @@ async function runAgent(env, agentId, userMessage, context = "") {
     throw new Error(`${agent.name} returned an empty response.`);
   }
 
-  return response.trim();
+  const cleaned = response.trim().split("\n").filter((line) => {
+    const trimmed = line.trim();
+    if (/^#{1,6}\s*$/.test(trimmed)) return false;
+    if (/^[-*+]\s*$/.test(trimmed)) return false;
+    return true;
+  }).join("\n").trim();
+  if (!cleaned) throw new Error(agent.name + " returned no usable content.");
+  return cleaned;
 }
 
 function needsFactCheck(message) {
