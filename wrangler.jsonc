@@ -1,4 +1,3 @@
-
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "ai-command-center",
@@ -6,6 +5,11 @@
   "compatibility_date": "2026-10-28",
   "ai": {
     "binding": "AI"
+  },
+  "previews": {
+    "ai": {
+      "binding": "AI"
+    }
   },
   "assets": {
     "directory": "./public",
