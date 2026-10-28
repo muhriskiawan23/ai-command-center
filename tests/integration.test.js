@@ -136,3 +136,29 @@ test("multi-agent workflow retries a final answer that violates an exact numbere
     [1, 2, 3]
   );
 });
+
+test("multi-agent workflow fails closed when exact numbered-item format remains invalid after repair", async () => {
+  let calls = 0;
+  const mockEnv = {
+    AI: {
+      async run() {
+        calls += 1;
+        return {
+          response: "Analisis ini mempertimbangkan tujuan, batasan, risiko, dan langkah konkret.\nRekomendasi utama adalah memvalidasi asumsi terlebih dahulu, mengukur hasil, lalu memperbaiki pendekatan berdasarkan data yang terkumpul."
+        };
+      }
+    },
+    ASSETS: { async fetch() { return new Response("asset"); } }
+  };
+
+  const res = await worker.fetch(
+    chat("Buat analisis risiko dalam tepat 3 poin singkat."),
+    mockEnv
+  );
+  const data = await res.json();
+
+  assert.equal(res.status, 502);
+  assert.equal(calls, 6);
+  assert.equal(data.error, "AI gagal memproses permintaan. Silakan coba lagi beberapa saat.");
+  assert.equal("response" in data, false);
+});
