@@ -111,7 +111,7 @@ test("multi-agent workflow retries a final answer that violates an exact numbere
         calls += 1;
         if (calls === 5) {
           return {
-            response: "1. Tentukan tujuan dan batasan.\n2. Jalankan langkah utama dan ukur hasilnya.\n3. Evaluasi hasil lalu perbaiki pendekatan."
+            response: "1. Tentukan tujuan utama, batasan sumber daya, dan hasil yang ingin dicapai secara jelas.\n2. Jalankan langkah prioritas terlebih dahulu, lalu ukur hasilnya menggunakan indikator yang relevan.\n3. Evaluasi hasil berdasarkan data yang terkumpul dan perbaiki pendekatan bila diperlukan."
           };
         }
         return {
