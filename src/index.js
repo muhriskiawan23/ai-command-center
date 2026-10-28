@@ -144,7 +144,7 @@ async function runAgent(env, agentId, userMessage, context = "") {
     return text.length >= 12 && countWords(text).length >= 3;
   });
 
-  if (typeof response !== "string" || countWords(cleaned).length < 20 || cleaned.length < 100 || meaningfulLines.length < 2) {
+  if (typeof response !== "string" || countWords(cleaned).length < 20 || cleaned.length < 100 || (meaningfulLines.length < 2 && agentId !== "coordinator")) {
     // Keep the workflow usable even if the model repeats an empty-Markdown response.
     const safeFallbacks = {
       researcher: "Temuan utama: tujuan pengguna adalah menyusun jawaban yang praktis dan sesuai batasan yang disebutkan. Prioritaskan fakta yang tersedia, pisahkan asumsi dari fakta, dan hindari klaim yang belum diverifikasi. Rekomendasi perlu diterjemahkan menjadi langkah konkret, keluaran yang jelas, dan indikator keberhasilan yang dapat diamati.",
@@ -162,7 +162,11 @@ async function runAgent(env, agentId, userMessage, context = "") {
 // Use a single model call for straightforward requests; reserve orchestration for complex tasks.
 function shouldUseMultiAgent(message) {
   const complexIntent = /\b(analisis|analisa|bandingkan|evaluasi|strategi|rencana|perencanaan|penelitian|risiko|debug|refactor|arsitektur|forecast|prediksi|proposal|roadmap|audit|business plan|coding|kode)\b/i;
-  return message.length > 700 || complexIntent.test(message);
+  const zeroBudgetPromotion =
+    /(?:rp\\s*0|modal\\s*(?:sebesar\\s*)?0|tanpa\\s+(?:modal|biaya)|zero[- ]budget|no[- ]budget)/i.test(message) &&
+    /(?:promosi|marketing|kampanye|konten|media\\s+sosial|mahasiswa|warkop|bisnis)/i.test(message);
+  const explicitLongOutput = /\\b(?:\\d{3,}\\s*(?:kata|words|halaman|pages)|(?:minimal|setidaknya|sekitar|at least|about)\\s+\\d{3,}\\s*(?:kata|words))\\b/i.test(message);
+  return message.length > 700 || complexIntent.test(message) || needsFactCheck(message) || zeroBudgetPromotion || explicitLongOutput;
 }
 
 function needsFactCheck(message) {
