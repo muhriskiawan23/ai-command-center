@@ -56,7 +56,7 @@ test("multi-agent workflow returns a sanitized error if a specialist fails", asy
         calls += 1;
         if (calls === 2) throw new Error("sensitive provider error");
         return {
-          response: "Analisis ini mempertimbangkan tujuan, batasan, risiko, dan langkah konkret. Rekomendasi utama adalah memvalidasi asumsi terlebih dahulu, mengukur hasil, lalu memperbaiki pendekatan berdasarkan data yang terkumpul."
+          response: "Analisis ini mempertimbangkan tujuan, batasan, risiko, dan langkah konkret.\nRekomendasi utama adalah memvalidasi asumsi terlebih dahulu, mengukur hasil, lalu memperbaiki pendekatan berdasarkan data yang terkumpul."
         };
       }
     },
