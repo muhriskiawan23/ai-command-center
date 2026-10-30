@@ -64,22 +64,17 @@ The GitHub Actions preview workflow runs this dry-run build on pushes to the har
 
 ## Deployment
 
-Production deployment is intentionally manual:
+Production deployment is manual and is available from GitHub Actions using the **BOR AI production deploy** workflow (`workflow_dispatch`). It provisions or reuses the named D1 database, injects the D1 UUID into the runner's Wrangler config, applies migrations, configures Google sign-in, deploys the Worker/assets, and checks the public endpoints.
 
-```bash
-npm run deploy
-```
+Before running the workflow, add these **repository Actions secrets**:
 
-Before enabling public signup, complete all of the following:
+- `CLOUDFLARE_API_TOKEN`: token with D1 Write and Workers Scripts Write permissions for the target account.
+- `CLOUDFLARE_ACCOUNT_ID`: Cloudflare account ID.
+- `GOOGLE_CLIENT_ID`: Google OAuth 2.0 Client ID for a Web application. In Google Cloud Console, add `https://ai-command-center.muhriskiawan23.workers.dev` (or the chosen production custom domain) to **Authorized JavaScript origins**.
 
-1. Create a Google OAuth 2.0 Client ID for a Web application in Google Cloud Console. Add the production Worker/custom domain to **Authorized JavaScript origins**.
-2. Deploy once so Wrangler can provision the D1 database declared in `wrangler.jsonc`; then apply the remote schema with `npx wrangler d1 migrations apply bor-ai-chat --remote --config wrangler.jsonc`.
-3. Set the Google Client ID in the Worker environment with `npx wrangler secret put GOOGLE_CLIENT_ID --config wrangler.jsonc`. The Client ID is returned by the public `/api/config` endpoint for the Google button; it is not a private API key.
-4. Verify the target Cloudflare account has Workers AI enabled, usage limits/billing understood, and the `CHAT_LIMITER` binding active.
-5. Check `/api/config`, `/api/auth/me`, and `/api/health`; sign up with a test Google account; verify chat history survives reload; test single-chat and delete-all actions; verify a second account cannot read/delete the first account's chat.
-6. Open the dashboard in a real browser and check layout, console, network, and mobile behavior.
-7. Run a manually initiated live chat through Researcher, Analyst, Fact Checker, and Writer and review actual model output.
+Then open **Actions → BOR AI production deploy → Run workflow** on `main`. The workflow runs tests and a dry-run build before it creates/reuses `bor-ai-chat`, applies the D1 migration, stores `GOOGLE_CLIENT_ID` as a Worker secret, deploys, and verifies health, agents, and Google configuration. The optional live chat check is off by default because it consumes Workers AI usage.
 
+After a successful workflow, complete a real-browser sign-in, persistence, deletion, and account-isolation check. Also verify Workers AI usage limits/billing and that the `CHAT_LIMITER` binding is active. A health check does not prove live AI inference works.
 Do not treat a Wrangler dry run or health check as proof that live AI inference works. A live chat invocation is a separate release check.
 
 ## Security and operational notes
