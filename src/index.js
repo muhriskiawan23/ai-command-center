@@ -597,7 +597,7 @@ export default {
       ["/api/health", "/api/agents", "/api/chat"].includes(url.pathname)) {
       const allowed = url.pathname === "/api/chat" ? ["POST"] : ["GET"];
       if (!allowed.includes(request.method)) {
-        return json({ error: "Metode HTTP tidak didukung untuk endpoint ini." }, 405);
+        return json({ error: "Metode HTTP tidak didukung untuk endpoint ini." }, 405, { "Allow": allowed.join(", ") });
       }
     }
 
