@@ -28,6 +28,14 @@ test("agents endpoint lists configured agents", async () => {
   assert.ok(data.agents.some((agent) => agent.id === "fact_checker"));
 });
 
+test("known API endpoints reject unsupported HTTP methods", async () => {
+  const res = await worker.fetch(new Request("https://example.test/api/health", {
+    method: "POST"
+  }), env);
+  assert.equal(res.status, 405);
+  assert.match(res.headers.get("Content-Type"), /application\/json/);
+});
+
 test("invalid JSON is rejected", async () => {
   const res = await worker.fetch(new Request("https://example.test/api/chat", {
     method: "POST",
