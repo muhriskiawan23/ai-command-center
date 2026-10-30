@@ -193,15 +193,15 @@ function needsFactCheck(message) {
 }
 
 function isZeroBudgetPromotionRequest(message) {
-  return /(?:rp\\s*0|modal\\s*(?:sebesar\\s*)?0|tanpa\\s+(?:modal|biaya)|zero[- ]budget|no[- ]budget)/i.test(message) &&
-    /(?:promosi|marketing|kampanye|konten|media\\s+sosial|mahasiswa|warkop|bisnis)/i.test(message);
+  return /(?:rp\s*0|modal\s*(?:sebesar\s*)?0|tanpa\s+(?:modal|biaya)|zero[- ]budget|no[- ]budget)/i.test(message) &&
+    /(?:promosi|marketing|kampanye|konten|media\s+sosial|mahasiswa|warkop|bisnis)/i.test(message);
 }
 
 function hasPaidIncentiveRecommendation(response) {
-  const incentivePattern = /\\b(?:voucher|giveaway|merchandise|diskon|potongan\\s+harga|cashback|cash\\s+back|hadiah|prize|doorprize|gratis\\s+makan|makan\\s+gratis|free\\s+meal|free\\s+gift|paid\\s+ads|iklan\\s+berbayar|boost(?:ed)?\\s+post|paid\\s+influencer|influencer\\s+berbayar|paid\\s+kol|kol\\s+berbayar|endorsement\\s+berbayar|paid\\s+endorsement|sponsor\\s+berbayar|langganan\\s+berbayar|tool\\s+premium|software\\s+berbayar|aplikasi\\s+berbayar)\\b/i;
-  const recommendationPattern = /\\b(?:berikan|memberikan|bagikan|menawarkan|tawarkan|adakan|mengadakan|buat|gunakan|memakai|jalankan|promosikan|siapkan|sediakan|belikan|bayar|alokasikan|pasang|hire|give|offer|run|use|launch|sponsor|provide|recommend)\\b/i;
-  const negationPattern = /\\b(?:jangan|hindari|tanpa|tidak|bukan|dilarang|do\\s+not|don't|avoid|never|not)\\b/i;
-  const clauses = String(response).split(/(?<=[.!?;])\\s+|\\n/i);
+  const incentivePattern = /\b(?:voucher|giveaway|merchandise|diskon|potongan\s+harga|cashback|cash\s+back|hadiah|prize|doorprize|gratis\s+makan|makan\s+gratis|free\s+meal|free\s+gift|paid\s+ads|iklan\s+berbayar|boost(?:ed)?\s+post|paid\s+influencer|influencer\s+berbayar|paid\s+kol|kol\s+berbayar|endorsement\s+berbayar|paid\s+endorsement|sponsor\s+berbayar|langganan\s+berbayar|tool\s+premium|software\s+berbayar|aplikasi\s+berbayar)\b/i;
+  const recommendationPattern = /\b(?:berikan|memberikan|bagikan|menawarkan|tawarkan|adakan|mengadakan|buat|gunakan|memakai|jalankan|promosikan|siapkan|sediakan|belikan|bayar|alokasikan|pasang|hire|give|offer|run|use|launch|sponsor|provide|recommend)\b/i;
+  const negationPattern = /\b(?:jangan|hindari|tanpa|tidak|bukan|dilarang|do\s+not|don't|avoid|never|not)\b/i;
+  const clauses = String(response).split(/(?<=[.!?;])\s+|\n/i);
 
   return clauses.some((clause) => {
     if (!incentivePattern.test(clause) || !recommendationPattern.test(clause)) return false;
@@ -412,7 +412,7 @@ export default {
       request.method === "POST" &&
       url.pathname === "/api/chat"
     ) {
-      if (!/^\\s*application\\/json(?:\\s*;|\\s*$)/i.test(request.headers.get("Content-Type") || "")) {
+      if (!/^\s*application\/json(?:\s*;|\s*$)/i.test(request.headers.get("Content-Type") || "")) {
         return json({ error: "Content-Type harus application/json." }, 415);
       }
 
