@@ -249,3 +249,72 @@ test("zero-budget quality gate fails closed when incentives remain after repair"
   assert.equal(calls, 5);
   assert.equal("response" in data, false);
 });
+
+
+test("zero-budget gate permits explicit warnings against paid incentives", async () => {
+  let calls = 0;
+  const mockEnv = {
+    AI: {
+      async run() {
+        calls += 1;
+        return {
+          response: calls === 4
+            ? "Jangan berikan voucher, giveaway, atau diskon; prioritaskan konten organik dan ukur hasilnya secara konsisten."
+            : "Analisis ini mempertimbangkan tujuan, batasan, risiko, dan langkah konkret.\\nRekomendasi utama adalah memvalidasi asumsi terlebih dahulu, mengukur hasil, lalu memperbaiki pendekatan berdasarkan data yang terkumpul."
+        };
+      }
+    },
+    ASSETS: { async fetch() { return new Response("asset"); } }
+  };
+
+  const res = await worker.fetch(
+    chat("Buat strategi promosi Warkop Boris tanpa biaya."),
+    mockEnv
+  );
+  const data = await res.json();
+
+  assert.equal(res.status, 200);
+  assert.equal(calls, 4);
+  assert.match(data.response, /Jangan berikan voucher/);
+});
+
+test("JSON media type rejects application/jsonp instead of accepting a prefix match", async () => {
+  const res = await worker.fetch(request("/api/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/jsonp" },
+    body: JSON.stringify({ message: "Halo" })
+  }), {
+    AI: { async run() { throw new Error("AI must not run"); } },
+    ASSETS: { async fetch() { return new Response("asset"); } }
+  });
+
+  assert.equal(res.status, 415);
+  assert.equal((await res.json()).error, "Content-Type harus application/json.");
+});
+
+test("unknown explicit agent IDs are rejected instead of silently using Coordinator", async () => {
+  const res = await worker.fetch(chat("Jelaskan singkat.", "not-an-agent"), {
+    AI: { async run() { throw new Error("AI must not run"); } },
+    ASSETS: { async fetch() { return new Response("asset"); } }
+  });
+
+  assert.equal(res.status, 400);
+  assert.equal((await res.json()).error, "Agent tidak dikenal.");
+});
+
+test("unknown GET API routes return JSON 404 instead of the SPA document", async () => {
+  let assetFetches = 0;
+  const res = await worker.fetch(request("/api/not-real"), {
+    AI: { async run() { throw new Error("AI must not run"); } },
+    ASSETS: {
+      async fetch() {
+        assetFetches += 1;
+        return new Response("<html>SPA</html>", { headers: { "Content-Type": "text/html" } });
+      }
+    }
+  });
+
+  assert.equal(res.status, 404);
+  assert.equal(assetFetches, 0);
+  assert.match(res.headers.get("Content-Type"), /application\\/json/);
+});
