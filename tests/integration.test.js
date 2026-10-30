@@ -189,7 +189,7 @@ test("zero-budget quality gate repairs paid incentives before returning the answ
   };
 
   const res = await worker.fetch(
-    chat("Buat strategi promosi Warkop Boris dengan budget Rp0."),
+    chat("Buat strategi promosi Warkop Boris tanpa biaya."),
     mockEnv
   );
   const data = await res.json();
@@ -215,7 +215,7 @@ test("zero-budget quality gate fails closed when incentives remain after repair"
   };
 
   const res = await worker.fetch(
-    chat("Buat strategi promosi Warkop Boris dengan budget Rp0."),
+    chat("Buat strategi promosi Warkop Boris tanpa biaya."),
     mockEnv
   );
   const data = await res.json();
