@@ -260,7 +260,7 @@ test("zero-budget gate permits explicit warnings against paid incentives", async
         return {
           response: calls === 4
             ? "Jangan berikan voucher, giveaway, atau diskon; prioritaskan konten organik dan ukur hasilnya secara konsisten."
-            : "Analisis ini mempertimbangkan tujuan, batasan, risiko, dan langkah konkret.\\nRekomendasi utama adalah memvalidasi asumsi terlebih dahulu, mengukur hasil, lalu memperbaiki pendekatan berdasarkan data yang terkumpul."
+            : "Analisis ini mempertimbangkan tujuan, batasan, risiko, dan langkah konkret.\nRekomendasi utama adalah memvalidasi asumsi terlebih dahulu, mengukur hasil, lalu memperbaiki pendekatan berdasarkan data yang terkumpul."
         };
       }
     },
@@ -316,5 +316,5 @@ test("unknown GET API routes return JSON 404 instead of the SPA document", async
 
   assert.equal(res.status, 404);
   assert.equal(assetFetches, 0);
-  assert.match(res.headers.get("Content-Type"), /application\\/json/);
+  assert.match(res.headers.get("Content-Type"), /application\/json/);
 });
