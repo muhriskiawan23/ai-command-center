@@ -55,12 +55,13 @@ const AGENTS = {
   }
 };
 
-function json(data, status = 200) {
+function json(data, status = 200, extraHeaders = {}) {
   return Response.json(data, {
     status,
     headers: {
       "Cache-Control": "no-store",
-      "X-Content-Type-Options": "nosniff"
+      "X-Content-Type-Options": "nosniff",
+      ...extraHeaders
     }
   });
 }
@@ -533,6 +534,25 @@ export default {
         return json({
           error: "Pesan terlalu panjang (maksimal 12.000 karakter)."
         }, 400);
+      }
+
+      if (env.CHAT_LIMITER?.limit) {
+        let rateLimit;
+        try {
+          const clientKey = request.headers.get("CF-Connecting-IP") || "unknown-client";
+          rateLimit = await env.CHAT_LIMITER.limit({ key: clientKey });
+        } catch (error) {
+          console.error("Chat rate limiter failed:", error);
+          return json({ error: "Layanan pembatasan permintaan sedang bermasalah." }, 503);
+        }
+
+        if (!rateLimit?.success) {
+          return json(
+            { error: "Terlalu banyak permintaan. Coba lagi dalam satu menit." },
+            429,
+            { "Retry-After": "60" }
+          );
+        }
       }
 
       try {
