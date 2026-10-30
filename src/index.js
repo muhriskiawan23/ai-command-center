@@ -87,6 +87,47 @@ async function serveAsset(request, env) {
   });
 }
 
+async function readBodyWithinLimit(request, maxBytes) {
+  if (!request.body) return { text: "", tooLarge: false };
+
+  const reader = request.body.getReader();
+  const chunks = [];
+  let totalBytes = 0;
+
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
+
+      if (totalBytes > maxBytes) {
+        await reader.cancel();
+        return { tooLarge: true };
+      }
+
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const bytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+
+  try {
+    return {
+      text: new TextDecoder("utf-8", { fatal: true }).decode(bytes),
+      tooLarge: false
+    };
+  } catch {
+    return { invalidEncoding: true, tooLarge: false };
+  }
+}
+
 async function runAgent(env, agentId, userMessage, context = "") {
   const agent = AGENTS[agentId];
 
@@ -444,16 +485,22 @@ export default {
         return json({ error: "Ukuran request terlalu besar." }, 413);
       }
 
-      let rawBody;
+      let bodyResult;
       try {
-        rawBody = await request.text();
+        bodyResult = await readBodyWithinLimit(request, MAX_REQUEST_BYTES);
       } catch {
         return json({ error: "Request body tidak dapat dibaca." }, 400);
       }
 
-      if (new TextEncoder().encode(rawBody).byteLength > MAX_REQUEST_BYTES) {
+      if (bodyResult.tooLarge) {
         return json({ error: "Ukuran request terlalu besar." }, 413);
       }
+
+      if (bodyResult.invalidEncoding) {
+        return json({ error: "Request JSON tidak valid." }, 400);
+      }
+
+      const rawBody = bodyResult.text;
 
       let body;
       try {
