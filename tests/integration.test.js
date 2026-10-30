@@ -172,7 +172,7 @@ test("zero-budget quality gate repairs paid incentives before returning the answ
         calls += 1;
         if (calls === 4) {
           return {
-            response: "Berikan voucher diskon dan giveaway untuk menarik pelanggan baru secara cepat. Promosikan hadiah tersebut melalui kampanye media sosial agar semakin banyak orang tertarik datang."
+            response: "Berikan voucher diskon dan giveaway untuk menarik pelanggan baru secara cepat.\nPromosikan hadiah tersebut melalui kampanye media sosial agar semakin banyak orang tertarik datang."
           };
         }
         if (calls === 5) {
@@ -206,7 +206,7 @@ test("zero-budget quality gate fails closed when incentives remain after repair"
       async run() {
         calls += 1;
         const response = calls >= 4
-          ? "Berikan voucher diskon dan giveaway untuk menarik pelanggan baru secara cepat. Promosikan hadiah tersebut melalui kampanye media sosial agar semakin banyak orang tertarik datang."
+          ? "Berikan voucher diskon dan giveaway untuk menarik pelanggan baru secara cepat.\nPromosikan hadiah tersebut melalui kampanye media sosial agar semakin banyak orang tertarik datang."
           : "Analisis ini mempertimbangkan tujuan, batasan, risiko, dan langkah konkret.\nRekomendasi utama adalah memvalidasi asumsi terlebih dahulu, mengukur hasil, lalu memperbaiki pendekatan berdasarkan data yang terkumpul.";
         return { response };
       }
@@ -221,6 +221,6 @@ test("zero-budget quality gate fails closed when incentives remain after repair"
   const data = await res.json();
 
   assert.equal(res.status, 502);
-  assert.equal(calls, 6);
+  assert.equal(calls, 5);
   assert.equal("response" in data, false);
 });
