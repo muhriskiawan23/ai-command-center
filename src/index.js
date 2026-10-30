@@ -1,11 +1,12 @@
 
 const MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
+const MAX_REQUEST_BYTES = 64 * 1024;
 
 const AGENTS = {
   coordinator: {
     name: "Coordinator",
     prompt:
-      "You are the Coordinator of a multi-agent AI system. Ensure the final answer fulfills the user's actual request. Match the user's language and requested format. Prioritize useful, specific, actionable results. Respect all user constraints, especially budget, time, skill level, and available resources. Avoid repetition, generic filler, unnecessary introductions, and unsupported claims."
+      "You are BOR AI's Coordinator. Fulfill the user's actual request directly, in their language and requested format. Prioritize accurate, relevant, specific, actionable answers. Follow the requested number of points and requested length; do not add an unrequested conclusion or repeat the answer. Use consistently sequential Markdown numbering (1., 2., 3., ...), never restart numbering or mix numbered-list styles. Treat user-provided facts as context, not proof of external claims. Never invent sources, browsing, tool use, calculations, or actions. If information is missing or uncertain, say so and distinguish facts, assumptions, and estimates. For calculations, show enough work to make the result auditable. Respect every explicit constraint, especially budget, time, skill level, and available resources. Avoid repetition, generic filler, and unsupported certainty."
   },
   researcher: {
     name: "Researcher",
@@ -20,7 +21,7 @@ const AGENTS = {
   writer: {
     name: "Writer",
     prompt:
-      "ROLE CONTRACT — WRITER: Synthesize the upstream work into one excellent final response; do NOT restart the task from scratch. You MUST use the Analyst's selected approach and incorporate every material correction from the Fact Checker. Research is context, Analysis is the decision, Fact Check is the required quality gate. Do not copy whole agent outputs or repeat the same idea in multiple sections. If an upstream suggestion conflicts with the user's hard constraints, omit or replace it and briefly explain the correction when useful. For a strict zero-budget request, never recommend prizes, vouchers, discounts, merchandise, free food, or paid incentives unless the user explicitly confirms they are costless or donated. Do not rely on influencer participation. Treat every material Fact Checker issue as a blocking correction: remove or replace the flagged recommendation in the final answer. Deliver the requested artifact in the user's language with concrete actions, outputs, realistic measurable indicators, and only relevant caveats. Never invent facts or claim browsing/actions that did not happen. Use readable Markdown and finish completely."
+      "ROLE CONTRACT — WRITER: Synthesize the upstream work into one excellent final response; do NOT restart the task from scratch. You MUST use the Analyst's selected approach and incorporate every material correction from the Fact Checker. Research is context, Analysis is the decision, Fact Check is the required quality gate. Do not copy whole agent outputs or repeat the same idea in multiple sections. If an upstream suggestion conflicts with the user's hard constraints, omit or replace it and briefly explain the correction when useful. For a strict zero-budget request, never recommend prizes, vouchers, discounts, merchandise, free food, or paid incentives unless the user explicitly confirms they are costless or donated. Do not rely on influencer participation. Treat every material Fact Checker issue as a blocking correction: remove or replace the flagged recommendation in the final answer. Deliver the requested artifact in the user's language with concrete actions, outputs, realistic measurable indicators, and only relevant caveats. Match the requested scope exactly: if the user asks for three points, provide exactly three numbered points and no extra summary/conclusion unless requested. Number lists sequentially using 1., 2., 3. consistently. Do not present context-dependent metrics as universal standards; explain briefly when a measure depends on the use case. Never invent facts or claim browsing/actions that did not happen. Use readable Markdown and finish completely."
   },
   fact_checker: {
     name: "Fact Checker",
@@ -54,13 +55,78 @@ const AGENTS = {
   }
 };
 
-function json(data, status = 200) {
+function json(data, status = 200, extraHeaders = {}) {
   return Response.json(data, {
     status,
     headers: {
-      "Cache-Control": "no-store"
+      "Cache-Control": "no-store",
+      "X-Content-Type-Options": "nosniff",
+      ...extraHeaders
     }
   });
+}
+
+async function serveAsset(request, env) {
+  const response = await env.ASSETS.fetch(request);
+  const headers = new Headers(response.headers);
+  headers.set("X-Content-Type-Options", "nosniff");
+  headers.set("X-Frame-Options", "DENY");
+  headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+  headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+
+  if (/^text\/html(?:;|$)/i.test(headers.get("Content-Type") || "")) {
+    headers.set(
+      "Content-Security-Policy",
+      "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; connect-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; upgrade-insecure-requests"
+    );
+  }
+
+  return new Response(request.method === "HEAD" ? null : response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers
+  });
+}
+
+async function readBodyWithinLimit(request, maxBytes) {
+  if (!request.body) return { text: "", tooLarge: false };
+
+  const reader = request.body.getReader();
+  const chunks = [];
+  let totalBytes = 0;
+
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
+
+      if (totalBytes > maxBytes) {
+        await reader.cancel();
+        return { tooLarge: true };
+      }
+
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const bytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+
+  try {
+    return {
+      text: new TextDecoder("utf-8", { fatal: true }).decode(bytes),
+      tooLarge: false
+    };
+  } catch {
+    return { invalidEncoding: true, tooLarge: false };
+  }
 }
 
 async function runAgent(env, agentId, userMessage, context = "") {
@@ -144,19 +210,42 @@ async function runAgent(env, agentId, userMessage, context = "") {
     return text.length >= 12 && countWords(text).length >= 3;
   });
 
-  if (typeof response !== "string" || countWords(cleaned).length < 20 || cleaned.length < 100 || meaningfulLines.length < 2) {
-    // Keep the workflow usable even if the model repeats an empty-Markdown response.
-    const safeFallbacks = {
-      researcher: "Temuan utama: tujuan pengguna adalah menyusun jawaban yang praktis dan sesuai batasan yang disebutkan. Prioritaskan fakta yang tersedia, pisahkan asumsi dari fakta, dan hindari klaim yang belum diverifikasi. Rekomendasi perlu diterjemahkan menjadi langkah konkret, keluaran yang jelas, dan indikator keberhasilan yang dapat diamati.",
-      analyst: "Analisis: pilih langkah yang paling mudah dijalankan terlebih dahulu. Setiap langkah harus memiliki tindakan spesifik, hasil yang bisa diperiksa, serta ukuran keberhasilan yang realistis. Hindari aktivitas yang membutuhkan biaya atau sumber daya yang tidak disebutkan pengguna, dan sesuaikan rencana berdasarkan hasil awal.",
-      fact_checker: "Pemeriksaan: pastikan seluruh saran menjawab permintaan awal dan tidak melanggar batasan pengguna. Jangan menyatakan target sebagai jaminan; perlakukan target sebagai tolok ukur awal. Hapus klaim yang tidak didukung dan pastikan setiap rekomendasi bisa dilaksanakan dengan sumber daya yang tersedia.",
-      writer: "Saya belum dapat menghasilkan jawaban yang cukup lengkap dari model. Coba kirim ulang permintaan ini; proses tidak akan menampilkan keluaran Markdown kosong sebagai hasil yang berhasil.",
-      coordinator: "Validasi jawaban: gunakan informasi yang tersedia, tandai asumsi dengan jelas, dan pastikan rekomendasi akhir konkret serta dapat diuji."
-    };
-    cleaned = safeFallbacks[agentId] || "Model tidak menghasilkan isi yang cukup. Coba ulangi permintaan dengan konteks dan tujuan yang lebih spesifik.";
+  if (typeof response !== "string" || (agentId === "coordinator" && !cleaned) || (agentId !== "coordinator" && (countWords(cleaned).length < 20 || cleaned.length < 100 || meaningfulLines.length < 2))) {
+    // Do not mark a generic placeholder as a successful agent result.
+    // Let the request boundary return a sanitized error after the retry fails.
+    throw new Error(`Agent ${agentId} returned unusable output after retry`);
   }
 
   return cleaned;
+}
+
+// Use a single model call for straightforward requests; reserve orchestration for complex tasks.
+function shouldUseMultiAgent(message) {
+  const complexIntent = /\b(analisis|analisa|bandingkan|evaluasi|strategi|rencana|perencanaan|penelitian|risiko|debug|refactor|arsitektur|forecast|prediksi|proposal|roadmap|audit|business plan|coding|kode)\b/i;
+  const zeroBudgetPromotion =
+    /(?:rp\s*0|modal\s*(?:sebesar\s*)?0|tanpa\s+(?:modal|biaya)|zero[- ]budget|no[- ]budget)/i.test(message) &&
+    /(?:promosi|marketing|kampanye|konten|media\s+sosial|mahasiswa|warkop|bisnis)/i.test(message);
+  const explicitLongOutput = /\b(?:\d{3,}\s*(?:kata|words|halaman|pages)|(?:minimal|setidaknya|sekitar|at least|about)\s+\d{3,}\s*(?:kata|words))\b/i.test(message);
+  const exactFormatRequest = requestedNumberedItemCount(message) !== null;
+  return message.length > 700 || complexIntent.test(message) || needsFactCheck(message) || zeroBudgetPromotion || explicitLongOutput || exactFormatRequest;
+}
+
+function requestedNumberedItemCount(message) {
+  const match = message.match(/\b(?:tepat|persis|exactly)\s+(\d{1,2})\s+(?:poin|point|points|butir|langkah|steps|items)\b/i);
+  return match ? Number(match[1]) : null;
+}
+
+function hasExactlySequentialNumberedItems(response, expectedCount) {
+  const lines = response.split("\n").map((line) => line.trim()).filter(Boolean);
+  const numberedLines = lines.filter((line) => /^\d{1,2}[.)]\s+\S/.test(line));
+  const numbers = numberedLines.map((line) => Number(line.match(/^(\d{1,2})[.)]/)[1]));
+
+  // Exact-item requests must contain only the requested top-level numbered items.
+  // Indented continuation lines and nested bullets are intentionally disallowed
+  // to keep the contract unambiguous and reliably machine-checkable.
+  return lines.length === expectedCount &&
+    numberedLines.length === expectedCount &&
+    numbers.every((number, index) => number === index + 1);
 }
 
 function needsFactCheck(message) {
@@ -166,6 +255,25 @@ function needsFactCheck(message) {
       message
     )
   );
+}
+
+function isZeroBudgetPromotionRequest(message) {
+  return /(?:rp\s*0|modal\s*(?:sebesar\s*)?0|tanpa\s+(?:modal|biaya)|zero[- ]budget|no[- ]budget)/i.test(message) &&
+    /(?:promosi|marketing|kampanye|konten|media\s+sosial|mahasiswa|warkop|bisnis)/i.test(message);
+}
+
+function hasPaidIncentiveRecommendation(response) {
+  const incentivePattern = /\b(?:voucher|giveaway|merchandise|diskon|potongan\s+harga|cashback|cash\s+back|hadiah|prize|doorprize|gratis\s+makan|makan\s+gratis|free\s+meal|free\s+gift|paid\s+ads|iklan\s+berbayar|boost(?:ed)?\s+post|paid\s+influencer|influencer\s+berbayar|paid\s+kol|kol\s+berbayar|endorsement\s+berbayar|paid\s+endorsement|sponsor\s+berbayar|langganan\s+berbayar|tool\s+premium|software\s+berbayar|aplikasi\s+berbayar)\b/i;
+  const recommendationPattern = /\b(?:berikan|memberikan|bagikan|menawarkan|tawarkan|adakan|mengadakan|buat|gunakan|memakai|jalankan|promosikan|siapkan|sediakan|belikan|bayar|alokasikan|pasang|hire|give|offer|run|use|launch|sponsor|provide|recommend)\b/i;
+  const negationPattern = /\b(?:jangan|hindari|tanpa|tidak|bukan|dilarang|do\s+not|don't|avoid|never|not)\b/i;
+  const clauses = String(response).split(/(?<=[.!?;])\s+|,\s+|\n/i);
+
+  return clauses.some((clause) => {
+    if (!incentivePattern.test(clause) || !recommendationPattern.test(clause)) return false;
+    const index = clause.search(incentivePattern);
+    const context = clause.slice(Math.max(0, index - 42), Math.min(clause.length, index + 65));
+    return !negationPattern.test(context);
+  });
 }
 
 async function runMultiAgent(env, message) {
@@ -251,17 +359,20 @@ async function runMultiAgent(env, message) {
     "3. Do not repeat the Researcher or Analyst verbatim; synthesize their distinct contributions.",
     "4. If an upstream recommendation violates a hard constraint, replace it with a feasible alternative.",
     "5. Fulfill the original request directly.",
-    "2. Follow the user's language and requested format.",
-    "3. Respect all constraints, including budget, time, and skill level.",
-    "4. Give concrete steps rather than vague instructions.",
-    "5. Make targets measurable and realistic; do not guarantee results.",
-    "6. For a no-budget request, do not require paid ads, subscriptions,",
-    "   or paid tools. Prefer genuinely free alternatives.",
-    "7. For a time-based plan, give each day a distinct task and output.",
-    "8. Avoid repeated tasks, filler, and unnecessary sections.",
-    "9. Do not invent facts or claim to browse the web.",
-    "10. Use readable Markdown when useful.",
-    "11. Finish the answer completely without ending mid-sentence."
+    "6. Follow the user's language and requested format.",
+    "7. Respect all constraints, including budget, time, and skill level.",
+    "8. Give concrete steps rather than vague instructions.",
+    "9. Make targets measurable and realistic; do not guarantee results.",
+    "10. For a no-budget request, do not require paid ads, subscriptions,",
+    "    or paid tools. Prefer genuinely free alternatives.",
+    "11. For a time-based plan, give each day a distinct task and output.",
+    "12. Avoid repeated tasks, filler, and unnecessary sections.",
+    "13. Do not invent facts or claim to browse the web.",
+    "14. Use readable Markdown when useful.",
+    "15. Finish the answer completely without ending mid-sentence.",
+    "16. Match the requested number of points exactly; do not add an unrequested conclusion or repeat the key points.",
+    "17. Number ordered lists sequentially with one consistent Markdown format (1., 2., 3., ...).",
+    "18. Qualify context-dependent metrics and avoid presenting illustrative examples as universal requirements."
   ].join("\n");
 
   let finalResponse = await runAgent(
@@ -273,11 +384,8 @@ async function runMultiAgent(env, message) {
 
   // Deterministic repair pass for a common hard-constraint failure:
   // a zero-budget promotion plan that sneaks in business-funded incentives.
-  const zeroBudgetPromotion =
-    /(?:rp\s*0|modal\s*(?:sebesar\s*)?0|tanpa\s+(?:modal|biaya)|zero[- ]budget|no[- ]budget)/i.test(message) &&
-    /(?:promosi|marketing|kampanye|konten|media\s+sosial|mahasiswa|warkop|bisnis)/i.test(message);
-  const incentivePattern = /\b(?:voucher|giveaway|merchandise|diskon|potongan\s+harga|hadiah|gratis\s+makan|makan\s+gratis|doorprize|influencer\s+berbayar|paid\s+ads|iklan\s+berbayar)\b/i;
-  if (zeroBudgetPromotion && incentivePattern.test(finalResponse)) {
+  const zeroBudgetPromotion = isZeroBudgetPromotionRequest(message);
+  if (zeroBudgetPromotion && hasPaidIncentiveRecommendation(finalResponse)) {
     const draftToRepair = finalResponse;
     finalResponse = await runAgent(
       env,
@@ -296,6 +404,32 @@ async function runMultiAgent(env, message) {
         draftToRepair
       ].join("\n")
     );
+    if (hasPaidIncentiveRecommendation(finalResponse)) {
+      throw new Error("Writer failed zero-budget quality gate");
+    }
+  }
+
+  const requestedCount = requestedNumberedItemCount(message);
+  if (requestedCount !== null && !hasExactlySequentialNumberedItems(finalResponse, requestedCount)) {
+    finalResponse = await runAgent(
+      env,
+      "writer",
+      message,
+      [
+        finalContext,
+        "",
+        "MANDATORY FORMAT REPAIR",
+        `The user explicitly requested exactly ${requestedCount} numbered items.`,
+        `Rewrite the complete answer with exactly ${requestedCount} numbered items, numbered sequentially from 1 to ${requestedCount}.`,
+        "Do not add an introduction, conclusion, or extra numbered items outside that list."
+      ].join("\n")
+    );
+  }
+
+  // A repair attempt is not a pass: fail closed if the final answer still violates
+  // an explicit format contract instead of returning a knowingly invalid response.
+  if (requestedCount !== null && !hasExactlySequentialNumberedItems(finalResponse, requestedCount)) {
+    throw new Error("Writer failed exact numbered-item quality gate");
   }
 
   steps.push({
@@ -343,10 +477,35 @@ export default {
       request.method === "POST" &&
       url.pathname === "/api/chat"
     ) {
-      let body;
+      if (!/^\s*application\/json(?:\s*;|\s*$)/i.test(request.headers.get("Content-Type") || "")) {
+        return json({ error: "Content-Type harus application/json." }, 415);
+      }
 
+      const contentLength = Number(request.headers.get("Content-Length") || 0);
+      if (Number.isFinite(contentLength) && contentLength > MAX_REQUEST_BYTES) {
+        return json({ error: "Ukuran request terlalu besar." }, 413);
+      }
+
+      let bodyResult;
       try {
-        body = await request.json();
+        bodyResult = await readBodyWithinLimit(request, MAX_REQUEST_BYTES);
+      } catch {
+        return json({ error: "Request body tidak dapat dibaca." }, 400);
+      }
+
+      if (bodyResult.tooLarge) {
+        return json({ error: "Ukuran request terlalu besar." }, 413);
+      }
+
+      if (bodyResult.invalidEncoding) {
+        return json({ error: "Request JSON tidak valid." }, 400);
+      }
+
+      const rawBody = bodyResult.text;
+
+      let body;
+      try {
+        body = JSON.parse(rawBody);
       } catch {
         return json({
           error: "Request JSON tidak valid."
@@ -358,11 +517,12 @@ export default {
           ? body.message.trim()
           : "";
 
-      const agentId =
-        typeof body?.agent === "string" &&
-        Object.prototype.hasOwnProperty.call(AGENTS, body.agent)
-          ? body.agent
-          : "coordinator";
+      if (body?.agent !== undefined &&
+        (typeof body.agent !== "string" || !Object.prototype.hasOwnProperty.call(AGENTS, body.agent))) {
+        return json({ error: "Agent tidak dikenal." }, 400);
+      }
+
+      const agentId = body?.agent || "coordinator";
 
       if (!message) {
         return json({
@@ -376,13 +536,39 @@ export default {
         }, 400);
       }
 
-      try {
-        if (agentId === "coordinator") {
-          const result = await runMultiAgent(env, message);
+      if (env.CHAT_LIMITER?.limit) {
+        let rateLimit;
+        try {
+          const clientKey = request.headers.get("CF-Connecting-IP") || "unknown-client";
+          rateLimit = await env.CHAT_LIMITER.limit({ key: clientKey });
+        } catch (error) {
+          console.error("Chat rate limiter failed:", error);
+          return json({ error: "Layanan pembatasan permintaan sedang bermasalah." }, 503);
+        }
 
+        if (!rateLimit?.success) {
+          return json(
+            { error: "Terlalu banyak permintaan. Coba lagi dalam satu menit." },
+            429,
+            { "Retry-After": "60" }
+          );
+        }
+      }
+
+      try {
+        if (agentId === "coordinator" && shouldUseMultiAgent(message)) {
+          const result = await runMultiAgent(env, message);
+          return json({ ...result, model: MODEL });
+        }
+
+        if (agentId === "coordinator") {
+          const response = await runAgent(env, "coordinator", message);
           return json({
-            ...result,
-            model: MODEL
+            agent: AGENTS.coordinator.name,
+            model: MODEL,
+            workflow: "single-agent",
+            agentsUsed: [AGENTS.coordinator.name],
+            response
           });
         }
 
@@ -402,19 +588,30 @@ export default {
         console.error("AI request failed:", error);
 
         return json({
-          error: "AI gagal memproses permintaan.",
-          detail: String(
-            error?.message || error
-          ).slice(0, 500)
+          error: "AI gagal memproses permintaan. Silakan coba lagi beberapa saat."
         }, 502);
       }
+    }
+
+    if (url.pathname.startsWith("/api/") &&
+      ["/api/health", "/api/agents", "/api/chat"].includes(url.pathname)) {
+      const allowed = url.pathname === "/api/chat" ? ["POST"] : ["GET"];
+      if (!allowed.includes(request.method)) {
+        return json({ error: "Metode HTTP tidak didukung untuk endpoint ini." }, 405, { "Allow": allowed.join(", ") });
+      }
+    }
+
+    if (url.pathname.startsWith("/api/")) {
+      return json({
+        error: "Endpoint tidak ditemukan."
+      }, 404);
     }
 
     if (
       request.method === "GET" ||
       request.method === "HEAD"
     ) {
-      return env.ASSETS.fetch(request);
+      return serveAsset(request, env);
     }
 
     return json({

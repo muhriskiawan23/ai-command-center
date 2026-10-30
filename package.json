@@ -1,14 +1,17 @@
-
 {
   "name": "ai-command-center",
   "version": "1.0.0",
   "private": true,
-  "description": "Personal multi-agent AI dashboard",
-  "main": "server.js",
+  "description": "Personal multi-agent AI dashboard on Cloudflare Workers",
   "scripts": {
-    "start": "node server.js"
+    "start": "npx --yes wrangler@4 dev --config wrangler.jsonc",
+    "dev": "npx --yes wrangler@4 dev --config wrangler.jsonc",
+    "test": "node --experimental-default-type=module --test",
+    "check": "node --check src/index.js",
+    "preview": "npx --yes wrangler@4 deploy --dry-run --outdir .wrangler/deploy --config wrangler.jsonc",
+    "deploy": "npx --yes wrangler@4 deploy --config wrangler.jsonc"
   },
-  "dependencies": {
-    "express": "^5.1.0"
+  "engines": {
+    "node": ">=22"
   }
 }

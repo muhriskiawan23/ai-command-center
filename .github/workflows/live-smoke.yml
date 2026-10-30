@@ -1,0 +1,144 @@
+name: Live Worker Smoke Test
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/live-smoke.yml"
+  workflow_dispatch:
+    inputs:
+      run_chat:
+        description: "Also send one low-cost POST /api/chat request to the live Worker"
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: live-worker-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke-test:
+    name: Verify live Worker endpoints
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Check live health endpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+          response_file="$(mktemp)"
+          status="$(curl --silent --show-error --max-time 15 --output "$response_file" --write-out '%{http_code}' 'https://ai-command-center.muhriskiawan23.workers.dev/api/health')"
+          cat "$response_file"
+          test "$status" = "200"
+          node --input-type=module - "$response_file" <<'NODE'
+          import fs from "node:fs";
+          const data = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+          if (data.ok !== true || data.service !== "AI Command Center") {
+            throw new Error("Unexpected health response shape");
+          }
+          NODE
+          rm -f "$response_file"
+
+      - name: Check live agents endpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+          response_file="$(mktemp)"
+          status="$(curl --silent --show-error --max-time 15 --output "$response_file" --write-out '%{http_code}' 'https://ai-command-center.muhriskiawan23.workers.dev/api/agents')"
+          cat "$response_file"
+          test "$status" = "200"
+          node --input-type=module - "$response_file" <<'NODE'
+          import fs from "node:fs";
+          const data = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+          const expected = ["coordinator","researcher","analyst","writer","fact_checker","strategist","coder","planner","critic","summarizer"];
+          if (!Array.isArray(data.agents)) throw new Error("agents must be an array");
+          const actual = data.agents.map(agent => agent.id);
+          if (expected.some(id => !actual.includes(id))) {
+            throw new Error("One or more expected agents are missing");
+          }
+          NODE
+          rm -f "$response_file"
+
+      - name: Check malformed JSON is rejected
+        shell: bash
+        run: |
+          set -euo pipefail
+          response_file="$(mktemp)"
+          status="$(curl --silent --show-error --max-time 15 \
+            --request POST \
+            --header 'Content-Type: application/json' \
+            --data '{invalid-json' \
+            --output "$response_file" \
+            --write-out '%{http_code}' \
+            'https://ai-command-center.muhriskiawan23.workers.dev/api/chat')"
+          test "$status" = "400"
+          node --input-type=module - "$response_file" <<'NODE'
+          import fs from "node:fs";
+          const data = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+          if (data.error !== "Request JSON tidak valid.") {
+            throw new Error("Unexpected malformed-JSON error response");
+          }
+          NODE
+          rm -f "$response_file"
+
+      - name: Check empty chat message is rejected
+        shell: bash
+        run: |
+          set -euo pipefail
+          response_file="$(mktemp)"
+          status="$(curl --silent --show-error --max-time 15 \
+            --request POST \
+            --header 'Content-Type: application/json' \
+            --data '{"message":"   ","agent":"coordinator"}' \
+            --output "$response_file" \
+            --write-out '%{http_code}' \
+            'https://ai-command-center.muhriskiawan23.workers.dev/api/chat')"
+          test "$status" = "400"
+          node --input-type=module - "$response_file" <<'NODE'
+          import fs from "node:fs";
+          const data = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+          if (data.error !== "Pesan tidak boleh kosong.") {
+            throw new Error("Unexpected empty-message error response");
+          }
+          NODE
+          rm -f "$response_file"
+
+      - name: Check live chat endpoint (manual opt-in only)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_chat }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          response_file="$(mktemp)"
+          status="$(curl --silent --show-error --max-time 60 \
+            --request POST \
+            --header 'Content-Type: application/json' \
+            --data '{"message":"Jelaskan manajemen risiko dalam tepat 3 poin singkat.","agent":"coordinator"}' \
+            --output "$response_file" \
+            --write-out '%{http_code}' \
+            'https://ai-command-center.muhriskiawan23.workers.dev/api/chat')"
+          cat "$response_file"
+          test "$status" = "200"
+          node --input-type=module - "$response_file" <<'NODE'
+          import fs from "node:fs";
+          const data = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+          if (typeof data.response !== "string" || data.response.trim().length < 20) {
+            throw new Error("Chat response is missing or too short");
+          }
+          if (data.workflow !== "multi-agent") {
+            throw new Error("Expected coordinator to use the multi-agent workflow");
+          }
+          const requiredAgents = ["Researcher", "Analyst", "Fact Checker", "Writer"];
+          if (!Array.isArray(data.agentsUsed) || requiredAgents.some(name => !data.agentsUsed.includes(name))) {
+            throw new Error("One or more required multi-agent steps are missing");
+          }
+          const numberedItems = [...data.response.matchAll(/^\s*(\d+)\.\s+\S/gm)]
+            .map(match => Number(match[1]));
+          if (numberedItems.length !== 3 || numberedItems.some((number, index) => number !== index + 1)) {
+            throw new Error("Chat response must contain exactly three sequential numbered points");
+          }
+          NODE
+          rm -f "$response_file"
