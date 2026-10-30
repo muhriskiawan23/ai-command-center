@@ -115,7 +115,17 @@ jobs:
           BASE_URL="https://ai-command-center.muhriskiawan23.workers.dev"
           curl --fail --silent --show-error "$BASE_URL/api/health" | node --input-type=module -e 'let s="";for await(const c of process.stdin)s+=c;const d=JSON.parse(s);if(d.ok!==true)throw Error("Health check failed")'
           curl --fail --silent --show-error "$BASE_URL/api/agents" | node --input-type=module -e 'let s="";for await(const c of process.stdin)s+=c;const d=JSON.parse(s);if(!Array.isArray(d.agents)||d.agents.length<10)throw Error("Agents check failed")'
-          curl --fail --silent --show-error "$BASE_URL/api/config" | node --input-type=module -e 'let s="";for await(const c of process.stdin)s+=c;const d=JSON.parse(s);if(d.googleSignInEnabled!==true||!d.googleClientId)throw Error("Google sign-in is not enabled")'
+          CONFIG_READY=0
+          for attempt in $(seq 1 10); do
+            if curl --fail --silent --show-error "$BASE_URL/api/config" | node --input-type=module -e 'let s="";for await(const c of process.stdin)s+=c;const d=JSON.parse(s);console.log("Google sign-in status:", JSON.stringify({enabled:d.googleSignInEnabled===true,hasClientId:Boolean(d.googleClientId)}));if(d.googleSignInEnabled!==true||!d.googleClientId)process.exit(1)'; then
+              CONFIG_READY=1
+              break
+            fi
+            echo "Google sign-in configuration is not ready yet (attempt $attempt/10); retrying in 3 seconds."
+            sleep 3
+          done
+          test "$CONFIG_READY" = "1" || { echo "::error::Google sign-in is still disabled after 30 seconds. Check the Worker D1 binding and GOOGLE_CLIENT_ID secret."; exit 1; }
+          echo "Google sign-in configuration verified."
 
       - name: Optional live chat check
         if: ${{ inputs.run_chat_smoke }}
