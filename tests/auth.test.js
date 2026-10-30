@@ -81,7 +81,7 @@ test("a user cannot delete a conversation that is not owned by their account", a
   const db = mockDB({ ownedConversation: null });
   const res = await worker.fetch(request("/api/conversations/someone-elses-chat", {
     method: "DELETE",
-    headers: { Cookie: SESSION_COOKIE }
+    headers: { Cookie: SESSION_COOKIE, Origin: "https://example.test" }
   }), { DB: db });
   assert.equal(res.status, 404);
   assert.equal((await res.json()).error, "Chat tidak ditemukan.");
