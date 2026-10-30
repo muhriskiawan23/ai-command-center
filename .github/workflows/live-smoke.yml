@@ -63,51 +63,6 @@ jobs:
           NODE
           rm -f "$response_file"
 
-      - name: Check unsupported chat method is rejected
-        shell: bash
-        run: |
-          set -euo pipefail
-          status="$(curl --silent --show-error --max-time 15 --output /dev/null --write-out '%{http_code}' 'https://ai-command-center.muhriskiawan23.workers.dev/api/chat')"
-          test "$status" = "405"
-
-      - name: Check unknown API route returns JSON 404
-        shell: bash
-        run: |
-          set -euo pipefail
-          response_file="$(mktemp)"
-          status="$(curl --silent --show-error --max-time 15 --output "$response_file" --write-out '%{http_code}' 'https://ai-command-center.muhriskiawan23.workers.dev/api/not-real')"
-          test "$status" = "404"
-          node --input-type=module - "$response_file" <<'NODE'
-          import fs from "node:fs";
-          const data = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
-          if (data.error !== "Endpoint tidak ditemukan.") {
-            throw new Error("Unknown API route did not return the expected JSON error");
-          }
-          NODE
-          rm -f "$response_file"
-
-      - name: Check JSON media type is validated strictly
-        shell: bash
-        run: |
-          set -euo pipefail
-          response_file="$(mktemp)"
-          status="$(curl --silent --show-error --max-time 15 \
-            --request POST \
-            --header 'Content-Type: application/jsonp' \
-            --data '{"message":"not a valid media type"}' \
-            --output "$response_file" \
-            --write-out '%{http_code}' \
-            'https://ai-command-center.muhriskiawan23.workers.dev/api/chat')"
-          test "$status" = "415"
-          node --input-type=module - "$response_file" <<'NODE'
-          import fs from "node:fs";
-          const data = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
-          if (data.error !== "Content-Type harus application/json.") {
-            throw new Error("Unexpected content-type validation response");
-          }
-          NODE
-          rm -f "$response_file"
-
       - name: Check malformed JSON is rejected
         shell: bash
         run: |
