@@ -162,3 +162,65 @@ test("multi-agent workflow fails closed when exact numbered-item format remains 
   assert.equal(data.error, "AI gagal memproses permintaan. Silakan coba lagi beberapa saat.");
   assert.equal("response" in data, false);
 });
+
+
+test("zero-budget quality gate repairs paid incentives before returning the answer", async () => {
+  let calls = 0;
+  const mockEnv = {
+    AI: {
+      async run() {
+        calls += 1;
+        if (calls === 5) {
+          return {
+            response: "Berikan voucher diskon dan giveaway untuk menarik pelanggan baru secara cepat. Promosikan hadiah tersebut melalui kampanye media sosial agar semakin banyak orang tertarik datang."
+          };
+        }
+        if (calls === 6) {
+          return {
+            response: "1. Buat konten organik yang menampilkan menu, suasana, dan informasi usaha secara konsisten tanpa biaya iklan.\n2. Ajak pelanggan memberikan ulasan secara sukarela dan gunakan masukan tersebut untuk memperbaiki pelayanan.\n3. Ukur jangkauan, interaksi, pertanyaan masuk, dan kunjungan pelanggan setiap minggu untuk menilai efektivitas promosi."
+          };
+        }
+        return {
+          response: "Analisis ini mempertimbangkan tujuan, batasan, risiko, dan langkah konkret.\nRekomendasi utama adalah memvalidasi asumsi terlebih dahulu, mengukur hasil, lalu memperbaiki pendekatan berdasarkan data yang terkumpul."
+        };
+      }
+    },
+    ASSETS: { async fetch() { return new Response("asset"); } }
+  };
+
+  const res = await worker.fetch(
+    chat("Buat strategi promosi Warkop Boris dengan budget Rp0."),
+    mockEnv
+  );
+  const data = await res.json();
+
+  assert.equal(res.status, 200);
+  assert.equal(calls, 6);
+  assert.doesNotMatch(data.response, /voucher|diskon|giveaway|hadiah/i);
+});
+
+test("zero-budget quality gate fails closed when incentives remain after repair", async () => {
+  let calls = 0;
+  const mockEnv = {
+    AI: {
+      async run() {
+        calls += 1;
+        const response = calls >= 5
+          ? "Berikan voucher diskon dan giveaway untuk menarik pelanggan baru secara cepat. Promosikan hadiah tersebut melalui kampanye media sosial agar semakin banyak orang tertarik datang."
+          : "Analisis ini mempertimbangkan tujuan, batasan, risiko, dan langkah konkret.\nRekomendasi utama adalah memvalidasi asumsi terlebih dahulu, mengukur hasil, lalu memperbaiki pendekatan berdasarkan data yang terkumpul.";
+        return { response };
+      }
+    },
+    ASSETS: { async fetch() { return new Response("asset"); } }
+  };
+
+  const res = await worker.fetch(
+    chat("Buat strategi promosi Warkop Boris dengan budget Rp0."),
+    mockEnv
+  );
+  const data = await res.json();
+
+  assert.equal(res.status, 502);
+  assert.equal(calls, 6);
+  assert.equal("response" in data, false);
+});
