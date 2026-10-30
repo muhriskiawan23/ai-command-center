@@ -37,6 +37,24 @@ test("invalid JSON is rejected", async () => {
   assert.equal(res.status, 400);
 });
 
+test("non-JSON chat requests are rejected", async () => {
+  const res = await worker.fetch(new Request("https://example.test/api/chat", {
+    method: "POST",
+    headers: { "Content-Type": "text/plain" },
+    body: JSON.stringify({ message: "Apa ibu kota Jepang?" })
+  }), env);
+  assert.equal(res.status, 415);
+});
+
+test("oversized request bodies are rejected before parsing", async () => {
+  const res = await worker.fetch(new Request("https://example.test/api/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message: "Halo", padding: "x".repeat(70 * 1024) })
+  }), env);
+  assert.equal(res.status, 413);
+});
+
 test("empty messages are rejected", async () => {
   const res = await worker.fetch(new Request("https://example.test/api/chat", {
     method: "POST",
