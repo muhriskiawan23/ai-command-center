@@ -265,7 +265,7 @@ function hasPaidIncentiveRecommendation(response) {
   const incentivePattern = /\b(?:voucher|giveaway|merchandise|diskon|potongan\s+harga|cashback|cash\s+back|hadiah|prize|doorprize|gratis\s+makan|makan\s+gratis|free\s+meal|free\s+gift|paid\s+ads|iklan\s+berbayar|boost(?:ed)?\s+post|paid\s+influencer|influencer\s+berbayar|paid\s+kol|kol\s+berbayar|endorsement\s+berbayar|paid\s+endorsement|sponsor\s+berbayar|langganan\s+berbayar|tool\s+premium|software\s+berbayar|aplikasi\s+berbayar)\b/i;
   const recommendationPattern = /\b(?:berikan|memberikan|bagikan|menawarkan|tawarkan|adakan|mengadakan|buat|gunakan|memakai|jalankan|promosikan|siapkan|sediakan|belikan|bayar|alokasikan|pasang|hire|give|offer|run|use|launch|sponsor|provide|recommend)\b/i;
   const negationPattern = /\b(?:jangan|hindari|tanpa|tidak|bukan|dilarang|do\s+not|don't|avoid|never|not)\b/i;
-  const clauses = String(response).split(/(?<=[.!?;])\s+|\n/i);
+  const clauses = String(response).split(/(?<=[.!?;])\s+|,\s+|\n/i);
 
   return clauses.some((clause) => {
     if (!incentivePattern.test(clause) || !recommendationPattern.test(clause)) return false;
