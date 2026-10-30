@@ -322,3 +322,47 @@ test("unknown GET API routes return JSON 404 instead of the SPA document", async
   assert.equal(assetFetches, 0);
   assert.match(res.headers.get("Content-Type"), /application\/json/);
 });
+
+
+test("chat rate limiter rejects requests above the configured limit before calling AI", async () => {
+  let aiCalls = 0;
+  let rateLimitKey = "";
+  const res = await worker.fetch(request("/api/chat", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "CF-Connecting-IP": "203.0.113.10"
+    },
+    body: JSON.stringify({ message: "Jelaskan manajemen risiko." })
+  }), {
+    CHAT_LIMITER: {
+      async limit({ key }) {
+        rateLimitKey = key;
+        return { success: false };
+      }
+    },
+    AI: { async run() { aiCalls += 1; return { response: "Tidak boleh dipanggil." }; } },
+    ASSETS: { async fetch() { return new Response("asset"); } }
+  });
+
+  assert.equal(res.status, 429);
+  assert.equal(res.headers.get("Retry-After"), "60");
+  assert.equal(rateLimitKey, "203.0.113.10");
+  assert.equal(aiCalls, 0);
+  assert.equal((await res.json()).error, "Terlalu banyak permintaan. Coba lagi dalam satu menit.");
+});
+
+test("chat rate limiter failures fail closed with a sanitized service error", async () => {
+  let aiCalls = 0;
+  const res = await worker.fetch(chat("Jelaskan manajemen risiko."), {
+    CHAT_LIMITER: {
+      async limit() { throw new Error("private limiter details"); }
+    },
+    AI: { async run() { aiCalls += 1; return { response: "Tidak boleh dipanggil." }; } },
+    ASSETS: { async fetch() { return new Response("asset"); } }
+  });
+
+  assert.equal(res.status, 503);
+  assert.equal(aiCalls, 0);
+  assert.equal(JSON.stringify(await res.json()).includes("private limiter details"), false);
+});
