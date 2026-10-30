@@ -89,6 +89,10 @@ test("GET requests are delegated to the static asset binding", async () => {
 
   const res = await worker.fetch(request("/"), mockEnv);
   assert.equal(res.status, 200);
+  assert.equal(res.headers.get("X-Content-Type-Options"), "nosniff");
+  assert.equal(res.headers.get("X-Frame-Options"), "DENY");
+  assert.equal(res.headers.get("Referrer-Policy"), "strict-origin-when-cross-origin");
+  assert.match(res.headers.get("Content-Security-Policy"), /default-src 'self'/);
   assert.match(await res.text(), /AI Command Center/);
 });
 
