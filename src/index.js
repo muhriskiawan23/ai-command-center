@@ -617,6 +617,7 @@ async function handleAuthRoute(request, env, url) {
 }
 async function handleConversationRoute(request, env, url) {
   if (url.pathname !== "/api/conversations" && !url.pathname.startsWith("/api/conversations/")) return null;
+  if (request.method === "DELETE" && !sameOrigin(request)) return json({ error: "Origin tidak valid." }, 403);
   let user;
   try { user = await getSession(request, env); }
   catch (error) { console.error("Conversation session lookup failed:", error); return json({ error: "Penyimpanan riwayat belum tersedia." }, 503); }
@@ -699,6 +700,7 @@ export default {
       let user = null;
       try { user = await getSession(request, env); }
       catch (error) { console.error("Chat session lookup failed:", error); return json({ error: "Status login tidak dapat diperiksa. Coba muat ulang halaman." }, 503); }
+      if (user && !sameOrigin(request)) return json({ error: "Origin tidak valid." }, 403);
       if (user && body.conversationId) {
         const owned = await env.DB.prepare("SELECT id FROM conversations WHERE id = ? AND user_id = ?").bind(body.conversationId, user.id).first();
         if (!owned) return json({ error: "Chat tidak ditemukan." }, 404);
