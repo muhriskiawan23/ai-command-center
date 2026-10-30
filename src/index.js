@@ -77,7 +77,7 @@ async function serveAsset(request, env) {
   if (/^text\/html(?:;|$)/i.test(headers.get("Content-Type") || "")) {
     headers.set(
       "Content-Security-Policy",
-      "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; connect-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; upgrade-insecure-requests"
+      "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; connect-src 'self' https://accounts.google.com; script-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/client; style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/style; img-src 'self' data: https:; frame-src https://accounts.google.com/gsi/; upgrade-insecure-requests"
     );
   }
 
@@ -447,175 +447,298 @@ async function runMultiAgent(env, message) {
   };
 }
 
+
+const SESSION_COOKIE = "__Host-borai_session";
+const OAUTH_NONCE_COOKIE = "__Host-borai_oauth_nonce";
+const SESSION_TTL_SECONDS = 30 * 24 * 60 * 60;
+const encoder = new TextEncoder();
+let googleJwksCache = null;
+let googleJwksExpiresAt = 0;
+
+function readCookie(request, name) {
+  for (const part of (request.headers.get("Cookie") || "").split(";")) {
+    const index = part.indexOf("=");
+    if (index >= 0 && part.slice(0, index).trim() === name) return part.slice(index + 1).trim();
+  }
+  return "";
+}
+function base64UrlBytes(value) {
+  const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = normalized + "=".repeat((4 - normalized.length % 4) % 4);
+  const binary = atob(padded);
+  return Uint8Array.from(binary, (character) => character.charCodeAt(0));
+}
+function base64UrlJson(value) {
+  return JSON.parse(new TextDecoder().decode(base64UrlBytes(value)));
+}
+function randomToken(byteLength = 32) {
+  const bytes = crypto.getRandomValues(new Uint8Array(byteLength));
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+async function sha256Hex(value) {
+  const digest = await crypto.subtle.digest("SHA-256", encoder.encode(value));
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+function cookieHeader(name, value, maxAge) {
+  return name + "=" + value + "; Path=/; Max-Age=" + maxAge + "; Secure; HttpOnly; SameSite=Lax";
+}
+function sameOrigin(request) {
+  const origin = request.headers.get("Origin");
+  return Boolean(origin) && origin === new URL(request.url).origin;
+}
+async function verifyGoogleCredential(credential, nonce, env) {
+  if (!env.GOOGLE_CLIENT_ID || typeof credential !== "string" || typeof nonce !== "string") throw new Error("Google sign-in is not configured.");
+  const parts = credential.split(".");
+  if (parts.length !== 3 || parts.some((part) => !part)) throw new Error("Invalid identity token.");
+  const header = base64UrlJson(parts[0]);
+  const claims = base64UrlJson(parts[1]);
+  if (header.alg !== "RS256" || typeof header.kid !== "string") throw new Error("Unsupported identity token.");
+  if (!googleJwksCache || Date.now() >= googleJwksExpiresAt) {
+    const response = await fetch("https://www.googleapis.com/oauth2/v3/certs", { headers: { Accept: "application/json" } });
+    if (!response.ok) throw new Error("Google signing keys are unavailable.");
+    googleJwksCache = await response.json();
+    const maxAge = Number((response.headers.get("Cache-Control") || "").match(/max-age=(\d+)/i)?.[1] || 300);
+    googleJwksExpiresAt = Date.now() + Math.max(60, Math.min(maxAge, 3600)) * 1000;
+  }
+  const jwk = googleJwksCache.keys?.find((key) => key.kid === header.kid && key.kty === "RSA");
+  if (!jwk) { googleJwksExpiresAt = 0; throw new Error("Unknown Google signing key."); }
+  const publicKey = await crypto.subtle.importKey("jwk", jwk, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["verify"]);
+  const validSignature = await crypto.subtle.verify("RSASSA-PKCS1-v1_5", publicKey, base64UrlBytes(parts[2]), encoder.encode(parts[0] + "." + parts[1]));
+  if (!validSignature) throw new Error("Invalid identity token signature.");
+  const now = Math.floor(Date.now() / 1000);
+  const audience = Array.isArray(claims.aud) ? claims.aud : [claims.aud];
+  if (!audience.includes(env.GOOGLE_CLIENT_ID) ||
+      !["accounts.google.com", "https://accounts.google.com"].includes(claims.iss) ||
+      !Number.isFinite(claims.exp) || claims.exp <= now ||
+      !Number.isFinite(claims.iat) || claims.iat > now + 60 ||
+      claims.nonce !== nonce ||
+      typeof claims.sub !== "string" || !claims.sub ||
+      typeof claims.email !== "string" || claims.email_verified !== true) {
+    throw new Error("Google identity token claims are invalid.");
+  }
+  return claims;
+}
+async function getSession(request, env) {
+  const token = readCookie(request, SESSION_COOKIE);
+  if (!token) return null;
+  if (!env.DB) throw new Error("Database is not configured.");
+  const tokenHash = await sha256Hex(token);
+  return env.DB.prepare(
+    "SELECT users.id, users.email, users.name, users.picture FROM sessions " +
+    "JOIN users ON users.id = sessions.user_id WHERE sessions.token_hash = ? AND sessions.expires_at > ?"
+  ).bind(tokenHash, Math.floor(Date.now() / 1000)).first();
+}
+function authRequiredResponse() {
+  return json({ error: "Silakan masuk dengan akun Google untuk mengakses riwayat chat." }, 401);
+}
+async function readJsonRequest(request, maxBytes = 16 * 1024) {
+  if (!/^\s*application\/json(?:\s*;|\s*$)/i.test(request.headers.get("Content-Type") || "")) return { error: json({ error: "Content-Type harus application/json." }, 415) };
+  const contentLength = Number(request.headers.get("Content-Length") || 0);
+  if (Number.isFinite(contentLength) && contentLength > maxBytes) return { error: json({ error: "Ukuran request terlalu besar." }, 413) };
+  let bodyResult;
+  try { bodyResult = await readBodyWithinLimit(request, maxBytes); }
+  catch { return { error: json({ error: "Request body tidak dapat dibaca." }, 400) }; }
+  if (bodyResult.tooLarge) return { error: json({ error: "Ukuran request terlalu besar." }, 413) };
+  if (bodyResult.invalidEncoding) return { error: json({ error: "Request JSON tidak valid." }, 400) };
+  try { return { body: JSON.parse(bodyResult.text) }; }
+  catch { return { error: json({ error: "Request JSON tidak valid." }, 400) }; }
+}
+async function handleAuthRoute(request, env, url) {
+  if (url.pathname === "/api/config" && request.method === "GET") {
+    return json({ googleClientId: env.GOOGLE_CLIENT_ID || null, googleSignInEnabled: Boolean(env.GOOGLE_CLIENT_ID && env.DB) });
+  }
+  if (url.pathname === "/api/auth/nonce" && request.method === "GET") {
+    if (!env.DB || !env.GOOGLE_CLIENT_ID) return json({ error: "Login Google belum dikonfigurasi." }, 503);
+    const nonce = randomToken();
+    return json({ nonce }, 200, { "Set-Cookie": cookieHeader(OAUTH_NONCE_COOKIE, nonce, 300) });
+  }
+  if (url.pathname === "/api/auth/google" && request.method === "POST") {
+    if (!sameOrigin(request)) return json({ error: "Origin tidak valid." }, 403);
+    if (!env.DB || !env.GOOGLE_CLIENT_ID) return json({ error: "Login Google belum dikonfigurasi." }, 503);
+    const parsed = await readJsonRequest(request);
+    if (parsed.error) return parsed.error;
+    const nonceCookie = readCookie(request, OAUTH_NONCE_COOKIE);
+    const nonce = parsed.body?.nonce;
+    if (!nonceCookie || typeof nonce !== "string" || nonce !== nonceCookie) {
+      return json({ error: "Sesi login kedaluwarsa. Silakan coba masuk kembali." }, 403, { "Set-Cookie": cookieHeader(OAUTH_NONCE_COOKIE, "", 0) });
+    }
+    try {
+      const claims = await verifyGoogleCredential(parsed.body?.credential, nonce, env);
+      const now = Math.floor(Date.now() / 1000);
+      const user = await env.DB.prepare(
+        "INSERT INTO users (id, email, name, picture, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?) " +
+        "ON CONFLICT(id) DO UPDATE SET email=excluded.email, name=excluded.name, picture=excluded.picture, updated_at=excluded.updated_at RETURNING id"
+      ).bind(claims.sub, claims.email, String(claims.name || "").slice(0, 160), String(claims.picture || "").slice(0, 1000), now, now).first();
+      if (!user?.id) throw new Error("Unable to create user.");
+      const sessionToken = randomToken();
+      await env.DB.prepare("INSERT INTO sessions (token_hash, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)")
+        .bind(await sha256Hex(sessionToken), user.id, now + SESSION_TTL_SECONDS, now).run();
+      return json({
+        authenticated: true,
+        user: { id: user.id, email: claims.email, name: claims.name || "", picture: claims.picture || "" }
+      }, 200, { "Set-Cookie": [
+        cookieHeader(SESSION_COOKIE, sessionToken, SESSION_TTL_SECONDS),
+        cookieHeader(OAUTH_NONCE_COOKIE, "", 0)
+      ] });
+    } catch (error) {
+      console.error("Google authentication failed:", error);
+      return json({ error: "Google sign-in gagal diverifikasi. Silakan coba lagi." }, 401, { "Set-Cookie": cookieHeader(OAUTH_NONCE_COOKIE, "", 0) });
+    }
+  }
+  if (url.pathname === "/api/auth/me" && request.method === "GET") {
+    try {
+      if (!readCookie(request, SESSION_COOKIE)) return json({ authenticated: false });
+      const user = await getSession(request, env);
+      if (!user) return json({ authenticated: false }, 200, { "Set-Cookie": cookieHeader(SESSION_COOKIE, "", 0) });
+      return json({ authenticated: true, user });
+    } catch (error) {
+      console.error("Session lookup failed:", error);
+      return json({ error: "Status login sementara tidak dapat diperiksa." }, 503);
+    }
+  }
+  if (url.pathname === "/api/auth/logout" && request.method === "POST") {
+    if (!sameOrigin(request)) return json({ error: "Origin tidak valid." }, 403);
+    try {
+      const token = readCookie(request, SESSION_COOKIE);
+      if (token && env.DB) await env.DB.prepare("DELETE FROM sessions WHERE token_hash = ?").bind(await sha256Hex(token)).run();
+      return json({ authenticated: false }, 200, { "Set-Cookie": cookieHeader(SESSION_COOKIE, "", 0) });
+    } catch (error) {
+      console.error("Logout failed:", error);
+      return json({ error: "Tidak dapat mengakhiri sesi saat ini." }, 503);
+    }
+  }
+  return null;
+}
+async function handleConversationRoute(request, env, url) {
+  if (url.pathname !== "/api/conversations" && !url.pathname.startsWith("/api/conversations/")) return null;
+  let user;
+  try { user = await getSession(request, env); }
+  catch (error) { console.error("Conversation session lookup failed:", error); return json({ error: "Penyimpanan riwayat belum tersedia." }, 503); }
+  if (!user) return authRequiredResponse();
+  if (!env.DB) return json({ error: "Penyimpanan riwayat belum tersedia." }, 503);
+  if (url.pathname === "/api/conversations" && request.method === "GET") {
+    const result = await env.DB.prepare("SELECT id, title, created_at, updated_at FROM conversations WHERE user_id = ? ORDER BY updated_at DESC LIMIT 100").bind(user.id).all();
+    return json({ conversations: result.results || [] });
+  }
+  if (url.pathname === "/api/conversations" && request.method === "DELETE") {
+    await env.DB.prepare("DELETE FROM conversations WHERE user_id = ?").bind(user.id).run();
+    return json({ deleted: true });
+  }
+  const conversationId = url.pathname.slice("/api/conversations/".length);
+  if (!/^[a-zA-Z0-9-]{8,80}$/.test(conversationId)) return json({ error: "Chat tidak ditemukan." }, 404);
+  if (request.method === "GET") {
+    const conversation = await env.DB.prepare("SELECT id, title, created_at, updated_at FROM conversations WHERE id = ? AND user_id = ?").bind(conversationId, user.id).first();
+    if (!conversation) return json({ error: "Chat tidak ditemukan." }, 404);
+    const result = await env.DB.prepare("SELECT role, content, created_at FROM messages WHERE conversation_id = ? AND user_id = ? ORDER BY id ASC").bind(conversationId, user.id).all();
+    return json({ conversation, messages: result.results || [] });
+  }
+  if (request.method === "DELETE") {
+    const result = await env.DB.prepare("DELETE FROM conversations WHERE id = ? AND user_id = ?").bind(conversationId, user.id).run();
+    if (!result.meta?.changes) return json({ error: "Chat tidak ditemukan." }, 404);
+    return json({ deleted: true, id: conversationId });
+  }
+  return json({ error: "Metode HTTP tidak didukung untuk endpoint ini." }, 405, { Allow: "GET, DELETE" });
+}
+async function persistConversation(env, user, conversationId, message, response) {
+  const now = Math.floor(Date.now() / 1000);
+  const id = conversationId || crypto.randomUUID();
+  const title = message.replace(/\s+/g, " ").slice(0, 72) || "Percakapan baru";
+  const statements = [];
+  if (!conversationId) {
+    statements.push(env.DB.prepare("INSERT INTO conversations (id, user_id, title, created_at, updated_at) VALUES (?, ?, ?, ?, ?)")
+      .bind(id, user.id, title, now, now));
+  } else {
+    statements.push(env.DB.prepare("UPDATE conversations SET updated_at = ? WHERE id = ? AND user_id = ?").bind(now, id, user.id));
+  }
+  statements.push(env.DB.prepare("INSERT INTO messages (conversation_id, user_id, role, content, created_at) VALUES (?, ?, 'user', ?, ?)").bind(id, user.id, message, now));
+  statements.push(env.DB.prepare("INSERT INTO messages (conversation_id, user_id, role, content, created_at) VALUES (?, ?, 'assistant', ?, ?)").bind(id, user.id, response, now));
+  await env.DB.batch(statements);
+  return id;
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-
-    if (
-      request.method === "GET" &&
-      url.pathname === "/api/health"
-    ) {
-      return json({
-        ok: true,
-        service: "AI Command Center"
-      });
+    if (url.pathname.startsWith("/api/auth/") || url.pathname === "/api/config") {
+      const response = await handleAuthRoute(request, env, url);
+      if (response) return response;
     }
-
-    if (
-      request.method === "GET" &&
-      url.pathname === "/api/agents"
-    ) {
-      return json({
-        agents: Object.entries(AGENTS).map(([id, agent]) => ({
-          id,
-          name: agent.name
-        }))
-      });
+    if (url.pathname === "/api/conversations" || url.pathname.startsWith("/api/conversations/")) {
+      if (!["GET", "DELETE"].includes(request.method)) return json({ error: "Metode HTTP tidak didukung untuk endpoint ini." }, 405, { Allow: "GET, DELETE" });
+      try { return await handleConversationRoute(request, env, url); }
+      catch (error) { console.error("Conversation request failed:", error); return json({ error: "Riwayat chat gagal diproses." }, 503); }
     }
-
-    if (
-      request.method === "POST" &&
-      url.pathname === "/api/chat"
-    ) {
-      if (!/^\s*application\/json(?:\s*;|\s*$)/i.test(request.headers.get("Content-Type") || "")) {
-        return json({ error: "Content-Type harus application/json." }, 415);
-      }
-
+    if (request.method === "GET" && url.pathname === "/api/health") return json({ ok: true, service: "AI Command Center" });
+    if (request.method === "GET" && url.pathname === "/api/agents") {
+      return json({ agents: Object.entries(AGENTS).map(([id, agent]) => ({ id, name: agent.name })) });
+    }
+    if (request.method === "POST" && url.pathname === "/api/chat") {
+      if (!/^\s*application\/json(?:\s*;|\s*$)/i.test(request.headers.get("Content-Type") || "")) return json({ error: "Content-Type harus application/json." }, 415);
       const contentLength = Number(request.headers.get("Content-Length") || 0);
-      if (Number.isFinite(contentLength) && contentLength > MAX_REQUEST_BYTES) {
-        return json({ error: "Ukuran request terlalu besar." }, 413);
-      }
-
+      if (Number.isFinite(contentLength) && contentLength > MAX_REQUEST_BYTES) return json({ error: "Ukuran request terlalu besar." }, 413);
       let bodyResult;
-      try {
-        bodyResult = await readBodyWithinLimit(request, MAX_REQUEST_BYTES);
-      } catch {
-        return json({ error: "Request body tidak dapat dibaca." }, 400);
-      }
-
-      if (bodyResult.tooLarge) {
-        return json({ error: "Ukuran request terlalu besar." }, 413);
-      }
-
-      if (bodyResult.invalidEncoding) {
-        return json({ error: "Request JSON tidak valid." }, 400);
-      }
-
-      const rawBody = bodyResult.text;
-
+      try { bodyResult = await readBodyWithinLimit(request, MAX_REQUEST_BYTES); }
+      catch { return json({ error: "Request body tidak dapat dibaca." }, 400); }
+      if (bodyResult.tooLarge) return json({ error: "Ukuran request terlalu besar." }, 413);
+      if (bodyResult.invalidEncoding) return json({ error: "Request JSON tidak valid." }, 400);
       let body;
-      try {
-        body = JSON.parse(rawBody);
-      } catch {
-        return json({
-          error: "Request JSON tidak valid."
-        }, 400);
-      }
-
-      const message =
-        typeof body?.message === "string"
-          ? body.message.trim()
-          : "";
-
-      if (body?.agent !== undefined &&
-        (typeof body.agent !== "string" || !Object.prototype.hasOwnProperty.call(AGENTS, body.agent))) {
-        return json({ error: "Agent tidak dikenal." }, 400);
-      }
-
+      try { body = JSON.parse(bodyResult.text); }
+      catch { return json({ error: "Request JSON tidak valid." }, 400); }
+      const message = typeof body?.message === "string" ? body.message.trim() : "";
+      if (body?.agent !== undefined && (typeof body.agent !== "string" || !Object.prototype.hasOwnProperty.call(AGENTS, body.agent))) return json({ error: "Agent tidak dikenal." }, 400);
       const agentId = body?.agent || "coordinator";
-
-      if (!message) {
-        return json({
-          error: "Pesan tidak boleh kosong."
-        }, 400);
+      if (!message) return json({ error: "Pesan tidak boleh kosong." }, 400);
+      if (message.length > 12000) return json({ error: "Pesan terlalu panjang (maksimal 12.000 karakter)." }, 400);
+      if (body?.conversationId !== undefined && (typeof body.conversationId !== "string" || !/^[a-zA-Z0-9-]{8,80}$/.test(body.conversationId))) return json({ error: "ID percakapan tidak valid." }, 400);
+      let user = null;
+      try { user = await getSession(request, env); }
+      catch (error) { console.error("Chat session lookup failed:", error); return json({ error: "Status login tidak dapat diperiksa. Coba muat ulang halaman." }, 503); }
+      if (user && body.conversationId) {
+        const owned = await env.DB.prepare("SELECT id FROM conversations WHERE id = ? AND user_id = ?").bind(body.conversationId, user.id).first();
+        if (!owned) return json({ error: "Chat tidak ditemukan." }, 404);
       }
-
-      if (message.length > 12000) {
-        return json({
-          error: "Pesan terlalu panjang (maksimal 12.000 karakter)."
-        }, 400);
-      }
-
       if (env.CHAT_LIMITER?.limit) {
         let rateLimit;
         try {
           const clientKey = request.headers.get("CF-Connecting-IP") || "unknown-client";
           rateLimit = await env.CHAT_LIMITER.limit({ key: clientKey });
-        } catch (error) {
-          console.error("Chat rate limiter failed:", error);
-          return json({ error: "Layanan pembatasan permintaan sedang bermasalah." }, 503);
-        }
-
-        if (!rateLimit?.success) {
-          return json(
-            { error: "Terlalu banyak permintaan. Coba lagi dalam satu menit." },
-            429,
-            { "Retry-After": "60" }
-          );
-        }
+        } catch (error) { console.error("Chat rate limiter failed:", error); return json({ error: "Layanan pembatasan permintaan sedang bermasalah." }, 503); }
+        if (!rateLimit?.success) return json({ error: "Terlalu banyak permintaan. Coba lagi dalam satu menit." }, 429, { "Retry-After": "60" });
       }
-
       try {
-        if (agentId === "coordinator" && shouldUseMultiAgent(message)) {
-          const result = await runMultiAgent(env, message);
-          return json({ ...result, model: MODEL });
-        }
-
-        if (agentId === "coordinator") {
+        let result;
+        if (agentId === "coordinator" && shouldUseMultiAgent(message)) result = { ...await runMultiAgent(env, message), model: MODEL };
+        else if (agentId === "coordinator") {
           const response = await runAgent(env, "coordinator", message);
-          return json({
-            agent: AGENTS.coordinator.name,
-            model: MODEL,
-            workflow: "single-agent",
-            agentsUsed: [AGENTS.coordinator.name],
-            response
-          });
+          result = { agent: AGENTS.coordinator.name, model: MODEL, workflow: "single-agent", agentsUsed: [AGENTS.coordinator.name], response };
+        } else {
+          const response = await runAgent(env, agentId, message);
+          result = { agent: AGENTS[agentId].name, model: MODEL, workflow: "single-agent", response };
         }
-
-        const response = await runAgent(
-          env,
-          agentId,
-          message
-        );
-
-        return json({
-          agent: AGENTS[agentId].name,
-          model: MODEL,
-          workflow: "single-agent",
-          response
-        });
+        if (user) {
+          try {
+            result.conversationId = await persistConversation(env, user, body.conversationId || null, message, result.response);
+            result.saved = true;
+          } catch (error) {
+            console.error("Chat persistence failed:", error);
+            result.saved = false;
+            result.saveWarning = "Jawaban berhasil dibuat, tetapi riwayat gagal disimpan. Salin jawaban ini sebelum meninggalkan halaman.";
+          }
+        } else result.saved = false;
+        return json(result);
       } catch (error) {
         console.error("AI request failed:", error);
-
-        return json({
-          error: "AI gagal memproses permintaan. Silakan coba lagi beberapa saat."
-        }, 502);
+        return json({ error: "AI gagal memproses permintaan. Silakan coba lagi beberapa saat." }, 502);
       }
     }
-
-    if (url.pathname.startsWith("/api/") &&
-      ["/api/health", "/api/agents", "/api/chat"].includes(url.pathname)) {
+    if (url.pathname.startsWith("/api/") && ["/api/health", "/api/agents", "/api/chat"].includes(url.pathname)) {
       const allowed = url.pathname === "/api/chat" ? ["POST"] : ["GET"];
-      if (!allowed.includes(request.method)) {
-        return json({ error: "Metode HTTP tidak didukung untuk endpoint ini." }, 405, { "Allow": allowed.join(", ") });
-      }
+      if (!allowed.includes(request.method)) return json({ error: "Metode HTTP tidak didukung untuk endpoint ini." }, 405, { Allow: allowed.join(", ") });
     }
-
-    if (url.pathname.startsWith("/api/")) {
-      return json({
-        error: "Endpoint tidak ditemukan."
-      }, 404);
-    }
-
-    if (
-      request.method === "GET" ||
-      request.method === "HEAD"
-    ) {
-      return serveAsset(request, env);
-    }
-
-    return json({
-      error: "Endpoint tidak ditemukan."
-    }, 404);
+    if (url.pathname.startsWith("/api/")) return json({ error: "Endpoint tidak ditemukan." }, 404);
+    if (request.method === "GET" || request.method === "HEAD") return serveAsset(request, env);
+    return json({ error: "Endpoint tidak ditemukan." }, 404);
   }
 };
