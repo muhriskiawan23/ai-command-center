@@ -171,13 +171,15 @@ function requestedNumberedItemCount(message) {
 }
 
 function hasExactlySequentialNumberedItems(response, expectedCount) {
-  const numbers = response
-    .split("\n")
-    .map((line) => line.match(/^\s*(\d{1,2})[.)]\s+\S/))
-    .filter(Boolean)
-    .map((match) => Number(match[1]));
+  const lines = response.split("\n").map((line) => line.trim()).filter(Boolean);
+  const numberedLines = lines.filter((line) => /^\d{1,2}[.)]\s+\S/.test(line));
+  const numbers = numberedLines.map((line) => Number(line.match(/^(\d{1,2})[.)]/)[1]));
 
-  return numbers.length === expectedCount &&
+  // Exact-item requests must contain only the requested top-level numbered items.
+  // Indented continuation lines and nested bullets are intentionally disallowed
+  // to keep the contract unambiguous and reliably machine-checkable.
+  return lines.length === expectedCount &&
+    numberedLines.length === expectedCount &&
     numbers.every((number, index) => number === index + 1);
 }
 
@@ -394,6 +396,10 @@ export default {
       request.method === "POST" &&
       url.pathname === "/api/chat"
     ) {
+      if (!request.headers.get("Content-Type")?.toLowerCase().includes("application/json")) {
+        return json({ error: "Content-Type harus application/json." }, 415);
+      }
+
       const contentLength = Number(request.headers.get("Content-Length") || 0);
       if (Number.isFinite(contentLength) && contentLength > MAX_REQUEST_BYTES) {
         return json({ error: "Ukuran request terlalu besar." }, 413);
@@ -417,10 +423,6 @@ export default {
         return json({
           error: "Request JSON tidak valid."
         }, 400);
-      }
-
-      if (!request.headers.get("Content-Type")?.toLowerCase().includes("application/json")) {
-        return json({ error: "Content-Type harus application/json." }, 415);
       }
 
       const message =
@@ -481,6 +483,14 @@ export default {
         return json({
           error: "AI gagal memproses permintaan. Silakan coba lagi beberapa saat."
         }, 502);
+      }
+    }
+
+    if (url.pathname.startsWith("/api/") &&
+      ["/api/health", "/api/agents", "/api/chat"].includes(url.pathname)) {
+      const allowed = url.pathname === "/api/chat" ? ["POST"] : ["GET"];
+      if (!allowed.includes(request.method)) {
+        return json({ error: "Metode HTTP tidak didukung untuk endpoint ini." }, 405);
       }
     }
 
