@@ -164,6 +164,31 @@ test("multi-agent workflow fails closed when exact numbered-item format remains 
 });
 
 
+test("exact-item gate rejects extra prose outside the requested list", async () => {
+  let calls = 0;
+  const mockEnv = {
+    AI: {
+      async run() {
+        calls += 1;
+        return {
+          response: "Berikut tiga poin utama.\n1. Tentukan tujuan dan batasan secara jelas sebelum memulai pekerjaan.\n2. Jalankan prioritas utama dan ukur hasilnya menggunakan indikator yang relevan.\n3. Evaluasi hasil dan perbaiki pendekatan berdasarkan data yang terkumpul."
+        };
+      }
+    },
+    ASSETS: { async fetch() { return new Response("asset"); } }
+  };
+
+  const res = await worker.fetch(
+    chat("Buat analisis risiko dalam tepat 3 poin singkat."),
+    mockEnv
+  );
+  const data = await res.json();
+
+  assert.equal(res.status, 502);
+  assert.equal(calls, 5);
+  assert.equal("response" in data, false);
+});
+
 test("zero-budget quality gate repairs paid incentives before returning the answer", async () => {
   let calls = 0;
   const mockEnv = {
