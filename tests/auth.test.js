@@ -90,7 +90,7 @@ test("a user cannot delete a conversation that is not owned by their account", a
 
 test("a signed-in chat is stored as one user/assistant pair and returns its conversation ID", async () => {
   const db = mockDB();
-  const res = await worker.fetch(jsonRequest("/api/chat", { message: "Buat ringkasan.", agent: "coordinator" }, { Cookie: SESSION_COOKIE }), {
+  const res = await worker.fetch(jsonRequest("/api/chat", { message: "Buat ringkasan.", agent: "coordinator" }, { Cookie: SESSION_COOKIE, Origin: "https://example.test" }), {
     AI: mockAI(),
     DB: db
   });
