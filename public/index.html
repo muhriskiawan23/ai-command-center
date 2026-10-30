@@ -15,7 +15,7 @@
 <div class="app">
 <aside class="sidebar" id="sidebar">
 <div class="brand"><div class="brand-mark">✳</div><span>AI Command Center</span></div>
-<section class="auth-panel" id="authPanel"><div class="auth-title" id="authTitle">Guest Mode</div><p class="auth-copy" id="authDescription">Chat hanya tersimpan sementara selama halaman ini terbuka.</p><div id="googleButton"></div><button class="auth-action" id="signOut" type="button" hidden>Keluar dari akun</button></section>
+<section class="auth-panel" id="authPanel"><div class="auth-title" id="authTitle">Guest Mode</div><p class="auth-copy" id="authDescription">Chat hanya tersimpan sementara selama halaman ini terbuka.</p><div id="googleButton"></div><div id="userProfile" hidden></div><button class="auth-action" id="signOut" type="button" hidden>Keluar dari akun</button></section>
 <button class="new-chat" id="newChat"><span>＋</span> Chat baru</button>
 <div class="side-label history-label"><span id="historyLabel">Sesi ini · Guest Mode</span><span id="historyCount"></span></div>
 <nav class="history" id="history" aria-label="Riwayat percakapan"></nav>
@@ -114,15 +114,15 @@ function renderAuth(){
  const logged=Boolean(currentUser);
  $("authTitle").textContent=logged?"Masuk sebagai":"Guest Mode";
  $("authDescription").textContent=logged?(currentUser.email||"Riwayat chat tersimpan di akun Google."):"Chat hanya tersimpan sementara selama halaman ini terbuka. Masuk Google untuk menyimpan riwayat.";
- $("googleButton").hidden=logged;$("signOut").hidden=!logged;
- $("googleButton").replaceChildren();
+ $("googleButton").hidden=logged;$("userProfile").hidden=!logged;$("signOut").hidden=!logged;
+ $("googleButton").replaceChildren();$("userProfile").replaceChildren();
  if(logged){
   const wrap=document.createElement("div");wrap.className="auth-user";
   if(currentUser.picture){const img=document.createElement("img");img.src=currentUser.picture;img.alt="";wrap.append(img)}
   const info=document.createElement("div");info.className="auth-user-info";
   const name=document.createElement("strong");name.textContent=currentUser.name||"Akun Google";
   const email=document.createElement("small");email.textContent=currentUser.email||"";
-  info.append(name,email);wrap.append(info);$("googleButton").append(wrap);
+  info.append(name,email);wrap.append(info);$("userProfile").append(wrap);
   $("historyLabel").textContent="Riwayat akun";
  }else $("historyLabel").textContent="Sesi ini · Guest Mode";
  renderHistory();
