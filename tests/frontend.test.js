@@ -37,3 +37,12 @@ test("dashboard has a mobile layout and reduced-motion support", () => {
   assert.match(html, /@media\(max-width:760px\)/);
   assert.match(html, /prefers-reduced-motion:reduce/);
 });
+
+test("guest mode never persists browser chat history and account history is server-backed", () => {
+  assert.doesNotMatch(html, /localStorage/);
+  assert.match(html, /Guest Mode/);
+  assert.match(html, /api\/conversations/);
+  assert.match(html, /api\/auth\/google/);
+  assert.match(html, /function deleteChat/);
+  assert.match(html, /google\.accounts\.id\.initialize/);
+});

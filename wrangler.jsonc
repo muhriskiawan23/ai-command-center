@@ -25,5 +25,12 @@
   "assets": {
     "directory": "./public",
     "binding": "ASSETS"
-  }
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "bor-ai-chat",
+      "migrations_dir": "migrations"
+    }
+  ]
 }

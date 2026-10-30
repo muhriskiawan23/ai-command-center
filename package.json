@@ -9,7 +9,8 @@
     "test": "node --experimental-default-type=module --test",
     "check": "node --check src/index.js",
     "preview": "npx --yes wrangler@4 deploy --dry-run --outdir .wrangler/deploy --config wrangler.jsonc",
-    "deploy": "npx --yes wrangler@4 deploy --config wrangler.jsonc"
+    "deploy": "npx --yes wrangler@4 deploy --config wrangler.jsonc",
+    "db:migrate": "npx --yes wrangler@4 d1 migrations apply bor-ai-chat --remote --config wrangler.jsonc"
   },
   "engines": {
     "node": ">=22"
