@@ -320,6 +320,9 @@ async function runMultiAgent(env, message) {
         draftToRepair
       ].join("\n")
     );
+    if (incentivePattern.test(finalResponse)) {
+      throw new Error("Writer failed zero-budget quality gate");
+    }
   }
 
   const requestedCount = requestedNumberedItemCount(message);
