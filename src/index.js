@@ -675,7 +675,7 @@ export default {
       try { return await handleConversationRoute(request, env, url); }
       catch (error) { console.error("Conversation request failed:", error); return json({ error: "Riwayat chat gagal diproses." }, 503); }
     }
-    if (request.method === "GET" && url.pathname === "/api/health") return json({ ok: true, service: "AI Command Center" });
+    if (request.method === "GET" && url.pathname === "/api/health") return json({ ok: true, service: "BOR AI" });
     if (request.method === "GET" && url.pathname === "/api/agents") {
       return json({ agents: Object.entries(AGENTS).map(([id, agent]) => ({ id, name: agent.name })) });
     }

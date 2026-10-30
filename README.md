@@ -1,4 +1,4 @@
-# AI Command Center
+# BOR AI
 
 Public AI workspace with Google sign-in, temporary guest sessions, private per-account chat history on Cloudflare D1, Workers AI inference, and a multi-agent coordinator.
 

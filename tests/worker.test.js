@@ -16,7 +16,9 @@ const env = {
 test("health endpoint returns a no-store success response", async () => {
   const res = await worker.fetch(new Request("https://example.test/api/health"), env);
   assert.equal(res.status, 200);
-  assert.equal((await res.json()).ok, true);
+  const body = await res.json();
+  assert.equal(body.ok, true);
+  assert.equal(body.service, "BOR AI");
   assert.equal(res.headers.get("Cache-Control"), "no-store");
 });
 
