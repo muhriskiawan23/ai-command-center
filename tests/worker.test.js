@@ -33,6 +33,7 @@ test("known API endpoints reject unsupported HTTP methods", async () => {
     method: "POST"
   }), env);
   assert.equal(res.status, 405);
+  assert.equal(res.headers.get("Allow"), "GET");
   assert.match(res.headers.get("Content-Type"), /application\/json/);
 });
 
