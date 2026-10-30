@@ -1,5 +1,6 @@
 
 const MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
+const MAX_REQUEST_BYTES = 64 * 1024;
 
 const AGENTS = {
   coordinator: {
@@ -393,14 +394,33 @@ export default {
       request.method === "POST" &&
       url.pathname === "/api/chat"
     ) {
-      let body;
+      const contentLength = Number(request.headers.get("Content-Length") || 0);
+      if (Number.isFinite(contentLength) && contentLength > MAX_REQUEST_BYTES) {
+        return json({ error: "Ukuran request terlalu besar." }, 413);
+      }
 
+      let rawBody;
       try {
-        body = await request.json();
+        rawBody = await request.text();
+      } catch {
+        return json({ error: "Request body tidak dapat dibaca." }, 400);
+      }
+
+      if (new TextEncoder().encode(rawBody).byteLength > MAX_REQUEST_BYTES) {
+        return json({ error: "Ukuran request terlalu besar." }, 413);
+      }
+
+      let body;
+      try {
+        body = JSON.parse(rawBody);
       } catch {
         return json({
           error: "Request JSON tidak valid."
         }, 400);
+      }
+
+      if (!request.headers.get("Content-Type")?.toLowerCase().includes("application/json")) {
+        return json({ error: "Content-Type harus application/json." }, 415);
       }
 
       const message =
