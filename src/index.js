@@ -56,14 +56,18 @@ const AGENTS = {
 };
 
 function json(data, status = 200, extraHeaders = {}) {
-  return Response.json(data, {
-    status,
-    headers: {
-      "Cache-Control": "no-store",
-      "X-Content-Type-Options": "nosniff",
-      ...extraHeaders
-    }
+  const headers = new Headers({
+    "Cache-Control": "no-store",
+    "X-Content-Type-Options": "nosniff"
   });
+  for (const [name, value] of Object.entries(extraHeaders)) {
+    if (name.toLowerCase() === "set-cookie" && Array.isArray(value)) {
+      for (const cookie of value) headers.append(name, cookie);
+    } else {
+      headers.set(name, value);
+    }
+  }
+  return Response.json(data, { status, headers });
 }
 
 async function serveAsset(request, env) {
