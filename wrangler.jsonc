@@ -4,7 +4,8 @@
   "main": "src/index.js",
   "compatibility_date": "2026-10-28",
   "ai": {
-    "binding": "AI"
+    "binding": "AI",
+    "remote": true
   },
   "previews": {
     "ai": {
