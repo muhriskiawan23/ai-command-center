@@ -263,7 +263,7 @@ test("zero-budget gate permits explicit warnings against paid incentives", async
         calls += 1;
         return {
           response: calls === 4
-            ? "Jangan berikan voucher, giveaway, atau diskon; prioritaskan konten organik dan ukur hasilnya secara konsisten."
+            ? "Jangan berikan voucher, giveaway, atau diskon karena semua itu memerlukan biaya usaha; prioritaskan konten organik, polling menu, ulasan sukarela, dan evaluasi hasil promosi secara konsisten setiap minggu."
             : "Analisis ini mempertimbangkan tujuan, batasan, risiko, dan langkah konkret.\nRekomendasi utama adalah memvalidasi asumsi terlebih dahulu, mengukur hasil, lalu memperbaiki pendekatan berdasarkan data yang terkumpul."
         };
       }
