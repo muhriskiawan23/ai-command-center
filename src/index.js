@@ -192,6 +192,25 @@ function needsFactCheck(message) {
   );
 }
 
+function isZeroBudgetPromotionRequest(message) {
+  return /(?:rp\\s*0|modal\\s*(?:sebesar\\s*)?0|tanpa\\s+(?:modal|biaya)|zero[- ]budget|no[- ]budget)/i.test(message) &&
+    /(?:promosi|marketing|kampanye|konten|media\\s+sosial|mahasiswa|warkop|bisnis)/i.test(message);
+}
+
+function hasPaidIncentiveRecommendation(response) {
+  const incentivePattern = /\\b(?:voucher|giveaway|merchandise|diskon|potongan\\s+harga|cashback|cash\\s+back|hadiah|prize|doorprize|gratis\\s+makan|makan\\s+gratis|free\\s+meal|free\\s+gift|paid\\s+ads|iklan\\s+berbayar|boost(?:ed)?\\s+post|paid\\s+influencer|influencer\\s+berbayar|paid\\s+kol|kol\\s+berbayar|endorsement\\s+berbayar|paid\\s+endorsement|sponsor\\s+berbayar|langganan\\s+berbayar|tool\\s+premium|software\\s+berbayar|aplikasi\\s+berbayar)\\b/i;
+  const recommendationPattern = /\\b(?:berikan|memberikan|bagikan|menawarkan|tawarkan|adakan|mengadakan|buat|gunakan|memakai|jalankan|promosikan|siapkan|sediakan|belikan|bayar|alokasikan|pasang|hire|give|offer|run|use|launch|sponsor|provide|recommend)\\b/i;
+  const negationPattern = /\\b(?:jangan|hindari|tanpa|tidak|bukan|dilarang|do\\s+not|don't|avoid|never|not)\\b/i;
+  const clauses = String(response).split(/(?<=[.!?;])\\s+|\\n/i);
+
+  return clauses.some((clause) => {
+    if (!incentivePattern.test(clause) || !recommendationPattern.test(clause)) return false;
+    const index = clause.search(incentivePattern);
+    const context = clause.slice(Math.max(0, index - 42), Math.min(clause.length, index + 65));
+    return !negationPattern.test(context);
+  });
+}
+
 async function runMultiAgent(env, message) {
   const steps = [];
 
@@ -300,11 +319,8 @@ async function runMultiAgent(env, message) {
 
   // Deterministic repair pass for a common hard-constraint failure:
   // a zero-budget promotion plan that sneaks in business-funded incentives.
-  const zeroBudgetPromotion =
-    /(?:rp\s*0|modal\s*(?:sebesar\s*)?0|tanpa\s+(?:modal|biaya)|zero[- ]budget|no[- ]budget)/i.test(message) &&
-    /(?:promosi|marketing|kampanye|konten|media\s+sosial|mahasiswa|warkop|bisnis)/i.test(message);
-  const incentivePattern = /\b(?:voucher|giveaway|merchandise|diskon|potongan\s+harga|hadiah|gratis\s+makan|makan\s+gratis|doorprize|influencer\s+berbayar|paid\s+ads|iklan\s+berbayar)\b/i;
-  if (zeroBudgetPromotion && incentivePattern.test(finalResponse)) {
+  const zeroBudgetPromotion = isZeroBudgetPromotionRequest(message);
+  if (zeroBudgetPromotion && hasPaidIncentiveRecommendation(finalResponse)) {
     const draftToRepair = finalResponse;
     finalResponse = await runAgent(
       env,
@@ -323,7 +339,7 @@ async function runMultiAgent(env, message) {
         draftToRepair
       ].join("\n")
     );
-    if (incentivePattern.test(finalResponse)) {
+    if (hasPaidIncentiveRecommendation(finalResponse)) {
       throw new Error("Writer failed zero-budget quality gate");
     }
   }
@@ -396,7 +412,7 @@ export default {
       request.method === "POST" &&
       url.pathname === "/api/chat"
     ) {
-      if (!request.headers.get("Content-Type")?.toLowerCase().includes("application/json")) {
+      if (!/^\\s*application\\/json(?:\\s*;|\\s*$)/i.test(request.headers.get("Content-Type") || "")) {
         return json({ error: "Content-Type harus application/json." }, 415);
       }
 
@@ -430,11 +446,12 @@ export default {
           ? body.message.trim()
           : "";
 
-      const agentId =
-        typeof body?.agent === "string" &&
-        Object.prototype.hasOwnProperty.call(AGENTS, body.agent)
-          ? body.agent
-          : "coordinator";
+      if (body?.agent !== undefined &&
+        (typeof body.agent !== "string" || !Object.prototype.hasOwnProperty.call(AGENTS, body.agent))) {
+        return json({ error: "Agent tidak dikenal." }, 400);
+      }
+
+      const agentId = body?.agent || "coordinator";
 
       if (!message) {
         return json({
@@ -492,6 +509,12 @@ export default {
       if (!allowed.includes(request.method)) {
         return json({ error: "Metode HTTP tidak didukung untuk endpoint ini." }, 405);
       }
+    }
+
+    if (url.pathname.startsWith("/api/")) {
+      return json({
+        error: "Endpoint tidak ditemukan."
+      }, 404);
     }
 
     if (
