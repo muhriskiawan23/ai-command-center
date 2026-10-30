@@ -6,7 +6,10 @@ const html = readFileSync(new URL("../public/index.html", import.meta.url), "utf
 
 test("dashboard inline JavaScript parses without syntax errors", () => {
   const scripts = [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)];
-  const inlineScripts = scripts.filter((match) => !/\bsrc\s*=/.test(match[0]));
+  const inlineScripts = scripts.filter((match) => {
+    const openingTag = match[0].slice(0, match[0].indexOf(">") + 1);
+    return !/\bsrc\s*=/i.test(openingTag);
+  });
   assert.ok(inlineScripts.length > 0, "expected an inline application script");
   for (const script of inlineScripts) {
     assert.doesNotThrow(() => new Function(script[1]));
