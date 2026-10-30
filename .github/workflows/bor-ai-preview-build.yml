@@ -8,9 +8,17 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
+concurrency:
+  group: bor-ai-preview-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   preview-build:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -19,4 +27,4 @@ jobs:
         with:
           node-version: 20
       - name: Validate Cloudflare Worker preview build
-        run: npx --yes wrangler@4 deploy --dry-run --outdir .wrangler/deploy --config wrangler.jsonc
+        run: npm run preview
