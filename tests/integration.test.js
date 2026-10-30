@@ -158,7 +158,7 @@ test("multi-agent workflow fails closed when exact numbered-item format remains 
   const data = await res.json();
 
   assert.equal(res.status, 502);
-  assert.equal(calls, 6);
+  assert.equal(calls, 5);
   assert.equal(data.error, "AI gagal memproses permintaan. Silakan coba lagi beberapa saat.");
   assert.equal("response" in data, false);
 });
