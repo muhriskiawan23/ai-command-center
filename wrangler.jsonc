@@ -11,6 +11,16 @@
       "binding": "AI"
     }
   },
+  "ratelimits": [
+    {
+      "name": "CHAT_LIMITER",
+      "namespace_id": "947231001",
+      "simple": {
+        "limit": 20,
+        "period": 60
+      }
+    }
+  ],
   "assets": {
     "directory": "./public",
     "binding": "ASSETS"
