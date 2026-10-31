@@ -122,7 +122,7 @@ async function serveAsset(request, env) {
   if (/^text\/html(?:;|$)/i.test(headers.get("Content-Type") || "")) {
     headers.set(
       "Content-Security-Policy",
-      "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; connect-src 'self' https://accounts.google.com; script-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/client; style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/style; img-src 'self' data: https:; frame-src https://accounts.google.com/gsi/; upgrade-insecure-requests"
+      "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; connect-src 'self' https://accounts.google.com; script-src 'self' https://accounts.google.com/gsi/client; style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/style; img-src 'self' data: https:; frame-src https://accounts.google.com/gsi/; upgrade-insecure-requests"
     );
   }
 
@@ -623,6 +623,9 @@ async function handleAuthRoute(request, env, url) {
         "ON CONFLICT(id) DO UPDATE SET email=excluded.email, name=excluded.name, picture=excluded.picture, updated_at=excluded.updated_at RETURNING id"
       ).bind(claims.sub, claims.email, String(claims.name || "").slice(0, 160), String(claims.picture || "").slice(0, 1000), now, now).first();
       if (!user?.id) throw new Error("Unable to create user.");
+      // Housekeeping: drop expired sessions on login so the table does not grow forever. Never blocks a login.
+      try { await env.DB.prepare("DELETE FROM sessions WHERE expires_at < ?").bind(now).run(); }
+      catch (error) { console.error("Expired session cleanup failed:", error); }
       const sessionToken = randomToken();
       await env.DB.prepare("INSERT INTO sessions (token_hash, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)")
         .bind(await sha256Hex(sessionToken), user.id, now + SESSION_TTL_SECONDS, now).run();

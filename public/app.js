@@ -309,9 +309,13 @@ function newChat(){
 }
 async function enterChat(){
   conversations=[];resetChatView();
-  if(state===AppState.AUTH){try{await syncUserHistory()}catch(e){toast(e.message||"Gagal memuat riwayat")}}
-  renderHistory();
-  await applyRoute();
+  /* Kunci composer selama riwayat dimuat: applyRoute() akan mereset tampilan, sehingga pesan yang dikirim lebih awal akan hilang. */
+  loadingChat=true;lockComposer();
+  try{
+    if(state===AppState.AUTH){try{await syncUserHistory()}catch(e){toast(e.message||"Gagal memuat riwayat")}}
+    renderHistory();
+    await applyRoute();
+  }finally{loadingChat=false;lockComposer()}
 }
 async function syncUserHistory(){
   const d=await api("/api/conversations");

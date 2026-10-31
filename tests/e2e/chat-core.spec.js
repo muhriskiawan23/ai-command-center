@@ -53,6 +53,17 @@ test.describe("CHAT — memori percakapan, kegagalan, batas laju", () => {
     expect(turns.at(-1)).toBe("Di kota mana saya tinggal?");
   });
 
+  test("REGRESI: mengirim pesan saat riwayat akun masih dimuat tidak menghilangkan jawaban", async ({ page, app, context }) => {
+    await loginAs(context, app, ALICE);
+    await page.route("**/api/conversations", async (route) => { if (route.request().method() === "GET") await new Promise((r) => setTimeout(r, 800)); await route.continue(); });
+    await page.goto(app.url);
+    await expect(page.locator("#app")).toBeVisible();
+    await send(page, "Dikirim saat riwayat memuat");           // fill menunggu composer terbuka kuncinya
+    await expect(page.locator(".message.assistant:not(#typing)")).toHaveCount(1);
+    await expect(page.locator(".message.user .message-body")).toContainText("Dikirim saat riwayat memuat");
+    expect(app.db.sqlite.prepare("SELECT COUNT(*) n FROM conversations").get().n).toBe(1);
+  });
+
   test("AI gagal: tampil pesan jelas + Coba lagi; tidak ada yang tersimpan; retry berhasil tanpa duplikat; konteks tetap bersih", async ({ page, app, context }) => {
     await loginAs(context, app, ALICE);
     await page.goto(app.url);
