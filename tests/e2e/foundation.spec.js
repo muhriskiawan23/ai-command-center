@@ -41,7 +41,7 @@ test.describe("AUTH — Welcome, Guest, session", () => {
   test("guest tidak pernah menulis isi chat ke storage", async ({ page, app }) => {
     await enterGuest(page, app);
     await send(page, "rahasia-guest-123");
-    await expect(page.locator(".message.assistant")).toHaveCount(1);
+    await expect(page.locator(".message.assistant:not(#typing)")).toHaveCount(1);
     const dump = await page.evaluate(() => JSON.stringify({ l: { ...localStorage }, s: { ...sessionStorage } }));
     expect(dump).not.toContain("rahasia-guest-123");
     expect(JSON.parse(dump).l).toEqual({});
@@ -205,7 +205,7 @@ test.describe("NAV — drawer, Back/Forward, rute", () => {
     await enterGuest(page, app);
     const open = async () => { if (drawerMode(page)) { await page.locator("#menuBtn").click(); await expect(page.locator("#sidebar")).toBeVisible(); } };
     await send(page, "Pesan pertama");
-    await expect(page.locator(".message.assistant")).toHaveCount(1);
+    await expect(page.locator(".message.assistant:not(#typing)")).toHaveCount(1);
     const hashA = await page.evaluate(() => location.hash);
     expect(hashA).toMatch(/^#\/c\//);
     await open();
@@ -214,7 +214,7 @@ test.describe("NAV — drawer, Back/Forward, rute", () => {
     if (drawerMode(page)) await expect(page.locator("#sidebar")).toBeHidden();
     expect(await page.evaluate(() => location.hash)).toBe("#/");
     await send(page, "Pesan kedua");
-    await expect(page.locator(".message.assistant")).toHaveCount(1);
+    await expect(page.locator(".message.assistant:not(#typing)")).toHaveCount(1);
     const hashB = await page.evaluate(() => location.hash);
     expect(hashB).not.toBe(hashA);
     await page.goBack();                                         // → chat A (rute "#/")? lihat urutan: B menggantikan "#/", jadi Back ke A
@@ -229,9 +229,9 @@ test.describe("NAV — drawer, Back/Forward, rute", () => {
   test("memilih chat dari drawer menutup drawer dan Back kembali ke rute sebelumnya (bukan ke drawer)", async ({ page, app }) => {
     test.skip(!drawerMode(page), "hanya mode drawer");
     await enterGuest(page, app);
-    await send(page, "Satu"); await expect(page.locator(".message.assistant")).toHaveCount(1);
+    await send(page, "Satu"); await expect(page.locator(".message.assistant:not(#typing)")).toHaveCount(1);
     await page.locator("#menuBtn").click(); await page.locator("#newChat").click();
-    await send(page, "Dua"); await expect(page.locator(".message.assistant")).toHaveCount(1);
+    await send(page, "Dua"); await expect(page.locator(".message.assistant:not(#typing)")).toHaveCount(1);
     const hashB = await page.evaluate(() => location.hash);
     await page.locator("#menuBtn").click();
     await page.locator(".history-item", { hasText: "Satu" }).click();
@@ -273,7 +273,7 @@ test.describe("NAV — drawer, Back/Forward, rute", () => {
     expect(await titles()).toEqual(["NEWEST", "MIDDLE", "OLDEST"]);
     await page.locator(".history-item", { hasText: "OLDEST" }).click();
     await send(page, "Halo lagi");
-    await expect(page.locator(".message.assistant").last()).toContainText("Balasan uji");
+    await expect(page.locator(".message.assistant:not(#typing)").last()).toContainText("Balasan uji");
     if (drawerMode(page)) await page.locator("#menuBtn").click();
     await expect.poll(async () => (await titles())[0]).toBe("OLDEST");
   });
@@ -288,7 +288,7 @@ test.describe("NAV — drawer, Back/Forward, rute", () => {
     await expect(page.locator(".history-item")).toHaveCount(1);
     await page.locator(".history-item").click();
     await send(page, "lanjutan di chat lama");              // fill menunggu composer bisa diedit (terkunci selama memuat)
-    await expect(page.locator(".message.assistant").last()).toContainText("Balasan uji");
+    await expect(page.locator(".message.assistant:not(#typing)").last()).toContainText("Balasan uji");
     await expect(page.locator(".message.user .message-body").first()).toContainText("isi lama");
     expect(app.db.sqlite.prepare("SELECT COUNT(*) n FROM conversations WHERE user_id = ?").get(ALICE.id).n).toBe(1);
     expect(app.db.sqlite.prepare("SELECT COUNT(*) n FROM messages WHERE conversation_id = 'conv-lama-000001'").get().n).toBe(4);
@@ -304,7 +304,7 @@ test.describe("NAV — drawer, Back/Forward, rute", () => {
     expect(await page.locator("#prompt").inputValue()).toBe("baris1\nbaris2");
     await page.locator("#prompt").press("Enter");
     await page.locator("#prompt").press("Enter");
-    await expect(page.locator(".message.assistant")).toHaveCount(1);
+    await expect(page.locator(".message.assistant:not(#typing)")).toHaveCount(1);
     expect(posts.length).toBe(1);
   });
 
@@ -313,7 +313,7 @@ test.describe("NAV — drawer, Back/Forward, rute", () => {
     expect(await noHorizontalOverflow(page)).toBe(true);
     await page.locator("#continueGuest").click();
     await send(page, "x".repeat(400));
-    await expect(page.locator(".message.assistant")).toHaveCount(1);
+    await expect(page.locator(".message.assistant:not(#typing)")).toHaveCount(1);
     expect(await noHorizontalOverflow(page)).toBe(true);
   });
 });

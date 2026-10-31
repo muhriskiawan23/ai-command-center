@@ -317,18 +317,44 @@ async function syncUserHistory(){
   const d=await api("/api/conversations");
   conversations=(d.conversations||[]).map(c=>({id:c.id,serverId:c.id,title:c.title,messages:[],updated:(c.updated_at||0)*1000,loaded:false}));
 }
+/* Konteks yang dikirim ke server. Sama dengan batas di server (12 pesan / 8000 karakter / 2000 per pesan);
+   giliran yang gagal tidak pernah masuk chat.messages sehingga tidak ikut terkirim. */
+function buildHistory(chat){
+  const out=[];let total=0;
+  for(let i=chat.messages.length-1;i>=0&&out.length<12;i--){
+    const m=chat.messages[i];const content=String(m.content||"").trim().slice(0,2000);
+    if(!content)continue;if(total+content.length>8000)break;
+    total+=content.length;out.unshift({role:m.role==="assistant"?"assistant":"user",content});
+  }
+  while(out.length&&out[0].role!=="user")out.shift();
+  return out;
+}
+/* Kebijakan kegagalan: giliran yang gagal TIDAK disimpan (server atomik: pesan user + jawaban disimpan bersamaan hanya jika AI berhasil).
+   Gelembung error hanya tampil di layar ini, punya tombol "Coba lagi", dan hilang saat chat dimuat ulang. */
+function appendFailedTurn(message,text){
+  appendMessage("assistant",message);
+  const row=messagesEl.lastElementChild;const body=row&&row.querySelector(".message-body");if(!body)return;
+  row.classList.add("failed");
+  const btn=document.createElement("button");btn.type="button";btn.className="retry-btn";btn.textContent="↻ Coba lagi";
+  btn.addEventListener("click",()=>{
+    if(busy||loadingChat)return;
+    const prev=row.previousElementSibling;row.remove();if(prev&&prev.classList.contains("user"))prev.remove();
+    promptEl.value=text;resizePrompt();submit();
+  });
+  body.append(btn);
+}
 async function submit(){
   if(busy||loadingChat||!inChatView())return;const text=promptEl.value.trim();if(!text)return;
   busy=true;lockComposer();const agent=$("agent").value;
   let createdNew=false;
   if(!activeId){activeId=id();createdNew=true;conversations.push({id:activeId,serverId:null,title:text.replace(/\s+/g," ").slice(0,72),messages:[],updated:Date.now(),loaded:true})}
   const chat=conversations.find(c=>c.id===activeId);const startId=chat.id;
-  chat.messages.push({role:"user",content:text});chat.updated=Date.now();
+  const history=buildHistory(chat);const userEntry={role:"user",content:text};chat.messages.push(userEntry);chat.updated=Date.now();
   welcomeEl.hidden=true;messagesEl.hidden=false;appendMessage("user",text);promptEl.value="";resizePrompt();showTyping();renderHistory();
   if(createdNew)replaceRoute({name:"chat",id:chat.id});
   const stillActive=()=>activeId===startId;const start=Date.now();
   try{
-    const payload={message:text,agent};if(state===AppState.AUTH&&chat.serverId)payload.conversationId=chat.serverId;
+    const payload={message:text,agent};if(history.length)payload.history=history;if(state===AppState.AUTH&&chat.serverId)payload.conversationId=chat.serverId;
     const data=await postJson("/api/chat",payload);
     if(typeof data.response!=="string"||!data.response.trim())throw new Error("AI tidak menghasilkan jawaban.");
     chat.messages.push({role:"assistant",content:data.response});chat.updated=Date.now();
@@ -344,8 +370,8 @@ async function submit(){
     if(state===AppState.AUTH&&!data.saved&&!data.saveWarning)verifySession();
   }catch(e){
     const message="Maaf, permintaan gagal diproses. "+(e.message||"Periksa koneksi lalu coba lagi.");
-    chat.messages.push({role:"assistant",content:message});
-    if(stillActive()){$("typing")?.remove();appendMessage("assistant",message)}
+    const at=chat.messages.indexOf(userEntry);if(at>=0)chat.messages.splice(at,1); /* giliran gagal tidak disimpan */
+    if(stillActive()){$("typing")?.remove();appendFailedTurn(message,text)}
     toast("Permintaan gagal");
   }finally{busy=false;lockComposer();renderHistory();if(!isDrawerMode())promptEl.focus()}
 }

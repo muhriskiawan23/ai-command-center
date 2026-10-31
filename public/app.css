@@ -44,3 +44,6 @@ body.drawer-open{overflow:hidden}
 .history{flex:1 1 auto;min-height:132px}
 /* Avatar asisten memakai logo BOR AI (teks ✳ lama disembunyikan, tetap ada untuk fallback) */
 .message.assistant .avatar{font-size:0;color:transparent;background:#161616 url(/logo-mark.svg) center/62% no-repeat;border:1px solid #333}
+.retry-btn{margin-top:10px;min-height:44px;padding:0 16px;border:1px solid #4a4a4a;border-radius:999px;background:#2b2b2b;color:var(--text);font-size:13px;font-weight:600}
+.retry-btn:hover{background:#363636}
+.message.failed .message-body{border-color:#5a3a3a}
