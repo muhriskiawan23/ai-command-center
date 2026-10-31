@@ -2,7 +2,7 @@
 <html lang="id">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,interactive-widget=resizes-content">
 <meta name="theme-color" content="#101010">
 <meta name="description" content="BOR AI — Intelligence without limits. Workspace AI multi-agent untuk berpikir, menulis, riset, dan membangun.">
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
@@ -12,25 +12,63 @@
 <title>BOR AI</title>
 <link rel="stylesheet" href="/app.css">
 </head>
-<body>
+<body data-state="initializing">
 <script src="https://accounts.google.com/gsi/client" async defer></script>
-<div class="app">
-<aside class="sidebar" id="sidebar">
-<div class="brand"><img class="brand-logo" src="/logo-mark.svg" alt="" width="28" height="28"><span>BOR AI</span></div>
-<section class="auth-panel" id="authPanel"><div class="auth-title" id="authTitle">Guest Mode</div><p class="auth-copy" id="authDescription">Chat hanya tersimpan sementara selama halaman ini terbuka.</p><div id="googleButton"></div><div id="userProfile" hidden></div><button class="auth-action" id="signOut" type="button" hidden>Keluar dari akun</button></section>
-<button class="new-chat" id="newChat"><span>＋</span> Chat baru</button>
+
+<!-- 1. Boot: ditampilkan sampai identitas (akun / guest / belum masuk) diketahui. Tidak ada UI chat atau riwayat di sini. -->
+<div class="gate" id="boot" role="status" aria-live="polite">
+  <div class="gate-card">
+    <img class="gate-logo" src="/logo-mark.svg" alt="" width="72" height="72">
+    <p class="gate-lead">Memuat BOR AI…</p>
+    <noscript><p class="gate-notice">BOR AI membutuhkan JavaScript untuk berjalan.</p></noscript>
+  </div>
+</div>
+
+<!-- 2. Welcome / pilihan masuk -->
+<main class="gate" id="gate" hidden>
+  <div class="gate-card">
+    <img class="gate-logo" src="/logo-mark.svg" alt="" width="72" height="72">
+    <h1 class="gate-title">BOR <span>AI</span></h1>
+    <p class="gate-tagline">Intelligence without limits</p>
+    <p class="gate-lead">Riset, analisis, ide, coding, dan perencanaan bersama asisten AI multi-agent.</p>
+    <p class="gate-notice" id="gateNotice" role="alert" hidden></p>
+    <div class="gate-actions">
+      <div class="google-slot">
+        <div id="googleButtonGate"></div>
+        <button class="gate-btn" id="googleDisabled" type="button" disabled hidden>Lanjutkan dengan Google</button>
+      </div>
+      <p class="gate-reason" id="googleReason" hidden></p>
+      <button class="link-btn" id="googleRetry" type="button" hidden>Coba muat Google Sign-In lagi</button>
+      <button class="gate-btn secondary" id="continueGuest" type="button">Lanjutkan sebagai Guest</button>
+      <button class="gate-btn secondary" id="gateRetry" type="button" hidden>Periksa status akun lagi</button>
+    </div>
+    <ul class="gate-facts">
+      <li><strong>Akun Google</strong> — riwayat chat tersimpan di server dan hanya ditampilkan untuk akun Anda. Bisa dihapus kapan saja.</li>
+      <li><strong>Guest</strong> — tanpa akun. Chat tidak disimpan dan hilang saat halaman dimuat ulang.</li>
+    </ul>
+    <p class="gate-fine">Pesan Anda diproses oleh layanan AI. Jangan mengirim data sensitif atau rahasia.</p>
+  </div>
+</main>
+
+<!-- 3. Workspace chat -->
+<div class="app" id="app" hidden>
+<div class="backdrop" id="backdrop" hidden></div>
+<aside class="sidebar" id="sidebar" aria-label="Navigasi">
+<div class="brand"><img class="brand-logo" src="/logo-mark.svg" alt="" width="28" height="28"><span>BOR AI</span><button class="drawer-close" id="drawerClose" type="button" aria-label="Tutup menu">✕</button></div>
+<section class="auth-panel" id="authPanel"><div class="auth-title" id="authTitle">Guest Mode</div><p class="auth-copy" id="authDescription"></p><div id="googleButton"></div><p class="auth-copy" id="googleSideStatus" hidden></p><div id="userProfile" hidden></div><button class="auth-action" id="signOut" type="button" hidden>Keluar dari akun</button></section>
+<button class="new-chat" id="newChat" type="button"><span>＋</span> Chat baru</button>
 <div class="side-label history-label"><span id="historyLabel">Sesi ini · Guest Mode</span><span id="historyCount"></span></div>
 <nav class="history" id="history" aria-label="Riwayat percakapan"></nav>
-<div class="side-bottom"><button class="side-action" id="clearHistory">⌫ Hapus semua riwayat</button><button class="side-action" id="about">◈ Tentang BOR AI</button></div>
+<div class="side-bottom"><button class="side-action" id="clearHistory" type="button">⌫ Hapus semua riwayat</button><button class="side-action" id="about" type="button">◈ Tentang BOR AI</button></div>
 </aside>
-<main class="workspace">
-<header class="topbar"><div style="display:flex;align-items:center;gap:10px"><button class="mobile-menu" id="menuBtn" aria-label="Buka menu">☰</button><div class="model-label">BOR AI <small>· Multi-agent</small></div></div><div class="health"><span class="dot" id="healthDot"></span><span id="healthText">Memeriksa layanan…</span></div></header>
+<main class="workspace" id="workspace">
+<header class="topbar"><div style="display:flex;align-items:center;gap:10px"><button class="mobile-menu" id="menuBtn" type="button" aria-label="Buka menu" aria-controls="sidebar" aria-expanded="false">☰</button><div class="model-label">BOR AI <small>· Multi-agent</small></div></div><div class="health"><span class="dot" id="healthDot"></span><span id="healthText">Memeriksa layanan…</span></div></header>
 <section class="conversation" id="conversation" aria-live="polite">
-<div class="welcome" id="welcome"><img class="welcome-logo-img" src="/logo-mark.svg" alt="" width="56" height="56"><h1>Ada yang bisa gw bantu?</h1><p>Riset, analisis, ide, coding, dan perencanaan — mulai dari satu pesan.</p><div class="suggestions"><button class="suggestion" data-prompt="Bantu gw menyusun rencana kerja yang realistis berdasarkan tujuan dan sumber daya yang tersedia."><strong>🧭 Susun rencana</strong><span>Ubah tujuan menjadi langkah konkret</span></button><button class="suggestion" data-prompt="Analisis masalah ini secara kritis, pisahkan fakta dan asumsi, lalu berikan rekomendasi."><strong>🔎 Analisis masalah</strong><span>Temukan opsi, risiko, dan trade-off</span></button><button class="suggestion" data-prompt="Bantu gw membuat ide konten media sosial yang spesifik, mudah dieksekusi, dan terukur."><strong>✍️ Buat ide konten</strong><span>Ide praktis dengan indikator keberhasilan</span></button><button class="suggestion" data-prompt="Tinjau kode atau arsitektur aplikasi ini, cari potensi bug, lalu sarankan perbaikan terprioritas."><strong>⌘ Bantu coding</strong><span>Debug, review, dan perbaikan bertahap</span></button></div></div>
+<div class="welcome" id="welcome"><img class="welcome-logo-img" src="/logo-mark.svg" alt="" width="56" height="56"><h1>Ada yang bisa gw bantu?</h1><p>Riset, analisis, ide, coding, dan perencanaan — mulai dari satu pesan.</p><div class="suggestions"><button class="suggestion" type="button" data-prompt="Bantu gw menyusun rencana kerja yang realistis berdasarkan tujuan dan sumber daya yang tersedia."><strong>🧭 Susun rencana</strong><span>Ubah tujuan menjadi langkah konkret</span></button><button class="suggestion" type="button" data-prompt="Analisis masalah ini secara kritis, pisahkan fakta dan asumsi, lalu berikan rekomendasi."><strong>🔎 Analisis masalah</strong><span>Temukan opsi, risiko, dan trade-off</span></button><button class="suggestion" type="button" data-prompt="Bantu gw membuat ide konten media sosial yang spesifik, mudah dieksekusi, dan terukur."><strong>✍️ Buat ide konten</strong><span>Ide praktis dengan indikator keberhasilan</span></button><button class="suggestion" type="button" data-prompt="Tinjau kode atau arsitektur aplikasi ini, cari potensi bug, lalu sarankan perbaikan terprioritas."><strong>⌘ Bantu coding</strong><span>Debug, review, dan perbaikan bertahap</span></button></div></div>
 <div class="messages" id="messages" hidden></div><section class="workflow" id="workflow" hidden><details><summary>Lihat proses multi-agent</summary><div id="workflowItems"></div></details></section>
 </section>
 <div class="composer-area"><form class="composer" id="chatForm"><textarea id="prompt" rows="1" maxlength="12000" placeholder="Kirim pesan ke BOR AI…" aria-label="Pesan untuk AI"></textarea><div class="composer-bottom"><div class="composer-tools"><select class="agent-select" id="agent" aria-label="Pilih mode AI"><option value="coordinator">✳ Multi-agent (disarankan)</option><option value="researcher">Researcher · Riset</option><option value="analyst">Analyst · Analisis</option><option value="writer">Writer · Penulisan</option><option value="fact_checker">Fact Checker · Audit</option><option value="strategist">Strategist · Strategi</option><option value="coder">Coder · Coding</option><option value="planner">Planner · Perencanaan</option><option value="critic">Critic · Kritik</option><option value="summarizer">Summarizer · Ringkasan</option></select><span class="hint">Enter untuk kirim · Shift+Enter baris baru</span></div><button class="send" id="send" type="submit" aria-label="Kirim pesan">↑</button></div></form><div class="footnote">AI dapat membuat kesalahan. Periksa kembali informasi penting sebelum mengambil keputusan.</div></div>
-<div class="toast" id="toast" hidden></div>
+<div class="toast" id="toast" role="status" hidden></div>
 </main>
 </div>
 <script src="/app.js" defer></script>
