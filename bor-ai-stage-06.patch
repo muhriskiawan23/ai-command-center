@@ -1,0 +1,634 @@
+From 1112d482677b330a3596ce756fe5e35a9c3f8f84 Mon Sep 17 00:00:00 2001
+From: "Claude (BOR AI audit)" <claude@example.invalid>
+Date: Sat, 31 Oct 2026 16:44:39 +0000
+Subject: [PATCH] feat(input): Enter = new line, arrow button is the only send;
+ audit fixes
+
+Input
+- Enter/Shift+Enter insert a new line on every device; no other shortcut sends
+- textarea auto-expands to min(220px,40dvh) then scrolls internally; send hit area 44px
+Audit fixes (docs/AUDIT-BOR-AI.md)
+- H1: platform capability notice on every agent (model no longer claims browsing/news)
+- M1: opening a conversation returns the newest 500 messages + truncated flag
+- M2: 150s client timeout with retry
+Tests: composer, XSS/headers, capabilities, conversation limits, hang/timeout
+---
+ README.md                         |  14 ++++
+ docs/AUDIT-BOR-AI.md              |  81 ++++++++++++++++++
+ public/app.css                    |   6 ++
+ public/app.js                     |  29 +++++--
+ public/index.html                 |   2 +-
+ src/index.js                      |  21 ++++-
+ tests/capabilities.test.js        |  22 +++++
+ tests/conversation-limits.test.js |  33 ++++++++
+ tests/e2e/chat-core.spec.js       |  20 ++++-
+ tests/e2e/composer.spec.js        | 133 ++++++++++++++++++++++++++++++
+ tests/e2e/foundation.spec.js      |  16 +---
+ tests/e2e/harness.js              |   5 +-
+ tests/e2e/security-ui.spec.js     |  42 ++++++++++
+ 13 files changed, 394 insertions(+), 30 deletions(-)
+ create mode 100644 docs/AUDIT-BOR-AI.md
+ create mode 100644 tests/capabilities.test.js
+ create mode 100644 tests/conversation-limits.test.js
+ create mode 100644 tests/e2e/composer.spec.js
+ create mode 100644 tests/e2e/security-ui.spec.js
+
+diff --git a/README.md b/README.md
+index e950541..7017b7e 100644
+--- a/README.md
++++ b/README.md
+@@ -99,3 +99,17 @@ The repository is prepared for a controlled deployment after the checks above. N
+ - **Failed turns are never stored.** A user message and its answer are written to D1 together, only after the AI succeeds. If generation fails, nothing is saved. The UI shows the error with a "Coba lagi" button; the failed turn is excluded from later context and is gone after a reload.
+ - **Retry** resends the same text and does not create duplicates.
+ 
++
++## Chat input behavior
++
++- **Enter inserts a new line** on every device (including Shift+Enter). Nothing else sends a message: Ctrl/Cmd+Enter does not either.
++- **The arrow button is the only way to send.** A message is sent once; double taps are ignored while a request is in flight.
++- The textarea grows with its content up to `min(220px, 40dvh)`, then scrolls internally.
++
++## Limits and timeouts
++
++- Opening a conversation returns at most the newest 500 messages (`truncated: true` when older ones exist). The model still only sees the last 12 turns.
++- The browser aborts a chat request after 150 seconds and shows a retry button. If the server finished after the browser gave up, the exchange may already be stored, so retrying can create a duplicate (no idempotency key yet).
++- Every agent receives a fixed "platform capabilities" notice (`CAPABILITY_NOTICE` in `src/index.js`): BOR AI is text-only and must not claim to browse, read links or files, run code, or use other apps. Update that notice whenever a real capability is added.
++
++See `docs/AUDIT-BOR-AI.md` for the full technical audit, severity ratings and what could not be tested.
+diff --git a/docs/AUDIT-BOR-AI.md b/docs/AUDIT-BOR-AI.md
+new file mode 100644
+index 0000000..bf08940
+--- /dev/null
++++ b/docs/AUDIT-BOR-AI.md
+@@ -0,0 +1,81 @@
++# Audit Teknis BOR AI — 31 Oktober 2026
++
++Branch audit: `bor-ai/stage-06-input-audit` (di atas `bor-ai/stage-05-chat-core`).
++Nomor baris merujuk ke berkas pada branch ini.
++
++## 1. Ruang lingkup dan batas audit (baca dulu)
++
++**Diaudit:** seluruh source code (`src/index.js`, `public/app.js`, `public/index.html`, `public/app.css`, `wrangler.jsonc`, `migrations/`, `.github/workflows/`), serta perilaku di browser untuk 8 ukuran layar memakai Worker yang sama dengan production terhadap SQLite sungguhan dan AI tiruan.
++
++**TIDAK dapat diuji dari lingkungan audit** (dinyatakan eksplisit, bukan diasumsikan lolos):
++
++| Hal | Alasan |
++|---|---|
++| URL preview/production (`*.workers.dev`) | Tidak terjangkau dari sandbox audit. Yang diaudit adalah kode yang sama, bukan URL hidup. |
++| Login Google asli | Butuh Client ID dan origin sungguhan. Uji memakai SDK tiruan; token palsu terbukti ditolak server (401). |
++| Kualitas dan perilaku model AI asli | Uji memakai AI tiruan agar tanpa biaya. Efektivitas perbaikan prompt pada Llama 3.3 70B belum teruji. |
++| Keyboard virtual Android/iOS sungguhan | Hanya ada **emulasi** (viewport menyusut). Bukan pengujian perangkat nyata. |
++| Safari/iOS dan Firefox | Seluruh uji browser memakai **Chromium saja**. |
++| Beban/stress dan biaya AI nyata | Tidak dijalankan. |
++| Pembaca layar (screen reader) | Tidak diuji. |
++
++**Koreksi atas klaim sebelumnya:** sebelumnya dinyatakan bahwa URL preview memakai database yang sama dengan production. Itu **asumsi yang tidak terverifikasi**. `wrangler.jsonc` tidak berisi `database_id`, sehingga cara Workers Builds meng-bind D1 untuk preview tidak dapat dipastikan dari kode. Periksa di dashboard Cloudflare.
++
++## 2. Ringkasan
++
++Tidak ada temuan **Critical** yang terkonfirmasi. Ada 1 temuan **High** yang sudah diperbaiki (klaim kemampuan palsu), 1 **High** yang terbuka (eksposur biaya), 5 **Medium**, dan beberapa **Low**.
++
++## 3. Temuan
++
++Status: **DIPERBAIKI** (ada test), **TERBUKA** (butuh keputusan/infrastruktur), **TERKONFIRMASI-KODE** (terbukti dari kode, belum direproduksi di runtime).
++
++| ID | Komponen | Temuan | Sev. | Root cause | Lokasi | Rekomendasi | Status |
++|---|---|---|---|---|---|---|---|
++| H1 | Multi-agent / Prompt | Model mengaku bisa "berita terkini" dan "mencari sumber online" (terlihat di screenshot mode Analyst) padahal tidak punya kemampuan itu | High | Hanya prompt Researcher dan penulis final yang melarang klaim browsing; agent lain tidak punya pernyataan kemampuan | `src/index.js:8` (`CAPABILITY_NOTICE`), dipasang di `runAgent` | Pernyataan kemampuan nyata di SEMUA agent; perbarui saat kemampuan baru benar-benar ada | **DIPERBAIKI**. `tests/capabilities.test.js` membuktikan pernyataan sampai ke semua agent. Efektivitas di model asli belum teruji. |
++| H2 | Biaya / Abuse | Endpoint chat publik (Guest) bisa memicu hingga ~12 panggilan model per permintaan. Batas hanya 20 permintaan/60 dtk per IP (per akun untuk user login). Penyerang terdistribusi tidak terbatas. | High | Desain publik tanpa kuota harian/anggaran global | `src/index.js:779-781`, `wrangler.jsonc` (`ratelimits`), `runMultiAgent` `:336` | Turnstile atau kuota harian guest, anggaran global, alert biaya Cloudflare | **TERBUKA** (butuh keputusan). Terkonfirmasi dari kode; tidak diuji beban. |
++| M1 | Riwayat / API | Membuka satu percakapan mengembalikan SEMUA pesan tanpa batas | Medium | Query tanpa `LIMIT` | `src/index.js:701` (sebelumnya `ORDER BY id ASC` tanpa batas) | Batasi dan beri tanda `truncated` | **DIPERBAIKI**: 500 pesan terbaru + `truncated`. `tests/conversation-limits.test.js` (1.200 pesan). |
++| M2 | Chat / Klien | Tidak ada timeout di klien: bila server macet, composer terkunci tanpa batas | Medium | `fetch` tanpa `AbortController` | `public/app.js:34` (`CHAT_TIMEOUT_MS`, `api()`) | Batas waktu + pesan jelas + Coba lagi | **DIPERBAIKI** (150 dtk). Test e2e "server macet". **Batasan terbuka:** setelah timeout server mungkin tetap menyimpan pasangan pesan; Coba lagi dapat menggandakan di database (tidak ada idempotency key). |
++| M3 | Riwayat | Daftar percakapan dibatasi 100 tanpa pagination; chat ke-101+ tak terjangkau dari UI (hanya bisa dihapus massal) | Medium | `LIMIT 100`, tanpa paginasi | `src/index.js:688` | Paginasi/infinite scroll, pencarian | **TERBUKA** (Tahap 3). Terkonfirmasi dari kode. |
++| M4 | Deployment | Dua jalur deploy: Cloudflare Workers Builds (terlihat di check PR) dan workflow `bor-ai-deploy.yml` (manual). Sumber kebenaran ambigu; risiko versi tertimpa atau tidak sinkron | Medium | Dua integrasi terpisah | `.github/workflows/bor-ai-deploy.yml`, check "Workers Builds" di PR | Tentukan satu jalur resmi untuk production | **TERBUKA**. Periksa pengaturan Git integration di dashboard Cloudflare. |
++| M5 | Orkestrasi | Tidak ada timeout/anggaran waktu di sisi server untuk `env.AI.run`; alur multi-agent berurutan | Medium | Panggilan model tanpa batas waktu per langkah maupun total | `src/index.js:241` (`generate`), `:336` | Timeout per panggilan dan anggaran total; hentikan lebih awal | **TERBUKA**. Tidak direproduksi. |
++| L1 | UI / Health | Indikator "Layanan terhubung" hanya berarti Worker hidup; tidak memeriksa D1 atau AI | Low | Endpoint health statis | `src/index.js:743` | `?deep=1` untuk cek D1; jangan tampilkan "terhubung" bila tidak diperiksa | **TERBUKA** |
++| L2 | Operasional | Tidak ada observability/log persisten di konfigurasi | Low | `observability` tidak diaktifkan | `wrangler.jsonc` | Aktifkan Workers Logs (cek biaya/retensi) | **TERBUKA** |
++| L3 | Auth | Logout hanya mengakhiri sesi perangkat ini | Low | Hapus satu token | `src/index.js:670` | Opsi "keluar dari semua perangkat" | **TERBUKA** |
++| L4 | Auth | `/api/auth/nonce` dan `/api/auth/google` tanpa rate limit sendiri | Low | Limiter hanya dipasang di chat | `src/index.js:~616-651` | Pasang limiter yang sama | **TERBUKA** |
++| L5 | CSP | `style-src` masih `'unsafe-inline'` | Low | Style inline di markup dan JS | `src/index.js:136` | Pindahkan ke kelas CSS | **TERBUKA** |
++| L6 | Penyimpanan | Tidak ada kuota penyimpanan per pengguna | Low | Pembatasan hanya per permintaan (12.000 karakter) | `src/index.js:3`, `:714-727` | Kuota per akun | **TERBUKA** |
++| L7 | Aksesibilitas | `aria-live="polite"` pada seluruh area percakapan dapat membuat pembaca layar membacakan ulang konten besar | Low | Region live terlalu luas | `public/index.html` (`#conversation`) | Region live khusus pesan baru | **HIPOTESIS**, tidak diuji dengan screen reader |
++| I1 | Auth | Perbandingan nonce `!==` (bukan constant-time) | Info | — | `src/index.js:626` | Tidak mendesak: nonce berumur 5 menit dan bukan rahasia jangka panjang | Info |
++
++## 4. Perilaku kolom input chat (sesuai spesifikasi)
++
++| Persyaratan | Implementasi | Status uji |
++|---|---|---|
++| Enter = baris baru | Handler Enter-kirim dihapus (`public/app.js:429` komentar penjelas). `enterkeyhint="enter"` pada textarea | Lolos: `tests/e2e/composer.spec.js` (Enter, Shift+Enter) di 8 viewport |
++| Tidak ada pintasan kirim lain | Ctrl/Meta+Enter tidak mengirim | Lolos |
++| Tombol panah = kirim, sekali | `lockComposer()` + flag `busy`; klik ganda tidak menggandakan | Lolos (`dblclick` → 1 POST, baris baru utuh) |
++| Auto-expand | `resizePrompt()` (`public/app.js:25`) memakai `scrollHeight` | Lolos |
++| Batas tinggi + scroll internal | CSS `max-height:min(220px,40dvh)`; `overflow-y:auto` hanya saat melebihi batas | Lolos (60 baris: tinggi ≤ batas, `scrollHeight > clientHeight`, `scrollTop` dapat digeser) |
++| Keyboard virtual tidak menutupi input | `interactive-widget=resizes-content`, `100dvh`, batas tinggi mengikuti layar | **Hanya emulasi viewport menyusut: lolos. Keyboard Android/iOS sungguhan: TIDAK DIUJI.** |
++| Tombol kirim tetap terlihat | — | Lolos (posisi di dalam viewport) |
++| Desain/posisi tombol dipertahankan | Hanya area sentuh diperluas ke 44px (`::after`) | Visual tidak berubah |
++
++Catatan produk: spesifikasi meminta Enter = baris baru di semua perangkat. Perlu diketahui, ChatGPT versi desktop sebenarnya mengirim saat Enter; hanya versi mobile yang membuat baris baru. Implementasi mengikuti spesifikasi tertulis (semua perangkat). Bila ingin, perilaku desktop dapat dijadikan pengaturan.
++
++## 5. Yang diperiksa dan dinyatakan aman (disertai bukti)
++
++| Area | Bukti |
++|---|---|
++| Verifikasi Google | `aud`, `iss`, `exp`, `nonce`, `email_verified` diperiksa (`src/index.js:~572-580`); token rusak/palsu → 401 tanpa detail |
++| Cookie sesi | `__Host-`, `Secure`, `HttpOnly`, `SameSite=Lax` (`:513`, `cookieHeader`); token disimpan sebagai hash SHA-256 (test) |
++| Isolasi data antar pengguna | Semua query memakai `user_id` dari sesi server; diuji pada SQLite nyata (`tests/isolation.test.js`) |
++| CSRF | Mutasi lintas-origin ditolak 403 meski cookie valid (test) |
++| XSS | `markdown()` meng-escape sebelum format; payload `<img onerror>`, `<script>`, `<svg onload>`, `javascript:` dari jawaban AI dan pesan pengguna tidak dieksekusi (`tests/e2e/security-ui.spec.js`) |
++| CSP | `script-src` tanpa `'unsafe-inline'`, tanpa skrip inline di HTML (`tests/security-headers.test.js`) |
++| Atomisitas penyimpanan | Pesan pengguna + jawaban ditulis dalam satu batch (`:727`); AI gagal → tidak ada yang tersimpan (test) |
++| Batas ukuran | Body maksimal 64 KB (`:3`); riwayat dibatasi (`:18`) |
++| Log | Hanya objek error yang dicatat; isi pesan pengguna tidak dicatat |
++
++## 6. Batas kemampuan produk saat ini (bukan bug)
++
++BOR AI saat ini adalah chat teks dengan satu model (`src/index.js:2`, Llama 3.3 70B di Workers AI). BOR AI **tidak** dapat: membuka tautan, mencari di internet, membaca file/lampiran, menjalankan atau membangun kode (APK, aplikasi), mengendalikan aplikasi atau browser, atau terintegrasi dengan layanan pihak ketiga. Pernyataan ini kini dipasang ke prompt semua agent (H1) agar model tidak mengklaim sebaliknya.
+diff --git a/public/app.css b/public/app.css
+index 58e1aee..7558cb9 100644
+--- a/public/app.css
++++ b/public/app.css
+@@ -47,3 +47,9 @@ body.drawer-open{overflow:hidden}
+ .retry-btn{margin-top:10px;min-height:44px;padding:0 16px;border:1px solid #4a4a4a;border-radius:999px;background:#2b2b2b;color:var(--text);font-size:13px;font-weight:600}
+ .retry-btn:hover{background:#363636}
+ .message.failed .message-body{border-color:#5a3a3a}
++
++/* Kolom input: tinggi tumbuh sampai batas lalu scroll internal; batas ikut tinggi layar agar tidak memenuhi layar saat keyboard terbuka */
++.composer textarea{max-height:min(220px,40dvh);overflow-y:hidden;overscroll-behavior:contain}
++/* Tombol kirim tetap 36px secara visual, area sentuhnya 44px */
++.send{position:relative}
++.send::after{content:"";position:absolute;inset:-4px}
+diff --git a/public/app.js b/public/app.js
+index 6ca2d3b..581319d 100644
+--- a/public/app.js
++++ b/public/app.js
+@@ -21,13 +21,25 @@ function markdown(input){let src=String(input||"").replace(/\r\n?/g,"\n");const
+ function appendMessage(role,content,scroll=true){const row=document.createElement("article");row.className="message "+role;const avatar=document.createElement("div");avatar.className="avatar";avatar.textContent=role==="user"?"B":"✳";const body=document.createElement("div");body.className="message-body";body.innerHTML=markdown(content);row.append(avatar,body);if(role==="assistant"){const actions=document.createElement("div");actions.className="message-actions";const copy=document.createElement("button");copy.className="tiny-btn";copy.textContent="Salin";copy.onclick=async()=>{try{await navigator.clipboard.writeText(content);toast("Jawaban disalin")}catch{toast("Gagal menyalin jawaban")}};actions.append(copy);body.append(actions)}messagesEl.append(row);if(scroll)conversation.scrollTop=conversation.scrollHeight;return row}
+ function showTyping(){const row=document.createElement("article");row.className="message assistant";row.id="typing";row.innerHTML='<div class="avatar">✳</div><div class="message-body"><span class="typing"><i></i><i></i><i></i></span> <span style="color:#aaa;font-size:12px">AI sedang berpikir…</span></div>';messagesEl.append(row);conversation.scrollTop=conversation.scrollHeight}
+ function renderWorkflow(steps){const items=$("workflowItems");items.replaceChildren();if(!Array.isArray(steps)||!steps.length){$("workflow").hidden=true;return}$("workflow").hidden=false;for(const s of steps){const d=document.createElement("details");d.className="workflow-step";const sum=document.createElement("summary");const title=document.createElement("span");title.textContent=s.agent||"Agent";const status=document.createElement("span");status.textContent=s.status==="completed"?"Selesai":s.status==="skipped"?"Dilewati":"Perlu diperiksa";sum.append(title,status);const text=document.createElement("div");text.className="step-text";text.textContent=s.output||"Tidak ada output";d.append(sum,text);items.append(d)}}
+-function resizePrompt(){promptEl.style.height="auto";promptEl.style.height=Math.min(promptEl.scrollHeight,220)+"px"}
++/* Textarea tumbuh mengikuti isi (scrollHeight) sampai max-height dari CSS, lalu berhenti dan scroll di dalam. */
++function resizePrompt(){
++  promptEl.style.height="auto";
++  const max=parseFloat(getComputedStyle(promptEl).maxHeight)||220;
++  const needed=promptEl.scrollHeight;
++  promptEl.style.height=Math.min(needed,max)+"px";
++  promptEl.style.overflowY=needed>max?"auto":"hidden";
++}
+ async function health(){try{const r=await fetch(API+"/api/health");if(!r.ok)throw Error();const d=await r.json();$("healthDot").className="dot "+(d.ok?"ok":"bad");$("healthText").textContent=d.ok?"Layanan terhubung":"Layanan bermasalah"}catch{$("healthDot").className="dot bad";$("healthText").textContent="Tidak terhubung"}}
+ 
++const CHAT_TIMEOUT_MS=150000; /* alur multi-agent bisa beberapa panggilan model berurutan; lewat ini dianggap macet */
+ async function api(path,opts={}){
+-  let res;
+-  try{res=await fetch(API+path,{credentials:"same-origin",...opts})}
+-  catch{throw Object.assign(new Error("Tidak dapat terhubung ke server. Periksa koneksi Anda."),{status:0})}
++  const {timeoutMs,...fetchOpts}=opts;let res,timer,timedOut=false;
++  const ctrl=timeoutMs?new AbortController():null;
++  if(ctrl){fetchOpts.signal=ctrl.signal;timer=setTimeout(()=>{timedOut=true;ctrl.abort()},timeoutMs)}
++  try{res=await fetch(API+path,{credentials:"same-origin",...fetchOpts})}
++  catch{
++    throw Object.assign(new Error(timedOut?"Server terlalu lama merespons (lebih dari "+Math.round(timeoutMs/1000)+" detik). Coba lagi.":"Tidak dapat terhubung ke server. Periksa koneksi Anda."),{status:0,timedOut});
++  }finally{clearTimeout(timer)}
+   let data=null;try{data=await res.json()}catch{}
+   if(!res.ok){
+     const err=new Error((data&&data.error)||"HTTP "+res.status);err.status=res.status;
+@@ -36,7 +48,7 @@ async function api(path,opts={}){
+   }
+   return data||{};
+ }
+-const postJson=(path,body)=>api(path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
++const postJson=(path,body,timeoutMs)=>api(path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body),timeoutMs});
+ 
+ /* ---------- 2. State aplikasi ---------- */
+ const AppState={INIT:"initializing",UNAUTH:"unauthenticated",GUEST:"guest",AUTH:"authenticated",EXPIRED:"session-expired",ERROR:"error"};
+@@ -289,7 +301,7 @@ async function showChat(cid){
+     try{
+       const d=await api("/api/conversations/"+encodeURIComponent(c.serverId));
+       if(seq!==navSeq)return null;
+-      c.messages=d.messages||[];c.loaded=true;c.title=d.conversation?.title||c.title;
++      c.messages=d.messages||[];c.loaded=true;c.title=d.conversation?.title||c.title;if(d.truncated)toast("Percakapan panjang: hanya 500 pesan terakhir yang ditampilkan.");
+     }catch(e){if(seq!==navSeq)return null;toast(e.message||"Gagal memuat chat");return false}
+     finally{if(seq===navSeq){loadingChat=false;lockComposer()}}
+   }
+@@ -359,7 +371,7 @@ async function submit(){
+   const stillActive=()=>activeId===startId;const start=Date.now();
+   try{
+     const payload={message:text,agent};if(history.length)payload.history=history;if(state===AppState.AUTH&&chat.serverId)payload.conversationId=chat.serverId;
+-    const data=await postJson("/api/chat",payload);
++    const data=await postJson("/api/chat",payload,CHAT_TIMEOUT_MS);
+     if(typeof data.response!=="string"||!data.response.trim())throw new Error("AI tidak menghasilkan jawaban.");
+     chat.messages.push({role:"assistant",content:data.response});chat.updated=Date.now();
+     if(stillActive()){$("typing")?.remove();appendMessage("assistant",data.response);renderWorkflow(data.steps)}
+@@ -414,7 +426,8 @@ $("gateRetry").addEventListener("click",boot);
+ $("googleRetry").addEventListener("click",()=>loadGoogle(true));
+ $("chatForm").addEventListener("submit",e=>{e.preventDefault();submit()});
+ promptEl.addEventListener("input",resizePrompt);
+-promptEl.addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey&&!e.isComposing){e.preventDefault();submit()}});
++/* Enter sengaja TIDAK mengirim: Enter = baris baru di semua perangkat. Satu-satunya cara kirim lewat UI adalah tombol panah. */
++window.addEventListener("resize",resizePrompt);
+ $("newChat").addEventListener("click",newChat);
+ $("clearHistory").addEventListener("click",clearHistory);
+ $("signOut").addEventListener("click",signOut);
+diff --git a/public/index.html b/public/index.html
+index a3fc673..63ee6d0 100644
+--- a/public/index.html
++++ b/public/index.html
+@@ -67,7 +67,7 @@
+ <div class="welcome" id="welcome"><img class="welcome-logo-img" src="/logo-mark.svg" alt="" width="56" height="56"><h1>Ada yang bisa gw bantu?</h1><p>Riset, analisis, ide, coding, dan perencanaan — mulai dari satu pesan.</p><div class="suggestions"><button class="suggestion" type="button" data-prompt="Bantu gw menyusun rencana kerja yang realistis berdasarkan tujuan dan sumber daya yang tersedia."><strong>🧭 Susun rencana</strong><span>Ubah tujuan menjadi langkah konkret</span></button><button class="suggestion" type="button" data-prompt="Analisis masalah ini secara kritis, pisahkan fakta dan asumsi, lalu berikan rekomendasi."><strong>🔎 Analisis masalah</strong><span>Temukan opsi, risiko, dan trade-off</span></button><button class="suggestion" type="button" data-prompt="Bantu gw membuat ide konten media sosial yang spesifik, mudah dieksekusi, dan terukur."><strong>✍️ Buat ide konten</strong><span>Ide praktis dengan indikator keberhasilan</span></button><button class="suggestion" type="button" data-prompt="Tinjau kode atau arsitektur aplikasi ini, cari potensi bug, lalu sarankan perbaikan terprioritas."><strong>⌘ Bantu coding</strong><span>Debug, review, dan perbaikan bertahap</span></button></div></div>
+ <div class="messages" id="messages" hidden></div><section class="workflow" id="workflow" hidden><details><summary>Lihat proses multi-agent</summary><div id="workflowItems"></div></details></section>
+ </section>
+-<div class="composer-area"><form class="composer" id="chatForm"><textarea id="prompt" rows="1" maxlength="12000" placeholder="Kirim pesan ke BOR AI…" aria-label="Pesan untuk AI"></textarea><div class="composer-bottom"><div class="composer-tools"><select class="agent-select" id="agent" aria-label="Pilih mode AI"><option value="coordinator">✳ Multi-agent (disarankan)</option><option value="researcher">Researcher · Riset</option><option value="analyst">Analyst · Analisis</option><option value="writer">Writer · Penulisan</option><option value="fact_checker">Fact Checker · Audit</option><option value="strategist">Strategist · Strategi</option><option value="coder">Coder · Coding</option><option value="planner">Planner · Perencanaan</option><option value="critic">Critic · Kritik</option><option value="summarizer">Summarizer · Ringkasan</option></select><span class="hint">Enter untuk kirim · Shift+Enter baris baru</span></div><button class="send" id="send" type="submit" aria-label="Kirim pesan">↑</button></div></form><div class="footnote">AI dapat membuat kesalahan. Periksa kembali informasi penting sebelum mengambil keputusan.</div></div>
++<div class="composer-area"><form class="composer" id="chatForm"><textarea id="prompt" rows="1" maxlength="12000" enterkeyhint="enter" autocapitalize="sentences" placeholder="Kirim pesan ke BOR AI…" aria-label="Pesan untuk AI"></textarea><div class="composer-bottom"><div class="composer-tools"><select class="agent-select" id="agent" aria-label="Pilih mode AI"><option value="coordinator">✳ Multi-agent (disarankan)</option><option value="researcher">Researcher · Riset</option><option value="analyst">Analyst · Analisis</option><option value="writer">Writer · Penulisan</option><option value="fact_checker">Fact Checker · Audit</option><option value="strategist">Strategist · Strategi</option><option value="coder">Coder · Coding</option><option value="planner">Planner · Perencanaan</option><option value="critic">Critic · Kritik</option><option value="summarizer">Summarizer · Ringkasan</option></select><span class="hint">Enter = baris baru · tekan ↑ untuk kirim</span></div><button class="send" id="send" type="submit" aria-label="Kirim pesan">↑</button></div></form><div class="footnote">AI dapat membuat kesalahan. Periksa kembali informasi penting sebelum mengambil keputusan.</div></div>
+ <div class="toast" id="toast" role="status" hidden></div>
+ </main>
+ </div>
+diff --git a/src/index.js b/src/index.js
+index 3b5238e..0217d28 100644
+--- a/src/index.js
++++ b/src/index.js
+@@ -1,6 +1,17 @@
+ 
+ const MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
+ const MAX_REQUEST_BYTES = 64 * 1024;
++const MESSAGES_PAGE_MAX = 500; // newest messages returned when opening one conversation
++
++// Shared by every agent. Without it the model happily claims abilities the platform does not have (browsing, news, files, apps).
++// Update this text whenever a real capability (e.g. link reading) is actually implemented.
++const CAPABILITY_NOTICE = [
++  "PLATFORM CAPABILITIES (authoritative; overrides anything else you believe about yourself):",
++  "- In this product you only exchange text. You CANNOT open links or URLs, browse or search the internet, read news or any current or real-time information, read attachments or files, run or compile code, build or publish apps, APKs or files, use other apps or accounts, or click, navigate or fill forms on any website.",
++  "- Never claim, imply or offer to do any of those things, and never present information as current or freshly retrieved. Your knowledge comes only from training data and this conversation, and may be outdated.",
++  "- If the user asks for one of them, say plainly, in the user's language, that BOR AI cannot do that yet, then offer what you CAN do in text: ask them to paste the page, text or data into the chat, write code or step-by-step instructions they can run themselves, or draft the content.",
++  "- If the user pasted the content of a link or document, you may analyze that pasted text, but you did not open the link yourself."
++].join("\n");
+ 
+ // Conversation memory sent to the model. Bounded so cost and latency stay predictable.
+ const HISTORY_MAX_MESSAGES = 12;        // most recent turns only
+@@ -184,7 +195,7 @@ async function runAgent(env, agentId, userMessage, context = "", history = []) {
+   const messages = [
+     {
+       role: "system",
+-      content: agent.prompt
++      content: `${agent.prompt}\n\n${CAPABILITY_NOTICE}`
+     },
+     ...history,
+     {
+@@ -686,8 +697,12 @@ async function handleConversationRoute(request, env, url) {
+   if (request.method === "GET") {
+     const conversation = await env.DB.prepare("SELECT id, title, created_at, updated_at FROM conversations WHERE id = ? AND user_id = ?").bind(conversationId, user.id).first();
+     if (!conversation) return json({ error: "Chat tidak ditemukan." }, 404);
+-    const result = await env.DB.prepare("SELECT role, content, created_at FROM messages WHERE conversation_id = ? AND user_id = ? ORDER BY id ASC").bind(conversationId, user.id).all();
+-    return json({ conversation, messages: result.results || [] });
++    // Bounded response: the newest MESSAGES_PAGE_MAX messages, oldest-first. `truncated` tells the client older ones exist.
++    const result = await env.DB.prepare("SELECT role, content, created_at FROM messages WHERE conversation_id = ? AND user_id = ? ORDER BY id DESC LIMIT ?").bind(conversationId, user.id, MESSAGES_PAGE_MAX + 1).all();
++    let rows = result.results || [];
++    const truncated = rows.length > MESSAGES_PAGE_MAX;
++    if (truncated) rows = rows.slice(0, MESSAGES_PAGE_MAX);
++    return json({ conversation, messages: rows.reverse(), truncated });
+   }
+   if (request.method === "DELETE") {
+     const result = await env.DB.prepare("DELETE FROM conversations WHERE id = ? AND user_id = ?").bind(conversationId, user.id).run();
+diff --git a/tests/capabilities.test.js b/tests/capabilities.test.js
+new file mode 100644
+index 0000000..76456f9
+--- /dev/null
++++ b/tests/capabilities.test.js
+@@ -0,0 +1,22 @@
++// Pernyataan kemampuan nyata harus ikut ke SETIAP agent, agar model tidak mengaku bisa browsing / berita / file.
++import test from "node:test";
++import assert from "node:assert/strict";
++import { startHarness } from "./e2e/harness.js";
++
++test("setiap mode agent menerima pernyataan kemampuan nyata di system prompt", async () => {
++  const app = await startHarness();
++  const agents = (await (await fetch(app.url + "/api/agents")).json()).agents.map((a) => a.id);
++  assert.ok(agents.length >= 9, `hanya ${agents.length} agent terdaftar`);
++  for (const agent of agents) {
++    app.aiCalls.length = 0;
++    const res = await fetch(app.url + "/api/chat", { method: "POST", headers: { "Content-Type": "application/json", Origin: app.url }, body: JSON.stringify({ message: "Apa yang bisa kamu lakukan?", agent }) });
++    assert.equal(res.status, 200, `agent ${agent} gagal: ${res.status}`);
++    assert.ok(app.aiCalls.length >= 1);
++    for (const call of app.aiCalls) {
++      const system = call.messages.find((m) => m.role === "system").content;
++      assert.match(system, /CANNOT open links or URLs/, `agent ${agent} tidak membawa pernyataan kemampuan`);
++      assert.match(system, /never present information as current/i);
++    }
++  }
++  await app.close();
++});
+diff --git a/tests/conversation-limits.test.js b/tests/conversation-limits.test.js
+new file mode 100644
+index 0000000..03b7a47
+--- /dev/null
++++ b/tests/conversation-limits.test.js
+@@ -0,0 +1,33 @@
++import test from "node:test";
++import assert from "node:assert/strict";
++import { startHarness, seedSession } from "./e2e/harness.js";
++
++test("membuka percakapan sangat panjang mengembalikan 500 pesan terbaru (urut lama→baru) dan menandai truncated", async () => {
++  const app = await startHarness();
++  const token = seedSession(app.db, { id: "u1", email: "a@b.c" });
++  const now = Math.floor(Date.now() / 1000);
++  app.db.sqlite.prepare("INSERT INTO conversations (id,user_id,title,created_at,updated_at) VALUES ('conv-panjang-01','u1','Panjang',?,?)").run(now, now);
++  const ins = app.db.sqlite.prepare("INSERT INTO messages (conversation_id,user_id,role,content,created_at) VALUES ('conv-panjang-01','u1',?,?,?)");
++  app.db.sqlite.exec("BEGIN");
++  for (let i = 1; i <= 1200; i++) ins.run(i % 2 ? "user" : "assistant", `pesan-${i}`, now);
++  app.db.sqlite.exec("COMMIT");
++  const res = await fetch(app.url + "/api/conversations/conv-panjang-01", { headers: { Cookie: `__Host-borai_session=${token}` } });
++  const body = await res.json();
++  assert.equal(res.status, 200);
++  assert.equal(body.messages.length, 500);
++  assert.equal(body.truncated, true);
++  assert.equal(body.messages[0].content, "pesan-701");      // 500 terbaru, mulai dari yang paling lama di antaranya
++  assert.equal(body.messages.at(-1).content, "pesan-1200");
++  await app.close();
++});
++
++test("percakapan pendek: semua pesan kembali, urut benar, truncated=false", async () => {
++  const app = await startHarness();
++  const token = seedSession(app.db, { id: "u1", email: "a@b.c" });
++  const first = await (await fetch(app.url + "/api/chat", { method: "POST", headers: { "Content-Type": "application/json", Origin: app.url, Cookie: `__Host-borai_session=${token}` }, body: JSON.stringify({ message: "satu" }) })).json();
++  const body = await (await fetch(app.url + "/api/conversations/" + first.conversationId, { headers: { Cookie: `__Host-borai_session=${token}` } })).json();
++  assert.deepEqual(body.messages.map((m) => m.role), ["user", "assistant"]);
++  assert.equal(body.messages[0].content, "satu");
++  assert.equal(body.truncated, false);
++  await app.close();
++});
+diff --git a/tests/e2e/chat-core.spec.js b/tests/e2e/chat-core.spec.js
+index 7857cb3..d55ba57 100644
+--- a/tests/e2e/chat-core.spec.js
++++ b/tests/e2e/chat-core.spec.js
+@@ -10,7 +10,7 @@ async function enterGuest(page, app) {
+ }
+ async function send(page, text) {
+   await page.locator("#prompt").fill(text);
+-  await page.locator("#prompt").press("Enter");
++  await page.locator("#send").click();
+ }
+ 
+ test.describe("CHAT — memori percakapan, kegagalan, batas laju", () => {
+@@ -122,3 +122,21 @@ test.describe("CHAT — memori percakapan, kegagalan, batas laju", () => {
+     });
+   });
+ });
++
++test("server macet: permintaan dibatalkan setelah batas waktu, ada pesan jelas + Coba lagi, composer tidak terkunci selamanya", async ({ page, app }) => {
++  await page.clock.install();
++  await page.goto(app.url);
++  await page.locator("#continueGuest").click();
++  app.control.aiHang = true;                                   // server tidak pernah menjawab
++  await page.locator("#prompt").fill("Tolong jawab");
++  await page.locator("#send").click();
++  await expect(page.locator("#typing")).toBeVisible();
++  await page.clock.fastForward(151_000);                      // melewati CHAT_TIMEOUT_MS
++  await expect(page.locator(".message.failed")).toContainText("terlalu lama merespons");
++  await expect(page.locator(".retry-btn")).toBeVisible();
++  await expect(page.locator("#prompt")).toBeEditable();
++  await expect(page.locator("#send")).toBeEnabled();
++  app.control.aiHang = false;
++  await page.locator(".retry-btn").click();
++  await expect(page.locator(".message.assistant:not(#typing):not(.failed)")).toHaveCount(1);
++});
+diff --git a/tests/e2e/composer.spec.js b/tests/e2e/composer.spec.js
+new file mode 100644
+index 0000000..e9d0dd4
+--- /dev/null
++++ b/tests/e2e/composer.spec.js
+@@ -0,0 +1,133 @@
++import { test, expect } from "./fixtures.js";
++
++async function enterGuest(page, app) {
++  await page.goto(app.url);
++  await page.locator("#continueGuest").click();
++  await expect(page.locator("#app")).toBeVisible();
++}
++const metrics = (page) => page.evaluate(() => {
++  const el = document.getElementById("prompt");
++  return { h: el.getBoundingClientRect().height, scrollH: el.scrollHeight, clientH: el.clientHeight, overflowY: getComputedStyle(el).overflowY, max: parseFloat(getComputedStyle(el).maxHeight) };
++});
++const lines = (n) => Array.from({ length: n }, (_, i) => `baris ${i + 1}`).join("\n");
++
++test.describe("INPUT — Enter = baris baru, tombol panah = kirim", () => {
++  test("Enter (dan Shift+Enter) membuat baris baru dan TIDAK mengirim pesan", async ({ page, app }) => {
++    await enterGuest(page, app);
++    const posts = [];
++    page.on("request", (r) => { if (r.url().endsWith("/api/chat") && r.method() === "POST") posts.push(r); });
++    const box = page.locator("#prompt");
++    await box.click();
++    await box.pressSequentially("baris1");
++    await box.press("Enter");
++    await box.pressSequentially("baris2");
++    await box.press("Shift+Enter");
++    await box.pressSequentially("baris3");
++    expect(await box.inputValue()).toBe("baris1\nbaris2\nbaris3");
++    await page.waitForTimeout(300);
++    expect(posts.length).toBe(0);
++    await expect(page.locator(".message")).toHaveCount(0);
++  });
++
++  test("tidak ada pintasan keyboard lain yang mengirim (Ctrl+Enter, Meta+Enter)", async ({ page, app }) => {
++    await enterGuest(page, app);
++    const posts = [];
++    page.on("request", (r) => { if (r.url().endsWith("/api/chat")) posts.push(r); });
++    const box = page.locator("#prompt");
++    await box.fill("tes");
++    await box.press("Control+Enter");
++    await box.press("Meta+Enter");
++    await page.waitForTimeout(300);
++    expect(posts.length).toBe(0);
++  });
++
++  test("tombol panah mengirim satu kali, baris baru tetap utuh, dan klik ganda tidak menggandakan", async ({ page, app }) => {
++    await enterGuest(page, app);
++    const posts = [];
++    page.on("request", (r) => { if (r.url().endsWith("/api/chat") && r.method() === "POST") posts.push(JSON.parse(r.postData())); });
++    await page.locator("#prompt").fill("baris1\nbaris2");
++    await page.locator("#send").dblclick();
++    await expect(page.locator(".message.assistant:not(#typing)")).toHaveCount(1);
++    expect(posts.length).toBe(1);
++    expect(posts[0].message).toBe("baris1\nbaris2");
++    await expect(page.locator(".message.user")).toHaveCount(1);
++  });
++
++  test("tombol panah di kolom kosong atau hanya spasi tidak mengirim apa pun", async ({ page, app }) => {
++    await enterGuest(page, app);
++    const posts = [];
++    page.on("request", (r) => { if (r.url().endsWith("/api/chat")) posts.push(r); });
++    await page.locator("#send").click();
++    await page.locator("#prompt").fill("   \n  ");
++    await page.locator("#send").click();
++    await page.waitForTimeout(300);
++    expect(posts.length).toBe(0);
++  });
++
++  test("auto-expand: tinggi bertambah mengikuti baris, berhenti di batas, lalu scroll internal; kembali kecil setelah kirim", async ({ page, app }) => {
++    await enterGuest(page, app);
++    const box = page.locator("#prompt");
++    const start = await metrics(page);
++    await box.fill(lines(4)); await box.dispatchEvent("input");
++    const four = await metrics(page);
++    expect(four.h).toBeGreaterThan(start.h + 20);
++    expect(four.overflowY).toBe("hidden");                 // belum mencapai batas: tanpa scrollbar
++
++    await box.fill(lines(60)); await box.dispatchEvent("input");
++    const many = await metrics(page);
++    expect(many.h).toBeLessThanOrEqual(many.max + 1);      // tidak melewati batas
++    expect(many.max).toBeGreaterThan(0);
++    expect(many.h).toBeLessThan(page.viewportSize().height * 0.5);   // tidak memenuhi layar
++    expect(many.overflowY).toBe("auto");
++    expect(many.scrollH).toBeGreaterThan(many.clientH);    // isi lebih panjang dari kotak → bisa di-scroll
++    const scrolled = await page.evaluate(() => { const el = document.getElementById("prompt"); el.scrollTop = 99999; return el.scrollTop; });
++    expect(scrolled).toBeGreaterThan(0);
++
++    await page.locator("#send").click();
++    await expect(page.locator(".message.assistant:not(#typing)")).toHaveCount(1);
++    const after = await metrics(page);
++    expect(after.h).toBeLessThan(start.h + 5);              // kolom kembali ke ukuran awal
++  });
++
++  test("tombol kirim tetap terlihat dan tidak keluar layar saat kolom input penuh", async ({ page, app }) => {
++    await enterGuest(page, app);
++    await page.locator("#prompt").fill(lines(60));
++    await page.locator("#prompt").dispatchEvent("input");
++    const vp = page.viewportSize();
++    const send = await page.locator("#send").boundingBox();
++    const box = await page.locator("#prompt").boundingBox();
++    expect(send.y).toBeGreaterThanOrEqual(0); expect(send.y + send.height).toBeLessThanOrEqual(vp.height);
++    expect(send.x + send.width).toBeLessThanOrEqual(vp.width);
++    expect(box.y).toBeGreaterThanOrEqual(0);
++    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
++  });
++
++  test("EMULASI keyboard virtual: saat tinggi viewport menyusut, kolom input dan tombol kirim tetap terlihat; layout pulih saat keyboard hilang", async ({ page, app }) => {
++    // Ini hanya mengecilkan viewport untuk meniru keyboard; BUKAN pengujian keyboard Android/iOS sungguhan.
++    await enterGuest(page, app);
++    const full = page.viewportSize();
++    await page.locator("#prompt").fill(lines(12));
++    await page.locator("#prompt").dispatchEvent("input");
++    const keyboard = Math.round(full.height * 0.45);
++    await page.setViewportSize({ width: full.width, height: full.height - keyboard });
++    await page.waitForTimeout(150);
++    const vp = page.viewportSize();
++    const box = await page.locator("#prompt").boundingBox();
++    const send = await page.locator("#send").boundingBox();
++    expect(box.y).toBeGreaterThanOrEqual(0); expect(box.y + box.height).toBeLessThanOrEqual(vp.height);
++    expect(send.y + send.height).toBeLessThanOrEqual(vp.height);
++    expect(box.height).toBeLessThan(vp.height * 0.6);       // batas tinggi mengikuti layar yang menyusut
++    await page.setViewportSize(full);
++    await page.waitForTimeout(150);
++    const back = await page.locator("#send").boundingBox();
++    expect(back.y + back.height).toBeLessThanOrEqual(full.height);
++    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
++  });
++
++  test("atribut keyboard mobile: enterkeyhint=enter dan petunjuk teks sesuai perilaku baru", async ({ page, app }) => {
++    await enterGuest(page, app);
++    await expect(page.locator("#prompt")).toHaveAttribute("enterkeyhint", "enter");
++    await expect(page.locator(".hint")).toContainText("Enter = baris baru");
++    expect(await page.locator("#chatForm").getAttribute("action")).toBeNull();   // tidak ada submit native ke server
++  });
++});
+diff --git a/tests/e2e/foundation.spec.js b/tests/e2e/foundation.spec.js
+index 61b592d..07f6a84 100644
+--- a/tests/e2e/foundation.spec.js
++++ b/tests/e2e/foundation.spec.js
+@@ -10,7 +10,7 @@ async function enterGuest(page, app) {
+ }
+ async function send(page, text) {
+   await page.locator("#prompt").fill(text);
+-  await page.locator("#prompt").press("Enter");
++  await page.locator("#send").click();
+ }
+ const noHorizontalOverflow = (page) => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
+ 
+@@ -294,20 +294,6 @@ test.describe("NAV — drawer, Back/Forward, rute", () => {
+     expect(app.db.sqlite.prepare("SELECT COUNT(*) n FROM messages WHERE conversation_id = 'conv-lama-000001'").get().n).toBe(4);
+   });
+ 
+-  test("composer: Shift+Enter baris baru, Enter kirim, dan double-submit dicegah", async ({ page, app }) => {
+-    await enterGuest(page, app);
+-    const posts = [];
+-    page.on("request", (r) => { if (r.url().endsWith("/api/chat") && r.method() === "POST") posts.push(r); });
+-    await page.locator("#prompt").fill("baris1");
+-    await page.locator("#prompt").press("Shift+Enter");
+-    await page.locator("#prompt").type("baris2");
+-    expect(await page.locator("#prompt").inputValue()).toBe("baris1\nbaris2");
+-    await page.locator("#prompt").press("Enter");
+-    await page.locator("#prompt").press("Enter");
+-    await expect(page.locator(".message.assistant:not(#typing)")).toHaveCount(1);
+-    expect(posts.length).toBe(1);
+-  });
+-
+   test("tidak ada overflow horizontal pada Welcome maupun chat dengan teks panjang", async ({ page, app }) => {
+     await page.goto(app.url);
+     expect(await noHorizontalOverflow(page)).toBe(true);
+diff --git a/tests/e2e/harness.js b/tests/e2e/harness.js
+index 8e7ddfb..4b848ce 100644
+--- a/tests/e2e/harness.js
++++ b/tests/e2e/harness.js
+@@ -47,12 +47,13 @@ export function seedConversation(db, { id, userId, title, updatedAt, messages =
+ export async function startHarness({ port = 0, googleClientId = "test-client.apps.googleusercontent.com", aiDelayMs = 0, chatLimit = 0 } = {}) {
+   const db = createD1();
+   const aiCalls = [];
+-  const control = { aiFail: false };   // ubah dari test: control.aiFail = true membuat AI melempar error
++  const control = { aiFail: false, aiText: null, aiHang: false };   // ubah dari test: control.aiFail = true membuat AI melempar error
+   const limiterHits = new Map();
+   const env = {
+     DB: db,
+     GOOGLE_CLIENT_ID: googleClientId || undefined,
+-    AI: { async run(_model, options) { if (control.aiFail) throw new Error("AI dimatikan oleh test"); aiCalls.push(options); if (aiDelayMs) await new Promise((r) => setTimeout(r, aiDelayMs)); const asked = options.messages.find((m) => m.role === "user")?.content ?? ""; return { response: `Balasan uji untuk pesan Anda: "${String(asked).slice(0, 60)}". Ini jawaban deterministik dari stub AI untuk pengujian antarmuka.\nJawaban sengaja dibuat cukup panjang dan berisi kalimat lengkap agar lolos pemeriksaan kualitas agent pada alur multi-agent.` }; } },
++    AI: { async run(_model, options) { if (control.aiFail) throw new Error("AI dimatikan oleh test"); if (control.aiHang) await new Promise(() => {}); aiCalls.push(options); if (aiDelayMs) await new Promise((r) => setTimeout(r, aiDelayMs)); const asked = options.messages.find((m) => m.role === "user")?.content ?? ""; if (control.aiText) return { response: control.aiText };
++      return { response: `Balasan uji untuk pesan Anda: "${String(asked).slice(0, 60)}". Ini jawaban deterministik dari stub AI untuk pengujian antarmuka.\nJawaban sengaja dibuat cukup panjang dan berisi kalimat lengkap agar lolos pemeriksaan kualitas agent pada alur multi-agent.` }; } },
+     // Rate limiter tiruan: maksimal `chatLimit` permintaan per key (0 = tanpa pembatasan).
+     ...(chatLimit ? { CHAT_LIMITER: { async limit({ key }) { const n = (limiterHits.get(key) || 0) + 1; limiterHits.set(key, n); return { success: n <= chatLimit }; } } } : {}),
+     ASSETS: {
+diff --git a/tests/e2e/security-ui.spec.js b/tests/e2e/security-ui.spec.js
+new file mode 100644
+index 0000000..83dfde9
+--- /dev/null
++++ b/tests/e2e/security-ui.spec.js
+@@ -0,0 +1,42 @@
++import { test, expect } from "./fixtures.js";
++
++// Memastikan fungsi markdown() sungguhan tidak mengeksekusi HTML/URL berbahaya, baik dari jawaban AI maupun dari pesan pengguna.
++const PAYLOAD = [
++  '<img src=x onerror="window.__xss=1">',
++  '<script>window.__xss=1</script>',
++  '<svg onload="window.__xss=1"></svg>',
++  '[klik](javascript:window.__xss=1)',
++  '**tebal** `kode`',
++  '```html',
++  '<img src=x onerror="window.__xss=1">',
++  '```'
++].join("\n");
++
++test("HTML dan tautan berbahaya dari jawaban AI maupun pesan pengguna ditampilkan sebagai teks, tidak dieksekusi", async ({ page, app }) => {
++  app.control.aiText = PAYLOAD;
++  await page.goto(app.url);
++  await page.locator("#continueGuest").click();
++  await page.locator("#prompt").fill(PAYLOAD);
++  await page.locator("#send").click();
++  await expect(page.locator(".message.assistant:not(#typing)")).toHaveCount(1);
++  await page.waitForTimeout(300);
++  expect(await page.evaluate(() => window.__xss)).toBeUndefined();
++  const dom = await page.evaluate(() => ({
++    injected: document.querySelectorAll(".message-body img, .message-body script, .message-body svg, .message-body iframe").length,
++    jsLinks: [...document.querySelectorAll("a")].filter((a) => /^\s*javascript:/i.test(a.getAttribute("href") || "")).length,
++    handlers: [...document.querySelectorAll(".message-body *")].filter((el) => [...el.attributes].some((a) => /^on/i.test(a.name))).length
++  }));
++  expect(dom).toEqual({ injected: 0, jsLinks: 0, handlers: 0 });
++  await expect(page.locator(".message.assistant .message-body strong")).toContainText("tebal");   // markdown aman tetap bekerja
++  await expect(page.locator(".message.assistant .message-body")).toContainText("<img src=x");       // tampil sebagai teks
++});
++
++test("header keamanan halaman: CSP, nosniff, anti-framing, referrer policy", async ({ page, app }) => {
++  const res = await page.request.get(app.url + "/");
++  const h = res.headers();
++  expect(h["content-security-policy"]).toContain("frame-ancestors 'none'");
++  expect(h["x-content-type-options"]).toBe("nosniff");
++  expect(h["referrer-policy"]).toBeTruthy();
++  const api = await page.request.get(app.url + "/api/health");
++  expect(api.headers()["cache-control"]).toContain("no-store");
++});
+-- 
+2.43.0
+
