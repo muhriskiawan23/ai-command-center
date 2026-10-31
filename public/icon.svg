@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#0B0D12"/><g transform="translate(106 104) scale(.6)"><defs>
+<linearGradient id="a" x1="68" y1="55" x2="495" y2="285" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#14A8FF"/><stop offset="1" stop-color="#38DDFF"/></linearGradient>
+<linearGradient id="t" x1="95" y1="215" x2="335" y2="290" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#0A2BF0"/><stop offset=".5" stop-color="#1596FF"/><stop offset="1" stop-color="#6CF4FF"/></linearGradient>
+<linearGradient id="c" x1="85" y1="500" x2="515" y2="400" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#27D9FF"/><stop offset=".18" stop-color="#0B2BE8"/><stop offset=".62" stop-color="#1450FF"/><stop offset="1" stop-color="#1FA0FF"/></linearGradient>
+</defs>
+<path fill="url(#a)" d="M68 55H385C452 55 493 96 493 152C493 205 462 250 430 285L350 247C385 232 398 212 398 195C398 172 382 160 355 160H170L152 147Z"/>
+<path fill="url(#c)" d="M180 410H350C400 410 428 385 428 345C428 318 410 300 350 252L430 285C490 310 515 350 515 395C515 455 470 502 400 502H85C100 455 140 418 180 410Z"/>
+<path fill="#5CE3FF" opacity=".55" d="M430 285C480 320 500 355 495 395C490 450 450 495 400 502C440 480 470 440 470 395C470 350 455 315 430 285Z"/>
+<path fill="url(#t)" d="M83 205C83 170 110 152 140 168L322 270C335 278 335 292 322 300L180 410C130 445 98 470 85 502H83Z"/>
+</g></svg>

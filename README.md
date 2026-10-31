@@ -1,4 +1,4 @@
-# AI Command Center
+# BOR AI
 
 Public AI workspace with Google sign-in, temporary guest sessions, private per-account chat history on Cloudflare D1, Workers AI inference, and a multi-agent coordinator.
 
@@ -9,8 +9,8 @@ Public AI workspace with Google sign-in, temporary guest sessions, private per-a
 - Specialist modes: Researcher, Analyst, Writer, Fact Checker, Strategist, Coder, Planner, Critic, and Summarizer.
 - Explicit response quality gates for exact numbered-item requests and zero-budget promotion recommendations.
 - Request validation, a 64 KB streaming request-body cap, sanitized model errors, and API method checks.
-- Cloudflare chat rate limiting: 20 accepted chat requests per 60 seconds per client IP and Cloudflare location.
-- Public Guest Mode: conversations exist only in page memory and disappear when the visitor leaves or reloads.
+- Cloudflare chat rate limiting: 20 accepted chat requests per 60 seconds per client IP and Cloudflare location. Signed-in users are additionally limited per account, so quota cannot be multiplied by changing IP.
+- Public Guest Mode: conversations exist only in page memory and disappear when the visitor leaves or reloads. Only a "guest chosen" flag is kept in `sessionStorage` (per tab) so a refresh does not return to the Welcome screen; no chat content is ever stored.
 - Google sign-up/sign-in with server-verified ID tokens and secure, HttpOnly sessions.
 - Signed-in users get private D1-backed conversation history, individual chat deletion, and delete-all history.
 - Conversation read/delete endpoints enforce account ownership on the server.
@@ -89,3 +89,13 @@ Do not treat a Wrangler dry run or health check as proof that live AI inference 
 ## Current release boundary
 
 The repository is prepared for a controlled deployment after the checks above. No production deployment or pull-request merge is performed automatically by CI.
+
+## Conversation memory and failure behavior
+
+- **What the model sees.** Each request sends the most recent turns of the same conversation: at most 12 messages, 8,000 characters in total, 2,000 per message, always starting with a user turn. Older turns are dropped, not summarized.
+- **Signed-in users:** the server loads the history from D1 (after verifying ownership). Any `history` sent by the client is ignored.
+- **Guests:** the client sends its in-memory history. The server validates the shape (`role` is `user`/`assistant`, `content` is a string, at most 40 items) and applies the same bounds. It is treated as untrusted user text.
+- **Multi-agent flow:** history is given to the Researcher and to every Writer pass; the other agents work from the Researcher's output.
+- **Failed turns are never stored.** A user message and its answer are written to D1 together, only after the AI succeeds. If generation fails, nothing is saved. The UI shows the error with a "Coba lagi" button; the failed turn is excluded from later context and is gone after a reload.
+- **Retry** resends the same text and does not create duplicates.
+
