@@ -44,13 +44,17 @@ export function seedConversation(db, { id, userId, title, updatedAt, messages = 
   for (const m of messages) db.sqlite.prepare("INSERT INTO messages (conversation_id,user_id,role,content,created_at) VALUES (?,?,?,?,?)").run(id, userId, m.role, m.content, updatedAt);
 }
 
-export async function startHarness({ port = 0, googleClientId = "test-client.apps.googleusercontent.com", aiDelayMs = 0 } = {}) {
+export async function startHarness({ port = 0, googleClientId = "test-client.apps.googleusercontent.com", aiDelayMs = 0, chatLimit = 0 } = {}) {
   const db = createD1();
   const aiCalls = [];
+  const control = { aiFail: false };   // ubah dari test: control.aiFail = true membuat AI melempar error
+  const limiterHits = new Map();
   const env = {
     DB: db,
     GOOGLE_CLIENT_ID: googleClientId || undefined,
-    AI: { async run(_model, options) { aiCalls.push(options); if (aiDelayMs) await new Promise((r) => setTimeout(r, aiDelayMs)); const asked = options.messages.find((m) => m.role === "user")?.content ?? ""; return { response: `Balasan uji untuk pesan Anda: "${String(asked).slice(0, 60)}". Ini jawaban deterministik dari stub AI untuk pengujian antarmuka.` }; } },
+    AI: { async run(_model, options) { if (control.aiFail) throw new Error("AI dimatikan oleh test"); aiCalls.push(options); if (aiDelayMs) await new Promise((r) => setTimeout(r, aiDelayMs)); const asked = options.messages.find((m) => m.role === "user")?.content ?? ""; return { response: `Balasan uji untuk pesan Anda: "${String(asked).slice(0, 60)}". Ini jawaban deterministik dari stub AI untuk pengujian antarmuka.\nJawaban sengaja dibuat cukup panjang dan berisi kalimat lengkap agar lolos pemeriksaan kualitas agent pada alur multi-agent.` }; } },
+    // Rate limiter tiruan: maksimal `chatLimit` permintaan per key (0 = tanpa pembatasan).
+    ...(chatLimit ? { CHAT_LIMITER: { async limit({ key }) { const n = (limiterHits.get(key) || 0) + 1; limiterHits.set(key, n); return { success: n <= chatLimit }; } } } : {}),
     ASSETS: {
       async fetch(request) {
         let path = new URL(request.url).pathname; if (path === "/") path = "/index.html";
@@ -72,6 +76,7 @@ export async function startHarness({ port = 0, googleClientId = "test-client.app
     res.writeHead(response.status, headers); res.end(Buffer.from(await response.arrayBuffer()));
   });
   await new Promise((r) => server.listen(port, r));
+  server.unref(); // kegagalan assert di test tidak boleh menahan proses tetap hidup
   const url = `http://localhost:${server.address().port}`; // cookie __Host- hanya diterima Chromium di localhost
-  return { url, db, env, aiCalls, close: () => new Promise((r) => { server.close(r); server.closeAllConnections?.(); }) };
+  return { url, db, env, aiCalls, control, limiterHits, close: () => new Promise((r) => { server.close(r); server.closeAllConnections?.(); }) };
 }

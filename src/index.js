@@ -2,6 +2,47 @@
 const MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 const MAX_REQUEST_BYTES = 64 * 1024;
 
+// Conversation memory sent to the model. Bounded so cost and latency stay predictable.
+const HISTORY_MAX_MESSAGES = 12;        // most recent turns only
+const HISTORY_MAX_CHARS = 8000;         // total characters across all history messages
+const HISTORY_MESSAGE_MAX_CHARS = 2000; // a single long message is truncated
+const HISTORY_MAX_INPUT_ITEMS = 40;     // reject absurd client payloads outright
+
+// Keep the most recent messages that fit the budget; the window must start with a user turn.
+function trimHistory(items) {
+  const kept = [];
+  let total = 0;
+  for (let i = items.length - 1; i >= 0 && kept.length < HISTORY_MAX_MESSAGES; i--) {
+    const content = String(items[i].content ?? "").trim().slice(0, HISTORY_MESSAGE_MAX_CHARS);
+    if (!content) continue;
+    if (total + content.length > HISTORY_MAX_CHARS) break;
+    total += content.length;
+    kept.unshift({ role: items[i].role === "assistant" ? "assistant" : "user", content });
+  }
+  while (kept.length && kept[0].role !== "user") kept.shift();
+  return kept;
+}
+
+// Client-supplied history (used for guests only). Strict shape check; content is untrusted user text either way.
+function parseClientHistory(raw) {
+  if (raw === undefined || raw === null) return { history: [] };
+  if (!Array.isArray(raw) || raw.length > HISTORY_MAX_INPUT_ITEMS) return { error: "Format riwayat percakapan tidak valid." };
+  for (const item of raw) {
+    if (!item || typeof item !== "object" || !["user", "assistant"].includes(item.role) || typeof item.content !== "string") {
+      return { error: "Format riwayat percakapan tidak valid." };
+    }
+  }
+  return { history: trimHistory(raw) };
+}
+
+// Signed-in users: the server is the source of truth (ownership already verified by the caller).
+async function loadStoredHistory(env, user, conversationId) {
+  const result = await env.DB.prepare(
+    "SELECT role, content FROM messages WHERE conversation_id = ? AND user_id = ? ORDER BY id DESC LIMIT ?"
+  ).bind(conversationId, user.id, HISTORY_MAX_MESSAGES).all();
+  return trimHistory((result.results || []).reverse());
+}
+
 const AGENTS = {
   coordinator: {
     name: "Coordinator",
@@ -133,7 +174,7 @@ async function readBodyWithinLimit(request, maxBytes) {
   }
 }
 
-async function runAgent(env, agentId, userMessage, context = "") {
+async function runAgent(env, agentId, userMessage, context = "", history = []) {
   const agent = AGENTS[agentId];
 
   if (!agent) {
@@ -145,6 +186,7 @@ async function runAgent(env, agentId, userMessage, context = "") {
       role: "system",
       content: agent.prompt
     },
+    ...history,
     {
       role: "user",
       content: context
@@ -280,14 +322,16 @@ function hasPaidIncentiveRecommendation(response) {
   });
 }
 
-async function runMultiAgent(env, message) {
+async function runMultiAgent(env, message, history = []) {
   const steps = [];
 
   // Step 1: Researcher identifies the goal and constraints.
   const research = await runAgent(
     env,
     "researcher",
-    message
+    message,
+    "",
+    history
   );
 
   steps.push({
@@ -383,7 +427,8 @@ async function runMultiAgent(env, message) {
     env,
     "writer",
     message,
-    finalContext
+    finalContext,
+    history
   );
 
   // Deterministic repair pass for a common hard-constraint failure:
@@ -406,7 +451,8 @@ async function runMultiAgent(env, message) {
         "",
         "DRAFT TO REPAIR:",
         draftToRepair
-      ].join("\n")
+      ].join("\n"),
+      history
     );
     if (hasPaidIncentiveRecommendation(finalResponse)) {
       throw new Error("Writer failed zero-budget quality gate");
@@ -426,7 +472,8 @@ async function runMultiAgent(env, message) {
         `The user explicitly requested exactly ${requestedCount} numbered items.`,
         `Rewrite the complete answer with exactly ${requestedCount} numbered items, numbered sequentially from 1 to ${requestedCount}.`,
         "Do not add an introduction, conclusion, or extra numbered items outside that list."
-      ].join("\n")
+      ].join("\n"),
+      history
     );
   }
 
@@ -697,6 +744,8 @@ export default {
       if (!message) return json({ error: "Pesan tidak boleh kosong." }, 400);
       if (message.length > 12000) return json({ error: "Pesan terlalu panjang (maksimal 12.000 karakter)." }, 400);
       if (body?.conversationId !== undefined && (typeof body.conversationId !== "string" || !/^[a-zA-Z0-9-]{8,80}$/.test(body.conversationId))) return json({ error: "ID percakapan tidak valid." }, 400);
+      const clientHistory = parseClientHistory(body?.history);
+      if (clientHistory.error) return json({ error: clientHistory.error }, 400);
       let user = null;
       try { user = await getSession(request, env); }
       catch (error) { console.error("Chat session lookup failed:", error); return json({ error: "Status login tidak dapat diperiksa. Coba muat ulang halaman." }, 503); }
@@ -710,17 +759,24 @@ export default {
         try {
           const clientKey = request.headers.get("CF-Connecting-IP") || "unknown-client";
           rateLimit = await env.CHAT_LIMITER.limit({ key: clientKey });
+          // Signed-in users are also limited per account, so one account cannot multiply its quota across IPs.
+          if (rateLimit?.success && user) rateLimit = await env.CHAT_LIMITER.limit({ key: `user:${user.id}` });
         } catch (error) { console.error("Chat rate limiter failed:", error); return json({ error: "Layanan pembatasan permintaan sedang bermasalah." }, 503); }
         if (!rateLimit?.success) return json({ error: "Terlalu banyak permintaan. Coba lagi dalam satu menit." }, 429, { "Retry-After": "60" });
       }
+      let history = clientHistory.history;
+      if (user) {
+        try { history = body.conversationId ? await loadStoredHistory(env, user, body.conversationId) : []; }
+        catch (error) { console.error("Chat history lookup failed:", error); history = []; }
+      }
       try {
         let result;
-        if (agentId === "coordinator" && shouldUseMultiAgent(message)) result = { ...await runMultiAgent(env, message), model: MODEL };
+        if (agentId === "coordinator" && shouldUseMultiAgent(message)) result = { ...await runMultiAgent(env, message, history), model: MODEL };
         else if (agentId === "coordinator") {
-          const response = await runAgent(env, "coordinator", message);
+          const response = await runAgent(env, "coordinator", message, "", history);
           result = { agent: AGENTS.coordinator.name, model: MODEL, workflow: "single-agent", agentsUsed: [AGENTS.coordinator.name], response };
         } else {
-          const response = await runAgent(env, agentId, message);
+          const response = await runAgent(env, agentId, message, "", history);
           result = { agent: AGENTS[agentId].name, model: MODEL, workflow: "single-agent", response };
         }
         if (user) {
