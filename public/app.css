@@ -47,3 +47,9 @@ body.drawer-open{overflow:hidden}
 .retry-btn{margin-top:10px;min-height:44px;padding:0 16px;border:1px solid #4a4a4a;border-radius:999px;background:#2b2b2b;color:var(--text);font-size:13px;font-weight:600}
 .retry-btn:hover{background:#363636}
 .message.failed .message-body{border-color:#5a3a3a}
+
+/* Kolom input: tinggi tumbuh sampai batas lalu scroll internal; batas ikut tinggi layar agar tidak memenuhi layar saat keyboard terbuka */
+.composer textarea{max-height:min(220px,40dvh);overflow-y:hidden;overscroll-behavior:contain}
+/* Tombol kirim tetap 36px secara visual, area sentuhnya 44px */
+.send{position:relative}
+.send::after{content:"";position:absolute;inset:-4px}

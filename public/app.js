@@ -21,13 +21,25 @@ function markdown(input){let src=String(input||"").replace(/\r\n?/g,"\n");const 
 function appendMessage(role,content,scroll=true){const row=document.createElement("article");row.className="message "+role;const avatar=document.createElement("div");avatar.className="avatar";avatar.textContent=role==="user"?"B":"✳";const body=document.createElement("div");body.className="message-body";body.innerHTML=markdown(content);row.append(avatar,body);if(role==="assistant"){const actions=document.createElement("div");actions.className="message-actions";const copy=document.createElement("button");copy.className="tiny-btn";copy.textContent="Salin";copy.onclick=async()=>{try{await navigator.clipboard.writeText(content);toast("Jawaban disalin")}catch{toast("Gagal menyalin jawaban")}};actions.append(copy);body.append(actions)}messagesEl.append(row);if(scroll)conversation.scrollTop=conversation.scrollHeight;return row}
 function showTyping(){const row=document.createElement("article");row.className="message assistant";row.id="typing";row.innerHTML='<div class="avatar">✳</div><div class="message-body"><span class="typing"><i></i><i></i><i></i></span> <span style="color:#aaa;font-size:12px">AI sedang berpikir…</span></div>';messagesEl.append(row);conversation.scrollTop=conversation.scrollHeight}
 function renderWorkflow(steps){const items=$("workflowItems");items.replaceChildren();if(!Array.isArray(steps)||!steps.length){$("workflow").hidden=true;return}$("workflow").hidden=false;for(const s of steps){const d=document.createElement("details");d.className="workflow-step";const sum=document.createElement("summary");const title=document.createElement("span");title.textContent=s.agent||"Agent";const status=document.createElement("span");status.textContent=s.status==="completed"?"Selesai":s.status==="skipped"?"Dilewati":"Perlu diperiksa";sum.append(title,status);const text=document.createElement("div");text.className="step-text";text.textContent=s.output||"Tidak ada output";d.append(sum,text);items.append(d)}}
-function resizePrompt(){promptEl.style.height="auto";promptEl.style.height=Math.min(promptEl.scrollHeight,220)+"px"}
+/* Textarea tumbuh mengikuti isi (scrollHeight) sampai max-height dari CSS, lalu berhenti dan scroll di dalam. */
+function resizePrompt(){
+  promptEl.style.height="auto";
+  const max=parseFloat(getComputedStyle(promptEl).maxHeight)||220;
+  const needed=promptEl.scrollHeight;
+  promptEl.style.height=Math.min(needed,max)+"px";
+  promptEl.style.overflowY=needed>max?"auto":"hidden";
+}
 async function health(){try{const r=await fetch(API+"/api/health");if(!r.ok)throw Error();const d=await r.json();$("healthDot").className="dot "+(d.ok?"ok":"bad");$("healthText").textContent=d.ok?"Layanan terhubung":"Layanan bermasalah"}catch{$("healthDot").className="dot bad";$("healthText").textContent="Tidak terhubung"}}
 
+const CHAT_TIMEOUT_MS=150000; /* alur multi-agent bisa beberapa panggilan model berurutan; lewat ini dianggap macet */
 async function api(path,opts={}){
-  let res;
-  try{res=await fetch(API+path,{credentials:"same-origin",...opts})}
-  catch{throw Object.assign(new Error("Tidak dapat terhubung ke server. Periksa koneksi Anda."),{status:0})}
+  const {timeoutMs,...fetchOpts}=opts;let res,timer,timedOut=false;
+  const ctrl=timeoutMs?new AbortController():null;
+  if(ctrl){fetchOpts.signal=ctrl.signal;timer=setTimeout(()=>{timedOut=true;ctrl.abort()},timeoutMs)}
+  try{res=await fetch(API+path,{credentials:"same-origin",...fetchOpts})}
+  catch{
+    throw Object.assign(new Error(timedOut?"Server terlalu lama merespons (lebih dari "+Math.round(timeoutMs/1000)+" detik). Coba lagi.":"Tidak dapat terhubung ke server. Periksa koneksi Anda."),{status:0,timedOut});
+  }finally{clearTimeout(timer)}
   let data=null;try{data=await res.json()}catch{}
   if(!res.ok){
     const err=new Error((data&&data.error)||"HTTP "+res.status);err.status=res.status;
@@ -36,7 +48,7 @@ async function api(path,opts={}){
   }
   return data||{};
 }
-const postJson=(path,body)=>api(path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+const postJson=(path,body,timeoutMs)=>api(path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body),timeoutMs});
 
 /* ---------- 2. State aplikasi ---------- */
 const AppState={INIT:"initializing",UNAUTH:"unauthenticated",GUEST:"guest",AUTH:"authenticated",EXPIRED:"session-expired",ERROR:"error"};
@@ -289,7 +301,7 @@ async function showChat(cid){
     try{
       const d=await api("/api/conversations/"+encodeURIComponent(c.serverId));
       if(seq!==navSeq)return null;
-      c.messages=d.messages||[];c.loaded=true;c.title=d.conversation?.title||c.title;
+      c.messages=d.messages||[];c.loaded=true;c.title=d.conversation?.title||c.title;if(d.truncated)toast("Percakapan panjang: hanya 500 pesan terakhir yang ditampilkan.");
     }catch(e){if(seq!==navSeq)return null;toast(e.message||"Gagal memuat chat");return false}
     finally{if(seq===navSeq){loadingChat=false;lockComposer()}}
   }
@@ -359,7 +371,7 @@ async function submit(){
   const stillActive=()=>activeId===startId;const start=Date.now();
   try{
     const payload={message:text,agent};if(history.length)payload.history=history;if(state===AppState.AUTH&&chat.serverId)payload.conversationId=chat.serverId;
-    const data=await postJson("/api/chat",payload);
+    const data=await postJson("/api/chat",payload,CHAT_TIMEOUT_MS);
     if(typeof data.response!=="string"||!data.response.trim())throw new Error("AI tidak menghasilkan jawaban.");
     chat.messages.push({role:"assistant",content:data.response});chat.updated=Date.now();
     if(stillActive()){$("typing")?.remove();appendMessage("assistant",data.response);renderWorkflow(data.steps)}
@@ -414,7 +426,8 @@ $("gateRetry").addEventListener("click",boot);
 $("googleRetry").addEventListener("click",()=>loadGoogle(true));
 $("chatForm").addEventListener("submit",e=>{e.preventDefault();submit()});
 promptEl.addEventListener("input",resizePrompt);
-promptEl.addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey&&!e.isComposing){e.preventDefault();submit()}});
+/* Enter sengaja TIDAK mengirim: Enter = baris baru di semua perangkat. Satu-satunya cara kirim lewat UI adalah tombol panah. */
+window.addEventListener("resize",resizePrompt);
 $("newChat").addEventListener("click",newChat);
 $("clearHistory").addEventListener("click",clearHistory);
 $("signOut").addEventListener("click",signOut);

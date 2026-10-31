@@ -1,6 +1,17 @@
 
 const MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 const MAX_REQUEST_BYTES = 64 * 1024;
+const MESSAGES_PAGE_MAX = 500; // newest messages returned when opening one conversation
+
+// Shared by every agent. Without it the model happily claims abilities the platform does not have (browsing, news, files, apps).
+// Update this text whenever a real capability (e.g. link reading) is actually implemented.
+const CAPABILITY_NOTICE = [
+  "PLATFORM CAPABILITIES (authoritative; overrides anything else you believe about yourself):",
+  "- In this product you only exchange text. You CANNOT open links or URLs, browse or search the internet, read news or any current or real-time information, read attachments or files, run or compile code, build or publish apps, APKs or files, use other apps or accounts, or click, navigate or fill forms on any website.",
+  "- Never claim, imply or offer to do any of those things, and never present information as current or freshly retrieved. Your knowledge comes only from training data and this conversation, and may be outdated.",
+  "- If the user asks for one of them, say plainly, in the user's language, that BOR AI cannot do that yet, then offer what you CAN do in text: ask them to paste the page, text or data into the chat, write code or step-by-step instructions they can run themselves, or draft the content.",
+  "- If the user pasted the content of a link or document, you may analyze that pasted text, but you did not open the link yourself."
+].join("\n");
 
 // Conversation memory sent to the model. Bounded so cost and latency stay predictable.
 const HISTORY_MAX_MESSAGES = 12;        // most recent turns only
@@ -184,7 +195,7 @@ async function runAgent(env, agentId, userMessage, context = "", history = []) {
   const messages = [
     {
       role: "system",
-      content: agent.prompt
+      content: `${agent.prompt}\n\n${CAPABILITY_NOTICE}`
     },
     ...history,
     {
@@ -686,8 +697,12 @@ async function handleConversationRoute(request, env, url) {
   if (request.method === "GET") {
     const conversation = await env.DB.prepare("SELECT id, title, created_at, updated_at FROM conversations WHERE id = ? AND user_id = ?").bind(conversationId, user.id).first();
     if (!conversation) return json({ error: "Chat tidak ditemukan." }, 404);
-    const result = await env.DB.prepare("SELECT role, content, created_at FROM messages WHERE conversation_id = ? AND user_id = ? ORDER BY id ASC").bind(conversationId, user.id).all();
-    return json({ conversation, messages: result.results || [] });
+    // Bounded response: the newest MESSAGES_PAGE_MAX messages, oldest-first. `truncated` tells the client older ones exist.
+    const result = await env.DB.prepare("SELECT role, content, created_at FROM messages WHERE conversation_id = ? AND user_id = ? ORDER BY id DESC LIMIT ?").bind(conversationId, user.id, MESSAGES_PAGE_MAX + 1).all();
+    let rows = result.results || [];
+    const truncated = rows.length > MESSAGES_PAGE_MAX;
+    if (truncated) rows = rows.slice(0, MESSAGES_PAGE_MAX);
+    return json({ conversation, messages: rows.reverse(), truncated });
   }
   if (request.method === "DELETE") {
     const result = await env.DB.prepare("DELETE FROM conversations WHERE id = ? AND user_id = ?").bind(conversationId, user.id).run();

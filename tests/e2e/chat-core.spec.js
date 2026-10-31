@@ -10,7 +10,7 @@ async function enterGuest(page, app) {
 }
 async function send(page, text) {
   await page.locator("#prompt").fill(text);
-  await page.locator("#prompt").press("Enter");
+  await page.locator("#send").click();
 }
 
 test.describe("CHAT — memori percakapan, kegagalan, batas laju", () => {
@@ -121,4 +121,22 @@ test.describe("CHAT — memori percakapan, kegagalan, batas laju", () => {
       await expect(page.locator(".retry-btn")).toBeVisible();
     });
   });
+});
+
+test("server macet: permintaan dibatalkan setelah batas waktu, ada pesan jelas + Coba lagi, composer tidak terkunci selamanya", async ({ page, app }) => {
+  await page.clock.install();
+  await page.goto(app.url);
+  await page.locator("#continueGuest").click();
+  app.control.aiHang = true;                                   // server tidak pernah menjawab
+  await page.locator("#prompt").fill("Tolong jawab");
+  await page.locator("#send").click();
+  await expect(page.locator("#typing")).toBeVisible();
+  await page.clock.fastForward(151_000);                      // melewati CHAT_TIMEOUT_MS
+  await expect(page.locator(".message.failed")).toContainText("terlalu lama merespons");
+  await expect(page.locator(".retry-btn")).toBeVisible();
+  await expect(page.locator("#prompt")).toBeEditable();
+  await expect(page.locator("#send")).toBeEnabled();
+  app.control.aiHang = false;
+  await page.locator(".retry-btn").click();
+  await expect(page.locator(".message.assistant:not(#typing):not(.failed)")).toHaveCount(1);
 });
