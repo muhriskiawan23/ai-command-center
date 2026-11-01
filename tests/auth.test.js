@@ -37,6 +37,7 @@ function mockDB({ user = { id: "google-sub-123", email: "owner@example.com", nam
           calls.push({ type: "first", sql, values: this.values });
           if (sql.includes("FROM sessions JOIN users")) return user;
           if (sql.includes("FROM conversations WHERE id = ? AND user_id = ?")) return ownedConversation;
+          if (sql.includes("daily_usage")) return { units: 1 };
           return null;
         },
         async all() { calls.push({ type: "all", sql, values: this.values }); return { results: [] }; },
@@ -58,7 +59,7 @@ test("public configuration does not claim Google sign-in is ready without bindin
   assert.deepEqual(await res.json(), { googleClientId: null, googleSignInEnabled: false });
 });
 
-test("guest chat remains temporary and does not touch D1", async () => {
+test("guest chat remains temporary: only usage counters touch D1, never conversations or messages", async () => {
   const db = mockDB();
   const res = await worker.fetch(jsonRequest("/api/chat", { message: "Jelaskan secara singkat.", agent: "coordinator" }), {
     AI: mockAI(),
@@ -68,7 +69,9 @@ test("guest chat remains temporary and does not touch D1", async () => {
   assert.equal(res.status, 200);
   assert.equal(data.saved, false);
   assert.equal("conversationId" in data, false);
-  assert.equal(db.calls.length, 0);
+  const statements = db.calls.filter((call) => call.sql).map((call) => call.sql);
+  assert.ok(statements.length > 0 && statements.every((sql) => sql.includes("daily_usage")), `statement tak terduga: ${statements.join(" | ")}`);
+  assert.equal(db.calls.filter((call) => call.type === "batch").length, 0);
 });
 
 test("guest users cannot read account conversation history", async () => {
