@@ -99,3 +99,17 @@ The repository is prepared for a controlled deployment after the checks above. N
 - **Failed turns are never stored.** A user message and its answer are written to D1 together, only after the AI succeeds. If generation fails, nothing is saved. The UI shows the error with a "Coba lagi" button; the failed turn is excluded from later context and is gone after a reload.
 - **Retry** resends the same text and does not create duplicates.
 
+
+## Chat input behavior
+
+- **Enter inserts a new line** on every device (including Shift+Enter). Nothing else sends a message: Ctrl/Cmd+Enter does not either.
+- **The arrow button is the only way to send.** A message is sent once; double taps are ignored while a request is in flight.
+- The textarea grows with its content up to `min(220px, 40dvh)`, then scrolls internally.
+
+## Limits and timeouts
+
+- Opening a conversation returns at most the newest 500 messages (`truncated: true` when older ones exist). The model still only sees the last 12 turns.
+- The browser aborts a chat request after 150 seconds and shows a retry button. If the server finished after the browser gave up, the exchange may already be stored, so retrying can create a duplicate (no idempotency key yet).
+- Every agent receives a fixed "platform capabilities" notice (`CAPABILITY_NOTICE` in `src/index.js`): BOR AI is text-only and must not claim to browse, read links or files, run code, or use other apps. Update that notice whenever a real capability is added.
+
+See `docs/AUDIT-BOR-AI.md` for the full technical audit, severity ratings and what could not be tested.

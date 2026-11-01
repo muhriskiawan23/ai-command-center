@@ -10,7 +10,7 @@ async function enterGuest(page, app) {
 }
 async function send(page, text) {
   await page.locator("#prompt").fill(text);
-  await page.locator("#prompt").press("Enter");
+  await page.locator("#send").click();
 }
 const noHorizontalOverflow = (page) => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
 
@@ -292,20 +292,6 @@ test.describe("NAV — drawer, Back/Forward, rute", () => {
     await expect(page.locator(".message.user .message-body").first()).toContainText("isi lama");
     expect(app.db.sqlite.prepare("SELECT COUNT(*) n FROM conversations WHERE user_id = ?").get(ALICE.id).n).toBe(1);
     expect(app.db.sqlite.prepare("SELECT COUNT(*) n FROM messages WHERE conversation_id = 'conv-lama-000001'").get().n).toBe(4);
-  });
-
-  test("composer: Shift+Enter baris baru, Enter kirim, dan double-submit dicegah", async ({ page, app }) => {
-    await enterGuest(page, app);
-    const posts = [];
-    page.on("request", (r) => { if (r.url().endsWith("/api/chat") && r.method() === "POST") posts.push(r); });
-    await page.locator("#prompt").fill("baris1");
-    await page.locator("#prompt").press("Shift+Enter");
-    await page.locator("#prompt").type("baris2");
-    expect(await page.locator("#prompt").inputValue()).toBe("baris1\nbaris2");
-    await page.locator("#prompt").press("Enter");
-    await page.locator("#prompt").press("Enter");
-    await expect(page.locator(".message.assistant:not(#typing)")).toHaveCount(1);
-    expect(posts.length).toBe(1);
   });
 
   test("tidak ada overflow horizontal pada Welcome maupun chat dengan teks panjang", async ({ page, app }) => {
