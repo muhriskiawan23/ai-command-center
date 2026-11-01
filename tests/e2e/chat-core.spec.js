@@ -140,3 +140,21 @@ test("server macet: permintaan dibatalkan setelah batas waktu, ada pesan jelas +
   await page.locator(".retry-btn").click();
   await expect(page.locator(".message.assistant:not(#typing):not(.failed)")).toHaveCount(1);
 });
+
+test.describe("batas harian", () => {
+  test.use({ harnessOptions: { extraEnv: { DAILY_LIMIT_GUEST: "1" } } });
+  test("saat batas tercapai: pesan jelas dengan arahan masuk Google, tanpa tombol Coba lagi, kolom ketik tetap normal", async ({ page, app }) => {
+    await page.goto(app.url);
+    await page.locator("#continueGuest").click();
+    await page.locator("#prompt").fill("Pesan pertama");
+    await page.locator("#send").click();
+    await expect(page.locator(".message.assistant:not(#typing):not(.failed)")).toHaveCount(1);
+    await page.locator("#prompt").fill("Pesan kedua");
+    await page.locator("#send").click();
+    await expect(page.locator(".message.failed")).toContainText("Batas harian tamu tercapai");
+    await expect(page.locator(".message.failed")).toContainText("Masuk dengan Google");
+    await expect(page.locator(".retry-btn")).toHaveCount(0);
+    await expect(page.locator("#prompt")).toBeEditable();
+    await expect(page.locator("#send")).toBeEnabled();
+  });
+});

@@ -42,7 +42,7 @@ async function api(path,opts={}){
   }finally{clearTimeout(timer)}
   let data=null;try{data=await res.json()}catch{}
   if(!res.ok){
-    const err=new Error((data&&data.error)||"HTTP "+res.status);err.status=res.status;
+    const err=new Error((data&&data.error)||"HTTP "+res.status);err.status=res.status;err.code=data&&data.code;
     if(res.status===401&&state===AppState.AUTH)expireSession();
     throw err;
   }
@@ -347,10 +347,11 @@ function buildHistory(chat){
 }
 /* Kebijakan kegagalan: giliran yang gagal TIDAK disimpan (server atomik: pesan user + jawaban disimpan bersamaan hanya jika AI berhasil).
    Gelembung error hanya tampil di layar ini, punya tombol "Coba lagi", dan hilang saat chat dimuat ulang. */
-function appendFailedTurn(message,text){
+function appendFailedTurn(message,text,noRetry=false){
   appendMessage("assistant",message);
   const row=messagesEl.lastElementChild;const body=row&&row.querySelector(".message-body");if(!body)return;
   row.classList.add("failed");
+  if(noRetry)return; /* batas harian: mencoba lagi sekarang percuma */
   const btn=document.createElement("button");btn.type="button";btn.className="retry-btn";btn.textContent="↻ Coba lagi";
   btn.addEventListener("click",()=>{
     if(busy||loadingChat)return;
@@ -387,7 +388,7 @@ async function submit(){
   }catch(e){
     const message="Maaf, permintaan gagal diproses. "+(e.message||"Periksa koneksi lalu coba lagi.");
     const at=chat.messages.indexOf(userEntry);if(at>=0)chat.messages.splice(at,1); /* giliran gagal tidak disimpan */
-    if(stillActive()){$("typing")?.remove();appendFailedTurn(message,text)}
+    if(stillActive()){$("typing")?.remove();appendFailedTurn(message,text,e.code==="daily_limit")}
     toast("Permintaan gagal");
   }finally{busy=false;lockComposer();renderHistory();if(!isDrawerMode())promptEl.focus()}
 }

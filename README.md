@@ -113,3 +113,12 @@ The repository is prepared for a controlled deployment after the checks above. N
 - Every agent receives a fixed "platform capabilities" notice (`CAPABILITY_NOTICE` in `src/index.js`): BOR AI is text-only and must not claim to browse, read links or files, run code, or use other apps. Update that notice whenever a real capability is added.
 
 See `docs/AUDIT-BOR-AI.md` for the full technical audit, severity ratings and what could not be tested.
+
+## Daily usage limits (cost protection)
+
+- Units per UTC day (resets 07:00 WIB): **guest 15** (per IP, stored only as a daily-rotating hash), **signed-in account 150**, **whole application 1,500**. A normal message costs 1 unit; a multi-agent request (several model calls) costs 3. A failed AI request gives its units back.
+- Defaults can be changed without code via the Worker variables `DAILY_LIMIT_GUEST`, `DAILY_LIMIT_USER`, `DAILY_LIMIT_GLOBAL`. Optionally set the secret `USAGE_SALT` so guest IP hashes cannot be brute-forced offline.
+- Counters live in the `daily_usage` table (migration `0002`, additive). **Run `bor-ai-deploy` so the migration is applied.** If the table is missing, chat keeps working but limits are disabled and the Worker logs `daily limits are DISABLED`.
+- Other database errors fail closed (503, AI is not called).
+- Not covered: bot protection (e.g. Cloudflare Turnstile). A distributed attacker can still exhaust the global daily budget, but not exceed it.
+
