@@ -122,3 +122,11 @@ See `docs/AUDIT-BOR-AI.md` for the full technical audit, severity ratings and wh
 - Other database errors fail closed (503, AI is not called).
 - Not covered: bot protection (e.g. Cloudflare Turnstile). A distributed attacker can still exhaust the global daily budget, but not exceed it.
 
+## Link reader
+
+- Links typed in a message (`https://...` or `www....`, at most 3) are fetched by the Worker, converted to plain text (6,000 characters per page) and given to the model inside `<web_page>` blocks as **untrusted data**. The reply includes a `links` list and the UI shows which links were read or why they failed.
+- Guards (see `src/links.js`): http/https on ports 80/443 only, no credentials in the URL, no private/loopback/link-local/reserved IPs (IPv4 and IPv6, including obfuscated forms), no internal host names, never this Worker's own host; redirects are re-validated on every hop (max 3); 8 s timeout and 1 MB download cap per page.
+- A message with links costs 1 extra daily unit. Page text is never stored in D1.
+- Not supported: PDFs, images, pages that need JavaScript or a login (reported as failed, never guessed).
+- `LINK_FETCHER` is a test hook (an alternative `fetch`); leave it unset in production.
+

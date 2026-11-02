@@ -78,4 +78,21 @@ Catatan produk: spesifikasi meminta Enter = baris baru di semua perangkat. Perlu
 
 ## 6. Batas kemampuan produk saat ini (bukan bug)
 
-BOR AI saat ini adalah chat teks dengan satu model (`src/index.js:2`, Llama 3.3 70B di Workers AI). BOR AI **tidak** dapat: membuka tautan, mencari di internet, membaca file/lampiran, menjalankan atau membangun kode (APK, aplikasi), mengendalikan aplikasi atau browser, atau terintegrasi dengan layanan pihak ketiga. Pernyataan ini kini dipasang ke prompt semua agent (H1) agar model tidak mengklaim sebaliknya.
+BOR AI adalah chat teks dengan satu model (`src/index.js`, Llama 3.3 70B di Workers AI). BOR AI **tidak** dapat: mencari di internet, membaca file/lampiran, menjalankan atau membangun kode (APK, aplikasi), mengendalikan aplikasi atau browser, atau terintegrasi dengan layanan pihak ketiga. Pernyataan ini dipasang ke prompt semua agent (H1).
+
+**Satu pengecualian sejak Stage 8: membaca tautan yang diketik pengguna** (`src/links.js`). Server mengambil halaman, mengubahnya menjadi teks, dan memberikannya ke model sebagai data tidak tepercaya.
+
+| Aspek | Perlakuan |
+|---|---|
+| SSRF | Hanya http/https port 80/443; tanpa username/password; IP privat/loopback/link-local/cadangan (IPv4 dan IPv6), bentuk IP terselubung (desimal/hex/oktal), nama host internal/satu-label, dan host aplikasi sendiri ditolak. Setiap pengalihan (maks. 3) divalidasi ulang. |
+| Sumber daya | 8 dtk per halaman, unduhan maks. 1 MB, 6.000 karakter per halaman, maks. 3 tautan per pesan. Pesan dengan tautan memakai 1 unit kuota harian ekstra. |
+| Injeksi prompt | Isi halaman dibungkus `<web_page>` dengan semua `<` dan `>` dinetralkan; prompt sistem melarang mengikuti instruksi di dalamnya dan mewajibkan model mengaku bila tautan tidak terbaca. Isi halaman tidak disimpan di database. |
+| Transparansi | Pengguna melihat daftar tautan yang terbaca atau gagal (beserta alasannya) di bawah jawaban. |
+
+**Batasan yang diketahui dan belum dapat dibuktikan dari lingkungan audit:**
+
+- DNS rebinding (nama publik yang mengarah ke IP privat) tidak dapat dideteksi dari Worker. Worker tidak dapat menjangkau jaringan privat, sehingga ini lapisan pertahanan tambahan, bukan satu-satunya penghalang.
+- Pengujian memakai `fetch` tiruan. Perilaku terhadap situs sungguhan (anti-bot, paywall, Cloudflare challenge, halaman yang dirender JavaScript, PDF) **belum diuji**. Halaman seperti itu akan dilaporkan gagal, bukan ditebak.
+- Efektivitas model asli dalam mematuhi aturan `<web_page>` (tidak mengikuti instruksi di halaman) **belum teruji**; yang teruji adalah isi prompt dan penetralan tag.
+- Tidak ada penghormatan terhadap `robots.txt`; yang dibaca hanya tautan yang sengaja diketik pengguna.
+- Konteks halaman hanya berlaku untuk pesan yang memuat tautan; pertanyaan lanjutan bergantung pada jawaban sebelumnya, bukan teks halamannya.

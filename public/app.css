@@ -53,3 +53,9 @@ body.drawer-open{overflow:hidden}
 /* Tombol kirim tetap 36px secara visual, area sentuhnya 44px */
 .send{position:relative}
 .send::after{content:"";position:absolute;inset:-4px}
+
+.sources{margin-top:12px;padding:10px 12px;border:1px solid #393939;border-radius:10px;background:#1c1c1c;font-size:12.5px;line-height:1.5;color:#bdbdbd}
+.sources strong{display:block;margin-bottom:4px;color:#e0e0e0}
+.source{overflow-wrap:anywhere}
+.source.ok{color:#9bd89b}
+.source.fail{color:#e8a0a0}

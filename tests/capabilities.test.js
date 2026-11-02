@@ -14,7 +14,7 @@ test("setiap mode agent menerima pernyataan kemampuan nyata di system prompt", a
     assert.ok(app.aiCalls.length >= 1);
     for (const call of app.aiCalls) {
       const system = call.messages.find((m) => m.role === "system").content;
-      assert.match(system, /CANNOT open links or URLs/, `agent ${agent} tidak membawa pernyataan kemampuan`);
+      assert.match(system, /CANNOT browse or search the internet/, `agent ${agent} tidak membawa pernyataan kemampuan`);
       assert.match(system, /never present information as current/i);
     }
   }
