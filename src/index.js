@@ -4,6 +4,39 @@ const MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 const MAX_REQUEST_BYTES = 64 * 1024;
 const MESSAGES_PAGE_MAX = 500; // newest messages returned when opening one conversation
 
+// ---- Model call time limits ----------------------------------------------------------------------------------
+// Without these a stuck model call (or a long multi-agent chain) holds the request, the user's composer and our budget forever.
+// Defaults can be overridden with the env vars AI_CALL_TIMEOUT_MS and AI_TOTAL_BUDGET_MS.
+const AI_CALL_TIMEOUT_DEFAULT_MS = 45_000;       // one model call
+const AI_MULTI_AGENT_BUDGET_DEFAULT_MS = 100_000; // whole multi-agent chain (the browser gives up at 150 s)
+
+class AiTimeoutError extends Error {
+  constructor(kind) { super(kind === "budget" ? "AI time budget exhausted" : "AI call timed out"); this.name = "AiTimeoutError"; this.kind = kind; }
+}
+function positiveMs(value, fallback) { const n = Number(value); return Number.isFinite(n) && n > 0 ? n : fallback; }
+
+// Wraps env.AI so every model call is bounded by min(per-call timeout, time left in the request budget).
+// A timed-out call cannot be cancelled on the provider side; we simply stop waiting for it.
+function withAiDeadline(env, deadline) {
+  const perCall = positiveMs(env.AI_CALL_TIMEOUT_MS, AI_CALL_TIMEOUT_DEFAULT_MS);
+  return {
+    ...env,
+    AI: {
+      async run(model, payload) {
+        const remaining = deadline - Date.now();
+        if (remaining < Math.min(250, perCall / 2)) throw new AiTimeoutError("budget"); // too little time left to be worth a call
+        let timer;
+        try {
+          return await Promise.race([
+            env.AI.run(model, payload),
+            new Promise((_, reject) => { timer = setTimeout(() => reject(new AiTimeoutError("timeout")), Math.min(perCall, remaining)); })
+          ]);
+        } finally { clearTimeout(timer); }
+      }
+    }
+  };
+}
+
 // ---- Daily usage limits (cost protection) -------------------------------------------------------------
 // Units per UTC day. A normal message costs 1; a multi-agent request (several model calls) costs MULTI_AGENT_UNITS.
 // Defaults can be overridden with the env vars DAILY_LIMIT_GUEST / DAILY_LIMIT_USER / DAILY_LIMIT_GLOBAL.
@@ -879,6 +912,10 @@ export default {
         try { history = body.conversationId ? await loadStoredHistory(env, user, body.conversationId) : []; }
         catch (error) { console.error("Chat history lookup failed:", error); history = []; }
       }
+      // Single answers may retry once (2 calls); the multi-agent chain gets its own total budget.
+      const perCallMs = positiveMs(env.AI_CALL_TIMEOUT_MS, AI_CALL_TIMEOUT_DEFAULT_MS);
+      const budgetMs = useMultiAgent ? positiveMs(env.AI_TOTAL_BUDGET_MS, AI_MULTI_AGENT_BUDGET_DEFAULT_MS) : perCallMs * 2;
+      const aiEnv = withAiDeadline(env, Date.now() + budgetMs);
       let pages = "";
       let links = [];
       if (found.urls.length) {
@@ -889,12 +926,12 @@ export default {
       }
       try {
         let result;
-        if (useMultiAgent) result = { ...await runMultiAgent(env, message, history, pages), model: MODEL };
+        if (useMultiAgent) result = { ...await runMultiAgent(aiEnv, message, history, pages), model: MODEL };
         else if (agentId === "coordinator") {
-          const response = await runAgent(env, "coordinator", message, "", history, pages);
+          const response = await runAgent(aiEnv, "coordinator", message, "", history, pages);
           result = { agent: AGENTS.coordinator.name, model: MODEL, workflow: "single-agent", agentsUsed: [AGENTS.coordinator.name], response };
         } else {
-          const response = await runAgent(env, agentId, message, "", history, pages);
+          const response = await runAgent(aiEnv, agentId, message, "", history, pages);
           result = { agent: AGENTS[agentId].name, model: MODEL, workflow: "single-agent", response };
         }
         if (user) {
@@ -912,6 +949,7 @@ export default {
       } catch (error) {
         console.error("AI request failed:", error);
         await refundUsage(env, usage.day, usage.charges); // a failed request does not consume the user's daily allowance
+        if (error instanceof AiTimeoutError) return json({ error: "AI terlalu lama merespons. Silakan coba lagi, atau pecah permintaan menjadi lebih singkat.", code: "ai_timeout" }, 504);
         return json({ error: "AI gagal memproses permintaan. Silakan coba lagi beberapa saat." }, 502);
       }
     }

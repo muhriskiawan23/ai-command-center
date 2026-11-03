@@ -130,3 +130,8 @@ See `docs/AUDIT-BOR-AI.md` for the full technical audit, severity ratings and wh
 - Not supported: PDFs, images, pages that need JavaScript or a login (reported as failed, never guessed).
 - `LINK_FETCHER` is a test hook (an alternative `fetch`); leave it unset in production.
 
+## Model call time limits
+
+- Every model call is bounded: 45 s per call (`AI_CALL_TIMEOUT_MS`) and 100 s for a whole multi-agent chain (`AI_TOTAL_BUDGET_MS`); a single answer may retry once. The browser gives up after 150 s, so the server always answers first.
+- On timeout the API returns `504` with `code: "ai_timeout"`, the daily units are refunded and nothing is stored. A timed-out call cannot be cancelled on the provider side, so it may still be billed.
+
