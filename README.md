@@ -135,3 +135,10 @@ See `docs/AUDIT-BOR-AI.md` for the full technical audit, severity ratings and wh
 - Every model call is bounded: 45 s per call (`AI_CALL_TIMEOUT_MS`) and 100 s for a whole multi-agent chain (`AI_TOTAL_BUDGET_MS`); a single answer may retry once. The browser gives up after 150 s, so the server always answers first.
 - On timeout the API returns `504` with `code: "ai_timeout"`, the daily units are refunded and nothing is stored. A timed-out call cannot be cancelled on the provider side, so it may still be billed.
 
+## Modes and communication rules
+
+- Twelve modes (select in the composer): Coordinator (multi-agent) plus Researcher, Analyst, Writer, Fact Checker, Strategist, Coder, Planner, Critic, Summarizer, **Translator** and **Text Analyst**.
+- Translator may return very short answers; every other specialist must still pass the substance gate (20+ words, 2+ lines).
+- All agents receive `COMMUNICATION_NOTICE`: reply in the user's language, use the conversation context (ask one question if context is missing), notice emotional cues without diagnosing or storing anything, and respond to self-harm/violence signals with a caring message that points to emergency services (Indonesia: 112) or a trusted person. These are prompt rules, not a classifier; real-model behavior has not been evaluated.
+- See `docs/FEATURE-TRIAGE.md` for the status of the founder's feature wish-list.
+

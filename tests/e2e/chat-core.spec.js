@@ -181,3 +181,17 @@ test.describe("pembaca link", () => {
     await expect(page.locator("#prompt")).toBeEditable();
   });
 });
+
+test("mode Translator dan Text Analyst tersedia di pemilih mode dan terkirim ke server", async ({ page, app }) => {
+  await page.goto(app.url);
+  await page.locator("#continueGuest").click();
+  const options = await page.locator("#agent option").evaluateAll((els) => els.map((e) => e.value));
+  expect(options).toEqual(expect.arrayContaining(["translator", "text_analyst"]));
+  const posts = [];
+  page.on("request", (r) => { if (r.url().endsWith("/api/chat") && r.method() === "POST") posts.push(JSON.parse(r.postData())); });
+  await page.locator("#agent").selectOption("translator");
+  await page.locator("#prompt").fill("Translate to Indonesian: Good morning");
+  await page.locator("#send").click();
+  await expect(page.locator(".message.assistant:not(#typing)")).toHaveCount(1);
+  expect(posts[0].agent).toBe("translator");
+});
