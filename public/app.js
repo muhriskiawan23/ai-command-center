@@ -347,6 +347,18 @@ function buildHistory(chat){
 }
 /* Kebijakan kegagalan: giliran yang gagal TIDAK disimpan (server atomik: pesan user + jawaban disimpan bersamaan hanya jika AI berhasil).
    Gelembung error hanya tampil di layar ini, punya tombol "Coba lagi", dan hilang saat chat dimuat ulang. */
+/* Menunjukkan link mana yang benar-benar terbaca (atau gagal dan kenapa) di bawah jawaban; teks diisi lewat textContent. */
+function appendSources(links){
+  const row=messagesEl.lastElementChild;const body=row&&row.querySelector(".message-body");if(!body||!links||!links.length)return;
+  const box=document.createElement("div");box.className="sources";
+  const head=document.createElement("strong");head.textContent="Tautan yang dibaca:";box.append(head);
+  for(const l of links){
+    const item=document.createElement("div");item.className="source "+(l.ok?"ok":"fail");
+    item.textContent=l.ok?("✓ "+l.host+(l.title?" — "+l.title:"")+(l.truncated?" (dipotong)":"")):("✗ "+(l.host||"tautan")+" — "+l.reason);
+    box.append(item);
+  }
+  body.append(box);
+}
 function appendFailedTurn(message,text,noRetry=false){
   appendMessage("assistant",message);
   const row=messagesEl.lastElementChild;const body=row&&row.querySelector(".message-body");if(!body)return;
@@ -375,7 +387,7 @@ async function submit(){
     const data=await postJson("/api/chat",payload,CHAT_TIMEOUT_MS);
     if(typeof data.response!=="string"||!data.response.trim())throw new Error("AI tidak menghasilkan jawaban.");
     chat.messages.push({role:"assistant",content:data.response});chat.updated=Date.now();
-    if(stillActive()){$("typing")?.remove();appendMessage("assistant",data.response);renderWorkflow(data.steps)}
+    if(stillActive()){$("typing")?.remove();appendMessage("assistant",data.response);appendSources(data.links);renderWorkflow(data.steps)}
     if(state===AppState.AUTH&&data.saved&&data.conversationId){
       chat.serverId=data.conversationId;chat.id=data.conversationId;chat.loaded=true;
       if(stillActive()){activeId=chat.id;replaceRoute({name:"chat",id:chat.id})}

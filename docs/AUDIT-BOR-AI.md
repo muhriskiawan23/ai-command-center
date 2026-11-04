@@ -37,7 +37,7 @@ Status: **DIPERBAIKI** (ada test), **TERBUKA** (butuh keputusan/infrastruktur), 
 | M2 | Chat / Klien | Tidak ada timeout di klien: bila server macet, composer terkunci tanpa batas | Medium | `fetch` tanpa `AbortController` | `public/app.js:34` (`CHAT_TIMEOUT_MS`, `api()`) | Batas waktu + pesan jelas + Coba lagi | **DIPERBAIKI** (150 dtk). Test e2e "server macet". **Batasan terbuka:** setelah timeout server mungkin tetap menyimpan pasangan pesan; Coba lagi dapat menggandakan di database (tidak ada idempotency key). |
 | M3 | Riwayat | Daftar percakapan dibatasi 100 tanpa pagination; chat ke-101+ tak terjangkau dari UI (hanya bisa dihapus massal) | Medium | `LIMIT 100`, tanpa paginasi | `src/index.js:688` | Paginasi/infinite scroll, pencarian | **TERBUKA** (Tahap 3). Terkonfirmasi dari kode. |
 | M4 | Deployment | Dua jalur deploy: Cloudflare Workers Builds (terlihat di check PR) dan workflow `bor-ai-deploy.yml` (manual). Sumber kebenaran ambigu; risiko versi tertimpa atau tidak sinkron | Medium | Dua integrasi terpisah | `.github/workflows/bor-ai-deploy.yml`, check "Workers Builds" di PR | Tentukan satu jalur resmi untuk production | **TERBUKA**. Periksa pengaturan Git integration di dashboard Cloudflare. |
-| M5 | Orkestrasi | Tidak ada timeout/anggaran waktu di sisi server untuk `env.AI.run`; alur multi-agent berurutan | Medium | Panggilan model tanpa batas waktu per langkah maupun total | `src/index.js:241` (`generate`), `:336` | Timeout per panggilan dan anggaran total; hentikan lebih awal | **TERBUKA**. Tidak direproduksi. |
+| M5 | Orkestrasi | Tidak ada timeout/anggaran waktu di sisi server untuk `env.AI.run`; alur multi-agent berurutan | Medium | Panggilan model tanpa batas waktu per langkah maupun total | `src/index.js` (`withAiDeadline`, `AiTimeoutError`) | Timeout per panggilan dan anggaran total | **DIPERBAIKI** (Stage 9): 45 dtk per panggilan, 100 dtk total untuk multi-agent (dapat diubah lewat `AI_CALL_TIMEOUT_MS` / `AI_TOTAL_BUDGET_MS`); respons 504 `ai_timeout`, jatah harian dikembalikan, tidak ada yang disimpan. Diuji dengan AI tiruan (`tests/ai-timeouts.test.js`). **Batasan:** panggilan yang habis waktu tidak dapat dibatalkan di sisi penyedia AI, sehingga biaya panggilan itu tetap mungkin terjadi. |
 | L1 | UI / Health | Indikator "Layanan terhubung" hanya berarti Worker hidup; tidak memeriksa D1 atau AI | Low | Endpoint health statis | `src/index.js:743` | `?deep=1` untuk cek D1; jangan tampilkan "terhubung" bila tidak diperiksa | **TERBUKA** |
 | L2 | Operasional | Tidak ada observability/log persisten di konfigurasi | Low | `observability` tidak diaktifkan | `wrangler.jsonc` | Aktifkan Workers Logs (cek biaya/retensi) | **TERBUKA** |
 | L3 | Auth | Logout hanya mengakhiri sesi perangkat ini | Low | Hapus satu token | `src/index.js:670` | Opsi "keluar dari semua perangkat" | **TERBUKA** |
@@ -78,4 +78,21 @@ Catatan produk: spesifikasi meminta Enter = baris baru di semua perangkat. Perlu
 
 ## 6. Batas kemampuan produk saat ini (bukan bug)
 
-BOR AI saat ini adalah chat teks dengan satu model (`src/index.js:2`, Llama 3.3 70B di Workers AI). BOR AI **tidak** dapat: membuka tautan, mencari di internet, membaca file/lampiran, menjalankan atau membangun kode (APK, aplikasi), mengendalikan aplikasi atau browser, atau terintegrasi dengan layanan pihak ketiga. Pernyataan ini kini dipasang ke prompt semua agent (H1) agar model tidak mengklaim sebaliknya.
+BOR AI adalah chat teks dengan satu model (`src/index.js`, Llama 3.3 70B di Workers AI). BOR AI **tidak** dapat: mencari di internet, membaca file/lampiran, menjalankan atau membangun kode (APK, aplikasi), mengendalikan aplikasi atau browser, atau terintegrasi dengan layanan pihak ketiga. Pernyataan ini dipasang ke prompt semua agent (H1).
+
+**Satu pengecualian sejak Stage 8: membaca tautan yang diketik pengguna** (`src/links.js`). Server mengambil halaman, mengubahnya menjadi teks, dan memberikannya ke model sebagai data tidak tepercaya.
+
+| Aspek | Perlakuan |
+|---|---|
+| SSRF | Hanya http/https port 80/443; tanpa username/password; IP privat/loopback/link-local/cadangan (IPv4 dan IPv6), bentuk IP terselubung (desimal/hex/oktal), nama host internal/satu-label, dan host aplikasi sendiri ditolak. Setiap pengalihan (maks. 3) divalidasi ulang. |
+| Sumber daya | 8 dtk per halaman, unduhan maks. 1 MB, 6.000 karakter per halaman, maks. 3 tautan per pesan. Pesan dengan tautan memakai 1 unit kuota harian ekstra. |
+| Injeksi prompt | Isi halaman dibungkus `<web_page>` dengan semua `<` dan `>` dinetralkan; prompt sistem melarang mengikuti instruksi di dalamnya dan mewajibkan model mengaku bila tautan tidak terbaca. Isi halaman tidak disimpan di database. |
+| Transparansi | Pengguna melihat daftar tautan yang terbaca atau gagal (beserta alasannya) di bawah jawaban. |
+
+**Batasan yang diketahui dan belum dapat dibuktikan dari lingkungan audit:**
+
+- DNS rebinding (nama publik yang mengarah ke IP privat) tidak dapat dideteksi dari Worker. Worker tidak dapat menjangkau jaringan privat, sehingga ini lapisan pertahanan tambahan, bukan satu-satunya penghalang.
+- Pengujian memakai `fetch` tiruan. Perilaku terhadap situs sungguhan (anti-bot, paywall, Cloudflare challenge, halaman yang dirender JavaScript, PDF) **belum diuji**. Halaman seperti itu akan dilaporkan gagal, bukan ditebak.
+- Efektivitas model asli dalam mematuhi aturan `<web_page>` (tidak mengikuti instruksi di halaman) **belum teruji**; yang teruji adalah isi prompt dan penetralan tag.
+- Tidak ada penghormatan terhadap `robots.txt`; yang dibaca hanya tautan yang sengaja diketik pengguna.
+- Konteks halaman hanya berlaku untuk pesan yang memuat tautan; pertanyaan lanjutan bergantung pada jawaban sebelumnya, bukan teks halamannya.

@@ -158,3 +158,40 @@ test.describe("batas harian", () => {
     await expect(page.locator("#send")).toBeEnabled();
   });
 });
+
+test.describe("pembaca link", () => {
+  const PAGE = '<html><head><title>Judul &lt;img src=x onerror=window.__xss=1&gt; Aman</title></head><body><p>Isi halaman yang cukup panjang supaya dianggap berisi teks yang berguna oleh pembaca link.</p></body></html>';
+  test.use({ harnessOptions: { extraEnv: { LINK_FETCHER: async (url) => url.includes("rusak") ? new Response("x", { status: 500 }) : new Response(PAGE, { headers: { "content-type": "text/html" } }) } } });
+
+  test("jawaban menampilkan tautan yang berhasil dan yang gagal beserta alasannya; judul berbahaya tampil sebagai teks", async ({ page, app }) => {
+    await page.goto(app.url);
+    await page.locator("#continueGuest").click();
+    await page.locator("#prompt").fill("Tolong ringkas https://contoh.id/a dan https://rusak.id/b");
+    await page.locator("#send").click();
+    await expect(page.locator(".message.assistant:not(#typing)")).toHaveCount(1);
+    const sources = page.locator(".sources");
+    await expect(sources).toBeVisible();
+    await expect(sources).toContainText("Tautan yang dibaca");
+    await expect(sources.locator(".source.ok")).toContainText("contoh.id");
+    await expect(sources.locator(".source.fail")).toContainText("rusak.id");
+    await expect(sources.locator(".source.fail")).toContainText("500");
+    await expect(sources).toContainText("<img src=x");                         // tampil sebagai teks
+    expect(await page.evaluate(() => window.__xss)).toBeUndefined();
+    expect(await page.locator(".sources img").count()).toBe(0);
+    await expect(page.locator("#prompt")).toBeEditable();
+  });
+});
+
+test("mode Translator dan Text Analyst tersedia di pemilih mode dan terkirim ke server", async ({ page, app }) => {
+  await page.goto(app.url);
+  await page.locator("#continueGuest").click();
+  const options = await page.locator("#agent option").evaluateAll((els) => els.map((e) => e.value));
+  expect(options).toEqual(expect.arrayContaining(["translator", "text_analyst"]));
+  const posts = [];
+  page.on("request", (r) => { if (r.url().endsWith("/api/chat") && r.method() === "POST") posts.push(JSON.parse(r.postData())); });
+  await page.locator("#agent").selectOption("translator");
+  await page.locator("#prompt").fill("Translate to Indonesian: Good morning");
+  await page.locator("#send").click();
+  await expect(page.locator(".message.assistant:not(#typing)")).toHaveCount(1);
+  expect(posts[0].agent).toBe("translator");
+});
