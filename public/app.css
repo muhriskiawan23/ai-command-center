@@ -59,3 +59,27 @@ body.drawer-open{overflow:hidden}
 .source{overflow-wrap:anywhere}
 .source.ok{color:#9bd89b}
 .source.fail{color:#e8a0a0}
+
+/* ---- Panel Memori ---- */
+.memory-panel{position:fixed;inset:0;z-index:60;display:grid;place-items:center;padding:16px;background:rgba(0,0,0,.62)}
+.memory-card{width:100%;max-width:520px;max-height:min(92vh,92dvh);overflow:auto;overscroll-behavior:contain;background:#1b1b1b;border:1px solid #3a3a3a;border-radius:16px;padding:18px}
+.memory-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.memory-head h2{margin:0;font-size:20px}
+.memory-close{width:44px;height:44px;border:0;border-radius:10px;background:transparent;color:#ddd;font-size:18px}
+.memory-close:hover{background:#292929}
+.memory-copy{margin:0 0 14px;color:var(--muted);font-size:13px;line-height:1.6}
+.memory-copy strong{color:#e4e4e4}
+.memory-switch{display:flex;align-items:center;gap:12px;min-height:44px;font-weight:600;cursor:pointer}
+.memory-switch input{width:22px;height:22px}
+.memory-add{display:flex;gap:8px;margin:10px 0 6px}
+.memory-add input{flex:1;min-width:0;min-height:44px;padding:0 12px;border:1px solid #444;border-radius:10px;background:#242424;color:var(--text);font-size:16px}
+.memory-add button{min-height:44px;padding:0 16px;border:0;border-radius:10px;background:var(--accent);color:var(--accentText);font-weight:650}
+.memory-error{margin:4px 0 8px;padding:8px 10px;border:1px solid #5a3a3a;border-radius:10px;background:#2a1f1f;color:var(--danger);font-size:13px;line-height:1.5}
+.memory-meta{display:flex;justify-content:space-between;margin:12px 0 6px;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:1px}
+.memory-list{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.memory-item{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px 8px 12px;border:1px solid #393939;border-radius:10px;background:#202020;font-size:14px;line-height:1.5}
+.memory-item span{overflow-wrap:anywhere}
+.memory-del{flex:0 0 auto;min-height:44px;padding:0 12px;border:0;border-radius:8px;background:transparent;color:#e8a0a0;font-size:13px}
+.memory-del:hover{background:#2c2020}
+.memory-empty{margin:8px 0;color:var(--muted);font-size:13px;line-height:1.6}
+.memory-clear{margin-top:14px;min-height:44px;width:100%;border:1px solid #5a3a3a;border-radius:10px;background:transparent;color:#e8a0a0;font-weight:600}

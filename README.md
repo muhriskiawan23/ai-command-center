@@ -142,3 +142,12 @@ See `docs/AUDIT-BOR-AI.md` for the full technical audit, severity ratings and wh
 - All agents receive `COMMUNICATION_NOTICE`: reply in the user's language, use the conversation context (ask one question if context is missing), notice emotional cues without diagnosing or storing anything, and respond to self-harm/violence signals with a caring message that points to emergency services (Indonesia: 112) or a trusted person. These are prompt rules, not a classifier; real-model behavior has not been evaluated.
 - See `docs/FEATURE-TRIAGE.md` for the status of the founder's feature wish-list.
 
+## Memory (opt-in)
+
+- **Off by default**, signed-in accounts only. Nothing is inferred: only text the user explicitly asks to remember is stored, either in the Memori panel or by writing in chat `ingat bahwa ...` / `remember that ...` (single short message; a confirmation line is appended to the answer).
+- Limits: 30 items, 200 characters each; at most ~1,500 characters reach the model, inside the system prompt as data (never instructions; `<` and `>` neutralised). Memory is used only while the switch is on; turning it off keeps the items, "delete all" removes them. Deleting an account row cascades.
+- A conservative, heuristic filter rejects credentials, identity/payment numbers, contact details, health, religion, politics, sexual orientation/activity, ethnicity, personal finances, criminal records and being under 18. It can over-reject and can miss things; the UI warns users not to store sensitive data.
+- API: `GET/DELETE /api/memory`, `POST /api/memory`, `PUT /api/memory/settings`, `DELETE /api/memory/:id` (session required, same-origin for changes).
+- Tables come from migration `0003`. If it has not been applied, chat keeps working, the memory API answers `503 memory_unavailable`, and nothing is stored. **Run `bor-ai-deploy` to apply migrations.**
+- Integrations with other platforms: see `docs/INTEGRATIONS-PLAN.md` (proposal).
+
