@@ -73,7 +73,7 @@ function setState(next,notice=""){
   $("app").hidden=!inChatView();
   const n=$("gateNotice");n.textContent=notice;n.hidden=!notice;
   $("gateRetry").hidden=next!==AppState.ERROR;
-  if(!inChatView())closeDrawerDom(false);
+  if(!inChatView()){closeMemoryDom(false);closeDrawerDom(false)}
   syncInert();renderAuth();
 }
 function resetChatView(){
@@ -227,6 +227,8 @@ async function openRemoteChat(cid){
 }
 window.addEventListener("popstate",e=>{
   const s=e.state;
+  if(memoryOpen&&s?.overlay!=="memory"){closeMemoryDom();return}              /* prioritas 1: Back menutup panel Memori */
+  if(s?.overlay==="memory"){if(state===AppState.AUTH&&!memoryOpen)openMemoryDom();return}
   if(drawerOpen&&s?.overlay!=="drawer"){closeDrawerDom();return}           /* prioritas 2: Back menutup drawer */
   if(s?.overlay==="drawer"){if(isDrawerMode()&&inChatView()&&!drawerOpen)openDrawerDom();return} /* Forward ke entri drawer */
   applyRoute();                                                              /* prioritas 3: rute in-app */
@@ -269,8 +271,67 @@ function closeDrawer(){
 menuBtn.addEventListener("click",()=>drawerOpen?closeDrawer():openDrawer());
 $("drawerClose").addEventListener("click",closeDrawer);
 backdrop.addEventListener("click",closeDrawer);
-document.addEventListener("keydown",e=>{if(e.key==="Escape"&&drawerOpen){e.preventDefault();closeDrawer()}});
+document.addEventListener("keydown",e=>{if(e.key!=="Escape")return;if(memoryOpen){e.preventDefault();closeMemory()}else if(drawerOpen){e.preventDefault();closeDrawer()}});
 mq.addEventListener("change",()=>{if(!isDrawerMode())closeDrawerDom(false);syncInert()});
+
+/* ---------- 5b. Memori (opsional, hanya akun login) ---------- */
+const memoryPanel=$("memoryPanel");let memoryOpen=false,memoryLastFocus=null;
+function memoryErr(message){const el=$("memoryError");el.textContent=message||"";el.hidden=!message}
+function renderMemory(data){
+  $("memoryToggle").checked=Boolean(data.enabled);
+  const list=$("memoryList");list.replaceChildren();
+  $("memoryEmpty").hidden=data.memories.length>0;
+  for(const m of data.memories){
+    const li=document.createElement("li");li.className="memory-item";
+    const text=document.createElement("span");text.textContent=m.content;
+    const del=document.createElement("button");del.type="button";del.className="memory-del";del.textContent="Hapus";del.setAttribute("aria-label","Hapus memori: "+m.content);
+    del.addEventListener("click",async()=>{try{await api("/api/memory/"+encodeURIComponent(m.id),{method:"DELETE"});memoryErr("");await loadMemory()}catch(e){memoryErr(e.message)}});
+    li.append(text,del);list.append(li);
+  }
+  $("memoryCount").textContent=data.memories.length+" / "+data.limits.maxItems;
+  $("memoryClearAll").hidden=!data.memories.length;
+}
+async function loadMemory(){
+  try{renderMemory(await api("/api/memory"));memoryErr("")}
+  catch(e){memoryErr(e.code==="memory_unavailable"?"Memori belum tersedia di server (migrasi database belum diterapkan).":(e.message||"Gagal memuat memori."))}
+}
+function openMemoryDom(){
+  if(memoryOpen)return;
+  memoryOpen=true;memoryLastFocus=document.activeElement;memoryPanel.hidden=false;
+  document.body.classList.add("drawer-open");$("app").inert=true;$("memoryInput").value="";memoryErr("");$("memoryClose").focus();
+}
+function closeMemoryDom(restoreFocus=true){
+  if(!memoryOpen)return;
+  memoryOpen=false;memoryPanel.hidden=true;$("app").inert=false;
+  if(!drawerOpen)document.body.classList.remove("drawer-open");
+  if(restoreFocus&&memoryLastFocus&&memoryLastFocus.isConnected)memoryLastFocus.focus();
+}
+function openMemory(){
+  if(state!==AppState.AUTH){toast("Masuk dengan Google untuk memakai Memori.");return}
+  if(memoryOpen)return;
+  history.pushState({borai:1,overlay:"memory",route:currentRoute()},"",location.href);
+  openMemoryDom();loadMemory();
+}
+function closeMemory(){if(!memoryOpen)return;if(history.state?.overlay==="memory")history.back();else closeMemoryDom()}
+async function addMemoryItem(){
+  const input=$("memoryInput");const content=input.value.trim();if(!content)return;
+  try{await postJson("/api/memory",{content});input.value="";memoryErr("");await loadMemory()}
+  catch(e){memoryErr(e.message)}
+}
+$("openMemory").addEventListener("click",openMemory);
+$("memoryClose").addEventListener("click",closeMemory);
+memoryPanel.addEventListener("click",e=>{if(e.target===memoryPanel)closeMemory()});
+$("memoryToggle").addEventListener("change",async e=>{
+  const want=e.target.checked;
+  try{await api("/api/memory/settings",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({enabled:want})});memoryErr("")}
+  catch(err){e.target.checked=!want;memoryErr(err.message)}
+});
+$("memoryAdd").addEventListener("click",addMemoryItem);
+$("memoryInput").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();addMemoryItem()}});
+$("memoryClearAll").addEventListener("click",async()=>{
+  if(!confirm("Hapus semua memori? Tindakan ini tidak bisa dibatalkan."))return;
+  try{await api("/api/memory",{method:"DELETE"});memoryErr("");await loadMemory()}catch(e){memoryErr(e.message)}
+});
 
 /* ---------- 6. Chat ---------- */
 const sortedConversations=()=>[...conversations].sort((a,b)=>(b.updated||0)-(a.updated||0));

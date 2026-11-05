@@ -59,7 +59,7 @@
 <button class="new-chat" id="newChat" type="button"><span>＋</span> Chat baru</button>
 <div class="side-label history-label"><span id="historyLabel">Sesi ini · Guest Mode</span><span id="historyCount"></span></div>
 <nav class="history" id="history" aria-label="Riwayat percakapan"></nav>
-<div class="side-bottom"><button class="side-action" id="clearHistory" type="button">⌫ Hapus semua riwayat</button><button class="side-action" id="about" type="button">◈ Tentang BOR AI</button></div>
+<div class="side-bottom"><button class="side-action" id="openMemory" type="button">🧠 Memori</button><button class="side-action" id="clearHistory" type="button">⌫ Hapus semua riwayat</button><button class="side-action" id="about" type="button">◈ Tentang BOR AI</button></div>
 </aside>
 <main class="workspace" id="workspace">
 <header class="topbar"><div style="display:flex;align-items:center;gap:10px"><button class="mobile-menu" id="menuBtn" type="button" aria-label="Buka menu" aria-controls="sidebar" aria-expanded="false">☰</button><div class="model-label">BOR AI <small>· Multi-agent</small></div></div><div class="health"><span class="dot" id="healthDot"></span><span id="healthText">Memeriksa layanan…</span></div></header>
@@ -71,6 +71,20 @@
 <div class="toast" id="toast" role="status" hidden></div>
 </main>
 </div>
+<!-- Panel Memori (opsional, hanya akun login) -->
+<section class="memory-panel" id="memoryPanel" role="dialog" aria-modal="true" aria-labelledby="memoryTitle" hidden>
+  <div class="memory-card">
+    <header class="memory-head"><h2 id="memoryTitle">Memori</h2><button class="memory-close" id="memoryClose" type="button" aria-label="Tutup">✕</button></header>
+    <p class="memory-copy">Memori menyimpan hal yang <strong>kamu sendiri</strong> minta untuk diingat, supaya jawaban lebih sesuai. Nonaktif secara default. BOR AI tidak menebak atau menyimpan apa pun tanpa kamu minta. <strong>Jangan simpan data sensitif</strong> (sandi, kesehatan, agama, politik, keuangan, nomor identitas). Kamu bisa menghapus satu per satu atau semuanya kapan saja.</p>
+    <label class="memory-switch"><input type="checkbox" id="memoryToggle"> <span>Aktifkan memori</span></label>
+    <div class="memory-add"><input id="memoryInput" type="text" maxlength="200" placeholder="mis. Panggil aku Budi dan jawab singkat" aria-label="Hal yang ingin diingat"><button id="memoryAdd" type="button">Simpan</button></div>
+    <p class="memory-error" id="memoryError" role="alert" hidden></p>
+    <div class="memory-meta"><span>Tersimpan</span><span id="memoryCount">0 / 30</span></div>
+    <ul class="memory-list" id="memoryList"></ul>
+    <p class="memory-empty" id="memoryEmpty">Belum ada yang tersimpan. Kamu juga bisa mengetik di chat: "Ingat bahwa aku suka kopi tanpa gula".</p>
+    <button class="memory-clear" id="memoryClearAll" type="button" hidden>Hapus semua memori</button>
+  </div>
+</section>
 <script src="/app.js" defer></script>
 </body>
 </html>

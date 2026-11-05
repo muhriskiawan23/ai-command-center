@@ -1,4 +1,5 @@
 import { extractUrls, readLinks, buildPageContext, summarizeLinks } from "./links.js";
+import { MEMORY_MAX_ITEMS, MEMORY_MAX_CHARS, getMemoryState, setMemoryEnabled, addMemory, deleteMemory, deleteAllMemories, parseRememberCommand, buildMemoryBlock } from "./memory.js";
 
 const MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 const MAX_REQUEST_BYTES = 64 * 1024;
@@ -43,6 +44,17 @@ function withAiDeadline(env, deadline) {
           ]);
         } finally { clearTimeout(timer); }
       }
+    }
+  };
+}
+
+// Appends the user's memory block to every system prompt of this request (data about the user, not instructions).
+function withSystemExtra(env, extra) {
+  if (!extra) return env;
+  return {
+    ...env,
+    AI: {
+      run: (model, payload) => env.AI.run(model, { ...payload, messages: payload.messages.map((m, i) => (i === 0 && m.role === "system" ? { ...m, content: `${m.content}\n\n${extra}` } : m)) })
     }
   };
 }
@@ -855,6 +867,51 @@ async function handleConversationRoute(request, env, url) {
   }
   return json({ error: "Metode HTTP tidak didukung untuk endpoint ini." }, 405, { Allow: "GET, DELETE" });
 }
+// ---- Memory routes ---------------------------------------------------------------------------------------------
+// GET /api/memory | PUT /api/memory/settings {enabled} | POST /api/memory {content} | DELETE /api/memory/:id | DELETE /api/memory
+async function handleMemoryRoute(request, env, url) {
+  const mutation = request.method !== "GET";
+  if (mutation && !sameOrigin(request)) return json({ error: "Origin tidak valid." }, 403);
+  let user;
+  try { user = await getSession(request, env); }
+  catch (error) { console.error("Memory session lookup failed:", error); return json({ error: "Memori belum tersedia." }, 503); }
+  if (!user) return authRequiredResponse();
+  if (!env.DB) return json({ error: "Memori belum tersedia." }, 503);
+  const state = await getMemoryState(env, user.id);
+  if (!state.available) return json({ error: "Memori belum tersedia (migrasi database belum diterapkan).", code: "memory_unavailable" }, 503);
+  const limits = { maxItems: MEMORY_MAX_ITEMS, maxChars: MEMORY_MAX_CHARS };
+
+  if (url.pathname === "/api/memory" && request.method === "GET") return json({ enabled: state.enabled, memories: state.items, limits });
+  if (url.pathname === "/api/memory" && request.method === "DELETE") { await deleteAllMemories(env, user.id); return json({ deleted: true }); }
+
+  if (url.pathname === "/api/memory/settings" && request.method === "PUT") {
+    const body = await readJsonBody(request);
+    if (typeof body?.enabled !== "boolean") return json({ error: "Field 'enabled' harus true atau false." }, 400);
+    await setMemoryEnabled(env, user.id, body.enabled);
+    return json({ enabled: body.enabled });
+  }
+  if (url.pathname === "/api/memory" && request.method === "POST") {
+    const body = await readJsonBody(request);
+    const saved = await addMemory(env, user.id, body?.content);
+    if (!saved.ok) return json({ error: saved.error, code: saved.code }, saved.code === "memory_invalid" ? 400 : saved.code === "memory_rejected" ? 422 : 409);
+    return json({ memory: saved.item }, 201);
+  }
+  const id = url.pathname.startsWith("/api/memory/") ? url.pathname.slice("/api/memory/".length) : "";
+  if (id && id !== "settings" && request.method === "DELETE") {
+    if (!/^[a-zA-Z0-9-]{8,80}$/.test(id)) return json({ error: "Memori tidak ditemukan." }, 404);
+    return (await deleteMemory(env, user.id, id)) ? json({ deleted: true, id }) : json({ error: "Memori tidak ditemukan." }, 404);
+  }
+  return json({ error: "Metode HTTP tidak didukung untuk endpoint ini." }, 405, { Allow: "GET, POST, PUT, DELETE" });
+}
+async function readJsonBody(request) {
+  try {
+    const { text, tooLarge } = await readBodyWithinLimit(request, 4096);
+    if (tooLarge) return null;
+    const parsed = JSON.parse(text);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch { return null; }
+}
+
 async function persistConversation(env, user, conversationId, message, response) {
   const now = Math.floor(Date.now() / 1000);
   const id = conversationId || crypto.randomUUID();
@@ -883,6 +940,10 @@ export default {
       if (!["GET", "DELETE"].includes(request.method)) return json({ error: "Metode HTTP tidak didukung untuk endpoint ini." }, 405, { Allow: "GET, DELETE" });
       try { return await handleConversationRoute(request, env, url); }
       catch (error) { console.error("Conversation request failed:", error); return json({ error: "Riwayat chat gagal diproses." }, 503); }
+    }
+    if (url.pathname === "/api/memory" || url.pathname.startsWith("/api/memory/")) {
+      try { return await handleMemoryRoute(request, env, url); }
+      catch (error) { console.error("Memory request failed:", error); return json({ error: "Memori gagal diproses." }, 503); }
     }
     if (request.method === "GET" && url.pathname === "/api/health") return json({ ok: true, service: "BOR AI" });
     if (request.method === "GET" && url.pathname === "/api/agents") {
@@ -939,7 +1000,28 @@ export default {
       // Single answers may retry once (2 calls); the multi-agent chain gets its own total budget.
       const perCallMs = positiveMs(env.AI_CALL_TIMEOUT_MS, AI_CALL_TIMEOUT_DEFAULT_MS);
       const budgetMs = useMultiAgent ? positiveMs(env.AI_TOTAL_BUDGET_MS, AI_MULTI_AGENT_BUDGET_DEFAULT_MS) : perCallMs * 2;
-      const aiEnv = withAiDeadline(env, Date.now() + budgetMs);
+      // Opt-in memory: only for signed-in users who switched it on. A failure here never blocks the chat.
+      let memoryNote = "";
+      let memoryItems = [];
+      const rememberText = parseRememberCommand(message);
+      try {
+        if (user && env.DB) {
+          const memory = await getMemoryState(env, user.id);
+          if (rememberText !== null) {
+            if (!memory.available || !memory.enabled) memoryNote = "ℹ️ Memori sedang nonaktif, jadi permintaan itu tidak disimpan. Aktifkan lewat menu Memori.";
+            else {
+              const saved = await addMemory(env, user.id, rememberText);
+              memoryNote = saved.ok ? `✓ Disimpan di memori: "${saved.item.content}"` : `ℹ️ ${saved.error}`;
+              if (saved.ok) memory.items = [saved.item, ...memory.items];
+            }
+          }
+          if (memory.available && memory.enabled) memoryItems = memory.items;
+        } else if (!user && rememberText !== null) {
+          memoryNote = "ℹ️ Memori hanya tersedia untuk akun Google. Masuk dulu, lalu aktifkan lewat menu Memori.";
+        }
+      } catch (error) { console.error("Memory handling failed:", error); memoryNote = ""; memoryItems = []; }
+      const memoryEnv = withSystemExtra(env, buildMemoryBlock(memoryItems));
+      const aiEnv = withAiDeadline(memoryEnv, Date.now() + budgetMs);
       let pages = "";
       let links = [];
       if (found.urls.length) {
@@ -958,6 +1040,8 @@ export default {
           const response = await runAgent(aiEnv, agentId, message, "", history, pages);
           result = { agent: AGENTS[agentId].name, model: MODEL, workflow: "single-agent", response };
         }
+        // Deterministic confirmation of a "remember ..." request, appended to the model's answer (and stored with it).
+        if (memoryNote && typeof result.response === "string") result.response = `${result.response}\n\n${memoryNote}`;
         if (user) {
           try {
             result.conversationId = await persistConversation(env, user, body.conversationId || null, message, result.response);
