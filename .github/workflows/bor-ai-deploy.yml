@@ -8,6 +8,11 @@ on:
         required: true
         type: boolean
         default: false
+      apply_db_migrations:
+        description: "Apply pending production D1 migrations (only after reviewing pending changes and confirming the current Time Travel bookmark)"
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -59,49 +64,49 @@ jobs:
           npm run check
           npm run preview
 
-      - name: Find or create production D1 database
-        id: d1
+      - name: Verify the pinned production D1 database (read-only)
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           set -euo pipefail
           DB_ID="$(node --input-type=module <<'NODE'
-          const account = process.env.CLOUDFLARE_ACCOUNT_ID;
-          const token = process.env.CLOUDFLARE_API_TOKEN;
-          const base = `https://api.cloudflare.com/client/v4/accounts/${account}/d1/database`;
-          const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
-          async function call(url, init) {
-            const response = await fetch(url, init);
-            const data = await response.json();
-            if (!response.ok || data.success !== true) {
-              throw new Error(`Cloudflare D1 API failed (${response.status}): ${JSON.stringify(data.errors || data)}`);
-            }
-            return data.result;
-          }
-          const listed = await call(`${base}?name=bor-ai-chat`, { headers });
-          let db = Array.isArray(listed) ? listed.find(item => item.name === "bor-ai-chat") : null;
-          if (!db) db = await call(base, { method: "POST", headers, body: JSON.stringify({ name: "bor-ai-chat" }) });
-          if (!db?.uuid) throw new Error("Cloudflare did not return a D1 database UUID.");
-          process.stdout.write(db.uuid);
-          NODE
-          )"
-          test -n "$DB_ID"
-          echo "database_id=$DB_ID" >> "$GITHUB_OUTPUT"
-          node --input-type=module - "$DB_ID" <<'NODE'
           import fs from "node:fs";
           const config = JSON.parse(fs.readFileSync("wrangler.jsonc", "utf8"));
           const binding = config.d1_databases?.find(item => item.binding === "DB");
-          if (!binding) throw new Error("D1 binding DB is missing from wrangler.jsonc");
-          binding.database_id = process.argv[2];
-          fs.writeFileSync("wrangler.jsonc", JSON.stringify(config, null, 2) + "\n");
+          if (!binding?.database_id) throw new Error("Production D1 database_id must be pinned in wrangler.jsonc.");
+          if (binding.database_name !== "bor-ai-chat") throw new Error("Unexpected production D1 database name.");
+          process.stdout.write(binding.database_id);
           NODE
+          )"
+          RESULT="$(curl --fail --silent --show-error \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/d1/database/$DB_ID")"
+          printf '%s' "$RESULT" | node --input-type=module -e '
+            let s=""; for await (const c of process.stdin) s+=c;
+            const d=JSON.parse(s);
+            const db=d.result;
+            if(d.success!==true || db?.uuid!==process.env.DB_ID || db?.name!=="bor-ai-chat") {
+              throw new Error("Pinned D1 database verification failed; refusing production changes.");
+            }
+            console.log("Verified existing production D1 database:", db.name, db.uuid);
+          ' 
+      - name: List pending production D1 migrations
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx --yes wrangler@4 d1 migrations list bor-ai-chat --remote --config wrangler.jsonc
 
       - name: Apply D1 migrations
+        if: ${{ inputs.apply_db_migrations }}
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: npx --yes wrangler@4 d1 migrations apply bor-ai-chat --remote --config wrangler.jsonc
+
+      - name: Explain skipped production migrations
+        if: ${{ !inputs.apply_db_migrations }}
+        run: echo "Production D1 migrations were not applied. Review the migration list and explicitly enable apply_db_migrations on a later dispatch if needed."
 
       - name: Deploy Worker and assets
         env:
