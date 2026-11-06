@@ -2,12 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { parseXlsxArrayBuffer, parseXlsxLocally, XLSX_MAX_BYTES } from "../public/xlsx-reader.js";
 
-function fakeXlsx() {
+function fakeXlsx(withFormula = false) {
   const sheet = {
     "!ref": "A1:B3",
     A1: { v: "Produk" }, B1: { v: "Pendapatan" },
     A2: { v: "Kopi" }, B2: { v: 120 },
-    A3: { v: "Teh" }, B3: { v: 80, f: "40+40" }
+    A3: { v: "Teh" }, B3: withFormula ? { v: 80, f: "40+40" } : { v: 80 }
   };
   const second = { "!ref": "A1:A2", A1: { v: "Catatan" }, A2: { v: "OK" } };
   return {
