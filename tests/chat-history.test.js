@@ -129,10 +129,10 @@ test("alur multi-agent juga menerima riwayat (researcher dan writer)", async () 
 test("rename percakapan: validasi judul, origin, dan kepemilikan akun ditegakkan server-side", async () => {
   const app = await startHarness();
   const aliceToken = seedSession(app.db, ALICE);
-  seedConversation(app.db, { id: "conv-alice-rename", userId: ALICE.id, title: "Judul lama", updatedAt: 100 });
-  seedConversation(app.db, { id: "conv-bob-rename", userId: "sub-bob", title: "Milik Bob", updatedAt: 100 });
   app.db.sqlite.prepare("INSERT INTO users (id,email,name,picture,created_at,updated_at) VALUES (?,?,?,?,?,?)")
     .run("sub-bob", "bob@example.com", "Bob", "", 100, 100);
+  seedConversation(app.db, { id: "conv-alice-rename", userId: ALICE.id, title: "Judul lama", updatedAt: 100 });
+  seedConversation(app.db, { id: "conv-bob-rename", userId: "sub-bob", title: "Milik Bob", updatedAt: 100 });
   const url = app.url + "/api/conversations/conv-alice-rename";
   const patch = (target, body, origin = app.url) => fetch(target, {
     method: "PATCH",
