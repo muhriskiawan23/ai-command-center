@@ -67,19 +67,12 @@ test("About BOR AI opens an accessible, user-invoked dialog with a close control
   assert.match(appCss, /@media\(max-width:560px\)/);
 });
 
-
-test("prompt template library is searchable, categorized, accessible, and never auto-submits", () => {
-  assert.match(page, /id="templatesDialog"/);
-  assert.match(page, /id="openTemplates"/);
-  assert.match(page, /id="templateSearch"/);
-  assert.match(page, /id="templateCategory"/);
-  assert.match(page, /id="templatesList"/);
-  assert.match(appJs, /const PROMPT_TEMPLATES=/);
-  assert.match(appJs, /function renderPromptTemplates\(\)/);
-  assert.match(appJs, /templateSearch.*addEventListener\("input",renderPromptTemplates\)/);
-  assert.match(appJs, /promptEl\.value=item\.prompt/);
-  assert.match(appJs, /Template dimuat\. Sesuaikan sebelum mengirim\./);
-  assert.doesNotMatch(appJs.slice(appJs.indexOf("function openPromptTemplates"), appJs.indexOf('history.scrollRestoration')), /submit\(/);
-  assert.match(appCss, /\.templates-dialog::backdrop/);
-  assert.match(appCss, /@media\(max-width:560px\)/);
+test("welcome screen keeps the four starter prompts and sidebar has no redundant template entry", () => {
+  assert.match(page, /data-prompt="Bantu gw menyusun rencana kerja/);
+  assert.match(page, /data-prompt="Analisis masalah ini secara kritis/);
+  assert.match(page, /data-prompt="Bantu gw membuat ide konten/);
+  assert.match(page, /data-prompt="Tinjau kode atau arsitektur aplikasi/);
+  assert.doesNotMatch(page, /id="openTemplates"|id="templatesDialog"|Prompt templates/);
+  assert.doesNotMatch(appJs, /PROMPT_TEMPLATES|renderPromptTemplates|openPromptTemplates/);
+  assert.doesNotMatch(appCss, /templates-dialog|template-card/);
 });

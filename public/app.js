@@ -824,54 +824,5 @@ aboutDialog.addEventListener("click",event=>{
   if(event.clientX<rect.left||event.clientX>rect.right||event.clientY<rect.top||event.clientY>rect.bottom)aboutDialog.close();
 });
 document.querySelectorAll("[data-prompt]").forEach(b=>b.addEventListener("click",()=>{promptEl.value=b.dataset.prompt;resizePrompt();promptEl.focus()}));
-/* ---------- Prompt templates (client-side, user-invoked, editable before send) ---------- */
-const PROMPT_TEMPLATES=[
-  {id:"work-plan",category:"work",title:"Rencana kerja realistis",description:"Ubah tujuan menjadi langkah, prioritas, dan jadwal.",prompt:"Bantu gw menyusun rencana kerja untuk [tujuan]. Kondisi dan sumber daya yang tersedia: [kondisi]. Susun prioritas, langkah konkret, estimasi waktu, risiko, dan indikator keberhasilan. Jika informasi penting belum ada, tanyakan dulu."},
-  {id:"weekly-review",category:"work",title:"Evaluasi mingguan",description:"Tinjau progres dan tentukan fokus minggu berikutnya.",prompt:"Bantu gw melakukan evaluasi mingguan. Target minggu ini: [target]. Yang berhasil: [hasil]. Hambatan: [hambatan]. Identifikasi pola, hal yang perlu dihentikan/dilanjutkan, dan maksimal 3 prioritas untuk minggu depan."},
-  {id:"research-brief",category:"research",title:"Kerangka riset",description:"Buat pertanyaan riset, metode, dan batasan.",prompt:"Bantu gw menyusun kerangka riset tentang [topik] untuk tujuan [tujuan]. Buat pertanyaan riset, konteks, variabel/konsep utama, metode yang sesuai, kebutuhan data, potensi bias, dan batasan. Pisahkan fakta yang diketahui dari asumsi dan hal yang perlu diverifikasi."},
-  {id:"critical-analysis",category:"research",title:"Analisis kritis",description:"Pisahkan fakta, asumsi, bukti, dan kesimpulan.",prompt:"Analisis secara kritis masalah berikut: [masalah]. Pisahkan fakta, asumsi, dan informasi yang belum diketahui. Bandingkan beberapa kemungkinan penjelasan, bukti pendukung/penyangkal, risiko, dan rekomendasi. Jangan mengarang sumber atau data."},
-  {id:"content-brief",category:"writing",title:"Brief konten media sosial",description:"Rancang konten dengan audiens dan tujuan yang jelas.",prompt:"Buat brief konten media sosial untuk [platform] tentang [topik]. Audiens: [audiens]. Tujuan: [tujuan]. Berikan beberapa angle, hook, struktur konten, caption, CTA, dan metrik evaluasi. Gunakan gaya bahasa [gaya]."},
-  {id:"professional-email",category:"writing",title:"Email profesional",description:"Susun email yang ringkas dan punya tujuan jelas.",prompt:"Bantu gw menulis email kepada [penerima] mengenai [tujuan]. Konteks: [konteks]. Buat subjek yang jelas, isi yang sopan dan ringkas, permintaan/tindak lanjut spesifik, serta penutup profesional. Jangan menambahkan fakta yang belum gw berikan."},
-  {id:"learn-topic",category:"study",title:"Pelajari topik dari dasar",description:"Bangun pemahaman bertahap dengan contoh dan latihan.",prompt:"Ajari gw [topik] dari tingkat [tingkat pemahaman]. Jelaskan konsep inti secara bertahap, gunakan analogi dan contoh praktis, sebutkan miskonsepsi umum, lalu berikan 5 pertanyaan latihan beserta pembahasan setelah gw mencoba."},
-  {id:"business-model",category:"business",title:"Evaluasi ide bisnis",description:"Uji pelanggan, nilai, biaya, risiko, dan kelayakan.",prompt:"Evaluasi ide bisnis berikut: [ide]. Target pelanggan: [pelanggan]. Sumber daya/modal: [sumber daya]. Analisis masalah pelanggan, proposisi nilai, kompetitor, model pendapatan, struktur biaya, risiko, asumsi paling kritis, dan eksperimen murah untuk memvalidasi ide. Tandai semua angka yang masih berupa asumsi."},
-  {id:"financial-review",category:"business",title:"Analisis keuangan bisnis",description:"Tinjau performa, arus kas, dan skenario.",prompt:"Bantu gw menganalisis kondisi keuangan bisnis berdasarkan data berikut: [tempel data]. Tinjau pendapatan, margin, biaya, arus kas, titik impas, dan risiko likuiditas. Tunjukkan rumus dan asumsi, jangan menyimpulkan angka yang tidak tersedia."},
-  {id:"code-review",category:"coding",title:"Review kode terarah",description:"Cari bug, celah, dan perbaikan yang terukur.",prompt:"Review kode berikut untuk [tujuan/perubahan]. Kode: [tempel kode]. Identifikasi bug, edge case, risiko keamanan, masalah performa, dan maintainability. Prioritaskan temuan berdasarkan dampak, sertakan lokasi/alasannya, dan usulkan patch minimal beserta tes regresi."}
-];
-const templateLabels={work:"Produktivitas",research:"Riset & analisis",writing:"Penulisan",study:"Belajar",business:"Bisnis",coding:"Coding"};
-const templatesDialog=$("templatesDialog");
-function renderPromptTemplates(){
-  const query=$("templateSearch").value.trim().toLocaleLowerCase();
-  const category=$("templateCategory").value;
-  const list=$("templatesList");list.replaceChildren();
-  const matches=PROMPT_TEMPLATES.filter(item=>(category==="all"||item.category===category)&&(!query||[item.title,item.description,item.prompt,templateLabels[item.category]].some(value=>value.toLocaleLowerCase().includes(query))));
-  if(!matches.length){const empty=document.createElement("p");empty.className="templates-empty";empty.textContent="Tidak ada template yang cocok. Coba kata kunci atau kategori lain.";list.append(empty);return}
-  for(const item of matches){
-    const card=document.createElement("article");card.className="template-card";
-    const meta=document.createElement("span");meta.className="template-category";meta.textContent=templateLabels[item.category];
-    const title=document.createElement("h3");title.textContent=item.title;
-    const description=document.createElement("p");description.textContent=item.description;
-    const use=document.createElement("button");use.type="button";use.className="template-use";use.textContent="Gunakan template";
-    use.addEventListener("click",()=>{
-      if(busy||loadingChat){toast("Tunggu sampai proses chat selesai.");return}
-      promptEl.value=item.prompt;resizePrompt();templatesDialog.close();promptEl.focus();
-      toast("Template dimuat. Sesuaikan sebelum mengirim.");
-    });
-    card.append(meta,title,description,use);list.append(card);
-  }
-}
-function openPromptTemplates(){
-  if(!templatesDialog.open)templatesDialog.showModal();
-  $("templateSearch").value="";$("templateCategory").value="all";renderPromptTemplates();$("templateSearch").focus();
-}
-$("openTemplates").addEventListener("click",openPromptTemplates);
-$("templatesClose").addEventListener("click",()=>templatesDialog.close());
-$("templateSearch").addEventListener("input",renderPromptTemplates);
-$("templateCategory").addEventListener("change",renderPromptTemplates);
-templatesDialog.addEventListener("click",event=>{
-  if(event.target!==templatesDialog)return;
-  const rect=templatesDialog.getBoundingClientRect();
-  if(event.clientX<rect.left||event.clientX>rect.right||event.clientY<rect.top||event.clientY>rect.bottom)templatesDialog.close();
-});
-
 history.scrollRestoration="manual";
 syncInert();health();boot();
