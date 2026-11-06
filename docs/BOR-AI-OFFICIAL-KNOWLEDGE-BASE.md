@@ -5,8 +5,8 @@
 > **Official X:** [@BORAI_Official](https://x.com/BORAI_Official)  
 > **Platform:** [BOR AI Platform](https://ai-command-center.muhriskiawan23.workers.dev)  
 > **Source code:** [muhriskiawan23/ai-command-center](https://github.com/muhriskiawan23/ai-command-center)  
-> **Document version:** 1.0  
-> **Last reviewed:** 6 November 2026
+> **Document version:** 1.1  
+> **Last reviewed:** 7 November 2026
 
 This document describes BOR AI using information from the founder and the public project repository. It separates capabilities evidenced in the repository from plans and proposals. If this document conflicts with newer official project documentation or a dated founder announcement, prefer the newer source and verify the implementation before describing it as available.
 
@@ -42,10 +42,10 @@ The public repository README describes a web-based AI workspace with:
 - A Stop control for in-flight chat generation. It aborts the browser request and propagates cancellation to the model binding where supported; cancelled turns are not saved and daily usage is refunded.
 - Signed-in chat requests use account-scoped idempotency keys. If a successful response is lost in transit, retrying the same request replays the saved answer without creating another turn. Guest conversations remain memory-only and are not persisted for deduplication.
 - Signed-in users can rate a saved assistant answer as helpful or not helpful and optionally submit a reason. Feedback is attached to the exact assistant message, can be updated, and is protected by server-side account and conversation ownership checks. Guest feedback is not persisted.
-- A searchable, user-invoked prompt-template library covering productivity, research, writing, study, business, and coding. Selecting a template only inserts editable text into the composer; it does not submit a message or call the AI automatically.
 - An on-demand About BOR AI dialog that summarizes the product, documented current capabilities, privacy controls, AI limitations, and official repository link. It does not appear automatically.\n- A daily usage panel showing the current signed-in account or guest IP-hash quota units used, remaining units, and the daily reset time (07:00 WIB). It does not reveal global usage or monetary billing estimates.
 - Optional, explicit user memory for signed-in users; it is off by default and stores only information the user chooses to save.
-- A link reader: users can include up to three ordinary web links in a message; the service attempts to fetch and extract readable page text for the model. When a page is successfully read, the answer can cite it with numbered inline references such as [1], mapped to a clickable source list below the answer. Failed pages are not offered as citation sources. Some pages will fail, including pages requiring JavaScript, login, or unsupported formats.
+- A link reader: users can include up to three ordinary web links in a message; the service attempts to fetch and extract readable page text for the model (up to 16,000 characters per page). Successful pages can be cited with numbered inline references such as [1], mapped to a clickable source list. Failed pages are not offered as citation sources. Pages requiring JavaScript, login, or unsupported formats may fail.
+- A PDF Reader: users can attach one PDF up to 8 MB. The Worker converts it to Markdown through the Cloudflare Workers AI `toMarkdown` binding, then provides up to 32,000 characters of extracted text to the model as untrusted document context. When page headings are present in the extraction, answers can cite `[PDF p. N]`; invalid page citations are removed. The PDF and extracted text are not stored in D1; the extracted context is held in browser memory for the active chat only and must be reattached after reload or switching conversations. Scanned/image-only or password-protected PDFs and complex layouts are not guaranteed.
 
 The repository describes Cloudflare Workers, Workers AI, Cloudflare D1, and static frontend assets as core infrastructure. The repository's audit identifies Llama 3.3 70B on Workers AI as the model used in the audited implementation. Model availability and live runtime behavior can change; consult the current repository and test the live service before making a present-tense claim about availability.
 
@@ -55,12 +55,12 @@ Signed-in users can organize saved conversations by renaming, searching, pinning
 
 The current documented product is primarily a text-chat assistant. Signed-in retry deduplication depends on the additive database migration `0006_chat_request_idempotency.sql` being applied during a controlled release. Answer feedback depends on the additive migration `0007_answer_feedback.sql`; it is only available after that migration and the matching application release have been deployed. The daily usage panel reports quota units only (a normal request costs 1 unit; a multi-agent request costs 3); it is not a billing dashboard and does not provide measured latency, provider charges, or application-wide totals. Do not claim that it currently:
 - Performs unrestricted live web search or independently monitors news and trends.
-- Reads arbitrary uploaded files, PDFs, or images.
+- Reads arbitrary uploaded files or images. PDF reading is a limited exception: one user-uploaded PDF at a time, up to 8 MB, with bounded text extraction and temporary in-memory context; it is not a general file manager or guaranteed OCR service.
 - Generates or executes code, builds APKs, or deploys applications on a user's behalf.
 - Controls a user's browser, computer, or other applications.
 - Connects to Gmail, Calendar, Telegram, GitHub, Slack, Discord, WhatsApp, or other third-party services as a live integration.
 
-The link reader is a limited exception: it attempts to retrieve user-supplied web links under defined restrictions. It is not a general-purpose search engine or unrestricted browser.
+The link reader and PDF Reader are limited exceptions: the former attempts to retrieve user-supplied web links under defined restrictions, while the latter converts a user-uploaded PDF to bounded temporary text. Neither is a general-purpose search engine, unrestricted browser, or persistent document library.
 
 ## 4. Technology and architecture
 
