@@ -397,7 +397,9 @@ function renderHistory(){
   if(!inChatView()){$("historyCount").textContent="";return}
   $("historyLabel").textContent=state===AppState.AUTH?"Riwayat akun":"Sesi ini · Guest Mode";
   $("historyCount").textContent=conversations.length?String(conversations.length):"";
-  for(const c of sortedConversations()){
+  const query=historyQuery.toLocaleLowerCase();
+  const visible=sortedConversations().filter(c=>!query||String(c.title||"").toLocaleLowerCase().includes(query)||(state===AppState.GUEST&&c.messages.some(m=>String(m.content||"").toLocaleLowerCase().includes(query))));
+  for(const c of visible){
     const row=document.createElement("div");row.className="history-row";
     const b=document.createElement("button");b.className="history-item"+(c.id===activeId?" active":"");b.type="button";
     if(c.id===activeId)b.setAttribute("aria-current","page");
@@ -409,6 +411,9 @@ function renderHistory(){
     const del=document.createElement("button");del.className="delete-chat";del.type="button";del.textContent="×";del.title="Hapus chat";del.setAttribute("aria-label","Hapus "+(c.title||"chat"));
     del.onclick=e=>{e.stopPropagation();deleteChat(c.id)};
     row.append(b,rename,del);nav.append(row);
+  }
+  if(!visible.length){
+    const empty=document.createElement("p");empty.className="history-empty";empty.textContent=query?"Tidak ada percakapan yang cocok.":"Belum ada percakapan.";nav.append(empty);
   }
 }
 /* Menampilkan chat tanpa menyentuh history; pemanggil yang menentukan rute.
