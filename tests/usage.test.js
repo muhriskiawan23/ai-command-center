@@ -19,7 +19,8 @@ test("usage: akun hanya melihat kuota hari ini miliknya, bukan total global atau
   assert.deepEqual({ scope: data.scope, used: data.used, limit: data.limit, remaining: data.remaining }, { scope: "user", used: 7, limit: 150, remaining: 143 });
   assert.equal(data.day, day);
   assert.equal(data.unit, "unit penggunaan");
-  assert.equal(data.resetsAt, new Date(Date.UTC(...day.split("-").map(Number).map((v, i) => i === 1 ? v - 1 : v))).toISOString().slice(0, 10) + "T00:00:00.000Z" === data.resetsAt ? data.resetsAt : data.resetsAt);
+  const nextDay = new Date(Date.parse(day + "T00:00:00.000Z") + 86400000).toISOString();
+  assert.equal(data.resetsAt, nextDay);
   assert.equal(JSON.stringify(data).includes("sub-bob-usage"), false);
   assert.equal(JSON.stringify(data).includes("99"), false);
   await app.close();
