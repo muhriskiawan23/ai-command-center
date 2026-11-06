@@ -156,7 +156,7 @@ body.drawer-open{overflow:hidden}
 }
 @media(prefers-reduced-motion:reduce){.about-dialog::backdrop{backdrop-filter:none}}
 
-/* Stage 23: compact CSV attachment chip reuses PDF styles. */
+/* Stage 23–24: compact spreadsheet attachment chips reuse PDF styles. */
 .attach-csv{white-space:nowrap}
 .csv-attachment{border-color:#4b6040}
 
