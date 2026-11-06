@@ -2,6 +2,10 @@ const MAX_ORIGINS = 5;
 const DEFAULT_DAILY_LIMIT = 100;
 const MAX_DAILY_LIMIT = 500;
 const KEY_PREFIX = "borai_live_";
+function secondsUntilNextUtcDay(now = new Date()) {
+  const next = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1);
+  return Math.max(1, Math.ceil((next - now.getTime()) / 1000));
+}
 
 function validOrigin(value) {
   if (typeof value !== "string" || value.length > 300) return false;
@@ -142,7 +146,7 @@ export async function handlePublicChatRoute(request, env, deps) {
       agent: deps.AGENTS[agentId].name,
       model: deps.MODEL,
       usage: { used: Number(consumed.daily_used), limit: Number(consumed.daily_limit), remaining: Math.max(0, Number(consumed.daily_limit) - Number(consumed.daily_used)), resetsAt: "07:00 WIB" }
-    }), 200, { "X-RateLimit-Limit": String(consumed.daily_limit), "X-RateLimit-Remaining": String(Math.max(0, Number(consumed.daily_limit) - Number(consumed.daily_used))) });
+    }, 200, { "X-RateLimit-Limit": String(consumed.daily_limit), "X-RateLimit-Remaining": String(Math.max(0, Number(consumed.daily_limit) - Number(consumed.daily_used))) }), origin);
   } catch (error) {
     await env.DB.prepare("UPDATE public_api_keys SET daily_used = MAX(daily_used - 1, 0), updated_at = ? WHERE id = ? AND usage_day = ?").bind(now, row.id, day).run().catch(() => {});
     console.error("Widget AI generation failed:", error);
