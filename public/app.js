@@ -409,7 +409,7 @@ async function loadUsage(){
     summary.textContent=(d.scope==="user"?"Akun Google":"Guest")+" · "+d.used+" / "+d.limit+" unit";
     fill.style.width=percent+"%";
     $("usageRemaining").textContent=d.remaining+" unit tersisa hari ini";
-    reset.textContent="Reset "+new Date(d.resetsAt).toLocaleString("id-ID",{hour:"2-digit",minute:"2-digit",day:"numeric",month:"short"})+" WIB";
+    reset.textContent="Reset "+new Date(d.resetsAt).toLocaleString("id-ID",{timeZone:"Asia/Jakarta",hour:"2-digit",minute:"2-digit",day:"numeric",month:"short"})+" WIB";
   }catch(e){
     summary.textContent="Penggunaan belum dapat ditampilkan.";
     error.textContent=e.code==="usage_unavailable"?"Data penggunaan belum tersedia di server.":e.message;
@@ -421,6 +421,7 @@ async function loadUsage(){
 $("openUsage").addEventListener("click",()=>{
   const panel=$("usagePanel");
   panel.hidden=!panel.hidden;
+  $("openUsage").setAttribute("aria-expanded",String(!panel.hidden));
   if(!panel.hidden)loadUsage();
 });
 $("refreshUsage").addEventListener("click",loadUsage);
