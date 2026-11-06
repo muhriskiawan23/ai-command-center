@@ -107,3 +107,14 @@ test("batas unduhan: stream tak berujung dihentikan di sekitar 1 MB, tidak dibac
   assert.equal(result.ok, true); assert.equal(result.truncated, true);
   assert.ok(pulled <= MAX_DOWNLOAD_BYTES + 400_000, `terbaca ${pulled} byte`);
 });
+
+
+test("redirect sukses mempertahankan URL asli dan mencatat URL tujuan akhir", async () => {
+  const result = await readLink("https://example.com/start", { fetcher: async (url) => url.endsWith("/start") ? respond("", { status: 302, headers: { location: "/artikel" } }) : respond(html(LONG)) });
+  assert.equal(result.ok, true);
+  assert.equal(result.requested, "https://example.com/start");
+  assert.equal(result.url, "https://example.com/artikel");
+  const [source] = summarizeLinks([result]);
+  assert.equal(source.url, "https://example.com/start");
+  assert.equal(source.resolvedUrl, "https://example.com/artikel");
+});
