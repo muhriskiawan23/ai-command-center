@@ -40,7 +40,7 @@ test("Excel workbook is parsed locally and only bounded derived context reaches 
       sheet_to_json: sheet => [[sheet.A1.v,sheet.B1.v],[sheet.A2.v,sheet.B2.v]]
     }
   };`;
-  await page.route("https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js", route =>
+  await page.route("https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js", route =>
     route.fulfill({ contentType: "application/javascript", body: fakeLibrary })
   );
   await enterGuest(page, app);
