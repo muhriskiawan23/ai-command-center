@@ -352,6 +352,8 @@ test("akun: riwayat lebih dari 100 percakapan dapat dimuat bertahap dari sidebar
   }
   await page.goto(app.url);
   await expect(page.locator(".history-row")).toHaveCount(100);
+  // On phone/tablet the sidebar drawer starts closed and inert; open it before interacting with history controls.
+  if (page.viewportSize().width <= 1024) await page.locator("#menuBtn").click();
   const more = page.getByRole("button", { name: "Muat lebih banyak percakapan" });
   await expect(more).toBeVisible();
   await more.click();
