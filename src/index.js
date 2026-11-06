@@ -806,7 +806,7 @@ async function handlePdfConversionRoute(request, env) {
     try {
       const clientKey = request.headers.get("CF-Connecting-IP") || "unknown-client";
       let rateLimit = await env.CHAT_LIMITER.limit({ key: clientKey });
-      if (rateLimit?.success && user) rateLimit = await env.CHAT_LIMITER.limit({ key: \`user:\${user.id}\` });
+      if (rateLimit?.success && user) rateLimit = await env.CHAT_LIMITER.limit({ key: "user:" + user.id });
       if (!rateLimit?.success) return json({ error: "Terlalu banyak permintaan. Coba lagi dalam satu menit." }, 429, { "Retry-After": "60" });
     } catch (error) { console.error("PDF rate limiter failed:", error); return json({ error: "Layanan pembatasan permintaan sedang bermasalah." }, 503); }
   }
