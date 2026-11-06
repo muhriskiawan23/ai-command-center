@@ -404,9 +404,11 @@ function renderHistory(){
     const icon=document.createElement("span");icon.textContent="▤";icon.setAttribute("aria-hidden","true");
     const title=document.createElement("span");title.textContent=c.title||"Percakapan baru";
     b.append(icon,title);b.title=c.title||"Percakapan baru";b.onclick=()=>selectChat(c.id);
+    const rename=document.createElement("button");rename.className="rename-chat";rename.type="button";rename.textContent="✎";rename.title="Ubah nama chat";rename.setAttribute("aria-label","Ubah nama "+(c.title||"chat"));
+    rename.onclick=e=>{e.stopPropagation();renameChat(c.id)};
     const del=document.createElement("button");del.className="delete-chat";del.type="button";del.textContent="×";del.title="Hapus chat";del.setAttribute("aria-label","Hapus "+(c.title||"chat"));
     del.onclick=e=>{e.stopPropagation();deleteChat(c.id)};
-    row.append(b,del);nav.append(row);
+    row.append(b,rename,del);nav.append(row);
   }
 }
 /* Menampilkan chat tanpa menyentuh history; pemanggil yang menentukan rute.
@@ -521,6 +523,21 @@ async function submit(){
     if(stillActive()){$("typing")?.remove();appendFailedTurn(message,text,e.code==="daily_limit")}
     toast("Permintaan gagal");
   }finally{busy=false;lockComposer();renderHistory();if(!isDrawerMode())promptEl.focus()}
+}
+async function renameChat(cid){
+  if(busy||loadingChat)return;
+  const chat=conversations.find(c=>c.id===cid);if(!chat)return;
+  const proposed=window.prompt("Nama percakapan (maksimal 72 karakter):",chat.title||"");
+  if(proposed===null)return;
+  const title=proposed.trim().replace(/\\s+/g," ");
+  if(!title||title.length>72){toast("Judul harus berisi 1–72 karakter.");return}
+  if(title===(chat.title||""))return;
+  try{
+    if(state===AppState.AUTH&&chat.serverId){
+      await api("/api/conversations/"+encodeURIComponent(chat.serverId),{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({title})});
+    }
+    chat.title=title;chat.updated=Date.now();renderHistory();toast("Nama chat diperbarui.");
+  }catch(e){toast(e.message||"Gagal mengubah nama chat")}
 }
 async function deleteChat(cid){
   if(busy)return;const chat=conversations.find(c=>c.id===cid);if(!chat)return;
