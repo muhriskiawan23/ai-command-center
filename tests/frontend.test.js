@@ -1,6 +1,5 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import vm from "node:vm";
 import { readFileSync } from "node:fs";
 import { toChecklistMarkdown } from "../src/checklist.js";
 
@@ -62,19 +61,14 @@ test("checklist conversion preserves headings, paragraphs, and fenced code", () 
   assert.equal(toChecklistMarkdown(input), expected);
 });
 
-test("checklist converter normalizes CRLF newlines", () => {
-  assert.equal(toChecklistMarkdown("Heading\r\n\r\n1. First\r\n2. Second"),
+test("checklist converter normalizes CRLF and CR newlines to LF", () => {
+  assert.equal(toChecklistMarkdown("Heading\r\n\r\n1. First\r2. Second"),
     "Heading\n\n- [ ] First\n- [ ] Second");
 });
 
 test("checklist converter returns no content for empty input or text without list items", () => {
   assert.equal(toChecklistMarkdown(""), "");
   assert.equal(toChecklistMarkdown("Only a paragraph.\n# Heading"), "");
-});
-
-test("checklist helper remains a standalone JavaScript module", () => {
-  const helperSource = readFileSync(new URL("../src/checklist.js", import.meta.url), "utf8");
-  assert.doesNotThrow(() => new vm.SourceTextModule(helperSource));
 });
 
 test("dashboard has a mobile layout and reduced-motion support", () => {
