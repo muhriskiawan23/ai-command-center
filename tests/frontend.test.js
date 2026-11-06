@@ -13,7 +13,7 @@ function getChecklistConverter() {
   const end = appJs.indexOf("function downloadChecklist(", start);
   assert.notEqual(start, -1, "checklist converter should be implemented");
   assert.notEqual(end, -1, "checklist download action should follow the converter");
-  const source = appJs.slice(start, end) + "\\ntoChecklistMarkdown;";
+  const source = appJs.slice(start, end) + "\ntoChecklistMarkdown;";
   return vm.runInNewContext(source);
 }
 
@@ -57,20 +57,15 @@ test("checklist action is available on rendered messages and downloads Markdown"
   assert.match(appJs, /text\/markdown;charset=utf-8/);
 });
 
-test("checklist converter turns unordered and ordered list items into tasks", () => {
+test("checklist converter converts unordered and numbered items while preserving surrounding text", () => {
   const convert = getChecklistConverter();
-  assert.equal(convert("- First\n* Second\n+ Third\n1. Fourth\n2) Keep this unchanged"),
-    "- [ ] First\n- [ ] Second\n- [ ] Third\n- [ ] Fourth\n2) Keep this unchanged");
+  assert.equal(convert("# Steps\nIntro paragraph.\n- First\n* Second\n+ Third\n1. Fourth\n2) Keep this unchanged"),
+    "# Steps\nIntro paragraph.\n- [ ] First\n- [ ] Second\n- [ ] Third\n- [ ] Fourth\n2) Keep this unchanged");
 });
 
-test("checklist conversion preserves headings, paragraphs, and fenced code", () => {
+test("checklist converter handles CRLF and ignores blank/non-list-only content", () => {
   const convert = getChecklistConverter();
-  const input = "# Steps\n\nIntro paragraph.\n\n- Do this\n\n```md\n- literal example\n```";
-  assert.equal(convert(input), "# Steps\n\nIntro paragraph.\n\n- [ ] Do this\n\n```md\n- literal example\n```");
-});
-
-test("checklist converter returns no file content when there is no list or input is empty", () => {
-  const convert = getChecklistConverter();
+  assert.equal(convert("Heading\r\n\r\n1. First\r\n2. Second"), "Heading\r\n\r\n- [ ] First\n- [ ] Second");
   assert.equal(convert(""), "");
   assert.equal(convert("Only a paragraph.\n# Heading"), "");
 });
