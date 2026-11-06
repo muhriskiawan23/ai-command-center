@@ -30,6 +30,14 @@ test("PDF conversion output is bounded and marks truncated text", () => {
   assert.equal(result.document.truncated, true);
 });
 
+test("PDF scans with page headings but no extractable text are identified explicitly", () => {
+  const result = normalizePdfConversion({
+    format: "markdown",
+    data: "# Scanned report\n### Page 1\n\n### Page 2\n"
+  }, "scan.pdf");
+  assert.deepEqual(result, { ok: false, reason: "no_text" });
+});
+
 test("PDF conversion errors are returned as a safe failure", () => {
   assert.deepEqual(normalizePdfConversion({ format: "error", error: "private provider details" }, "bad.pdf"), { ok: false });
   assert.deepEqual(normalizePdfConversion({ format: "markdown", data: "" }, "empty.pdf"), { ok: false });

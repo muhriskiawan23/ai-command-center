@@ -18,6 +18,7 @@ Public AI workspace with Google sign-in, temporary guest sessions, private per-a
 - Signed-in chat submissions carry a client request ID. If the browser loses the response after the Worker has saved the turn, retrying the same request replays the saved answer instead of generating or storing a duplicate. This requires migration `0006_chat_request_idempotency.sql`; guest chats remain memory-only and are not persisted for deduplication.
 - Security headers on API and HTML responses, including a restrictive Content Security Policy compatible with the dashboard's inline assets.
 
+- Scanned/image-only PDFs are not OCRed by the current Markdown conversion flow. If conversion returns only page headings and no extractable text, BOR AI rejects the upload with a clear limitation message instead of treating an empty document as successfully read. Use a PDF with a text layer until an OCR capability is added.
 - An on-demand, accessible About BOR AI dialog describing the product, current capabilities, privacy controls, and official repository.
 
 ## Architecture
