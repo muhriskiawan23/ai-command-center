@@ -607,7 +607,7 @@ function appendSources(links){
     const item=document.createElement("div");item.className="source "+(l.ok?"ok":"fail");
     if(l.ok){
       item.append(document.createTextNode("✓ ["+l.sourceId+"] "));
-      if(typeof l.url==="string"&&/^https?:\\/\\//i.test(l.url)){
+      if(typeof l.url==="string"&&/^https?:\/\//i.test(l.url)){
         const link=document.createElement("a");link.href=l.url;link.target="_blank";link.rel="noopener noreferrer";
         link.textContent=l.host+(l.title?" — "+l.title:"");item.append(link);
       }else item.append(document.createTextNode(l.host+(l.title?" — "+l.title:"")));
