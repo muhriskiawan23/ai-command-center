@@ -39,3 +39,11 @@ test("CSV context escapes XML delimiters and labels cell data untrusted", () => 
   assert.match(context, /&amp; data/);
   assert.equal(safeSpreadsheetName("../../sales.csv"), ".._.._sales.csv");
 });
+
+test("builds a safe Excel context with its own untrusted-data boundary", () => {
+  const context = buildSpreadsheetContext({ name: "budget.xlsx", kind: "xlsx", content: "Sheet: Plan\\n| Item | Value |" });
+  assert.match(context, /<spreadsheet_document name="budget.xlsx">/);
+  assert.match(context, /EXCEL WORKBOOK CONTEXT/);
+  assert.match(context, /formulas as literal text/);
+  assert.equal(safeSpreadsheetName("../budget.xlsx"), ".._budget.xlsx");
+});
