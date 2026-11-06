@@ -2,6 +2,7 @@ import { extractUrls, readLinks, buildPageContext, summarizeLinks } from "./link
 import { PDF_MAX_BYTES, PDF_CONTEXT_MAX_CHARS, safePdfName, normalizePdfConversion, buildPdfContext, validatePdfPageCitations, SPREADSHEET_CONTEXT_MAX_CHARS, safeSpreadsheetName, buildSpreadsheetContext, PRESENTATION_CONTEXT_MAX_CHARS, safePresentationName, buildPresentationContext } from "./documents.js";
 import { validateCitationReferences } from "./citations.js";
 import { MEMORY_MAX_ITEMS, MEMORY_MAX_CHARS, getMemoryState, setMemoryEnabled, addMemory, deleteMemory, deleteAllMemories, parseRememberCommand, buildMemoryBlock } from "./memory.js";
+import { handleDeveloperKeysRoute, handlePublicChatRoute } from "./widget-api.js";
 
 const MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 const MAX_REQUEST_BYTES = 64 * 1024;
@@ -1212,6 +1213,14 @@ export default {
     if (url.pathname.startsWith("/api/auth/") || url.pathname === "/api/config") {
       const response = await handleAuthRoute(request, env, url);
       if (response) return response;
+    }
+    if (url.pathname === "/api/developer/keys" || url.pathname.startsWith("/api/developer/keys/")) {
+      try { return await handleDeveloperKeysRoute(request, env, url, { getSession, sameOrigin, randomToken, sha256Hex, json }); }
+      catch (error) { console.error("Developer key request failed:", error); return json({ error: "Pengelolaan API key gagal diproses." }, 503); }
+    }
+    if (url.pathname === "/api/public/chat") {
+      try { return await handlePublicChatRoute(request, env, { AGENTS, MODEL, runAgent, withAiDeadline, json, readJsonRequest, CHAT_LIMITER: env.CHAT_LIMITER }); }
+      catch (error) { console.error("Public API request failed:", error); return json({ error: "Public API gagal diproses." }, 503); }
     }
     if (url.pathname === "/api/feedback") {
       try { return await handleFeedbackRoute(request, env, url); }
