@@ -42,7 +42,7 @@ Body:
 {"message":"Jelaskan layanan ini secara singkat."}
 ```
 
-Optional `agent` may be any configured agent ID. Public API calls are single-turn and do not persist conversations. A model response may be retried once if its output is unusable. The daily per-key quota is atomic; failed model calls refund the consumed unit. Existing Cloudflare chat rate limiting also applies.
+Optional `agent` may be any configured agent ID. Public API calls are single-turn and do not persist conversations. A model response may be retried once if its output is unusable. The daily per-key request quota is atomic (default 100, maximum 500). Each request also consumes two units from the existing account and global daily usage budgets to cover a possible model retry; failed model calls refund these units and the per-key request. Existing Cloudflare chat rate limiting also applies.
 
 ## Security and limits
 
