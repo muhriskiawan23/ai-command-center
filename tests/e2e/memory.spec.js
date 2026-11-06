@@ -82,7 +82,9 @@ test.describe("MEMORI — opsional, hanya akun login", () => {
     await page.locator("#prompt").fill("Halo, siapa namaku?");
     await page.locator("#send").click();
     await expect(page.locator(".message.assistant:not(#typing)")).toHaveCount(1);
-    expect(app.aiCalls.at(-1).messages.find((m) => m.role === "system").content).toContain("- Panggil aku Budi");
+    const activeCall = app.aiCalls.at(-1);
+    expect(activeCall.messages.find((m) => m.role === "system").content).not.toContain("USER MEMORY");
+    expect(activeCall.messages.filter((m) => m.role === "user").at(-1).content).toContain("- Panggil aku Budi");
     await openMemoryPanel(page);
     await page.locator("#memoryToggle").uncheck();
     await expect.poll(() => app.db.sqlite.prepare("SELECT memory_enabled m FROM user_settings WHERE user_id = ?").get(ALICE.id).m).toBe(0);

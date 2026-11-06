@@ -99,14 +99,24 @@ export async function setMemoryEnabled(env, userId, enabled) {
 export async function addMemory(env, userId, rawContent) {
   const checked = validateMemoryContent(rawContent);
   if (!checked.ok) return checked;
-  const count = await env.DB.prepare("SELECT COUNT(*) AS n FROM user_memories WHERE user_id = ?").bind(userId).first();
-  if (Number(count?.n || 0) >= MEMORY_MAX_ITEMS) return { ok: false, code: "memory_full", error: `Memori penuh (maksimal ${MEMORY_MAX_ITEMS} butir). Hapus beberapa dulu.` };
-  const duplicate = await env.DB.prepare("SELECT id FROM user_memories WHERE user_id = ? AND lower(content) = lower(?)").bind(userId, checked.content).first();
-  if (duplicate) return { ok: false, code: "memory_duplicate", error: "Hal itu sudah tersimpan di memori." };
+  // One conditional INSERT makes the capacity check and write a single SQLite statement.
+  // Concurrent requests therefore cannot both consume the final available slot.
   const id = crypto.randomUUID();
   const now = Math.floor(Date.now() / 1000);
-  await env.DB.prepare("INSERT INTO user_memories (id, user_id, content, created_at, updated_at) VALUES (?, ?, ?, ?, ?)").bind(id, userId, checked.content, now, now).run();
-  return { ok: true, item: { id, content: checked.content, updated_at: now } };
+  const inserted = await env.DB.prepare(
+    "INSERT INTO user_memories (id, user_id, content, created_at, updated_at) " +
+    "SELECT ?, ?, ?, ?, ? WHERE " +
+    "(SELECT COUNT(*) FROM user_memories WHERE user_id = ?) < ? AND " +
+    "NOT EXISTS (SELECT 1 FROM user_memories WHERE user_id = ? AND lower(content) = lower(?)) " +
+    "RETURNING id, content, updated_at"
+  ).bind(id, userId, checked.content, now, now, userId, MEMORY_MAX_ITEMS, userId, checked.content).first();
+  if (inserted) return { ok: true, item: inserted };
+
+  // Explain why the atomic insert did not happen. These reads do not participate
+  // in the capacity decision; they only select the appropriate API error.
+  const duplicate = await env.DB.prepare("SELECT id FROM user_memories WHERE user_id = ? AND lower(content) = lower(?)").bind(userId, checked.content).first();
+  if (duplicate) return { ok: false, code: "memory_duplicate", error: "Hal itu sudah tersimpan di memori." };
+  return { ok: false, code: "memory_full", error: `Memori penuh (maksimal ${MEMORY_MAX_ITEMS} butir). Hapus beberapa dulu.` };
 }
 
 export async function deleteMemory(env, userId, id) {
