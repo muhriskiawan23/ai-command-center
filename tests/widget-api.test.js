@@ -14,6 +14,7 @@ function makeDb({ key = null, quota = { daily_used: 1, daily_limit: 100 }, chang
               calls.push({ sql, args, method: "first" });
               if (sql.includes("SELECT id, allowed_origins")) return key;
               if (sql.includes("RETURNING daily_used")) return quota;
+              if (sql.includes("RETURNING units")) return { units: 2 };
               return null;
             },
             async all() {
