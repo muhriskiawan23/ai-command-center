@@ -1029,12 +1029,42 @@ async function persistConversation(env, user, conversationId, message, response,
   return id;
 }
 
+async function handleUsageRoute(request, env) {
+  if (new URL(request.url).pathname !== "/api/usage") return null;
+  if (request.method !== "GET") return json({ error: "Metode HTTP tidak didukung untuk endpoint ini." }, 405, { Allow: "GET" });
+  if (!env.DB) return json({ error: "Data penggunaan belum tersedia." }, 503, { code: "usage_unavailable" });
+  let user;
+  try { user = await getSession(request, env); }
+  catch (error) { console.error("Usage session lookup failed:", error); return json({ error: "Data penggunaan belum dapat diperiksa." }, 503); }
+  const day = usageDay();
+  const scope = user ? "user" : "guest";
+  try {
+    const subject = user
+      ? `user:${user.id}`
+      : "guest:" + (await sha256Hex(`${day}|${request.headers.get("CF-Connecting-IP") || "unknown-client"}|${env.USAGE_SALT || ""}`)).slice(0, 32);
+    const row = await env.DB.prepare("SELECT units FROM daily_usage WHERE day = ? AND subject = ?").bind(day, subject).first();
+    const limit = dailyLimit(env, scope);
+    const now = new Date();
+    const resetsAt = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1)).toISOString();
+    const used = Math.max(0, Number(row?.units || 0));
+    return json({ scope, day, used, limit, remaining: Math.max(0, limit - used), resetsAt, unit: "unit penggunaan" });
+  } catch (error) {
+    if (/no such table/i.test(String(error?.message))) return json({ error: "Data penggunaan belum tersedia. Migrasi database perlu diterapkan saat rilis.", code: "usage_unavailable" }, 503);
+    console.error("Usage lookup failed:", error);
+    return json({ error: "Data penggunaan gagal dimuat." }, 503);
+  }
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     if (url.pathname.startsWith("/api/auth/") || url.pathname === "/api/config") {
       const response = await handleAuthRoute(request, env, url);
       if (response) return response;
+    }
+    if (url.pathname === "/api/usage") {
+      try { return await handleUsageRoute(request, env); }
+      catch (error) { console.error("Usage request failed:", error); return json({ error: "Data penggunaan gagal diproses." }, 503); }
     }
     if (url.pathname === "/api/conversations" || url.pathname.startsWith("/api/conversations/")) {
       if (!["GET", "PATCH", "DELETE"].includes(request.method)) return json({ error: "Metode HTTP tidak didukung untuk endpoint ini." }, 405, { Allow: "GET, PATCH, DELETE" });

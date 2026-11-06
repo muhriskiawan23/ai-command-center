@@ -399,6 +399,33 @@ async function addMemoryItem(){
   try{await postJson("/api/memory",{content});input.value="";memoryErr("");await loadMemory()}
   catch(e){memoryErr(e.message)}
 }
+/* ---------- Daily usage visibility ---------- */
+async function loadUsage(){
+  const summary=$("usageSummary"),error=$("usageError"),fill=$("usageFill"),reset=$("usageReset");
+  summary.textContent="Memuat penggunaan…";error.hidden=true;fill.style.width="0%";
+  try{
+    const d=await api("/api/usage");
+    const percent=d.limit>0?Math.min(100,Math.round(d.used/d.limit*100)):0;
+    summary.textContent=(d.scope==="user"?"Akun Google":"Guest")+" · "+d.used+" / "+d.limit+" unit";
+    fill.style.width=percent+"%";
+    $("usageRemaining").textContent=d.remaining+" unit tersisa hari ini";
+    reset.textContent="Reset "+new Date(d.resetsAt).toLocaleString("id-ID",{timeZone:"Asia/Jakarta",hour:"2-digit",minute:"2-digit",day:"numeric",month:"short"})+" WIB";
+  }catch(e){
+    summary.textContent="Penggunaan belum dapat ditampilkan.";
+    error.textContent=e.code==="usage_unavailable"?"Data penggunaan belum tersedia di server.":e.message;
+    error.hidden=false;
+    $("usageRemaining").textContent="";
+    reset.textContent="";
+  }
+}
+$("openUsage").addEventListener("click",()=>{
+  const panel=$("usagePanel");
+  panel.hidden=!panel.hidden;
+  $("openUsage").setAttribute("aria-expanded",String(!panel.hidden));
+  if(!panel.hidden)loadUsage();
+});
+$("refreshUsage").addEventListener("click",loadUsage);
+
 $("openMemory").addEventListener("click",openMemory);
 $("memoryClose").addEventListener("click",closeMemory);
 memoryPanel.addEventListener("click",e=>{if(e.target===memoryPanel)closeMemory()});
