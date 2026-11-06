@@ -15,7 +15,7 @@ function fakeXlsx(withFormula = false) {
     utils: {
       decode_range: () => ({ s: { r: 0, c: 0 }, e: { r: 2, c: 1 } }),
       encode_cell: ({ r, c }) => String.fromCharCode(65 + c) + (r + 1),
-      sheet_to_json: (ws) => [[ws.A1?.v ?? "", ws.B1?.v ?? ""], [ws.A2?.v ?? "", ws.B2?.v ?? ""], [ws.A3?.v ?? "", ws.B3?.v ?? ""]]
+      sheet_to_json: (ws, options = {}) => [[ws.A1?.v ?? "", ws.B1?.v ?? ""], [ws.A2?.v ?? "", ws.B2?.v ?? ""], [ws.A3?.v ?? "", ws.B3?.v ?? ""]].slice(0, (options.range?.e.r ?? 2) + 1)
     }
   };
 }
