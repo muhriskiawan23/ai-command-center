@@ -72,6 +72,50 @@
 <div class="toast" id="toast" role="status" hidden></div>
 </main>
 </div>
+<!-- Tentang BOR AI: native dialog agar aksesibel dan tidak mengganggu sebelum diminta -->
+<dialog class="about-dialog" id="aboutDialog" aria-labelledby="aboutTitle" aria-describedby="aboutIntro">
+  <div class="about-dialog-inner">
+    <header class="about-header">
+      <div class="about-brand"><img src="/logo-mark.svg" alt="" width="36" height="36"><span>BOR AI</span></div>
+      <button class="about-close" id="aboutClose" type="button" aria-label="Tutup Tentang BOR AI">✕</button>
+    </header>
+    <div class="about-hero">
+      <p class="about-eyebrow">YOUR AI WORKSPACE</p>
+      <h2 id="aboutTitle">Intelligence Without Limit</h2>
+      <p id="aboutIntro">Ruang kerja AI untuk membantu kamu berpikir, meneliti, menganalisis, dan membangun sesuatu dengan lebih terarah.</p>
+    </div>
+    <section class="about-section">
+      <h3>Apa itu BOR AI?</h3>
+      <p>BOR AI adalah platform asisten AI berbasis teks yang menggabungkan Coordinator dan berbagai specialist agents. Tujuannya bukan sekadar menjawab pertanyaan, tetapi membantu mengerjakan tugas melalui alur kerja yang lebih terstruktur.</p>
+    </section>
+    <section class="about-section">
+      <h3>Yang bisa kamu lakukan</h3>
+      <div class="about-feature-grid">
+        <article><strong>✳ Multi-agent</strong><span>Coordinator dapat mengarahkan tugas kompleks melalui Researcher, Analyst, Fact Checker, dan Writer.</span></article>
+        <article><strong>⌕ Specialist modes</strong><span>Pilih mode riset, analisis, penulisan, coding, strategi, perencanaan, dan lainnya.</span></article>
+        <article><strong>▤ Chat workspace</strong><span>Kelola percakapan dengan pencarian, pin, arsip, rename, ekspor, dan kontrol generasi.</span></article>
+        <article><strong>🧠 Optional memory</strong><span>Untuk akun yang masuk, memori bersifat opsional dan hanya menyimpan hal yang kamu pilih.</span></article>
+      </div>
+    </section>
+    <section class="about-section">
+      <h3>Privasi dan kendali</h3>
+      <ul>
+        <li>Percakapan Guest Mode hanya berada di memori halaman dan tidak menjadi riwayat akun.</li>
+        <li>Riwayat akun yang masuk bersifat privat dan dibatasi ke akun pemiliknya.</li>
+        <li>Memori opsional nonaktif secara default dan memerlukan tindakan eksplisit.</li>
+        <li>Panel penggunaan menampilkan kuota akun atau sesi saat ini, bukan estimasi tagihan.</li>
+      </ul>
+    </section>
+    <section class="about-notice">
+      <strong>Gunakan penilaianmu sendiri.</strong>
+      <p>AI dapat menghasilkan informasi yang keliru atau tidak lengkap. Periksa kembali informasi penting sebelum mengambil keputusan. Fitur dan ketersediaan layanan dapat berubah.</p>
+    </section>
+    <footer class="about-footer">
+      <span>BOR AI · Independent AI project</span>
+      <a href="https://github.com/muhriskiawan23/ai-command-center" target="_blank" rel="noopener noreferrer">Repository resmi ↗</a>
+    </footer>
+  </div>
+</dialog>
 <!-- Panel Memori (opsional, hanya akun login) -->
 <section class="memory-panel" id="memoryPanel" role="dialog" aria-modal="true" aria-labelledby="memoryTitle" hidden>
   <div class="memory-card">

@@ -54,3 +54,15 @@ test("guest mode never persists browser chat history and account history is serv
   assert.match(html, /function deleteChat/);
   assert.match(html, /google\.accounts\.id\.initialize/);
 });
+
+
+test("About BOR AI opens an accessible, user-invoked dialog with a close control", () => {
+  assert.match(page, /<dialog[^>]+id="aboutDialog"/);
+  assert.match(page, /aria-labelledby="aboutTitle"/);
+  assert.match(page, /id="aboutClose"/);
+  assert.match(appJs, /aboutDialog\.showModal\(\)/);
+  assert.match(appJs, /aboutDialog\.close\(\)/);
+  assert.match(appJs, /event\.clientX<rect\.left/);
+  assert.match(appCss, /\.about-dialog::backdrop/);
+  assert.match(appCss, /@media\(max-width:560px\)/);
+});
