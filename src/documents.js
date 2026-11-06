@@ -3,8 +3,8 @@ export const PDF_CONTEXT_MAX_CHARS = 32_000;
 
 export function safePdfName(value) {
   const name = String(value || "document.pdf")
-    .replace(/[\\u0000-\\u001f\\u007f]/g, "")
-    .replace(/[\\/\\\\<>:"|?*]/g, "_")
+    .replace(/[\u0000-\u001f\u007f]/g, "")
+    .replace(/[\/\\<>:"|?*]/g, "_")
     .trim()
     .slice(0, 120);
   return name.toLowerCase().endsWith(".pdf") ? name : "document.pdf";
@@ -18,7 +18,7 @@ export function normalizePdfConversion(result, fileName) {
   const raw = item.data.trim();
   if (!raw) return { ok: false };
   const content = raw.slice(0, PDF_CONTEXT_MAX_CHARS);
-  const pageNumbers = [...content.matchAll(/^#{1,4}\\s*Page\\s+(\\d+)\\s*$/gim)]
+  const pageNumbers = [...content.matchAll(/^#{1,4}\s*Page\s+(\d+)\s*$/gim)]
     .map((match) => Number(match[1]))
     .filter((value) => Number.isSafeInteger(value) && value > 0);
   return {
@@ -37,7 +37,7 @@ export function buildPdfContext(document) {
   if (!document || typeof document.content !== "string" || !document.content.trim()) return "";
   const name = safePdfName(document.name).replace(/["&<>]/g, "_");
   const content = document.content.slice(0, PDF_CONTEXT_MAX_CHARS);
-  const pageNumbers = [...content.matchAll(/^#{1,4}\\s*Page\\s+(\\d+)\\s*$/gim)]
+  const pageNumbers = [...content.matchAll(/^#{1,4}\s*Page\s+(\d+)\s*$/gim)]
     .map((match) => Number(match[1]))
     .filter((value) => Number.isSafeInteger(value) && value > 0);
   const pages = pageNumbers.length ? [...new Set(pageNumbers)].sort((a, b) => a - b) : [];
@@ -51,23 +51,23 @@ export function buildPdfContext(document) {
     "<pdf_document name=\"" + name + "\">",
     content,
     "</pdf_document>"
-  ].filter(Boolean).join("\\n");
+  ].filter(Boolean).join("\n");
 }
 
 export function validatePdfPageCitations(response, document) {
   if (typeof response !== "string" || !document?.content) return response;
   const pageNumbers = new Set(
-    [...document.content.matchAll(/^#{1,4}\\s*Page\\s+(\\d+)\\s*$/gim)]
+    [...document.content.matchAll(/^#{1,4}\s*Page\s+(\d+)\s*$/gim)]
       .map((match) => String(Number(match[1])))
   );
   if (!pageNumbers.size) {
-    return response.replace(/\\s*\\[PDF\\s+p\\.?\\s*\\d+\\]/gi, "");
+    return response.replace(/\s*\[PDF\s+p\.?\s*\d+\]/gi, "");
   }
   let removed = false;
-  const validated = response.replace(/\\[PDF\\s+p\\.?\\s*(\\d+)\\]/gi, (citation, page) => {
+  const validated = response.replace(/\[PDF\s+p\.?\s*(\d+)\]/gi, (citation, page) => {
     if (pageNumbers.has(String(Number(page)))) return citation;
     removed = true;
     return "";
   });
-  return removed ? validated.trim() + "\\n\\nCatatan: rujukan halaman yang tidak ditemukan dalam hasil ekstraksi PDF dihapus." : validated;
+  return removed ? validated.trim() + "\n\nCatatan: rujukan halaman yang tidak ditemukan dalam hasil ekstraksi PDF dihapus." : validated;
 }
