@@ -1,4 +1,4 @@
-import { extractUrls, readLinks, buildPageContext, summarizeLinks } from "./links.js";
+import { extractUrls, readLinks, buildPageContext, summarizeLinks, validateCitationReferences } from "./links.js";
 import { MEMORY_MAX_ITEMS, MEMORY_MAX_CHARS, getMemoryState, setMemoryEnabled, addMemory, deleteMemory, deleteAllMemories, parseRememberCommand, buildMemoryBlock } from "./memory.js";
 
 const MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
@@ -1297,6 +1297,10 @@ export default {
             console.error("Memory save failed:", error);
             memoryNote = "ℹ️ Jawaban berhasil dibuat, tetapi memori gagal disimpan. Coba simpan lagi lewat menu Memori.";
           }
+        }
+        // Enforce citation references against successful fetch results; failed URLs can never become citations.
+        if (found.urls.length && typeof result.response === "string") {
+          result.response = validateCitationReferences(result.response, links);
         }
         // Deterministic confirmation is appended only after the save outcome is known.
         if (memoryNote && typeof result.response === "string") result.response = `${result.response}\n\n${memoryNote}`;
