@@ -673,7 +673,7 @@ async function ensureXlsxLibrary(){
   if(window.xlsxLibraryLoading)return window.xlsxLibraryLoading;
   window.xlsxLibraryLoading=new Promise((resolve,reject)=>{
     const script=document.createElement("script");
-    script.src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js";
+    script.src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js";
     script.onload=()=>window.XLSX?.read?resolve(window.XLSX):reject(new Error("Pustaka Excel tidak berhasil dimuat."));
     script.onerror=()=>reject(new Error("Pustaka Excel gagal diunduh. Periksa koneksi lalu coba lagi."));
     document.head.append(script);
