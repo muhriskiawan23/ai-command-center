@@ -21,7 +21,7 @@ test("link di pesan dibaca server dan isinya sampai ke model sebagai data tidak 
   assert.equal(res.status, 200);
   assert.deepEqual(calls, ["https://contoh.id/berita/beras"]);
   const sent = turns(app.aiCalls.at(-1));
-  assert.match(sent, /<web_page url="https:\/\/contoh\.id\/berita\/beras" title="Harga Beras Hari Ini" status="ok"/);
+  assert.match(sent, /<web_page source_id="1" url="https:\/\/contoh\.id\/berita\/beras" title="Harga Beras Hari Ini" status="ok"/);
   assert.match(sent, /Rp 14\.500 per kilogram/);
   assert.match(sent, /untrusted data/i);
   assert.equal(body.links.length, 1);
@@ -116,7 +116,7 @@ test("multi-agent: researcher dan setiap penulis menerima halaman; agent lain be
   const { app, post } = await setup(okPage());
   const res = await post("Buat rencana promosi dan analisis risiko untuk usaha saya berdasarkan https://contoh.id/a, tanpa modal.");
   assert.equal(res.status, 200);
-  const hasPage = (c) => c.messages.filter((m) => m.role !== "system").some((m) => m.content.includes("<web_page url="));   // prompt sistem hanya menjelaskan aturannya
+  const hasPage = (c) => c.messages.filter((m) => m.role !== "system").some((m) => m.content.includes("<web_page source_id="));   // prompt sistem hanya menjelaskan aturannya
   const withPage = app.aiCalls.filter(hasPage);
   const withoutPage = app.aiCalls.filter((c) => !hasPage(c));
   assert.ok(withPage.length >= 2, `hanya ${withPage.length} panggilan membawa halaman`);
