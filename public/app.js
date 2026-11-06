@@ -64,12 +64,15 @@ function resizePrompt(){
 async function health(){try{const r=await fetch(API+"/api/health");if(!r.ok)throw Error();const d=await r.json();$("healthDot").className="dot "+(d.ok?"ok":"bad");$("healthText").textContent=d.ok?["Layanan aktif","Terhubung ke BOR AI"]:["Layanan tidak aktif","Status tidak siap"];$("healthDot").title=d.ok?"Layanan aktif":"Layanan gagal";}catch{const dot=$("healthDot");dot.className="dot bad";dot.title="Layanan tidak dapat dicek";$("healthText").textContent="Status tidak siap";}}
 
 const CHAT_TIMEOUT_MS=150000; /* alur multi-agent bisa beberapa panggilan model berurutan; lewat ini dianggap macet */
+let activeChatController=null;
 async function api(path,opts={}){
   const {timeoutMs,...fetchOpts}=opts;let res,timer,timedOut=false;
+  const externalSignal=fetchOpts.signal;
   const ctrl=timeoutMs?new AbortController():null;
-  if(ctrl){fetchOpts.signal=ctrl.signal;timer=setTimeout(()=>{timedOut=true;ctrl.abort()},timeoutMs)}
+  if(ctrl){fetchOpts.signal=externalSignal?AbortSignal.any([externalSignal,ctrl.signal]):ctrl.signal;timer=setTimeout(()=>{timedOut=true;ctrl.abort()},timeoutMs)}
   try{res=await fetch(API+path,{credentials:"same-origin",...fetchOpts})}
-  catch{
+  catch(error){
+    if(externalSignal?.aborted)throw Object.assign(new Error("Generasi dihentikan."),{name:"AbortError",cancelled:true,status:0});
     throw Object.assign(new Error(timedOut?"Server terlalu lama merespons (lebih dari "+Math.round(timeoutMs/1000)+" detik). Coba lagi.":"Tidak dapat terhubung ke server. Periksa koneksi Anda."),{status:0});
   }finally{clearTimeout(timer)}
   let data=null;try{data=await res.json()}catch{}
@@ -80,7 +83,7 @@ async function api(path,opts={}){
   }
   return data||{};
 }
-const postJson=(path,body,timeoutMs)=>api(path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body),timeoutMs});
+const postJson=(path,body,timeoutMs,signal)=>api(path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body),timeoutMs,signal});
 function copyText(value){
   const text=String(value||"").trim();
   if(!text){toast("Tidak ada konten untuk disalin.");return;}
@@ -134,7 +137,7 @@ const sidebar=$("sidebar"),backdrop=$("backdrop"),menuBtn=$("menuBtn"),workspace
 let state=AppState.INIT,conversations=[],activeId=null,busy=false,currentUser=null,historyQuery="",archivedView=false;
 /* navSeq: setiap navigasi chat menaikkan penghitung ini; pemuatan yang tertimpa navigasi lebih baru dibatalkan. */
 let navSeq=0,loadingChat=false;
-function lockComposer(){const lock=busy||loadingChat;$("send").disabled=lock;promptEl.readOnly=lock;$("exportConversation").disabled=lock}
+function lockComposer(){const lock=busy||loadingChat;const send=$("send");send.disabled=loadingChat;send.textContent=busy?"■":"↑";send.classList.toggle("is-stop",busy);send.setAttribute("aria-label",busy?"Hentikan generasi":"Kirim pesan");send.title=busy?"Hentikan generasi":"Kirim pesan";promptEl.readOnly=lock;$("exportConversation").disabled=lock}
 
 /* Yang disimpan di sessionStorage HANYA penanda "sudah memilih Guest" (agar refresh tidak kembali ke Welcome).
    Isi chat guest tidak pernah ditulis ke storage mana pun. */
@@ -529,7 +532,7 @@ function appendFailedTurn(message,text,noRetry=false){
 async function submit(options={}){
   if(busy||loadingChat||!inChatView())return;const text=promptEl.value.trim();if(!text)return;
   const replacing=options.replaceLastTurn===true;const previousTurn=options.previousTurn||null;
-  busy=true;lockComposer();const agent=$("agent").value;
+  busy=true;activeChatController=new AbortController();lockComposer();const agent=$("agent").value;
   let createdNew=false;
   if(!activeId){activeId=id();createdNew=true;conversations.push({id:activeId,serverId:null,title:text.replace(/\s+/g," ").slice(0,72),messages:[],updated:Date.now(),loaded:true})}
   const chat=conversations.find(c=>c.id===activeId);$("exportConversation").hidden=false;const startId=chat.id;
@@ -539,7 +542,7 @@ async function submit(options={}){
   const stillActive=()=>activeId===startId;const start=Date.now();
   try{
     const payload={message:text,agent};if(history.length)payload.history=history;if(state===AppState.AUTH&&chat.serverId)payload.conversationId=chat.serverId;if(replacing&&state===AppState.AUTH&&chat.serverId)payload.replaceLastTurn=true;
-    const data=await postJson("/api/chat",payload,CHAT_TIMEOUT_MS);
+    const data=await postJson("/api/chat",payload,CHAT_TIMEOUT_MS,activeChatController.signal);
     if(typeof data.response!=="string"||!data.response.trim())throw new Error("AI tidak menghasilkan jawaban.");
     chat.messages.push({role:"assistant",content:data.response});chat.updated=Date.now();
     if(stillActive()){$("typing")?.remove();appendMessage("assistant",data.response,true,{regenerate:true});addEditActionToLastUser();appendSources(data.links);renderWorkflow(data.steps)}
@@ -553,6 +556,13 @@ async function submit(options={}){
     /* Server memperlakukan sesi kedaluwarsa sebagai guest (chat tetap jalan, tidak tersimpan): deteksi di sini. */
     if(state===AppState.AUTH&&!data.saved&&!data.saveWarning)verifySession();
   }catch(e){
+    if(e.cancelled||e.name==="AbortError"){
+      const at=chat.messages.indexOf(userEntry);if(at>=0)chat.messages.splice(at,1);
+      if(replacing&&previousTurn){chat.messages.push(previousTurn.user,previousTurn.assistant);if(stillActive()){$("typing")?.remove();messagesEl.lastElementChild?.remove();appendMessage("user",previousTurn.user.content,true,{edit:true});appendMessage("assistant",previousTurn.assistant.content,true,{regenerate:true})}}
+      else if(stillActive()){$("typing")?.remove();messagesEl.lastElementChild?.remove()}
+      toast("Generasi dihentikan.");
+      return;
+    }
     const message="Maaf, permintaan gagal diproses. "+(e.message||"Periksa koneksi lalu coba lagi.");
     const at=chat.messages.indexOf(userEntry);if(at>=0)chat.messages.splice(at,1); /* giliran gagal tidak disimpan */
     if(replacing&&previousTurn){
@@ -567,7 +577,7 @@ async function submit(options={}){
       if(stillActive()){$("typing")?.remove();appendFailedTurn(message,text,e.code==="daily_limit")}
       toast("Permintaan gagal");
     }
-  }finally{busy=false;lockComposer();renderHistory();if(!isDrawerMode())promptEl.focus()}
+  }finally{busy=false;activeChatController=null;lockComposer();renderHistory();if(!isDrawerMode())promptEl.focus()}
 }
 function addEditActionToLastUser(){
   const row=messagesEl.children[messagesEl.children.length-2];if(!row?.classList.contains("user"))return;
@@ -670,7 +680,7 @@ async function boot(){
 $("continueGuest").addEventListener("click",()=>{writeGuestFlag(true);currentUser=null;setState(AppState.GUEST);enterChat();loadGoogle()});
 $("gateRetry").addEventListener("click",boot);
 $("googleRetry").addEventListener("click",()=>loadGoogle(true));
-$("chatForm").addEventListener("submit",e=>{e.preventDefault();submit()});
+$("chatForm").addEventListener("submit",e=>{e.preventDefault();if(busy){activeChatController?.abort();return}submit()});
 promptEl.addEventListener("input",resizePrompt);
 /* Enter sengaja TIDAK mengirim: Enter = baris baru di semua perangkat. Satu-satunya cara kirim lewat UI adalah tombol panah. */
 window.addEventListener("resize",resizePrompt);
