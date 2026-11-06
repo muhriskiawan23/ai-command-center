@@ -203,3 +203,30 @@ test("akun: penggantian giliran ditolak jika tidak ada pasangan user-assistant t
   assert.equal(response.status, 400);
   await app.close();
 });
+
+
+test("akun: pin percakapan tersimpan, diurutkan lebih dulu, dan tetap terisolasi per akun", async () => {
+  const { app, token } = await setup();
+  seedConversation(app.db, { id: "conv-alice-pin01", userId: ALICE.id, title: "Chat lama", updatedAt: 100 });
+  seedConversation(app.db, { id: "conv-alice-pin02", userId: ALICE.id, title: "Chat baru", updatedAt: 200 });
+  seedSession(app.db, { id: "sub-bob", email: "bob@example.com", name: "Bob" });
+  seedConversation(app.db, { id: "conv-bob-pin001", userId: "sub-bob", title: "Chat Bob", updatedAt: 300 });
+  const headers = { Origin: app.url, Cookie: `__Host-borai_session=${token}`, "Content-Type": "application/json" };
+  const list = async () => (await fetch(app.url + "/api/conversations", { headers })).json();
+  const initial = await list();
+  assert.deepEqual(initial.conversations.map(c => c.id), ["conv-alice-pin02", "conv-alice-pin01"]);
+  assert.equal(initial.conversations[1].pinned, 0);
+  const pin = await fetch(app.url + "/api/conversations/conv-alice-pin01", { method: "PATCH", headers, body: JSON.stringify({ pinned: true }) });
+  assert.equal(pin.status, 200);
+  assert.deepEqual(await pin.json(), { updated: true, id: "conv-alice-pin01", pinned: true });
+  const afterPin = await list();
+  assert.deepEqual(afterPin.conversations.map(c => c.id), ["conv-alice-pin01", "conv-alice-pin02"]);
+  assert.equal(afterPin.conversations[0].pinned, 1);
+  const invalid = await fetch(app.url + "/api/conversations/conv-alice-pin01", { method: "PATCH", headers, body: JSON.stringify({ pinned: "true" }) });
+  assert.equal(invalid.status, 400);
+  const other = await fetch(app.url + "/api/conversations/conv-bob-pin001", { method: "PATCH", headers, body: JSON.stringify({ pinned: true }) });
+  assert.equal(other.status, 404);
+  const detail = await (await fetch(app.url + "/api/conversations/conv-alice-pin01", { headers })).json();
+  assert.equal(detail.conversation.pinned, 1);
+  await app.close();
+});

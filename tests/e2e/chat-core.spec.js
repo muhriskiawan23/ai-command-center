@@ -254,3 +254,25 @@ test("akun: pesan terakhir dapat diedit dan jawaban dapat dibuat ulang", async (
   expect(app.db.sqlite.prepare("SELECT content FROM messages WHERE role = 'user'").get().content).toBe("Pertanyaan versi edit");
   expect(app.aiCalls.length).toBe(3);
 });
+
+
+test("akun: percakapan dapat disematkan, diprioritaskan, dan tetap tersimpan setelah reload", async ({ page, app, context }) => {
+  await loginAs(context, app, ALICE);
+  await page.goto(app.url);
+  await expect(page.locator("#prompt")).toBeVisible();
+  await send(page, "Percakapan yang akan disematkan");
+  await expect(page.locator(".message.assistant:not(#typing)")).toHaveCount(1);
+  if (page.viewportSize().width <= 1024) await page.locator("#menuBtn").click();
+  await page.locator("#newChat").click();
+  await send(page, "Percakapan terbaru");
+  await expect(page.locator(".message.assistant:not(#typing)")).toHaveCount(1);
+  if (page.viewportSize().width <= 1024) await page.locator("#menuBtn").click();
+  await page.getByRole("button", { name: "Sematkan Percakapan yang akan disematkan" }).click();
+  await expect(page.locator(".history-item").first()).toContainText("Percakapan yang akan disematkan");
+  await expect(page.getByRole("button", { name: "Lepas sematan Percakapan yang akan disematkan" })).toBeVisible();
+  await page.reload();
+  if (page.viewportSize().width <= 1024) await page.locator("#menuBtn").click();
+  await expect(page.locator(".history-item").first()).toContainText("Percakapan yang akan disematkan");
+  await expect(page.getByRole("button", { name: "Lepas sematan Percakapan yang akan disematkan" })).toBeVisible();
+  expect(app.db.sqlite.prepare("SELECT pinned FROM conversations WHERE title = ?").get("Percakapan yang akan disematkan").pinned).toBe(1);
+});

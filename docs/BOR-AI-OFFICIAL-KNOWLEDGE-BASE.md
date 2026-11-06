@@ -38,13 +38,15 @@ The public repository README describes a web-based AI workspace with:
 - A multi-agent sequence: Researcher → Analyst → Fact Checker → Writer.
 - Specialist modes including Researcher, Analyst, Writer, Fact Checker, Strategist, Coder, Planner, Critic, Summarizer, Translator, and Text Analyst, alongside Coordinator.
 - Guest sessions and Google sign-in for account-based use.
-- Private, account-scoped conversation history for signed-in users.
+- Private, account-scoped conversation history for signed-in users, including conversation rename, search, and pinning.
 - Optional, explicit user memory for signed-in users; it is off by default and stores only information the user chooses to save.
 - A link reader: users can include up to three ordinary web links in a message; the service attempts to fetch and extract readable page text for the model. Some pages will fail, including pages requiring JavaScript, login, or unsupported formats.
 
 The repository describes Cloudflare Workers, Workers AI, Cloudflare D1, and static frontend assets as core infrastructure. The repository's audit identifies Llama 3.3 70B on Workers AI as the model used in the audited implementation. Model availability and live runtime behavior can change; consult the current repository and test the live service before making a present-tense claim about availability.
 
 ### Important capability boundaries
+
+Signed-in users can organize saved conversations by renaming, searching, and pinning them; pin state is stored per account.
 
 The current documented product is primarily a text-chat assistant. Do not claim that it currently:
 - Performs unrestricted live web search or independently monitors news and trends.
