@@ -641,8 +641,8 @@ function appendSpreadsheetSource(spreadsheet){
 }
 function appendPresentationSource(p){const row=messagesEl.lastElementChild,body=row&&row.querySelector(".message-body");if(!body||!p)return;const box=document.createElement("div");box.className="sources presentation-source";const h=document.createElement("strong");h.textContent="Presentasi yang dianalisis:";const item=document.createElement("div");item.className="source ok";item.textContent="✓ "+String(p.name||"presentation.pptx")+(Number.isSafeInteger(p.slideCount)?" · "+p.slideCount+" slide":"")+(p.truncated?" · teks dibatasi":"");box.append(h,item);body.append(box)}\nfunction renderCsvAttachment(){
   const wrap=$("csvAttachment"),name=$("csvName");if(!wrap||!name)return;
-  wrap.hidden=!activeCsv;const isExcel=/\.xlsx$/i.test(activeCsv?.name||"");name.textContent=activeCsv?activeCsv.name+(isExcel?" · Excel siap":" · CSV siap"):"";
-  $("attachCsv").textContent=activeCsv?(isExcel?"Ganti Excel":"Ganti CSV"):"＋ CSV / Excel";
+  wrap.hidden=!activeCsv;const filename=activeCsv?.name||"",isPptx=/\.pptx$/i.test(filename),isExcel=/\.xlsx$/i.test(filename);name.textContent=activeCsv?filename+(isPptx?" · PowerPoint siap":isExcel?" · Excel siap":" · CSV siap"):"";
+  $("attachCsv").textContent=activeCsv?(isPptx?"Ganti PowerPoint":isExcel?"Ganti Excel":"Ganti CSV"):"＋ CSV / Excel / PPTX";
 }
 async function uploadPdf(file){
   if(!file)return;
@@ -682,13 +682,15 @@ async function ensurePptxLibrary(){if(window.JSZip?.loadAsync)return window.JSZi
 }
 async function uploadCsv(file){
   if(!file)return;
-  const filename=file.name.toLowerCase();const isExcel=filename.endsWith(".xlsx"),isPptx=filename.endsWith(".pptx");if(!isExcel&&!isPptx&&!filename.endsWith(".csv")){toast("Pilih file CSV, Excel (.xlsx), atau PowerPoint (.pptx).");return;}
+  const filename=file.name.toLowerCase(),isExcel=filename.endsWith(".xlsx"),isPptx=filename.endsWith(".pptx");
+  if(!isExcel&&!isPptx&&!filename.endsWith(".csv")){toast("Pilih file CSV, Excel (.xlsx), atau PowerPoint (.pptx).");return;}
   if(file.size>5*1024*1024){toast("Ukuran file maksimal 5 MB.");return;}
   if(file.size<1){toast("File kosong.");return;}
   const button=$("attachCsv");button.disabled=true;button.textContent="Membaca…";
   try{
     let parsed;
-    if(isExcel){const xlsx=await ensureXlsxLibrary();const {parseXlsxLocally}=await import("/xlsx-reader.js");parsed=await parseXlsxLocally(file,{xlsx});}
+    if(isPptx){const jszip=await ensurePptxLibrary();const {parsePptxLocally}=await import("/pptx-reader.js");parsed=await parsePptxLocally(file,{jszip});parsed.kind="presentation";}
+    else if(isExcel){const xlsx=await ensureXlsxLibrary();const {parseXlsxLocally}=await import("/xlsx-reader.js");parsed=await parseXlsxLocally(file,{xlsx});}
     else{const {parseCsvLocally}=await import("/csv-reader.js");parsed=await parseCsvLocally(file);}
     activePdf=null;renderPdfAttachment();activeCsv=parsed;renderCsvAttachment();
     toast(isPptx?"PowerPoint berhasil dibaca secara lokal. Tanyakan isi slide di kolom chat.":isExcel?"Excel berhasil dibaca secara lokal. Tanyakan analisisnya di kolom chat.":"CSV berhasil dibaca secara lokal. Tanyakan analisisnya di kolom chat.");
