@@ -1039,7 +1039,11 @@ async function persistConversation(env, user, conversationId, message, response,
   } else {
     statements.push(env.DB.prepare("UPDATE conversations SET updated_at = ? WHERE id = ? AND user_id = ?").bind(now, id, user.id));
   }
-  statements.push(env.DB.prepare("INSERT INTO messages (conversation_id, user_id, role, content, created_at, idempotency_key) VALUES (?, ?, 'user', ?, ?, ?)").bind(id, user.id, message, now, requestId));
+  if (requestId) {
+    statements.push(env.DB.prepare("INSERT INTO messages (conversation_id, user_id, role, content, created_at, idempotency_key) VALUES (?, ?, 'user', ?, ?, ?)").bind(id, user.id, message, now, requestId));
+  } else {
+    statements.push(env.DB.prepare("INSERT INTO messages (conversation_id, user_id, role, content, created_at) VALUES (?, ?, 'user', ?, ?)").bind(id, user.id, message, now));
+  }
   statements.push(env.DB.prepare("INSERT INTO messages (conversation_id, user_id, role, content, created_at) VALUES (?, ?, 'assistant', ?, ?)").bind(id, user.id, response, now));
   try {
     await env.DB.batch(statements);
