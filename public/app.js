@@ -173,11 +173,11 @@ function exportConversationFile(){
 const AppState={INIT:"initializing",UNAUTH:"unauthenticated",GUEST:"guest",AUTH:"authenticated",EXPIRED:"session-expired",ERROR:"error"};
 const promptEl=$("prompt"),messagesEl=$("messages"),welcomeEl=$("welcome"),conversation=$("conversation");
 const sidebar=$("sidebar"),backdrop=$("backdrop"),menuBtn=$("menuBtn"),workspace=$("workspace");
-let state=AppState.INIT,conversations=[],activeId=null,busy=false,currentUser=null,historyQuery="",archivedView=false,activePdf=null,activeCsv=null;
+let state=AppState.INIT,conversations=[],activeId=null,busy=false,currentUser=null,historyQuery="",archivedView=false,activePdf=null,activeCsv=null,activeXlsx=null;
 let historyCursor=null,historyHasMore=false,historyLoadingMore=false,historyRequestSeq=0;
 /* navSeq: setiap navigasi chat menaikkan penghitung ini; pemuatan yang tertimpa navigasi lebih baru dibatalkan. */
 let navSeq=0,loadingChat=false;
-function lockComposer(){const lock=busy||loadingChat;const send=$("send"),stop=$("stopGeneration");send.disabled=lock;send.hidden=busy;stop.hidden=!busy;stop.disabled=!busy;promptEl.readOnly=lock;$("exportConversation").disabled=lock;$("attachPdf").disabled=lock;$("attachCsv").disabled=lock;}
+function lockComposer(){const lock=busy||loadingChat;const send=$("send"),stop=$("stopGeneration");send.disabled=lock;send.hidden=busy;stop.hidden=!busy;stop.disabled=!busy;promptEl.readOnly=lock;$("exportConversation").disabled=lock;$("attachPdf").disabled=lock;$("attachCsv").disabled=lock;$("attachXlsx").disabled=lock;}
 
 /* Yang disimpan di sessionStorage HANYA penanda "sudah memilih Guest" (agar refresh tidak kembali ke Welcome).
    Isi chat guest tidak pernah ditulis ke storage mana pun. */
@@ -197,7 +197,7 @@ function setState(next,notice=""){
   syncInert();renderAuth();
 }
 function resetChatView(){
-  navSeq++;loadingChat=false;activePdf=null;activeCsv=null;renderPdfAttachment();renderCsvAttachment();lockComposer();
+  navSeq++;loadingChat=false;activePdf=null;activeCsv=null;activeXlsx=null;renderPdfAttachment();renderCsvAttachment();renderXlsxAttachment();lockComposer();
   activeId=null;$("exportConversation").hidden=true;messagesEl.replaceChildren();messagesEl.hidden=true;welcomeEl.hidden=false;
   $("workflow").hidden=true;promptEl.value="";resizePrompt();
 }
@@ -634,15 +634,20 @@ function renderPdfAttachment(){
 function appendSpreadsheetSource(spreadsheet){
   const row=messagesEl.lastElementChild;const body=row&&row.querySelector(".message-body");if(!body||!spreadsheet)return;
   const box=document.createElement("div");box.className="sources csv-source";
-  const head=document.createElement("strong");head.textContent="File CSV yang dianalisis:";box.append(head);
+  const head=document.createElement("strong");head.textContent="File spreadsheet yang dianalisis:";box.append(head);
   const item=document.createElement("div");item.className="source ok";
-  item.textContent="✓ "+String(spreadsheet.name||"spreadsheet.csv")+(Number.isSafeInteger(spreadsheet.rowCount)?" · "+spreadsheet.rowCount.toLocaleString("id-ID")+" baris":"")+(Number.isSafeInteger(spreadsheet.columnCount)?" · "+spreadsheet.columnCount+" kolom":"")+(spreadsheet.truncated?" · ringkasan dibatasi":"");
+  item.textContent="✓ "+String(spreadsheet.name||"spreadsheet")+(Number.isSafeInteger(spreadsheet.rowCount)?" · "+spreadsheet.rowCount.toLocaleString("id-ID")+" baris":"")+(Number.isSafeInteger(spreadsheet.columnCount)?" · "+spreadsheet.columnCount+" kolom":"")+(spreadsheet.truncated?" · ringkasan dibatasi":"");
   box.append(item);body.append(box);
 }
 function renderCsvAttachment(){
   const wrap=$("csvAttachment"),name=$("csvName");if(!wrap||!name)return;
   wrap.hidden=!activeCsv;name.textContent=activeCsv?activeCsv.name+" · CSV siap":"";
   $("attachCsv").textContent=activeCsv?"Ganti CSV":"＋ CSV";
+}
+function renderXlsxAttachment(){
+  const wrap=$("xlsxAttachment"),name=$("xlsxName");if(!wrap||!name)return;
+  wrap.hidden=!activeXlsx;name.textContent=activeXlsx?activeXlsx.name+" · Excel siap":"";
+  $("attachXlsx").textContent=activeXlsx?"Ganti Excel":"＋ Excel";
 }
 async function uploadPdf(file){
   if(!file)return;
@@ -652,7 +657,7 @@ async function uploadPdf(file){
   const button=$("attachPdf");button.disabled=true;button.textContent="Membaca…";
   try{
     const {extractPdfLocally}=await import("/pdf-ocr.js");
-    activeCsv=null;renderCsvAttachment();
+    activeCsv=null;activeXlsx=null;renderCsvAttachment();renderXlsxAttachment();
     activePdf=await extractPdfLocally(file,{
       pdfjs:window.pdfjsLib,
       tesseract:window.Tesseract,
@@ -677,10 +682,24 @@ async function uploadCsv(file){
   try{
     const {parseCsvLocally}=await import("/csv-reader.js");
     const parsed=await parseCsvLocally(file);
-    activePdf=null;renderPdfAttachment();activeCsv=parsed;renderCsvAttachment();
+    activePdf=null;activeXlsx=null;renderPdfAttachment();renderXlsxAttachment();activeCsv=parsed;renderCsvAttachment();
     toast("CSV berhasil dibaca secara lokal. Tanyakan analisisnya di kolom chat.");
   }catch(error){toast(error.message||"CSV gagal dibaca.");}
   finally{button.disabled=busy||loadingChat;renderCsvAttachment()}
+}
+async function uploadXlsx(file){
+  if(!file)return;
+  if(!/\.xlsx$/i.test(file.name)){toast("Pilih file Excel (.xlsx).");return;}
+  if(file.size>5*1024*1024){toast("Ukuran Excel maksimal 5 MB.");return;}
+  if(file.size<22){toast("File Excel tidak valid atau kosong.");return;}
+  const button=$("attachXlsx");button.disabled=true;button.textContent="Membaca…";
+  try{
+    const {parseXlsxLocally}=await import("/xlsx-reader.js");
+    const parsed=await parseXlsxLocally(file,{xlsx:window.XLSX});
+    activePdf=null;activeCsv=null;renderPdfAttachment();renderCsvAttachment();activeXlsx=parsed;renderXlsxAttachment();
+    toast("Excel berhasil dibaca secara lokal. Tanyakan analisisnya di kolom chat.");
+  }catch(error){toast(error.message||"File Excel gagal dibaca.");}
+  finally{button.disabled=busy||loadingChat;renderXlsxAttachment()}
 }
 function appendFailedTurn(message,text,noRetry=false,requestId=null){
   appendMessage("assistant",message);
@@ -708,7 +727,7 @@ async function submit(options={}){
   if(createdNew)replaceRoute({name:"chat",id:chat.id});
   const stillActive=()=>activeId===startId;const start=Date.now();
   try{
-    const payload={message:text,agent,requestId};if(activePdf)payload.document={name:activePdf.name,content:activePdf.content,truncated:activePdf.truncated};if(activeCsv)payload.spreadsheet={name:activeCsv.name,content:activeCsv.content,rowCount:activeCsv.rowCount,columnCount:activeCsv.columnCount,truncated:activeCsv.truncated};if(history.length)payload.history=history;if(state===AppState.AUTH&&chat.serverId)payload.conversationId=chat.serverId;if(replacing&&state===AppState.AUTH&&chat.serverId)payload.replaceLastTurn=true;
+    const payload={message:text,agent,requestId};if(activePdf)payload.document={name:activePdf.name,content:activePdf.content,truncated:activePdf.truncated};const spreadsheet=activeXlsx||activeCsv;if(spreadsheet)payload.spreadsheet={name:spreadsheet.name,content:spreadsheet.content,rowCount:spreadsheet.rowCount,columnCount:spreadsheet.columnCount,sheetCount:spreadsheet.sheetCount,kind:spreadsheet.kind,truncated:spreadsheet.truncated};if(history.length)payload.history=history;if(state===AppState.AUTH&&chat.serverId)payload.conversationId=chat.serverId;if(replacing&&state===AppState.AUTH&&chat.serverId)payload.replaceLastTurn=true;
     const data=await postJson("/api/chat",payload,CHAT_TIMEOUT_MS,activeChatController.signal);
     if(typeof data.response!=="string"||!data.response.trim())throw new Error("AI tidak menghasilkan jawaban.");
     if(pendingRetryRequest?.requestId===requestId)pendingRetryRequest=null;
@@ -856,6 +875,9 @@ $("clearPdf").addEventListener("click",()=>{activePdf=null;renderPdfAttachment()
 $("attachCsv").addEventListener("click",()=>{if(!busy&&!loadingChat)$("csvFile").click()});
 $("csvFile").addEventListener("change",event=>{const file=event.target.files?.[0];event.target.value="";uploadCsv(file)});
 $("clearCsv").addEventListener("click",()=>{activeCsv=null;renderCsvAttachment();toast("CSV dilepas dari chat.")});
+$("attachXlsx").addEventListener("click",()=>{if(!busy&&!loadingChat)$("xlsxFile").click()});
+$("xlsxFile").addEventListener("change",event=>{const file=event.target.files?.[0];event.target.value="";uploadXlsx(file)});
+$("clearXlsx").addEventListener("click",()=>{activeXlsx=null;renderXlsxAttachment();toast("Excel dilepas dari chat.")});
 $("stopGeneration").addEventListener("click",()=>{if(busy)activeChatController?.abort()});
 promptEl.addEventListener("input",resizePrompt);
 /* Enter sengaja TIDAK mengirim: Enter = baris baru di semua perangkat. Satu-satunya cara kirim lewat UI adalah tombol panah. */
