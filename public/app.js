@@ -641,8 +641,8 @@ function appendSpreadsheetSource(spreadsheet){
 }
 function renderCsvAttachment(){
   const wrap=$("csvAttachment"),name=$("csvName");if(!wrap||!name)return;
-  wrap.hidden=!activeCsv;name.textContent=activeCsv?activeCsv.name+" · CSV siap":"";
-  $("attachCsv").textContent=activeCsv?"Ganti CSV":"＋ CSV";
+  wrap.hidden=!activeCsv;const isExcel=/\\.xlsx$/i.test(activeCsv?.name||"");name.textContent=activeCsv?activeCsv.name+(isExcel?" · Excel siap":" · CSV siap"):"";
+  $("attachCsv").textContent=activeCsv?(isExcel?"Ganti Excel":"Ganti CSV"):"＋ CSV / Excel";
 }
 async function uploadPdf(file){
   if(!file)return;
@@ -670,16 +670,17 @@ async function uploadPdf(file){
 }
 async function uploadCsv(file){
   if(!file)return;
-  if(!file.name.toLowerCase().endsWith(".csv")){toast("Pilih file CSV (.csv).");return;}
-  if(file.size>5*1024*1024){toast("Ukuran CSV maksimal 5 MB.");return;}
-  if(file.size<1){toast("File CSV kosong.");return;}
+  const filename=file.name.toLowerCase();const isExcel=filename.endsWith(".xlsx");if(!isExcel&&!filename.endsWith(".csv")){toast("Pilih file CSV atau Excel (.xlsx).");return;}
+  if(file.size>5*1024*1024){toast("Ukuran file maksimal 5 MB.");return;}
+  if(file.size<1){toast("File kosong.");return;}
   const button=$("attachCsv");button.disabled=true;button.textContent="Membaca…";
   try{
-    const {parseCsvLocally}=await import("/csv-reader.js");
-    const parsed=await parseCsvLocally(file);
+    let parsed;
+    if(isExcel){const {parseXlsxLocally}=await import("/xlsx-reader.js");parsed=await parseXlsxLocally(file,{xlsx:window.XLSX});}
+    else{const {parseCsvLocally}=await import("/csv-reader.js");parsed=await parseCsvLocally(file);}
     activePdf=null;renderPdfAttachment();activeCsv=parsed;renderCsvAttachment();
-    toast("CSV berhasil dibaca secara lokal. Tanyakan analisisnya di kolom chat.");
-  }catch(error){toast(error.message||"CSV gagal dibaca.");}
+    toast(isExcel?"Excel berhasil dibaca secara lokal. Tanyakan analisisnya di kolom chat.":"CSV berhasil dibaca secara lokal. Tanyakan analisisnya di kolom chat.");
+  }catch(error){toast(error.message||"File gagal dibaca.");}
   finally{button.disabled=busy||loadingChat;renderCsvAttachment()}
 }
 function appendFailedTurn(message,text,noRetry=false,requestId=null){
