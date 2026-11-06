@@ -3,6 +3,7 @@
   "name": "ai-command-center",
   "main": "src/index.js",
   "compatibility_date": "2026-10-28",
+  "compatibility_flags": ["enable_request_signal"],
   "ai": {
     "binding": "AI",
     "remote": true
