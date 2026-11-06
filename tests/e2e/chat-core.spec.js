@@ -123,6 +123,26 @@ test.describe("CHAT — memori percakapan, kegagalan, batas laju", () => {
   });
 });
 
+test("pengguna dapat menghentikan generasi aktif tanpa menyimpan giliran parsial", async ({ page, app, context }) => {
+  await loginAs(context, app, ALICE);
+  await page.goto(app.url);
+  await expect(page.locator("#prompt")).toBeVisible();
+  app.control.aiHang = true;
+  await page.locator("#prompt").fill("Permintaan yang akan dihentikan");
+  await page.locator("#send").click();
+  await expect(page.locator("#typing")).toBeVisible();
+  await expect(page.locator("#send")).toHaveAttribute("aria-label", "Hentikan generasi");
+  await page.locator("#send").click();
+  await expect(page.locator("#prompt")).toBeEditable();
+  await expect(page.locator("#send")).toHaveAttribute("aria-label", "Kirim pesan");
+  await expect(page.locator("#typing")).toHaveCount(0);
+  await expect(page.locator(".message.failed")).toHaveCount(0);
+  await expect(page.locator("#toast")).toContainText("Generasi dihentikan");
+  expect(app.db.sqlite.prepare("SELECT COUNT(*) n FROM messages").get().n).toBe(0);
+  expect(app.db.sqlite.prepare("SELECT COUNT(*) n FROM conversations").get().n).toBe(0);
+  app.control.aiHang = false;
+});
+
 test("server macet: permintaan dibatalkan setelah batas waktu, ada pesan jelas + Coba lagi, composer tidak terkunci selamanya", async ({ page, app }) => {
   await page.clock.install();
   await page.goto(app.url);
