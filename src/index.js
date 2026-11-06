@@ -1041,7 +1041,18 @@ async function persistConversation(env, user, conversationId, message, response,
   }
   statements.push(env.DB.prepare("INSERT INTO messages (conversation_id, user_id, role, content, created_at, idempotency_key) VALUES (?, ?, 'user', ?, ?, ?)").bind(id, user.id, message, now, requestId));
   statements.push(env.DB.prepare("INSERT INTO messages (conversation_id, user_id, role, content, created_at) VALUES (?, ?, 'assistant', ?, ?)").bind(id, user.id, response, now));
-  await env.DB.batch(statements);
+  try {
+    await env.DB.batch(statements);
+  } catch (error) {
+    // Keep chat writes available during a rolling release if the additive migration has not landed yet.
+    if (!requestId || !/no such column/i.test(String(error?.message))) throw error;
+    const legacyStatements = statements.slice(0, -2);
+    legacyStatements.push(
+      env.DB.prepare("INSERT INTO messages (conversation_id, user_id, role, content, created_at) VALUES (?, ?, 'user', ?, ?)").bind(id, user.id, message, now),
+      env.DB.prepare("INSERT INTO messages (conversation_id, user_id, role, content, created_at) VALUES (?, ?, 'assistant', ?, ?)").bind(id, user.id, response, now)
+    );
+    await env.DB.batch(legacyStatements);
+  }
   return id;
 }
 
@@ -1115,7 +1126,7 @@ export default {
       if (body?.conversationId !== undefined && (typeof body.conversationId !== "string" || !/^[a-zA-Z0-9-]{8,80}$/.test(body.conversationId))) return json({ error: "ID percakapan tidak valid." }, 400);
       if (body?.replaceLastTurn !== undefined && typeof body.replaceLastTurn !== "boolean") return json({ error: "Permintaan penggantian giliran tidak valid." }, 400);
       if (body?.replaceLastTurn && !body.conversationId) return json({ error: "Percakapan untuk diganti tidak ditemukan." }, 400);
-      if (body?.requestId !== undefined && (typeof body.requestId !== "string" || !/^[0-9a-f-]{36}$/i.test(body.requestId))) return json({ error: "ID permintaan tidak valid." }, 400);
+      if (body?.requestId !== undefined && (typeof body.requestId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(body.requestId))) return json({ error: "ID permintaan tidak valid." }, 400);
       const clientHistory = parseClientHistory(body?.history);
       if (clientHistory.error) return json({ error: clientHistory.error }, 400);
       let user = null;
