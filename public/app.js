@@ -641,7 +641,7 @@ function appendSpreadsheetSource(spreadsheet){
 }
 function renderCsvAttachment(){
   const wrap=$("csvAttachment"),name=$("csvName");if(!wrap||!name)return;
-  wrap.hidden=!activeCsv;const isExcel=/\\.xlsx$/i.test(activeCsv?.name||"");name.textContent=activeCsv?activeCsv.name+(isExcel?" · Excel siap":" · CSV siap"):"";
+  wrap.hidden=!activeCsv;const isExcel=/\.xlsx$/i.test(activeCsv?.name||"");name.textContent=activeCsv?activeCsv.name+(isExcel?" · Excel siap":" · CSV siap"):"";
   $("attachCsv").textContent=activeCsv?(isExcel?"Ganti Excel":"Ganti CSV"):"＋ CSV / Excel";
 }
 async function uploadPdf(file){
