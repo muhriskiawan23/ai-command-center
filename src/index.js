@@ -107,6 +107,8 @@ function limitResponse(scope, limit) {
 async function enforceDailyLimits(env, request, user, units) {
   if (!env.DB) return { ok: true, day: null, charges: [] };
   const day = usageDay();
+  // Keep successful partial charges visible to every error path so they can be refunded.
+  const charges = [];
   try {
     const scope = user ? "user" : "guest";
     const subject = user
@@ -114,7 +116,7 @@ async function enforceDailyLimits(env, request, user, units) {
       : "guest:" + (await sha256Hex(`${day}|${request.headers.get("CF-Connecting-IP") || "unknown-client"}|${env.USAGE_SALT || ""}`)).slice(0, 32);
     const subjectLimit = dailyLimit(env, scope);
     if (await consumeUsage(env, day, subject, units, subjectLimit) === null) return { ok: false, response: limitResponse(scope, subjectLimit) };
-    const charges = [{ subject, units }];
+    charges.push({ subject, units });
     const globalLimit = dailyLimit(env, "global");
     const globalTotal = await consumeUsage(env, day, "global", units, globalLimit);
     if (globalTotal === null) {
@@ -129,6 +131,7 @@ async function enforceDailyLimits(env, request, user, units) {
     }
     return { ok: true, day, charges };
   } catch (error) {
+    await refundUsage(env, day, charges);
     if (/no such table/i.test(String(error?.message))) {
       // Migration 0002 has not been applied yet. Keep chat working, but say so loudly in the logs.
       console.error("daily_usage table missing: daily limits are DISABLED until D1 migrations are applied (run bor-ai-deploy).");
