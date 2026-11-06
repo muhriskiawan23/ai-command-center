@@ -263,8 +263,9 @@ test("akun: arsip dan pulihkan percakapan secara privat tanpa menghapus pesannya
 test("akun: pagination riwayat memakai cursor stabil, mempertahankan urutan pin, dan tetap terisolasi", async () => {
   const { app, token } = await setup();
   for (let i = 0; i < 205; i++) {
-    seedConversation(app.db, { id: "conv-page-" + String(i).padStart(4, "0"), userId: ALICE.id,
-      title: "Percakapan halaman " + i, updatedAt: 1000 + i, pinned: i === 3 || i === 150 ? 1 : 0 });
+    const id = "conv-page-" + String(i).padStart(4, "0");
+    seedConversation(app.db, { id, userId: ALICE.id, title: "Percakapan halaman " + i, updatedAt: 1000 + i });
+    if (i === 3 || i === 150) app.db.sqlite.prepare("UPDATE conversations SET pinned = 1 WHERE id = ?").run(id);
   }
   seedSession(app.db, { id: "sub-bob", email: "bob@example.com", name: "Bob" });
   seedConversation(app.db, { id: "conv-bob-page000", userId: "sub-bob", title: "Tidak boleh terlihat", updatedAt: 9999 });
