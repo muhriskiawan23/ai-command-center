@@ -59,6 +59,10 @@ function escapeHTML(s){return String(s).replace(/[&<>\"']/g,c=>({"&":"&amp;","<"
     const copyBtn=document.createElement("button");copyBtn.type="button";copyBtn.className="message-action";copyBtn.textContent="Salin";copyBtn.addEventListener("click",()=>copyText(content));
     const markdownBtn=document.createElement("button");markdownBtn.type="button";markdownBtn.className="message-action";markdownBtn.textContent="Markdown";markdownBtn.addEventListener("click",()=>downloadMarkdown(content,role));
     const plainBtn=document.createElement("button");plainBtn.type="button";plainBtn.className="message-action";plainBtn.textContent="Teks";plainBtn.addEventListener("click",()=>downloadText(content,role));actions.append(copyBtn,markdownBtn,plainBtn);
+    if(role==="assistant"){
+      const checklistBtn=document.createElement("button");checklistBtn.type="button";checklistBtn.className="message-action checklist-action";checklistBtn.textContent="Checklist";
+      checklistBtn.addEventListener("click",()=>showChecklistExport(content,actions));actions.append(checklistBtn);
+    }
     if(controls.edit){const editBtn=document.createElement("button");editBtn.type="button";editBtn.className="message-action edit-message";editBtn.textContent="Edit & kirim";editBtn.addEventListener("click",()=>replaceLastTurn("edit",content));actions.append(editBtn)}
     if(controls.regenerate){const regenBtn=document.createElement("button");regenBtn.type="button";regenBtn.className="message-action regenerate-message";regenBtn.textContent="Buat ulang";regenBtn.addEventListener("click",()=>replaceLastTurn("regenerate",content));actions.append(regenBtn)}
     body.append(actions);
@@ -147,6 +151,21 @@ function downloadMarkdown(value, role="assistant"){
   a.href=url;a.download=(role==="assistant"?"bor-ai-response":"bor-ai-message")+".md";a.click();
   URL.revokeObjectURL(url);
   toast("Markdown berhasil diunduh.");
+}
+function showChecklistExport(content, actions) {
+  const result=window.BORChecklist?.convertToChecklist(content);
+  if(!result?.ok){toast("Tidak ditemukan item daftar untuk dijadikan checklist.");return;}
+  const existing=actions.querySelector(".checklist-export");
+  if(existing){existing.remove();return;}
+  const panel=document.createElement("div");panel.className="checklist-export";
+  const preview=document.createElement("pre");preview.className="checklist-preview";preview.textContent=result.markdown;
+  const controls=document.createElement("div");controls.className="checklist-export-actions";
+  const copy=document.createElement("button");copy.type="button";copy.className="message-action";copy.textContent="Salin checklist";copy.addEventListener("click",()=>copyText(result.markdown));
+  const download=document.createElement("button");download.type="button";download.className="message-action";download.textContent="Unduh .md";download.addEventListener("click",()=>{
+    const blob=new Blob([result.markdown],{type:"text/markdown;charset=utf-8"});
+    const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download="bor-ai-checklist.md";a.click();URL.revokeObjectURL(url);toast("Checklist berhasil diunduh.");
+  });
+  controls.append(copy,download);panel.append(preview,controls);actions.append(panel);
 }
 function exportConversationFile(){
   if(busy||loadingChat)return;
