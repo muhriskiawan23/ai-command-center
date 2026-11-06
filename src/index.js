@@ -861,8 +861,16 @@ async function handleConversationRoute(request, env, url) {
   if (!user) return authRequiredResponse();
   if (!env.DB) return json({ error: "Penyimpanan riwayat belum tersedia." }, 503);
   if (url.pathname === "/api/conversations" && request.method === "GET") {
-    const result = await env.DB.prepare("SELECT id, title, created_at, updated_at FROM conversations WHERE user_id = ? ORDER BY updated_at DESC LIMIT 100").bind(user.id).all();
-    return json({ conversations: result.results || [] });
+    const query = String(url.searchParams.get("q") || "").trim().slice(0, 100);
+    const result = query
+      ? await env.DB.prepare(
+          "SELECT c.id, c.title, c.created_at, c.updated_at FROM conversations c " +
+          "WHERE c.user_id = ? AND (instr(lower(c.title), lower(?)) > 0 OR EXISTS (" +
+          "SELECT 1 FROM messages m WHERE m.conversation_id = c.id AND m.user_id = c.user_id AND instr(lower(m.content), lower(?)) > 0)) " +
+          "ORDER BY c.updated_at DESC LIMIT 100"
+        ).bind(user.id, query, query).all()
+      : await env.DB.prepare("SELECT id, title, created_at, updated_at FROM conversations WHERE user_id = ? ORDER BY updated_at DESC LIMIT 100").bind(user.id).all();
+    return json({ conversations: result.results || [], query });
   }
   if (url.pathname === "/api/conversations" && request.method === "DELETE") {
     await env.DB.prepare("DELETE FROM conversations WHERE user_id = ?").bind(user.id).run();
