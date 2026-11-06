@@ -111,7 +111,7 @@ function downloadMarkdown(value, role="assistant"){
 const AppState={INIT:"initializing",UNAUTH:"unauthenticated",GUEST:"guest",AUTH:"authenticated",EXPIRED:"session-expired",ERROR:"error"};
 const promptEl=$("prompt"),messagesEl=$("messages"),welcomeEl=$("welcome"),conversation=$("conversation");
 const sidebar=$("sidebar"),backdrop=$("backdrop"),menuBtn=$("menuBtn"),workspace=$("workspace");
-let state=AppState.INIT,conversations=[],activeId=null,busy=false,currentUser=null;
+let state=AppState.INIT,conversations=[],activeId=null,busy=false,currentUser=null,historyQuery="";
 /* navSeq: setiap navigasi chat menaikkan penghitung ini; pemuatan yang tertimpa navigasi lebih baru dibatalkan. */
 let navSeq=0,loadingChat=false;
 function lockComposer(){const lock=busy||loadingChat;$("send").disabled=lock;promptEl.readOnly=lock}
@@ -397,7 +397,9 @@ function renderHistory(){
   if(!inChatView()){$("historyCount").textContent="";return}
   $("historyLabel").textContent=state===AppState.AUTH?"Riwayat akun":"Sesi ini · Guest Mode";
   $("historyCount").textContent=conversations.length?String(conversations.length):"";
-  for(const c of sortedConversations()){
+  const query=historyQuery.toLocaleLowerCase();
+  const visible=sortedConversations().filter(c=>!query||String(c.title||"").toLocaleLowerCase().includes(query)||(state===AppState.GUEST&&c.messages.some(m=>String(m.content||"").toLocaleLowerCase().includes(query))));
+  for(const c of visible){
     const row=document.createElement("div");row.className="history-row";
     const b=document.createElement("button");b.className="history-item"+(c.id===activeId?" active":"");b.type="button";
     if(c.id===activeId)b.setAttribute("aria-current","page");
@@ -409,6 +411,9 @@ function renderHistory(){
     const del=document.createElement("button");del.className="delete-chat";del.type="button";del.textContent="×";del.title="Hapus chat";del.setAttribute("aria-label","Hapus "+(c.title||"chat"));
     del.onclick=e=>{e.stopPropagation();deleteChat(c.id)};
     row.append(b,rename,del);nav.append(row);
+  }
+  if(!visible.length){
+    const empty=document.createElement("p");empty.className="history-empty";empty.textContent=query?"Tidak ada percakapan yang cocok.":"Belum ada percakapan.";nav.append(empty);
   }
 }
 /* Menampilkan chat tanpa menyentuh history; pemanggil yang menentukan rute.
@@ -449,8 +454,10 @@ async function enterChat(){
     await applyRoute();
   }finally{loadingChat=false;lockComposer()}
 }
-async function syncUserHistory(){
-  const d=await api("/api/conversations");
+async function syncUserHistory(query=historyQuery){
+  historyQuery=String(query||"").trim().slice(0,100);
+  const params=historyQuery?"?q="+encodeURIComponent(historyQuery):"";
+  const d=await api("/api/conversations"+params);
   conversations=(d.conversations||[]).map(c=>({id:c.id,serverId:c.id,title:c.title,messages:[],updated:(c.updated_at||0)*1000,loaded:false}));
 }
 /* Konteks yang dikirim ke server. Sama dengan batas di server (12 pesan / 8000 karakter / 2000 per pesan);
@@ -580,6 +587,24 @@ promptEl.addEventListener("input",resizePrompt);
 window.addEventListener("resize",resizePrompt);
 $("newChat").addEventListener("click",newChat);
 $("clearHistory").addEventListener("click",clearHistory);
+$("historySearchForm").addEventListener("submit",async e=>{
+  e.preventDefault();
+  const query=$("historySearch").value.trim().slice(0,100);
+  if(state===AppState.AUTH){
+    try{await syncUserHistory(query);renderHistory()}
+    catch(err){toast(err.message||"Pencarian riwayat gagal")}
+  }else{
+    historyQuery=query;
+    renderHistory();
+  }
+});
+$("historySearch").addEventListener("keydown",e=>{
+  if(e.key==="Escape"){
+    e.preventDefault();$("historySearch").value="";
+    if(state===AppState.AUTH)syncUserHistory("").then(renderHistory).catch(err=>toast(err.message||"Gagal memuat riwayat"));
+    else{historyQuery="";renderHistory()}
+  }
+});
 $("signOut").addEventListener("click",signOut);
 $("about").addEventListener("click",()=>toast("BOR AI · Intelligence without limits"));
 document.querySelectorAll("[data-prompt]").forEach(b=>b.addEventListener("click",()=>{promptEl.value=b.dataset.prompt;resizePrompt();promptEl.focus()}));

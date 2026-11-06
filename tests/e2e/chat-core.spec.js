@@ -197,6 +197,23 @@ test("mode Translator dan Text Analyst tersedia di pemilih mode dan terkirim ke 
 });
 
 
+
+test("akun: pencarian riwayat menemukan percakapan berdasarkan isi pesan dan dapat di-reset", async ({ page, app, context }) => {
+  await loginAs(context, app, ALICE);
+  await page.goto(app.url);
+  await expect(page.locator("#prompt")).toBeVisible();
+  await send(page, "Cari-frasa-unik untuk pengujian riwayat");
+  await expect(page.locator(".message.assistant:not(#typing)")).toHaveCount(1);
+  if (page.viewportSize().width <= 1024) await page.locator("#menuBtn").click();
+  await page.locator("#historySearch").fill("frasa-unik");
+  await page.locator("#historySearchForm").evaluate(form => form.requestSubmit());
+  await expect(page.locator(".history-row")).toHaveCount(1);
+  await expect(page.locator(".history-item")).toContainText("Cari-frasa-unik");
+  await page.locator("#historySearch").press("Escape");
+  await expect(page.locator("#historySearch")).toHaveValue("");
+  await expect(page.locator(".history-row")).toHaveCount(1);
+});
+
 test("akun: judul percakapan dapat diubah dan tetap tersimpan setelah reload", async ({ page, app, context }) => {
   await loginAs(context, app, ALICE);
   await page.goto(app.url);
