@@ -1,7 +1,7 @@
 // Pembaca link: ekstraksi URL, perlindungan SSRF, redirect, batas ukuran/waktu, dan ekstraksi teks.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { extractUrls, validateUrl, blockedHostReason, htmlToText, readLink, buildPageContext, summarizeLinks, MAX_DOWNLOAD_BYTES, MAX_PAGE_CHARS } from "../src/links.js";
+import { extractUrls, validateUrl, blockedHostReason, htmlToText, readLink, buildPageContext, summarizeLinks, validateCitationReferences, MAX_DOWNLOAD_BYTES, MAX_PAGE_CHARS } from "../src/links.js";
 
 const html = (body, title = "Judul Uji") => `<!doctype html><html><head><title>${title}</title><style>.x{}</style><script>alert(1)</script></head><body>${body}</body></html>`;
 const respond = (body, { status = 200, type = "text/html; charset=utf-8", headers = {} } = {}) => new Response(body, { status, headers: { "content-type": type, ...headers } });
@@ -57,6 +57,26 @@ test("sumber link memiliki ID stabil dan URL hanya diberikan untuk halaman yang 
   assert.equal(sources[1].sourceId, 2);
   assert.equal(sources[1].ok, false);
   assert.equal("url" in sources[1], false);
+});
+
+test("validasi sitasi: tanpa sumber sukses, semua sitasi palsu dihapus dan kegagalan dijelaskan", () => {
+  const result = validateCitationReferences("Fakta umum [1] dan klaim lain [2].", [
+    { ok: false, sourceId: 1, host: "example.com", reason: "situs membalas 403" },
+    { ok: false, sourceId: 2, host: "other.example", reason: "waktu habis (8 detik)" }
+  ]);
+  assert.ok(!result.includes("[1]") && !result.includes("[2]"));
+  assert.match(result, /tidak ada URL yang berhasil dibaca/);
+  assert.match(result, /example.com: situs membalas 403/);
+});
+
+test("validasi sitasi: hanya ID sumber yang berhasil dibaca yang dipertahankan", () => {
+  const result = validateCitationReferences("Klaim A [1], klaim B [2], klaim C [3].", [
+    { ok: true, sourceId: 1, host: "a.example" },
+    { ok: false, sourceId: 2, host: "b.example", reason: "403" }
+  ]);
+  assert.match(result, /Klaim A \[1\]/);
+  assert.ok(!result.includes("[2]") && !result.includes("[3]"));
+  assert.ok(!result.includes("tidak ada URL yang berhasil dibaca"));
 });
 
 test("membaca halaman: sukses, dipotong, dan teks tersimpan apa adanya", async () => {
