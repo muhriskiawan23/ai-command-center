@@ -65,6 +65,7 @@ async function health(){try{const r=await fetch(API+"/api/health");if(!r.ok)thro
 
 const CHAT_TIMEOUT_MS=150000; /* alur multi-agent bisa beberapa panggilan model berurutan; lewat ini dianggap macet */
 let activeChatController=null;
+let pendingRetryRequest=null;
 async function api(path,opts={}){
   const {timeoutMs,...fetchOpts}=opts;let res,timer,timedOut=false;
   const externalSignal=fetchOpts.signal;
@@ -571,7 +572,7 @@ function appendSources(links){
   }
   body.append(box);
 }
-function appendFailedTurn(message,text,noRetry=false){
+function appendFailedTurn(message,text,noRetry=false,requestId=null){
   appendMessage("assistant",message);
   const row=messagesEl.lastElementChild;const body=row&&row.querySelector(".message-body");if(!body)return;
   row.classList.add("failed");
@@ -580,13 +581,14 @@ function appendFailedTurn(message,text,noRetry=false){
   btn.addEventListener("click",()=>{
     if(busy||loadingChat)return;
     const prev=row.previousElementSibling;row.remove();if(prev&&prev.classList.contains("user"))prev.remove();
-    promptEl.value=text;resizePrompt();submit();
+    promptEl.value=text;resizePrompt();submit({requestId});
   });
   body.append(btn);
 }
 async function submit(options={}){
   if(busy||loadingChat||!inChatView())return;const text=promptEl.value.trim();if(!text)return;
   const replacing=options.replaceLastTurn===true;const previousTurn=options.previousTurn||null;
+  const requestId=options.requestId||(pendingRetryRequest?.text===text&&pendingRetryRequest.conversationId===activeId?pendingRetryRequest.requestId:crypto.randomUUID());
   busy=true;activeChatController=new AbortController();lockComposer();const agent=$("agent").value;
   let createdNew=false;
   if(!activeId){activeId=id();createdNew=true;conversations.push({id:activeId,serverId:null,title:text.replace(/\s+/g," ").slice(0,72),messages:[],updated:Date.now(),loaded:true})}
@@ -596,9 +598,10 @@ async function submit(options={}){
   if(createdNew)replaceRoute({name:"chat",id:chat.id});
   const stillActive=()=>activeId===startId;const start=Date.now();
   try{
-    const payload={message:text,agent};if(history.length)payload.history=history;if(state===AppState.AUTH&&chat.serverId)payload.conversationId=chat.serverId;if(replacing&&state===AppState.AUTH&&chat.serverId)payload.replaceLastTurn=true;
+    const payload={message:text,agent,requestId};if(history.length)payload.history=history;if(state===AppState.AUTH&&chat.serverId)payload.conversationId=chat.serverId;if(replacing&&state===AppState.AUTH&&chat.serverId)payload.replaceLastTurn=true;
     const data=await postJson("/api/chat",payload,CHAT_TIMEOUT_MS,activeChatController.signal);
     if(typeof data.response!=="string"||!data.response.trim())throw new Error("AI tidak menghasilkan jawaban.");
+    if(pendingRetryRequest?.requestId===requestId)pendingRetryRequest=null;
     chat.messages.push({role:"assistant",content:data.response});chat.updated=Date.now();
     if(stillActive()){$("typing")?.remove();appendMessage("assistant",data.response,true,{regenerate:true});addEditActionToLastUser();appendSources(data.links);renderWorkflow(data.steps)}
     if(state===AppState.AUTH&&data.saved&&data.conversationId){
@@ -621,6 +624,7 @@ async function submit(options={}){
     const message="Maaf, permintaan gagal diproses. "+(e.message||"Periksa koneksi lalu coba lagi.");
     const at=chat.messages.indexOf(userEntry);if(at>=0)chat.messages.splice(at,1); /* giliran gagal tidak disimpan */
     if(replacing&&previousTurn){
+      pendingRetryRequest={text,requestId,conversationId:startId};
       chat.messages.push(previousTurn.user,previousTurn.assistant);
       if(stillActive()){
         $("typing")?.remove();messagesEl.lastElementChild?.remove();
@@ -629,7 +633,7 @@ async function submit(options={}){
       }
       promptEl.value=text;resizePrompt();toast(message);
     }else{
-      if(stillActive()){$("typing")?.remove();appendFailedTurn(message,text,e.code==="daily_limit")}
+      if(stillActive()){$("typing")?.remove();appendFailedTurn(message,text,e.code==="daily_limit",requestId)}
       toast("Permintaan gagal");
     }
   }finally{busy=false;activeChatController=null;lockComposer();renderHistory();if(!isDrawerMode())promptEl.focus()}

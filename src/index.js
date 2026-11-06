@@ -1002,7 +1002,23 @@ async function readJsonBody(request) {
   } catch { return null; }
 }
 
-async function persistConversation(env, user, conversationId, message, response, replaceRows = []) {
+async function findSavedChatRequest(env, user, requestId) {
+  if (!env.DB || !user || !requestId) return null;
+  try {
+    const row = await env.DB.prepare(
+      "SELECT u.conversation_id, a.content AS response FROM messages u " +
+      "JOIN messages a ON a.conversation_id = u.conversation_id AND a.user_id = u.user_id " +
+      "AND a.role = 'assistant' AND a.id > u.id " +
+      "WHERE u.user_id = ? AND u.idempotency_key = ? ORDER BY a.id ASC LIMIT 1"
+    ).bind(user.id, requestId).first();
+    return row?.response ? { conversationId: row.conversation_id, response: row.response } : null;
+  } catch (error) {
+    if (/no such column/i.test(String(error?.message))) return null;
+    throw error;
+  }
+}
+
+async function persistConversation(env, user, conversationId, message, response, replaceRows = [], requestId = null) {
   const now = Math.floor(Date.now() / 1000);
   const id = conversationId || crypto.randomUUID();
   const title = message.replace(/\s+/g, " ").slice(0, 72) || "Percakapan baru";
@@ -1023,9 +1039,24 @@ async function persistConversation(env, user, conversationId, message, response,
   } else {
     statements.push(env.DB.prepare("UPDATE conversations SET updated_at = ? WHERE id = ? AND user_id = ?").bind(now, id, user.id));
   }
-  statements.push(env.DB.prepare("INSERT INTO messages (conversation_id, user_id, role, content, created_at) VALUES (?, ?, 'user', ?, ?)").bind(id, user.id, message, now));
+  if (requestId) {
+    statements.push(env.DB.prepare("INSERT INTO messages (conversation_id, user_id, role, content, created_at, idempotency_key) VALUES (?, ?, 'user', ?, ?, ?)").bind(id, user.id, message, now, requestId));
+  } else {
+    statements.push(env.DB.prepare("INSERT INTO messages (conversation_id, user_id, role, content, created_at) VALUES (?, ?, 'user', ?, ?)").bind(id, user.id, message, now));
+  }
   statements.push(env.DB.prepare("INSERT INTO messages (conversation_id, user_id, role, content, created_at) VALUES (?, ?, 'assistant', ?, ?)").bind(id, user.id, response, now));
-  await env.DB.batch(statements);
+  try {
+    await env.DB.batch(statements);
+  } catch (error) {
+    // Keep chat writes available during a rolling release if the additive migration has not landed yet.
+    if (!requestId || !/no such column/i.test(String(error?.message))) throw error;
+    const legacyStatements = statements.slice(0, -2);
+    legacyStatements.push(
+      env.DB.prepare("INSERT INTO messages (conversation_id, user_id, role, content, created_at) VALUES (?, ?, 'user', ?, ?)").bind(id, user.id, message, now),
+      env.DB.prepare("INSERT INTO messages (conversation_id, user_id, role, content, created_at) VALUES (?, ?, 'assistant', ?, ?)").bind(id, user.id, response, now)
+    );
+    await env.DB.batch(legacyStatements);
+  }
   return id;
 }
 
@@ -1099,6 +1130,7 @@ export default {
       if (body?.conversationId !== undefined && (typeof body.conversationId !== "string" || !/^[a-zA-Z0-9-]{8,80}$/.test(body.conversationId))) return json({ error: "ID percakapan tidak valid." }, 400);
       if (body?.replaceLastTurn !== undefined && typeof body.replaceLastTurn !== "boolean") return json({ error: "Permintaan penggantian giliran tidak valid." }, 400);
       if (body?.replaceLastTurn && !body.conversationId) return json({ error: "Percakapan untuk diganti tidak ditemukan." }, 400);
+      if (body?.requestId !== undefined && (typeof body.requestId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(body.requestId))) return json({ error: "ID permintaan tidak valid." }, 400);
       const clientHistory = parseClientHistory(body?.history);
       if (clientHistory.error) return json({ error: clientHistory.error }, 400);
       let user = null;
@@ -1110,6 +1142,15 @@ export default {
         if (!owned) return json({ error: "Chat tidak ditemukan." }, 404);
       }
       if (body.replaceLastTurn && !user) return json({ error: "Penggantian giliran memerlukan akun yang masuk." }, 401);
+      if (user && body.requestId) {
+        try {
+          const saved = await findSavedChatRequest(env, user, body.requestId);
+          if (saved) return json({ agent: AGENTS[agentId].name, model: MODEL, workflow: "idempotent-replay", response: saved.response, conversationId: saved.conversationId, saved: true, replayed: true });
+        } catch (error) {
+          console.error("Chat idempotency lookup failed:", error);
+          return json({ error: "Status permintaan sebelumnya tidak dapat diperiksa. Coba muat ulang riwayat chat." }, 503);
+        }
+      }
       if (env.CHAT_LIMITER?.limit) {
         let rateLimit;
         try {
@@ -1201,9 +1242,18 @@ export default {
         if (memoryNote && typeof result.response === "string") result.response = `${result.response}\n\n${memoryNote}`;
         if (user) {
           try {
-            result.conversationId = await persistConversation(env, user, body.conversationId || null, message, result.response, replaceRows);
+            result.conversationId = await persistConversation(env, user, body.conversationId || null, message, result.response, replaceRows, body.requestId || null);
             result.saved = true;
           } catch (error) {
+            if (body.requestId) {
+              try {
+                const saved = await findSavedChatRequest(env, user, body.requestId);
+                if (saved) {
+                  await refundUsage(env, usage.day, usage.charges);
+                  return json({ agent: AGENTS[agentId].name, model: MODEL, workflow: "idempotent-replay", response: saved.response, conversationId: saved.conversationId, saved: true, replayed: true });
+                }
+              } catch (lookupError) { console.error("Chat idempotency recovery failed:", lookupError); }
+            }
             console.error("Chat persistence failed:", error);
             result.saved = false;
             result.saveWarning = "Jawaban berhasil dibuat, tetapi riwayat gagal disimpan. Salin jawaban ini sebelum meninggalkan halaman.";

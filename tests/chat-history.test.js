@@ -119,6 +119,43 @@ test("AI gagal: tidak ada yang tersimpan (atomik), percakapan lama utuh, dan ret
   await app.close();
 });
 
+test("akun: retry dengan request ID yang sama memutar ulang jawaban tersimpan tanpa memanggil AI atau menggandakan pesan", async () => {
+  const { app, post } = await setup();
+  const requestId = "d4c9f8c2-48a1-4a8d-9c33-8d9dbd7b1c22";
+  const firstResponse = await post({ message: "Simpan jawaban ini satu kali.", requestId });
+  assert.equal(firstResponse.status, 200);
+  const first = await firstResponse.json();
+  assert.equal(first.saved, true);
+  assert.equal(first.replayed, undefined);
+  const aiCallsAfterFirst = app.aiCalls.length;
+  const usageAfterFirst = app.db.sqlite.prepare("SELECT SUM(units) AS n FROM daily_usage WHERE subject LIKE 'user:%'").get().n;
+  const retryResponse = await post({ message: "Simpan jawaban ini satu kali.", requestId });
+  assert.equal(retryResponse.status, 200);
+  const retry = await retryResponse.json();
+  assert.equal(retry.replayed, true);
+  assert.equal(retry.conversationId, first.conversationId);
+  assert.equal(retry.response, first.response);
+  assert.equal(app.aiCalls.length, aiCallsAfterFirst);
+  assert.equal(app.db.sqlite.prepare("SELECT COUNT(*) AS n FROM messages WHERE user_id = ?").get(ALICE.id).n, 2);
+  assert.equal(app.db.sqlite.prepare("SELECT SUM(units) AS n FROM daily_usage WHERE subject LIKE 'user:%'").get().n, usageAfterFirst);
+
+  const bobToken = seedSession(app.db, { id: "sub-bob", email: "bob@example.com", name: "Bob" });
+  const bobResponse = await post({ message: "Kunci yang sama untuk akun lain.", requestId }, { cookie: bobToken });
+  assert.equal(bobResponse.status, 200);
+  const bob = await bobResponse.json();
+  assert.notEqual(bob.conversationId, first.conversationId);
+  assert.equal(bob.replayed, undefined);
+  await app.close();
+});
+
+test("akun: request ID malformed ditolak sebelum pemanggilan AI", async () => {
+  const { app, post } = await setup();
+  const response = await post({ message: "ID tidak valid", requestId: "not-a-uuid" });
+  assert.equal(response.status, 400);
+  assert.equal(app.aiCalls.length, 0);
+  await app.close();
+});
+
 test("rate limit juga berlaku per akun, tidak bisa dilewati dengan berganti IP", async () => {
   const { app, post } = await setup({ chatLimit: 2 });
   assert.equal((await post({ message: "satu" }, { ip: "1.1.1.1" })).status, 200);
