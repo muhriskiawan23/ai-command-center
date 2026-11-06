@@ -66,3 +66,12 @@ test("About BOR AI opens an accessible, user-invoked dialog with a close control
   assert.match(appCss, /\.about-dialog::backdrop/);
   assert.match(appCss, /@media\(max-width:560px\)/);
 });
+
+test("saved assistant answers expose accessible feedback controls and a bounded optional reason", () => {
+  assert.match(appJs, /className="answer-feedback"/);
+  assert.match(appJs, /Jawaban membantu/);
+  assert.match(appJs, /Jawaban tidak membantu/);
+  assert.match(appJs, /maxLength=500/);
+  assert.match(appJs, /api\/feedback/);
+  assert.match(appJs, /controls\.responseId&&controls\.conversationId/);
+});
