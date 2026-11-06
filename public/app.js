@@ -639,7 +639,7 @@ function appendSpreadsheetSource(spreadsheet){
   item.textContent="✓ "+String(spreadsheet.name||"spreadsheet.csv")+(Number.isSafeInteger(spreadsheet.rowCount)?" · "+spreadsheet.rowCount.toLocaleString("id-ID")+" baris":"")+(Number.isSafeInteger(spreadsheet.columnCount)?" · "+spreadsheet.columnCount+" kolom":"")+(spreadsheet.truncated?" · ringkasan dibatasi":"");
   box.append(item);body.append(box);
 }
-function renderCsvAttachment(){
+function appendPresentationSource(p){const row=messagesEl.lastElementChild,body=row&&row.querySelector(".message-body");if(!body||!p)return;const box=document.createElement("div");box.className="sources presentation-source";const h=document.createElement("strong");h.textContent="Presentasi yang dianalisis:";const item=document.createElement("div");item.className="source ok";item.textContent="✓ "+String(p.name||"presentation.pptx")+(Number.isSafeInteger(p.slideCount)?" · "+p.slideCount+" slide":"")+(p.truncated?" · teks dibatasi":"");box.append(h,item);body.append(box)}\nfunction renderCsvAttachment(){
   const wrap=$("csvAttachment"),name=$("csvName");if(!wrap||!name)return;
   wrap.hidden=!activeCsv;const isExcel=/\.xlsx$/i.test(activeCsv?.name||"");name.textContent=activeCsv?activeCsv.name+(isExcel?" · Excel siap":" · CSV siap"):"";
   $("attachCsv").textContent=activeCsv?(isExcel?"Ganti Excel":"Ganti CSV"):"＋ CSV / Excel";
@@ -668,7 +668,7 @@ async function uploadPdf(file){
   }catch(error){toast(error.message||"PDF gagal dibaca.");}
   finally{button.disabled=busy||loadingChat;renderPdfAttachment()}
 }
-async function ensureXlsxLibrary(){
+async function ensurePptxLibrary(){if(window.JSZip?.loadAsync)return window.JSZip;if(window.pptxLibraryLoading)return window.pptxLibraryLoading;window.pptxLibraryLoading=new Promise((resolve,reject)=>{const s=document.createElement("script");s.src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js";s.onload=()=>window.JSZip?.loadAsync?resolve(window.JSZip):reject(Error("Pustaka PowerPoint tidak berhasil dimuat."));s.onerror=()=>reject(Error("Pustaka PowerPoint gagal diunduh. Periksa koneksi lalu coba lagi."));document.head.append(s)});try{return await window.pptxLibraryLoading}finally{window.pptxLibraryLoading=null}}\nasync function ensureXlsxLibrary(){
   if(window.XLSX?.read)return window.XLSX;
   if(window.xlsxLibraryLoading)return window.xlsxLibraryLoading;
   window.xlsxLibraryLoading=new Promise((resolve,reject)=>{
@@ -682,7 +682,7 @@ async function ensureXlsxLibrary(){
 }
 async function uploadCsv(file){
   if(!file)return;
-  const filename=file.name.toLowerCase();const isExcel=filename.endsWith(".xlsx");if(!isExcel&&!filename.endsWith(".csv")){toast("Pilih file CSV atau Excel (.xlsx).");return;}
+  const filename=file.name.toLowerCase();const isExcel=filename.endsWith(".xlsx"),isPptx=filename.endsWith(".pptx");if(!isExcel&&!isPptx&&!filename.endsWith(".csv")){toast("Pilih file CSV, Excel (.xlsx), atau PowerPoint (.pptx).");return;}
   if(file.size>5*1024*1024){toast("Ukuran file maksimal 5 MB.");return;}
   if(file.size<1){toast("File kosong.");return;}
   const button=$("attachCsv");button.disabled=true;button.textContent="Membaca…";
@@ -691,7 +691,7 @@ async function uploadCsv(file){
     if(isExcel){const xlsx=await ensureXlsxLibrary();const {parseXlsxLocally}=await import("/xlsx-reader.js");parsed=await parseXlsxLocally(file,{xlsx});}
     else{const {parseCsvLocally}=await import("/csv-reader.js");parsed=await parseCsvLocally(file);}
     activePdf=null;renderPdfAttachment();activeCsv=parsed;renderCsvAttachment();
-    toast(isExcel?"Excel berhasil dibaca secara lokal. Tanyakan analisisnya di kolom chat.":"CSV berhasil dibaca secara lokal. Tanyakan analisisnya di kolom chat.");
+    toast(isPptx?"PowerPoint berhasil dibaca secara lokal. Tanyakan isi slide di kolom chat.":isExcel?"Excel berhasil dibaca secara lokal. Tanyakan analisisnya di kolom chat.":"CSV berhasil dibaca secara lokal. Tanyakan analisisnya di kolom chat.");
   }catch(error){toast(error.message||"File gagal dibaca.");}
   finally{button.disabled=busy||loadingChat;renderCsvAttachment()}
 }
@@ -721,12 +721,12 @@ async function submit(options={}){
   if(createdNew)replaceRoute({name:"chat",id:chat.id});
   const stillActive=()=>activeId===startId;const start=Date.now();
   try{
-    const payload={message:text,agent,requestId};if(activePdf)payload.document={name:activePdf.name,content:activePdf.content,truncated:activePdf.truncated};if(activeCsv)payload.spreadsheet={name:activeCsv.name,content:activeCsv.content,rowCount:activeCsv.rowCount,columnCount:activeCsv.columnCount,truncated:activeCsv.truncated};if(history.length)payload.history=history;if(state===AppState.AUTH&&chat.serverId)payload.conversationId=chat.serverId;if(replacing&&state===AppState.AUTH&&chat.serverId)payload.replaceLastTurn=true;
+    const payload={message:text,agent,requestId};if(activePdf)payload.document={name:activePdf.name,content:activePdf.content,truncated:activePdf.truncated};if(activeCsv?.kind==="presentation")payload.presentation={name:activeCsv.name,content:activeCsv.content,slideCount:activeCsv.slideCount,truncated:activeCsv.truncated};else if(activeCsv)payload.spreadsheet={name:activeCsv.name,content:activeCsv.content,rowCount:activeCsv.rowCount,columnCount:activeCsv.columnCount,truncated:activeCsv.truncated};if(history.length)payload.history=history;if(state===AppState.AUTH&&chat.serverId)payload.conversationId=chat.serverId;if(replacing&&state===AppState.AUTH&&chat.serverId)payload.replaceLastTurn=true;
     const data=await postJson("/api/chat",payload,CHAT_TIMEOUT_MS,activeChatController.signal);
     if(typeof data.response!=="string"||!data.response.trim())throw new Error("AI tidak menghasilkan jawaban.");
     if(pendingRetryRequest?.requestId===requestId)pendingRetryRequest=null;
     chat.messages.push({role:"assistant",content:data.response,id:data.responseId||null,feedback:null,links:data.links||[],pdf:data.pdf||null,spreadsheet:data.spreadsheet||null});chat.updated=Date.now();
-    if(stillActive()){$("typing")?.remove();appendMessage("assistant",data.response,true,{regenerate:true,responseId:data.saved?data.responseId:null,conversationId:data.saved?data.conversationId:null});addEditActionToLastUser();appendSources(data.links);if(data.pdf)appendPdfSource(data.pdf);if(data.spreadsheet)appendSpreadsheetSource(data.spreadsheet);renderWorkflow(data.steps)}
+    if(stillActive()){$("typing")?.remove();appendMessage("assistant",data.response,true,{regenerate:true,responseId:data.saved?data.responseId:null,conversationId:data.saved?data.conversationId:null});addEditActionToLastUser();appendSources(data.links);if(data.pdf)appendPdfSource(data.pdf);if(data.spreadsheet)appendSpreadsheetSource(data.spreadsheet);if(data.presentation)appendPresentationSource(data.presentation);renderWorkflow(data.steps)}
     if(state===AppState.AUTH&&data.saved&&data.conversationId){
       chat.serverId=data.conversationId;chat.id=data.conversationId;chat.loaded=true;
       if(stillActive()){activeId=chat.id;replaceRoute({name:"chat",id:chat.id})}
