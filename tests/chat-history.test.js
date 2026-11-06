@@ -18,6 +18,24 @@ async function setup(options) {
   return { app, token, post, sent };
 }
 
+
+test("akun: pencarian riwayat mencocokkan judul dan isi pesan, tanpa membocorkan percakapan akun lain", async () => {
+  const { app, token } = await setup();
+  seedConversation(app.db, { id: "conv-alice-search1", userId: ALICE.id, title: "Rencana perjalanan", updatedAt: 200, messages: [{ role: "user", content: "Cari frasa rahasia-lokal" }, { role: "assistant", content: "Siap" }] });
+  seedConversation(app.db, { id: "conv-alice-search2", userId: ALICE.id, title: "Catatan investasi", updatedAt: 100, messages: [{ role: "user", content: "Diskusi biasa" }] });
+  seedConversation(app.db, { id: "conv-bob-search1", userId: "sub-bob", title: "Rencana perjalanan Boris", updatedAt: 300, messages: [{ role: "user", content: "rahasia-lokal" }] });
+  const search = (q) => fetch(app.url + "/api/conversations?q=" + encodeURIComponent(q), {
+    headers: { Origin: app.url, Cookie: `__Host-borai_session=${token}` }
+  });
+  const byTitle = await (await search("investasi")).json();
+  assert.deepEqual(byTitle.conversations.map(c => c.id), ["conv-alice-search2"]);
+  const byMessage = await (await search("rahasia-lokal")).json();
+  assert.deepEqual(byMessage.conversations.map(c => c.id), ["conv-alice-search1"]);
+  const empty = await (await search("tidak-ada")).json();
+  assert.deepEqual(empty.conversations, []);
+  await app.close();
+});
+
 test("akun: balasan kedua membawa seluruh riwayat dari database (multi-turn)", async () => {
   const { app, post, sent } = await setup();
   const first = await (await post({ message: "Nama saya Budi." })).json();
