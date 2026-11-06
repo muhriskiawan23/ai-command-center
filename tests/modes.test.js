@@ -97,7 +97,7 @@ test("Coordinator drafts requested writing artifacts instead of explaining how t
 
 test("Writer menghasilkan artefak final, bukan uraian tentang artefak", async () => {
   const { app, post, system } = await setup();
-  await post("Susun email balasan profesional untuk undangan wawancara.");
+  await post("Susun email balasan profesional untuk undangan wawancara.", "writer");
   const prompt = system(app.aiCalls.at(-1));
   assert.match(prompt, /output the finished copy itself first/);
   assert.match(prompt, /For emails, include a subject, greeting, complete body, closing, and signature/);
