@@ -58,7 +58,7 @@ function escapeHTML(s){return String(s).replace(/[&<>\"']/g,c=>({"&":"&amp;","<"
     const actions=document.createElement("div");actions.className="message-actions";
     const copyBtn=document.createElement("button");copyBtn.type="button";copyBtn.className="message-action";copyBtn.textContent="Salin";copyBtn.addEventListener("click",()=>copyText(content));
     const markdownBtn=document.createElement("button");markdownBtn.type="button";markdownBtn.className="message-action";markdownBtn.textContent="Markdown";markdownBtn.addEventListener("click",()=>downloadMarkdown(content,role));
-    const plainBtn=document.createElement("button");plainBtn.type="button";plainBtn.className="message-action";plainBtn.textContent="Teks";plainBtn.addEventListener("click",()=>downloadText(content,role));actions.append(copyBtn,markdownBtn,plainBtn);
+    const plainBtn=document.createElement("button");plainBtn.type="button";plainBtn.className="message-action";plainBtn.textContent="Teks";plainBtn.addEventListener("click",()=>downloadText(content,role));const printBtn=document.createElement("button");printBtn.type="button";printBtn.className="message-action print-message";printBtn.textContent="PDF / Cetak";printBtn.addEventListener("click",()=>printMessage(content,role));actions.append(copyBtn,markdownBtn,plainBtn,printBtn);
     if(role==="assistant"){
       const checklistBtn=document.createElement("button");checklistBtn.type="button";checklistBtn.className="message-action checklist-action";checklistBtn.textContent="Checklist";
       checklistBtn.addEventListener("click",()=>showChecklistExport(content,actions));actions.append(checklistBtn);
@@ -152,6 +152,28 @@ function downloadMarkdown(value, role="assistant"){
   URL.revokeObjectURL(url);
   toast("Markdown berhasil diunduh.");
 }
+function openPrintDocument(title, sections) {
+  const popup=window.open("", "_blank");
+  if(!popup){toast("Pop-up diblokir. Izinkan pop-up untuk mencetak atau menyimpan PDF.");return false;}
+  const safeTitle=escapeHTML(String(title||"Dokumen BOR AI").replace(/[\\u0000-\\u001f\\u007f]/g," ").trim().slice(0,100)||"Dokumen BOR AI");
+  const body=sections.map(section=>'<section class="print-section"><h2>'+escapeHTML(section.heading)+'</h2><div class="print-content">'+markdown(section.content)+'</div></section>').join("");
+  const html='<!doctype html><html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+safeTitle+'</title><style>*{box-sizing:border-box}body{margin:0;padding:32px;color:#171717;background:#fff;font:14px/1.65 Arial,Helvetica,sans-serif}.print-header{padding-bottom:18px;margin-bottom:24px;border-bottom:2px solid #222}.print-brand{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#555;font-weight:700}.print-header h1{font-size:24px;line-height:1.25;margin:8px 0}.print-meta{font-size:11px;color:#666}.print-section{margin:0 0 26px;break-inside:avoid}.print-section h2{font-size:16px;margin:0 0 9px;padding-bottom:5px;border-bottom:1px solid #ddd}.print-content{overflow-wrap:anywhere}.print-content h1,.print-content h2,.print-content h3{line-height:1.3;margin:16px 0 7px}.print-content p{margin:7px 0}.print-content ul,.print-content ol{padding-left:22px}.print-content blockquote{margin:10px 0;padding:7px 12px;border-left:3px solid #aaa;color:#444}.print-content pre{white-space:pre-wrap;overflow-wrap:anywhere;padding:10px;background:#f2f2f2;border:1px solid #ddd;border-radius:5px}.print-content code{font-family:Consolas,monospace}.print-footer{margin-top:32px;padding-top:10px;border-top:1px solid #ddd;font-size:10px;color:#666}@page{size:auto;margin:16mm}@media print{body{padding:0}.print-section{break-inside:auto}.print-content pre,.print-content blockquote{break-inside:avoid}}@media screen{body{max-width:850px;margin:24px auto;padding:28px;box-shadow:0 2px 18px #0002}.print-hint{display:block;margin-top:12px;color:#666;font-size:11px}}@media print{.print-hint{display:none}}</style></head><body><header class="print-header"><div class="print-brand">BOR AI</div><h1>'+safeTitle+'</h1><div class="print-meta">Dibuat '+escapeHTML(new Date().toLocaleString())+'</div></header>'+body+'<footer class="print-footer">Dokumen dibuat secara lokal oleh BOR AI. Periksa kembali informasi penting sebelum dibagikan.</footer><div class="print-hint">Gunakan opsi printer tujuan “Save as PDF” untuk menyimpan dokumen sebagai PDF.</div></body></html>';
+  try{popup.document.open();popup.document.write(html);popup.document.close();popup.focus();setTimeout(()=>{try{popup.print()}catch{}},350);return true;}
+  catch{popup.close();toast("Dokumen tidak dapat disiapkan untuk dicetak.");return false;}
+}
+function printMessage(content, role="assistant") {
+  if(!String(content||"").trim()){toast("Tidak ada konten untuk dicetak.");return;}
+  openPrintDocument(role==="assistant"?"Jawaban BOR AI":"Pesan pengguna BOR AI",[{heading:role==="assistant"?"Jawaban BOR AI":"Pesan pengguna",content:String(content)}]);
+}
+function printConversation() {
+  if(busy||loadingChat)return;
+  const chat=conversations.find(item=>item.id===activeId);
+  if(!chat||!Array.isArray(chat.messages)||!chat.messages.length){toast("Belum ada pesan untuk dicetak.");return;}
+  const title=String(chat.title||"Percakapan BOR AI").replace(/[\\u0000-\\u001f\\u007f]/g," ").replace(/\\s+/g," ").trim().slice(0,72)||"Percakapan BOR AI";
+  const sections=chat.messages.filter(message=>message&&["user","assistant"].includes(message.role)&&typeof message.content==="string").map(message=>({heading:message.role==="user"?"Pengguna":"BOR AI",content:message.content}));
+  if(chat.truncated)sections.unshift({heading:"Catatan kelengkapan",content:"Percakapan melebihi batas tampilan 500 pesan. Dokumen ini hanya memuat 500 pesan terakhir yang tersedia."});
+  openPrintDocument(title,sections);
+}
 function showChecklistExport(content, actions) {
   const result=window.BORChecklist?.convertToChecklist(content);
   if(!result?.ok){toast("Tidak ditemukan item daftar untuk dijadikan checklist.");return;}
@@ -196,7 +218,7 @@ let state=AppState.INIT,conversations=[],activeId=null,busy=false,currentUser=nu
 let historyCursor=null,historyHasMore=false,historyLoadingMore=false,historyRequestSeq=0;
 /* navSeq: setiap navigasi chat menaikkan penghitung ini; pemuatan yang tertimpa navigasi lebih baru dibatalkan. */
 let navSeq=0,loadingChat=false;
-function lockComposer(){const lock=busy||loadingChat;const send=$("send"),stop=$("stopGeneration");send.disabled=lock;send.hidden=busy;stop.hidden=!busy;stop.disabled=!busy;promptEl.readOnly=lock;$("exportConversation").disabled=lock;$("attachPdf").disabled=lock;$("attachCsv").disabled=lock;}
+function lockComposer(){const lock=busy||loadingChat;const send=$("send"),stop=$("stopGeneration");send.disabled=lock;send.hidden=busy;stop.hidden=!busy;stop.disabled=!busy;promptEl.readOnly=lock;$("exportConversation").disabled=lock;$("printConversation").disabled=lock;$("attachPdf").disabled=lock;$("attachCsv").disabled=lock;}
 
 /* Yang disimpan di sessionStorage HANYA penanda "sudah memilih Guest" (agar refresh tidak kembali ke Welcome).
    Isi chat guest tidak pernah ditulis ke storage mana pun. */
@@ -217,7 +239,7 @@ function setState(next,notice=""){
 }
 function resetChatView(){
   navSeq++;loadingChat=false;activePdf=null;activeCsv=null;renderPdfAttachment();renderCsvAttachment();lockComposer();
-  activeId=null;$("exportConversation").hidden=true;messagesEl.replaceChildren();messagesEl.hidden=true;welcomeEl.hidden=false;
+  activeId=null;$("exportConversation").hidden=true;$("printConversation").hidden=true;messagesEl.replaceChildren();messagesEl.hidden=true;welcomeEl.hidden=false;
   $("workflow").hidden=true;promptEl.value="";resizePrompt();
 }
 function clearSessionData(){historyRequestSeq++;historyCursor=null;historyHasMore=false;historyLoadingMore=false;currentUser=null;conversations=[];resetChatView();renderHistory()}
@@ -550,7 +572,7 @@ async function showChat(cid){
     finally{if(seq===navSeq){loadingChat=false;lockComposer()}}
   }
   if(seq!==navSeq)return null;
-  activePdf=null;activeCsv=null;renderPdfAttachment();renderCsvAttachment();activeId=cid;$("exportConversation").hidden=false;welcomeEl.hidden=true;messagesEl.hidden=false;messagesEl.replaceChildren();
+  activePdf=null;activeCsv=null;renderPdfAttachment();renderCsvAttachment();activeId=cid;$("exportConversation").hidden=false;$("printConversation").hidden=false;welcomeEl.hidden=true;messagesEl.hidden=false;messagesEl.replaceChildren();
   for(let i=0;i<c.messages.length;i++){const m=c.messages[i];const last=i===c.messages.length-1;const previous=i===c.messages.length-2;appendMessage(m.role,m.content,false,{edit:m.role==="user"&&previous&&c.messages.at(-1)?.role==="assistant",regenerate:m.role==="assistant"&&last&&c.messages.at(-2)?.role==="user",responseId:m.role==="assistant"?m.id:null,conversationId:c.serverId||c.id,feedback:m.feedback||null});if(m.role==="assistant"&&m.links?.length)appendSources(m.links);if(m.role==="assistant"&&m.pdf)appendPdfSource(m.pdf);if(m.role==="assistant"&&m.spreadsheet)appendSpreadsheetSource(m.spreadsheet);}
   $("workflow").hidden=true;renderHistory();conversation.scrollTop=conversation.scrollHeight;
   return true;
@@ -900,7 +922,7 @@ promptEl.addEventListener("input",resizePrompt);
 /* Enter sengaja TIDAK mengirim: Enter = baris baru di semua perangkat. Satu-satunya cara kirim lewat UI adalah tombol panah. */
 window.addEventListener("resize",resizePrompt);
 $("newChat").addEventListener("click",newChat);
-$("exportConversation").addEventListener("click",exportConversationFile);
+$("exportConversation").addEventListener("click",exportConversationFile);\n$("printConversation").addEventListener("click",printConversation);
 $("clearHistory").addEventListener("click",clearHistory);
 $("toggleArchived").addEventListener("click",async()=>{
   if(busy||loadingChat)return;
