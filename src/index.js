@@ -1312,7 +1312,7 @@ export default {
                 const saved = await findSavedChatRequest(env, user, body.requestId);
                 if (saved) {
                   await refundUsage(env, usage.day, usage.charges);
-                  return json({ agent: AGENTS[agentId].name, model: MODEL, workflow: "idempotent-replay", response: saved.response, conversationId: saved.conversationId, responseId: saved.responseId, saved: true, replayed: true });
+                  return json({ agent: AGENTS[agentId].name, model: MODEL, workflow: "idempotent-replay", response: saved.response, links: saved.links, conversationId: saved.conversationId, responseId: saved.responseId, saved: true, replayed: true });
                 }
               } catch (lookupError) { console.error("Chat idempotency recovery failed:", lookupError); }
             }
