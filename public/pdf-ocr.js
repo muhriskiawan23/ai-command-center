@@ -1,19 +1,20 @@
 const MAX_OCR_PAGES = 10;
 const MAX_RENDER_DIMENSION = 1800;
-const MAX_OCR_TEXT_CHARS = 48000;
+const MAX_OCR_TEXT_CHARS = 30000;
 
 export async function ocrScannedPdf(file, {
   pdfjs = globalThis.pdfjsLib,
   tesseract = globalThis.Tesseract,
   onProgress = () => {},
-  createWorker = tesseract?.createWorker?.bind(tesseract)
+  createWorker = tesseract?.createWorker?.bind(tesseract),
+  createCanvas = () => document.createElement("canvas")
 } = {}) {
   if (!file || typeof file.arrayBuffer !== "function") throw new Error("File PDF tidak valid.");
   if (!pdfjs?.getDocument || !createWorker) throw new Error("Komponen OCR belum termuat. Periksa koneksi lalu muat ulang halaman.");
   const buffer = await file.arrayBuffer();
   const pdf = await pdfjs.getDocument({ data: new Uint8Array(buffer) }).promise;
   if (!Number.isInteger(pdf.numPages) || pdf.numPages < 1) throw new Error("Halaman PDF tidak ditemukan.");
-  if (pdf.numPages > MAX_OCR_PAGES) throw new Error("PDF scan memiliki "+pdf.numPages+" halaman. OCR lokal dibatasi maksimal "+MAX_OCR_PAGES+" halaman per file.");
+  if (pdf.numPages > MAX_OCR_PAGES) { await pdf.destroy?.(); throw new Error("PDF scan memiliki "+pdf.numPages+" halaman. OCR lokal dibatasi maksimal "+MAX_OCR_PAGES+" halaman per file."); }
   let worker;
   const pages = [];
   let totalChars = 0;
@@ -32,7 +33,7 @@ export async function ocrScannedPdf(file, {
       const base = page.getViewport({ scale: 1 });
       const scale = Math.min(2, MAX_RENDER_DIMENSION / Math.max(base.width, base.height));
       const viewport = page.getViewport({ scale });
-      const canvas = document.createElement("canvas");
+      const canvas = createCanvas();
       canvas.width = Math.max(1, Math.ceil(viewport.width));
       canvas.height = Math.max(1, Math.ceil(viewport.height));
       const context = canvas.getContext("2d", { alpha: false });
