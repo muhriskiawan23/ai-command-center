@@ -292,7 +292,7 @@ test("akun: ekspor percakapan mengunduh seluruh pesan yang dimuat dan menyertaka
   const downloadPromise = page.waitForEvent("download");
   await exportButton.click();
   const download = await downloadPromise;
-  expect(download.suggestedFilename()).toMatch(/^bor-ai-pesan-privat-untuk-ekspor\\.txt$/);
+  expect(download.suggestedFilename()).toMatch(/^bor-ai-pesan-privat-untuk-ekspor\.txt$/);
   const filePath = await download.path();
   const { readFile } = await import("node:fs/promises");
   const exported = await readFile(filePath, "utf8");
