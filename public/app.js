@@ -669,7 +669,8 @@ async function uploadPdf(file){
   }catch(error){toast(error.message||"PDF gagal dibaca.");}
   finally{button.disabled=busy||loadingChat;renderPdfAttachment()}
 }
-async function ensurePptxLibrary(){if(window.JSZip?.loadAsync)return window.JSZip;if(window.pptxLibraryLoading)return window.pptxLibraryLoading;window.pptxLibraryLoading=new Promise((resolve,reject)=>{const s=document.createElement("script");s.src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js";s.onload=()=>window.JSZip?.loadAsync?resolve(window.JSZip):reject(Error("Pustaka PowerPoint tidak berhasil dimuat."));s.onerror=()=>reject(Error("Pustaka PowerPoint gagal diunduh. Periksa koneksi lalu coba lagi."));document.head.append(s)});try{return await window.pptxLibraryLoading}finally{window.pptxLibraryLoading=null}}\nasync function ensureXlsxLibrary(){
+async function ensurePptxLibrary(){if(window.JSZip?.loadAsync)return window.JSZip;if(window.pptxLibraryLoading)return window.pptxLibraryLoading;window.pptxLibraryLoading=new Promise((resolve,reject)=>{const s=document.createElement("script");s.src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js";s.onload=()=>window.JSZip?.loadAsync?resolve(window.JSZip):reject(Error("Pustaka PowerPoint tidak berhasil dimuat."));s.onerror=()=>reject(Error("Pustaka PowerPoint gagal diunduh. Periksa koneksi lalu coba lagi."));document.head.append(s)});try{return await window.pptxLibraryLoading}finally{window.pptxLibraryLoading=null}}
+async function ensureXlsxLibrary(){
   if(window.XLSX?.read)return window.XLSX;
   if(window.xlsxLibraryLoading)return window.xlsxLibraryLoading;
   window.xlsxLibraryLoading=new Promise((resolve,reject)=>{
