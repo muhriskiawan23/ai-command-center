@@ -77,7 +77,7 @@ export function parseXlsxArrayBuffer(buffer, options = {}) {
   if (!XLSX?.read || !XLSX?.utils?.decode_range || !XLSX?.utils?.sheet_to_json || !XLSX?.utils?.encode_cell) {
     throw new Error("Library Excel belum siap. Periksa koneksi internet lalu coba lagi.");
   }
-  const workbook = XLSX.read(buffer, { type: "array", cellFormula: true, cellDates: false, bookVBA: false });
+  const workbook = XLSX.read(new Uint8Array(buffer), { type: "array", cellFormula: true, cellDates: false, bookVBA: false });
   if (!Array.isArray(workbook.SheetNames) || !workbook.SheetNames.length) throw new Error("Workbook Excel tidak memiliki sheet.");
   const selected = workbook.SheetNames.slice(0, XLSX_MAX_SHEETS);
   const sheets = selected.map(name => readSheet(XLSX, workbook.Sheets[name], name, options));
