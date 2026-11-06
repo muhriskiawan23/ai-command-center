@@ -161,6 +161,32 @@ test("pengguna dapat menghentikan generasi aktif tanpa menyimpan giliran parsial
   app.control.aiHang = false;
 });
 
+test("akun: respons hilang setelah server menyimpan chat; retry memakai request ID sama dan tidak menggandakan giliran", async ({ page, app, context }) => {
+  await loginAs(context, app, ALICE);
+  await page.goto(app.url);
+  await expect(page.locator("#prompt")).toBeVisible();
+  let loseFirstResponse = true;
+  await page.route("**/api/chat", async (route) => {
+    if (loseFirstResponse) {
+      loseFirstResponse = false;
+      await route.fetch(); // Worker menyelesaikan dan menyimpan giliran, tetapi respons tidak sampai ke browser.
+      await route.abort();
+      return;
+    }
+    await route.continue();
+  });
+  await send(page, "Permintaan yang responsnya hilang");
+  await expect(page.locator(".message.failed")).toBeVisible();
+  await expect(page.locator(".retry-btn")).toBeVisible();
+  expect(app.db.sqlite.prepare("SELECT COUNT(*) AS n FROM messages").get().n).toBe(2);
+  const aiCallsBeforeRetry = app.aiCalls.length;
+  await page.locator(".retry-btn").click();
+  await expect(page.locator(".message.failed")).toHaveCount(0);
+  await expect(page.locator(".message.assistant:not(#typing)")).toHaveCount(1);
+  expect(app.aiCalls.length).toBe(aiCallsBeforeRetry);
+  expect(app.db.sqlite.prepare("SELECT COUNT(*) AS n FROM messages").get().n).toBe(2);
+});
+
 test("server macet: permintaan dibatalkan setelah batas waktu, ada pesan jelas + Coba lagi, composer tidak terkunci selamanya", async ({ page, app }) => {
   await page.clock.install();
   await page.goto(app.url);
