@@ -32,5 +32,5 @@ export function validateCitationReferences(response, links = []) {
   } else if (removed > 0) {
     notes.push("Catatan sumber: sitasi yang tidak cocok dengan sumber berhasil dibaca telah dihapus.");
   }
-  return notes.length ? \`\${cleaned.trim()}\n\n\${notes.join("\n")}\` : cleaned;
+  return notes.length ? cleaned.trim() + "\n\n" + notes.join("\n") : cleaned;
 }
