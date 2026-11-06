@@ -155,3 +155,15 @@ body.drawer-open{overflow:hidden}
   .about-footer{align-items:flex-start;flex-direction:column;gap:7px}
 }
 @media(prefers-reduced-motion:reduce){.about-dialog::backdrop{backdrop-filter:none}}
+
+/* ---- Answer feedback ---- */
+.answer-feedback{display:flex;align-items:center;flex-wrap:wrap;gap:7px;margin-top:9px;padding-top:8px;border-top:1px solid #343434;color:var(--muted);font-size:12px}
+.feedback-label{margin-right:3px}
+.feedback-vote{min-width:34px;min-height:32px;border:1px solid #414141;border-radius:8px;background:#252525;color:#ddd}
+.feedback-vote:hover,.feedback-vote[aria-pressed="true"]{border-color:#8cae60;background:#303a27;color:#f4ffe7}
+.feedback-status{font-size:11px;color:#9fbd83}
+.feedback-panel{display:flex;flex:1 0 100%;align-items:flex-start;gap:8px;margin-top:5px}
+.feedback-panel textarea{flex:1;min-width:0;max-width:440px;resize:vertical;border:1px solid #444;border-radius:8px;background:#202020;color:var(--text);padding:8px;font-size:12px;line-height:1.5}
+.feedback-submit{min-height:34px;border:1px solid #4a4a4a;border-radius:8px;background:#303030;color:var(--text);padding:6px 10px;font-size:12px}
+.feedback-submit:disabled,.feedback-vote:disabled{opacity:.55;cursor:wait}
+@media(max-width:560px){.feedback-panel{flex-direction:column}.feedback-panel textarea{width:100%;max-width:none}.feedback-submit{align-self:flex-start;min-height:40px}}
