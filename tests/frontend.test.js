@@ -47,10 +47,10 @@ test("dashboard has a mobile layout and reduced-motion support", () => {
 });
 
 test("link-reading answers show numbered citations mapped to safe clickable source links", () => {
-  assert.match(appJs, /function appendSources\\(links\\)/);
-  assert.match(appJs, /l\\.sourceId/);
-  assert.match(appJs, /l\\.url/);
-  assert.match(appJs, /link\\.rel="noopener noreferrer"/);
+  assert.ok(appJs.includes("function appendSources(links)"));
+  assert.ok(appJs.includes("l.sourceId"));
+  assert.ok(appJs.includes("l.url"));
+  assert.ok(appJs.includes('link.rel="noopener noreferrer"'));
 });
 
 test("guest mode never persists browser chat history and account history is server-backed", () => {
