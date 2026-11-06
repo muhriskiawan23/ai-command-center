@@ -90,3 +90,20 @@ test("token sesi tidak pernah disimpan mentah di database", async () => {
   assert.ok(rows.length > 0 && rows.every((h) => h !== alice && /^[0-9a-f]{64}$/.test(h)));
   await app.close();
 });
+
+test("rename hanya mengubah judul percakapan milik akun pemanggil dan menolak CSRF", async () => {
+  const { app, alice, bob, call } = await setup();
+  const renamed = await call(alice, "/api/conversations/conv-alice-0001", { method: "PATCH", body: JSON.stringify({ title: "  Rencana   Boris  " }) });
+  assert.equal(renamed.status, 200);
+  assert.equal((await renamed.json()).title, "Rencana Boris");
+  assert.equal(app.db.sqlite.prepare("SELECT title FROM conversations WHERE id = ?").get("conv-alice-0001").title, "Rencana Boris");
+
+  assert.equal((await call(alice, "/api/conversations/conv-bob-000001", { method: "PATCH", body: JSON.stringify({ title: "Tidak boleh" }) })).status, 404);
+  assert.equal(app.db.sqlite.prepare("SELECT title FROM conversations WHERE id = ?").get("conv-bob-000001").title, "Bob 1");
+  assert.equal((await call(bob, "/api/conversations/conv-bob-000001", { method: "PATCH", headers: { Origin: "https://evil.example" }, body: JSON.stringify({ title: "CSRF" }) })).status, 403);
+
+  for (const title of ["", "   ", "x".repeat(73)]) {
+    assert.equal((await call(alice, "/api/conversations/conv-alice-0001", { method: "PATCH", body: JSON.stringify({ title }) })).status, 400);
+  }
+  await app.close();
+});
