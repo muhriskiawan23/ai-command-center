@@ -169,3 +169,30 @@ test("redirect sukses mempertahankan URL asli dan mencatat URL tujuan akhir", as
   assert.equal(source.url, "https://example.com/start");
   assert.equal(source.resolvedUrl, "https://example.com/artikel");
 });
+
+
+test("status sumber tetap dikembalikan ketika AI gagal memproses jawaban", async () => {
+  const { app, post } = await setup(okPage());
+  app.control.aiFail = true;
+  const response = await post("Ringkas https://contoh.id/berita/beras");
+  const body = await response.json();
+  assert.equal(response.status, 502);
+  assert.equal(body.code, "ai_error");
+  assert.equal(body.stage, "ai_generation");
+  assert.equal(body.links.length, 1);
+  assert.equal(body.links[0].ok, true);
+  assert.equal(body.links[0].requestedUrl, "https://contoh.id/berita/beras");
+  await app.close();
+});
+
+test("status tautan gagal tetap dikembalikan ketika AI timeout/error", async () => {
+  const { app, post } = await setup(async () => new Response("blocked", { status: 403 }));
+  app.control.aiFail = true;
+  const response = await post("Baca https://contoh.id/private");
+  const body = await response.json();
+  assert.equal(response.status, 502);
+  assert.equal(body.links.length, 1);
+  assert.equal(body.links[0].ok, false);
+  assert.match(body.links[0].reason, /403/);
+  await app.close();
+});
