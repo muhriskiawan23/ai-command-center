@@ -38,7 +38,7 @@ The public repository README describes a web-based AI workspace with:
 - A multi-agent sequence: Researcher → Analyst → Fact Checker → Writer.
 - Specialist modes including Researcher, Analyst, Writer, Fact Checker, Strategist, Coder, Planner, Critic, Summarizer, Translator, and Text Analyst, alongside Coordinator.
 - Guest sessions and Google sign-in for account-based use.
-- Private, account-scoped conversation history for signed-in users, including conversation rename, search, pinning, archive/restore, and plain-text export of the currently open conversation with a privacy warning.
+- Private, account-scoped conversation history for signed-in users, including cursor-paginated history listing, conversation rename, search, pinning, archive/restore, and plain-text export of the currently open conversation with a privacy warning.
 - A Stop control for in-flight chat generation. It aborts the browser request and propagates cancellation to the model binding where supported; cancelled turns are not saved and daily usage is refunded.
 - Optional, explicit user memory for signed-in users; it is off by default and stores only information the user chooses to save.
 - A link reader: users can include up to three ordinary web links in a message; the service attempts to fetch and extract readable page text for the model. Some pages will fail, including pages requiring JavaScript, login, or unsupported formats.
@@ -47,7 +47,7 @@ The repository describes Cloudflare Workers, Workers AI, Cloudflare D1, and stat
 
 ### Important capability boundaries
 
-Signed-in users can organize saved conversations by renaming, searching, pinning, and archiving them. Archived conversations can be restored; archive state is stored per account. The currently open conversation can also be exported as a plain-text file with a privacy warning. Users can stop an in-flight generation; the request is cancelled in the Worker and the provider signal is forwarded where supported. A provider may still finish an already-started operation if it does not honor cancellation. The export uses the messages currently loaded in the browser; for long conversations, the current read limit is 500 messages and the export indicates when older messages are omitted. Export is a local download, not a public share link.
+Signed-in users can organize saved conversations by renaming, searching, pinning, and archiving them. The history list loads 100 conversations per page and can load older pages using a stable cursor; each page remains scoped to the signed-in account. Archived conversations can be restored; archive state is stored per account. The currently open conversation can also be exported as a plain-text file with a privacy warning. Users can stop an in-flight generation; the request is cancelled in the Worker and the provider signal is forwarded where supported. A provider may still finish an already-started operation if it does not honor cancellation. The export uses the messages currently loaded in the browser; for long conversations, the current read limit is 500 messages and the export indicates when older messages are omitted. Export is a local download, not a public share link.
 
 The current documented product is primarily a text-chat assistant. Do not claim that it currently:
 - Performs unrestricted live web search or independently monitors news and trends.
