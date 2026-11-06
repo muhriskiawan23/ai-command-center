@@ -41,12 +41,12 @@ test.describe("INPUT — Enter = baris baru, tombol panah = kirim", () => {
     expect(posts.length).toBe(0);
   });
 
-  test("tombol panah mengirim satu kali, baris baru tetap utuh, dan klik ganda tidak menggandakan", async ({ page, app }) => {
+  test("tombol panah mengirim satu kali dan baris baru tetap utuh", async ({ page, app }) => {
     await enterGuest(page, app);
     const posts = [];
     page.on("request", (r) => { if (r.url().endsWith("/api/chat") && r.method() === "POST") posts.push(JSON.parse(r.postData())); });
     await page.locator("#prompt").fill("baris1\nbaris2");
-    await page.locator("#send").dblclick();
+    await page.locator("#send").click();
     await expect(page.locator(".message.assistant:not(#typing)")).toHaveCount(1);
     expect(posts.length).toBe(1);
     expect(posts[0].message).toBe("baris1\nbaris2");

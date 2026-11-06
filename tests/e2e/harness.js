@@ -71,7 +71,10 @@ export async function startHarness({ port = 0, googleClientId = "test-client.app
     const base = `http://${req.headers.host}`;
     const loginMatch = /^\/__test\/login\?token=([\w-]+)$/.exec(req.url); // khusus test: mensimulasikan hasil login sukses lewat respons Set-Cookie nyata
     if (loginMatch) { res.writeHead(204, { "set-cookie": `__Host-borai_session=${loginMatch[1]}; Path=/; HttpOnly; Secure; SameSite=Lax` }); res.end(); return; }
-    const request = new Request(base + req.url, { method: req.method, headers: req.headers, body: ["GET", "HEAD"].includes(req.method) ? undefined : Buffer.concat(chunks) });
+    const requestController = new AbortController();
+    req.on("aborted", () => requestController.abort());
+    res.on("close", () => { if (!res.writableEnded) requestController.abort(); });
+    const request = new Request(base + req.url, { method: req.method, headers: req.headers, body: ["GET", "HEAD"].includes(req.method) ? undefined : Buffer.concat(chunks), signal: requestController.signal });
     const response = await worker.fetch(request, env);
     const headers = {}; response.headers.forEach((v, k) => { headers[k] = v; });
     const cookies = response.headers.getSetCookie?.() || []; if (cookies.length) headers["set-cookie"] = cookies;
