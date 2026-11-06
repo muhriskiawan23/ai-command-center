@@ -22,7 +22,7 @@ test("parses workbook sheets and deterministic numeric summaries", () => {
 test("keeps formulas literal and excludes cached formula values from summaries", () => {
   const book = { SheetNames: ["Calc"], Sheets: { Calc: { "!ref": "A1:B2", A1: { v: "Item", t: "s" }, B1: { v: "Value", t: "s" }, A2: { v: "Total", t: "s" }, B2: { f: "SUM(B3:B4)", v: 99, t: "n", w: "99" } } } };
   const result = parseXlsxWorkbook(book, utils);
-  assert.match(result.content, /=SUM\\(B3:B4\\)/);
+  assert.match(result.content, /=SUM\(B3:B4\)/);
   assert.doesNotMatch(result.content, /average=99/);
 });
 test("bounds sheets, rows, columns and context", () => {
