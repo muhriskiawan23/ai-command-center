@@ -22,7 +22,7 @@ test("CSV is parsed in the browser and only bounded derived context reaches chat
   await expect(page.locator(".csv-source")).toContainText("sales.csv");
   expect(app.aiCalls).toHaveLength(1);
   const userMessage = app.aiCalls[0].messages.find(message => message.role === "user")?.content || "";
-  expect(userMessage).toContain("<csv_document");
+  expect(userMessage).toContain("<spreadsheet_document");
   expect(userMessage).toContain("rata-rata=100000");
   expect(userMessage).toContain("Coffee");
   expect(userMessage).not.toContain("Product,Revenue\nCoffee,120000\nTea,80000");
