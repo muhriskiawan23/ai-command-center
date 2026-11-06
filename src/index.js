@@ -1145,7 +1145,7 @@ export default {
       if (user && body.requestId) {
         try {
           const saved = await findSavedChatRequest(env, user, body.requestId);
-          if (saved) return json({ agent: "Coordinator", model: MODEL, workflow: "idempotent-replay", response: saved.response, conversationId: saved.conversationId, saved: true, replayed: true });
+          if (saved) return json({ agent: AGENTS[agentId].name, model: MODEL, workflow: "idempotent-replay", response: saved.response, conversationId: saved.conversationId, saved: true, replayed: true });
         } catch (error) {
           console.error("Chat idempotency lookup failed:", error);
           return json({ error: "Status permintaan sebelumnya tidak dapat diperiksa. Coba muat ulang riwayat chat." }, 503);
@@ -1250,7 +1250,7 @@ export default {
                 const saved = await findSavedChatRequest(env, user, body.requestId);
                 if (saved) {
                   await refundUsage(env, usage.day, usage.charges);
-                  return json({ agent: "Coordinator", model: MODEL, workflow: "idempotent-replay", response: saved.response, conversationId: saved.conversationId, saved: true, replayed: true });
+                  return json({ agent: AGENTS[agentId].name, model: MODEL, workflow: "idempotent-replay", response: saved.response, conversationId: saved.conversationId, saved: true, replayed: true });
                 }
               } catch (lookupError) { console.error("Chat idempotency recovery failed:", lookupError); }
             }
