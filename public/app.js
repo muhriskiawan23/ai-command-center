@@ -16,11 +16,11 @@ const $=id=>document.getElementById(id);
 /* ---------- 1. Helper (fungsi markdown/render pesan dipertahankan dari versi sebelumnya) ---------- */
 function id(){return Date.now().toString(36)+Math.random().toString(36).slice(2,8)}
 function toast(message){const el=$("toast");el.textContent=message;el.hidden=false;clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.hidden=true,2200)}
-function escapeHTML(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
-function markdown(input){let src=String(input||"").replace(/\r\n?/g,"\n");const blocks=[];src=src.replace(/```([\w+-]*)[ \t]*\n([\s\S]*?)```/g,(_,lang,code)=>{const key="@@CB"+blocks.length+"@@";blocks.push("<pre><code>"+escapeHTML(code.replace(/\n$/,""))+"</code></pre>");return key});src=escapeHTML(src).replace(/`([^`\n]+)`/g,"<code>$1</code>").replace(/\*\*(.+?)\*\*/g,"<strong>$1</strong>").replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g,"$1<em>$2</em>");const out=[];let p=[],list="",q=[];const fp=()=>{if(p.length){out.push("<p>"+p.join("<br>")+"</p>");p=[]}},fl=()=>{if(list){out.push("</"+list+">");list=""}},fq=()=>{if(q.length){out.push("<blockquote>"+q.join("<br>")+"</blockquote>");q=[]}};for(const line of src.split("\n")){const cb=line.match(/^@@CB(\d+)@@$/);if(cb){fp();fl();fq();out.push(blocks[+cb[1]]||"");continue}if(!line.trim()){fp();fl();fq();continue}const h=line.match(/^(#{1,3})\s+(.+)$/);if(h){fp();fl();fq();out.push("<h"+h[1].length+">"+h[2]+"</h"+h[1].length+">");continue}if(/^&gt;\s?/.test(line)){fp();fl();q.push(line.replace(/^&gt;\s?/,""));continue}else fq();const ul=line.match(/^\s*[-*+]\s+(.+)$/),ol=line.match(/^\s*\d+[.)]\s+(.+)$/);if(ul||ol){fp();const want=ul?"ul":"ol";if(list!==want){fl();out.push("<"+want+">");list=want}out.push("<li>"+(ul||ol)[1]+"</li>");continue}fl();p.push(line)}fp();fl();fq();return out.join("\n").replace(/@@CB(\d+)@@/g,(_,n)=>blocks[+n]||"")}
-function appendMessage(role,content,scroll=true){const row=document.createElement("article");row.className="message "+role;const avatar=document.createElement("div");avatar.className="avatar";avatar.textContent=role==="user"?"B":"✳";const body=document.createElement("div");body.className="message-body";body.innerHTML=markdown(content);row.append(avatar,body);if(role==="assistant"){const actions=document.createElement("div");actions.className="message-actions";const copy=document.createElement("button");copy.className="tiny-btn";copy.textContent="Salin";copy.onclick=async()=>{try{await navigator.clipboard.writeText(content);toast("Jawaban disalin")}catch{toast("Gagal menyalin jawaban")}};actions.append(copy);body.append(actions)}messagesEl.append(row);if(scroll)conversation.scrollTop=conversation.scrollHeight;return row}
-function showTyping(){const row=document.createElement("article");row.className="message assistant";row.id="typing";row.innerHTML='<div class="avatar">✳</div><div class="message-body"><span class="typing"><i></i><i></i><i></i></span> <span style="color:#aaa;font-size:12px">AI sedang berpikir…</span></div>';messagesEl.append(row);conversation.scrollTop=conversation.scrollHeight}
-function renderWorkflow(steps){const items=$("workflowItems");items.replaceChildren();if(!Array.isArray(steps)||!steps.length){$("workflow").hidden=true;return}$("workflow").hidden=false;for(const s of steps){const d=document.createElement("details");d.className="workflow-step";const sum=document.createElement("summary");const title=document.createElement("span");title.textContent=s.agent||"Agent";const status=document.createElement("span");status.textContent=s.status==="completed"?"Selesai":s.status==="skipped"?"Dilewati":"Perlu diperiksa";sum.append(title,status);const text=document.createElement("div");text.className="step-text";text.textContent=s.output||"Tidak ada output";d.append(sum,text);items.append(d)}}
+function escapeHTML(s){return String(s).replace(/[&<>\"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+function markdown(input){let src=String(input||"").replace(/\r\n?/g,"\n");const blocks=[];src=src.replace(/```([\w+-]*)[ \t]*\n([\s\S]*?)```/g,(_,lang,code)=>{const key="@@CB"+blocks.length+"@@";blocks.push({lang,code});return key});const lines=src.split(/\n/);let out="";for(const line of lines){const trimmed=line.trim();if(trimmed.startsWith("@@CB")){const idx=Number(trimmed.slice(4,-2));const block=blocks[idx];out+="<pre><code"+(block.lang?` class=\"language-`+escapeHTML(block.lang)+`\"`:"")+">"+escapeHTML(block.code)+"</code></pre>\n";continue}if(/^\s*[-*+]\s+/.test(line)){out+="<li>"+escapeHTML(line.replace(/^\s*[-*+]\s+/,'').trim())+"</li>\n";continue}if(/^\s*\d+[.)]\s+/.test(line)){out+="<li>"+escapeHTML(line.replace(/^\s*\d+[.)]\s+/,'').trim())+"</li>\n";continue}if(/^\s*#{1,6}\s+/.test(line)){out+="<h"+(/^#+/.exec(line)[0].length)+">"+escapeHTML(line.replace(/^\s*#{1,6}\s+/,'').trim())+"</h"+(/^#+/.exec(line)[0].length)+">\n";continue}out+=escapeHTML(line)+"\n"}return out.replace(/\n{3,}/g,"\n\n").replace(/<li>.*?<\/li>\n(?=<li>)/gs,'');}
+function appendMessage(role,content,scroll=true){const row=document.createElement("article");row.className="message "+role;const avatar=document.createElement("div");avatar.className="avatar";avatar.textContent=role==="assistant"?"✳":"";const body=document.createElement("div");body.className="message-body";const rendered=document.createElement("div");rendered.className="message-text";rendered.innerHTML=markdown(content);body.append(rendered);const actions=document.createElement("div");actions.className="message-actions";const copyBtn=document.createElement("button");copyBtn.type="button";copyBtn.className="message-action";copyBtn.textContent="Salin";copyBtn.addEventListener("click",()=>copyText(content));const markdownBtn=document.createElement("button");markdownBtn.type="button";markdownBtn.className="message-action";markdownBtn.textContent="Markdown";markdownBtn.addEventListener("click",()=>downloadMarkdown(content,role));const plainBtn=document.createElement("button");plainBtn.type="button";plainBtn.className="message-action";plainBtn.textContent="Teks";plainBtn.addEventListener("click",()=>downloadText(content,role));actions.append(copyBtn,markdownBtn,plainBtn);body.append(actions);row.append(avatar,body);messagesEl.append(row);if(scroll)conversation.scrollTop=conversation.scrollHeight}
+function showTyping(){const row=document.createElement("article");row.className="message assistant";row.id="typing";row.innerHTML='<div class="avatar">✳</div><div class="message-body"><span class="typing"><span></span><span></span><span></span></span></div>' ;messagesEl.append(row);conversation.scrollTop=conversation.scrollHeight}
+function renderWorkflow(steps){const items=$("workflowItems");items.replaceChildren();if(!Array.isArray(steps)||!steps.length){$("workflow").hidden=true;return}$("workflow").hidden=false;for(const step of steps){const block=document.createElement("div");block.className="workflow-step";const label=document.createElement("strong");label.textContent=step.agent||"Langkah";const status=document.createElement("span");status.textContent=step.status||"completed";status.className="workflow-status";block.append(label,status);const output=document.createElement("pre");output.textContent=step.output||"";block.append(output);items.append(block)}}
 /* Textarea tumbuh mengikuti isi (scrollHeight) sampai max-height dari CSS, lalu berhenti dan scroll di dalam. */
 function resizePrompt(){
   promptEl.style.height="auto";
@@ -29,7 +29,7 @@ function resizePrompt(){
   promptEl.style.height=Math.min(needed,max)+"px";
   promptEl.style.overflowY=needed>max?"auto":"hidden";
 }
-async function health(){try{const r=await fetch(API+"/api/health");if(!r.ok)throw Error();const d=await r.json();$("healthDot").className="dot "+(d.ok?"ok":"bad");$("healthText").textContent=d.ok?"Layanan terhubung":"Layanan bermasalah"}catch{$("healthDot").className="dot bad";$("healthText").textContent="Tidak terhubung"}}
+async function health(){try{const r=await fetch(API+"/api/health");if(!r.ok)throw Error();const d=await r.json();$("healthDot").className="dot "+(d.ok?"ok":"bad");$("healthText").textContent=d.ok?["Layanan aktif","Terhubung ke BOR AI"]:["Layanan tidak aktif","Status tidak siap"];$("healthDot").title=d.ok?"Layanan aktif":"Layanan gagal";}catch{const dot=$("healthDot");dot.className="dot bad";dot.title="Layanan tidak dapat dicek";$("healthText").textContent="Status tidak siap";}}
 
 const CHAT_TIMEOUT_MS=150000; /* alur multi-agent bisa beberapa panggilan model berurutan; lewat ini dianggap macet */
 async function api(path,opts={}){
@@ -38,7 +38,7 @@ async function api(path,opts={}){
   if(ctrl){fetchOpts.signal=ctrl.signal;timer=setTimeout(()=>{timedOut=true;ctrl.abort()},timeoutMs)}
   try{res=await fetch(API+path,{credentials:"same-origin",...fetchOpts})}
   catch{
-    throw Object.assign(new Error(timedOut?"Server terlalu lama merespons (lebih dari "+Math.round(timeoutMs/1000)+" detik). Coba lagi.":"Tidak dapat terhubung ke server. Periksa koneksi Anda."),{status:0,timedOut});
+    throw Object.assign(new Error(timedOut?"Server terlalu lama merespons (lebih dari "+Math.round(timeoutMs/1000)+" detik). Coba lagi.":"Tidak dapat terhubung ke server. Periksa koneksi Anda."),{status:0});
   }finally{clearTimeout(timer)}
   let data=null;try{data=await res.json()}catch{}
   if(!res.ok){
@@ -49,6 +49,31 @@ async function api(path,opts={}){
   return data||{};
 }
 const postJson=(path,body,timeoutMs)=>api(path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body),timeoutMs});
+function copyText(value){
+  const text=String(value||"").trim();
+  if(!text){toast("Tidak ada konten untuk disalin.");return;}
+  navigator.clipboard?.writeText(text).then(()=>toast("Konten tersalin."),()=>toast("Clipboard tidak tersedia."));
+}
+function downloadText(value, role="assistant"){
+  const text=String(value||"").trim();
+  if(!text){toast("Tidak ada konten untuk diunduh.");return;}
+  const blob=new Blob([text],{type:"text/plain;charset=utf-8"});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  a.href=url;a.download=(role==="assistant"?"bor-ai-response":"bor-ai-message")+".txt";a.click();
+  URL.revokeObjectURL(url);
+  toast("Teks berhasil diunduh.");
+}
+function downloadMarkdown(value, role="assistant"){
+  const text=String(value||"").trim();
+  if(!text){toast("Tidak ada konten untuk diunduh.");return;}
+  const blob=new Blob([text],{type:"text/markdown;charset=utf-8"});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  a.href=url;a.download=(role==="assistant"?"bor-ai-response":"bor-ai-message")+".md";a.click();
+  URL.revokeObjectURL(url);
+  toast("Markdown berhasil diunduh.");
+}
 
 /* ---------- 2. State aplikasi ---------- */
 const AppState={INIT:"initializing",UNAUTH:"unauthenticated",GUEST:"guest",AUTH:"authenticated",EXPIRED:"session-expired",ERROR:"error"};
@@ -93,7 +118,7 @@ async function verifySession(){try{const d=await api("/api/auth/me");if(!d.authe
 function renderAuth(){
   const logged=state===AppState.AUTH&&Boolean(currentUser);
   $("authTitle").textContent=logged?"Masuk sebagai":"Guest Mode";
-  $("authDescription").textContent=logged?(currentUser.email||"Riwayat chat tersimpan di akun Google."):"Chat guest hanya ada di halaman ini dan hilang saat dimuat ulang. Masuk dengan Google untuk menyimpan riwayat baru; chat guest saat ini tidak dipindahkan ke akun.";
+  $("authDescription").textContent=logged?(currentUser.email||"Riwayat chat tersimpan di akun Google."):"Chat guest hanya ada di halaman ini dan hilang saat dimuat ulang. Masuk dengan Google untuk menyimpan riwayat permanen.";
   $("googleButton").hidden=logged;$("userProfile").hidden=!logged;$("signOut").hidden=!logged;
   $("googleSideStatus").hidden=logged||!$("googleSideStatus").textContent;
   $("userProfile").replaceChildren();
@@ -415,7 +440,7 @@ function appendSources(links){
   const head=document.createElement("strong");head.textContent="Tautan yang dibaca:";box.append(head);
   for(const l of links){
     const item=document.createElement("div");item.className="source "+(l.ok?"ok":"fail");
-    item.textContent=l.ok?("✓ "+l.host+(l.title?" — "+l.title:"")+(l.truncated?" (dipotong)":"")):("✗ "+(l.host||"tautan")+" — "+l.reason);
+    item.textContent=l.ok?("✓ "+l.host+(l.title?" — "+l.title:"")+(l.truncated?" (dipotong)":"")): ("✗ "+(l.host||"tautan")+" — "+l.reason);
     box.append(item);
   }
   body.append(box);
