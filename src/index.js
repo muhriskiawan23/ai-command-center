@@ -306,7 +306,7 @@ async function serveAsset(request, env) {
   if (/^text\/html(?:;|$)/i.test(headers.get("Content-Type") || "")) {
     headers.set(
       "Content-Security-Policy",
-      "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; connect-src 'self' https://accounts.google.com; script-src 'self' https://accounts.google.com/gsi/client; style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/style; img-src 'self' data: https:; frame-src https://accounts.google.com/gsi/; upgrade-insecure-requests"
+      "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; connect-src 'self' https://accounts.google.com https://cdn.jsdelivr.net https://tessdata.projectnaptha.com; script-src 'self' https://accounts.google.com/gsi/client https://cdn.jsdelivr.net; worker-src 'self' blob: https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/style; img-src 'self' data: https: blob:; frame-src https://accounts.google.com/gsi/; upgrade-insecure-requests"
     );
   }
 
@@ -837,7 +837,7 @@ async function handlePdfConversionRoute(request, env) {
     if (!normalized.ok) {
       await refundUsage(env, usage.day, usage.charges);
       if (normalized.reason === "no_text") {
-        return json({ error: "PDF tidak memiliki teks yang dapat diekstrak. Jika dokumen berupa hasil scan atau foto, OCR belum tersedia. Gunakan PDF dengan text layer atau salin teks dari dokumen." }, 422);
+        return json({ code: "PDF_NO_TEXT", error: "PDF tidak memiliki teks yang dapat diekstrak. BOR AI akan mencoba OCR lokal di browser." }, 422);
       }
       return json({ error: "PDF tidak berhasil diekstrak. File mungkin rusak, terenkripsi, atau tidak didukung." }, 422);
     }
