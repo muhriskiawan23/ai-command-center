@@ -178,3 +178,16 @@ body.drawer-open{overflow:hidden}
 .checklist-export{flex:1 0 100%;min-width:0;margin-top:8px;padding:10px;border:1px solid #454545;border-radius:10px;background:#202020}
 .checklist-preview{max-height:220px;overflow:auto;margin:0 0 8px;padding:10px;border-radius:7px;background:#171717;color:#ddd;white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace}
 .checklist-export-actions{display:flex;flex-wrap:wrap;gap:6px}
+
+/* Stage 27: email draft prompt builder. */
+.email-draft-panel{width:min(820px,calc(100% - 32px));margin:0 auto 10px;padding:13px;border:1px solid #454545;border-radius:13px;background:#1b1b1b}
+.email-draft-heading{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;font-size:13px}
+.email-draft-close{width:34px;height:34px;border:1px solid #444;border-radius:8px;background:#252525;color:#ddd;font-size:20px}
+.email-draft-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+.email-draft-grid label{display:flex;flex-direction:column;gap:5px;min-width:0;color:#bdbdbd;font-size:11px}
+.email-draft-grid input,.email-draft-grid textarea,.email-draft-grid select{width:100%;min-width:0;border:1px solid #414141;border-radius:8px;background:#242424;color:var(--text);padding:9px;font:inherit;font-size:12px}
+.email-draft-grid textarea{resize:vertical;line-height:1.45}.email-draft-wide{grid-column:1/-1}
+.email-draft-note{margin:9px 0;color:var(--muted);font-size:11px;line-height:1.5}
+.email-draft-prepare{min-height:40px;padding:0 13px;border:1px solid #657d4b;border-radius:9px;background:#303b27;color:#efffdb;font-size:12px;font-weight:650}
+.email-draft-open{white-space:nowrap}
+@media(max-width:560px){.email-draft-panel{width:calc(100% - 16px);padding:10px}.email-draft-grid{grid-template-columns:1fr}.email-draft-wide{grid-column:auto}.email-draft-prepare{width:100%;min-height:44px}}
