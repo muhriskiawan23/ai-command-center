@@ -687,6 +687,18 @@ async function uploadCsv(file){
   }catch(error){toast(error.message||"CSV gagal dibaca.");}
   finally{button.disabled=busy||loadingChat;renderCsvAttachment()}
 }
+async function ensureXlsxLibrary(){
+  if(window.XLSX?.read)return window.XLSX;
+  if(window.xlsxLibraryLoading)return window.xlsxLibraryLoading;
+  window.xlsxLibraryLoading=new Promise((resolve,reject)=>{
+    const script=document.createElement("script");
+    script.src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js";
+    script.onload=()=>window.XLSX?.read?resolve(window.XLSX):reject(new Error("Pustaka Excel tidak berhasil dimuat."));
+    script.onerror=()=>reject(new Error("Pustaka Excel gagal diunduh. Periksa koneksi lalu coba lagi."));
+    document.head.append(script);
+  });
+  try{return await window.xlsxLibraryLoading}finally{window.xlsxLibraryLoading=null}
+}
 async function uploadXlsx(file){
   if(!file)return;
   if(!/\.xlsx$/i.test(file.name)){toast("Pilih file Excel (.xlsx).");return;}
@@ -694,8 +706,9 @@ async function uploadXlsx(file){
   if(file.size<22){toast("File Excel tidak valid atau kosong.");return;}
   const button=$("attachXlsx");button.disabled=true;button.textContent="Membaca…";
   try{
+    const xlsx=await ensureXlsxLibrary();
     const {parseXlsxLocally}=await import("/xlsx-reader.js");
-    const parsed=await parseXlsxLocally(file,{xlsx:window.XLSX});
+    const parsed=await parseXlsxLocally(file,{xlsx});
     activePdf=null;activeCsv=null;renderPdfAttachment();renderCsvAttachment();activeXlsx=parsed;renderXlsxAttachment();
     toast("Excel berhasil dibaca secara lokal. Tanyakan analisisnya di kolom chat.");
   }catch(error){toast(error.message||"File Excel gagal dibaca.");}
