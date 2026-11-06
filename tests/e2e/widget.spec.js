@@ -10,12 +10,16 @@ test("embeddable widget opens, sends a message, and renders the answer as text",
       usage: { remaining: 98, limit: 100 }
     })
   }));
-  await page.addScriptTag({
+  await page.evaluate(({ url, key, api }) => {
+    const script = document.createElement("script");
+    script.src = url;
+    script.dataset.apiKey = key;
+    script.dataset.apiUrl = api;
+    document.body.append(script);
+  }, {
     url: app.url + "/widget.js",
-    attributes: {
-      "data-api-key": "borai_live_test_key_abcdefghijklmnopqrstuvwxyz123456",
-      "data-api-url": app.url + "/api/public/chat"
-    }
+    key: "borai_live_test_key_abcdefghijklmnopqrstuvwxyz123456",
+    api: app.url + "/api/public/chat"
   });
 
   const widget = page.locator(".bor-ai-widget");
