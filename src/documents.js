@@ -80,8 +80,8 @@ export const SPREADSHEET_CONTEXT_MAX_CHARS = 10_000;
 
 export function safeSpreadsheetName(value) {
   const name = String(value || "spreadsheet.csv")
-    .replace(/[\\u0000-\\u001f\\u007f]/g, "")
-    .replace(/[\\/\\\\<>:"|?*]/g, "_")
+    .replace(/[\x00-\x1f\x7f]/g, "")
+    .replace(/[\/\\<>:"|?*]/g, "_")
     .trim()
     .slice(0, 120);
   return name.toLowerCase().endsWith(".csv") ? name : "spreadsheet.csv";
