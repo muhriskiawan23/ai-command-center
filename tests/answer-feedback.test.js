@@ -24,7 +24,8 @@ test("feedback tersimpan per jawaban dan dapat diperbarui tanpa membuat duplikat
   assert.equal(first.status, 200); assert.equal((await first.json()).saved, true);
   const updated = await call(alice, { conversationId: "feedback-chat-a", responseId: ids.aliceAnswer, rating: "not_helpful", reason: "Jawaban kurang lengkap" });
   assert.equal(updated.status, 200);
-  assert.deepEqual(app.db.sqlite.prepare("SELECT user_id, conversation_id, message_id, rating, reason FROM answer_feedback").get(), {
+  const stored = app.db.sqlite.prepare("SELECT user_id, conversation_id, message_id, rating, reason FROM answer_feedback").get();
+  assert.deepEqual({ ...stored }, {
     user_id: ALICE.id, conversation_id: "feedback-chat-a", message_id: ids.aliceAnswer, rating: "not_helpful", reason: "Jawaban kurang lengkap"
   });
   assert.equal(app.db.sqlite.prepare("SELECT COUNT(*) AS n FROM answer_feedback").get().n, 1);
