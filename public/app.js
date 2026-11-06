@@ -111,7 +111,7 @@ function downloadMarkdown(value, role="assistant"){
 const AppState={INIT:"initializing",UNAUTH:"unauthenticated",GUEST:"guest",AUTH:"authenticated",EXPIRED:"session-expired",ERROR:"error"};
 const promptEl=$("prompt"),messagesEl=$("messages"),welcomeEl=$("welcome"),conversation=$("conversation");
 const sidebar=$("sidebar"),backdrop=$("backdrop"),menuBtn=$("menuBtn"),workspace=$("workspace");
-let state=AppState.INIT,conversations=[],activeId=null,busy=false,currentUser=null;
+let state=AppState.INIT,conversations=[],activeId=null,busy=false,currentUser=null,historyQuery="";
 /* navSeq: setiap navigasi chat menaikkan penghitung ini; pemuatan yang tertimpa navigasi lebih baru dibatalkan. */
 let navSeq=0,loadingChat=false;
 function lockComposer(){const lock=busy||loadingChat;$("send").disabled=lock;promptEl.readOnly=lock}
@@ -449,8 +449,10 @@ async function enterChat(){
     await applyRoute();
   }finally{loadingChat=false;lockComposer()}
 }
-async function syncUserHistory(){
-  const d=await api("/api/conversations");
+async function syncUserHistory(query=historyQuery){
+  historyQuery=String(query||"").trim().slice(0,100);
+  const params=historyQuery?"?q="+encodeURIComponent(historyQuery):"";
+  const d=await api("/api/conversations"+params);
   conversations=(d.conversations||[]).map(c=>({id:c.id,serverId:c.id,title:c.title,messages:[],updated:(c.updated_at||0)*1000,loaded:false}));
 }
 /* Konteks yang dikirim ke server. Sama dengan batas di server (12 pesan / 8000 karakter / 2000 per pesan);
@@ -580,6 +582,24 @@ promptEl.addEventListener("input",resizePrompt);
 window.addEventListener("resize",resizePrompt);
 $("newChat").addEventListener("click",newChat);
 $("clearHistory").addEventListener("click",clearHistory);
+$("historySearchForm").addEventListener("submit",async e=>{
+  e.preventDefault();
+  const query=$("historySearch").value.trim().slice(0,100);
+  if(state===AppState.AUTH){
+    try{await syncUserHistory(query);renderHistory()}
+    catch(err){toast(err.message||"Pencarian riwayat gagal")}
+  }else{
+    historyQuery=query;
+    renderHistory();
+  }
+});
+$("historySearch").addEventListener("keydown",e=>{
+  if(e.key==="Escape"){
+    e.preventDefault();$("historySearch").value="";
+    if(state===AppState.AUTH)syncUserHistory("").then(renderHistory).catch(err=>toast(err.message||"Gagal memuat riwayat"));
+    else{historyQuery="";renderHistory()}
+  }
+});
 $("signOut").addEventListener("click",signOut);
 $("about").addEventListener("click",()=>toast("BOR AI · Intelligence without limits"));
 document.querySelectorAll("[data-prompt]").forEach(b=>b.addEventListener("click",()=>{promptEl.value=b.dataset.prompt;resizePrompt();promptEl.focus()}));
