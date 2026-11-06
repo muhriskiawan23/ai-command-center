@@ -1342,7 +1342,8 @@ export default {
       let pages = "";
       let links = [];
       const pdfContext = document ? buildPdfContext(document) : "";
-      const spreadsheetContext = spreadsheet ? buildSpreadsheetContext(spreadsheet) : "";\n      const presentationContext = presentation ? buildPresentationContext(presentation) : "";
+      const spreadsheetContext = spreadsheet ? buildSpreadsheetContext(spreadsheet) : "";
+      const presentationContext = presentation ? buildPresentationContext(presentation) : "";
       if (found.urls.length) {
         const results = await readLinks(found.urls, { fetcher: env.LINK_FETCHER || fetch, ownHost: url.hostname }); // LINK_FETCHER: test hook, unset in production
         pages = buildPageContext(results);
@@ -1377,7 +1378,8 @@ export default {
           const pageNumbers = [...String(document.content).matchAll(/^#{1,4}\s*Page\s+(\d+)\s*$/gim)].map((match) => Number(match[1])).filter((value) => Number.isSafeInteger(value) && value > 0);
           result.pdf = { name: safePdfName(document.name), chars: document.content.length, pageCount: pageNumbers.length ? Math.max(...pageNumbers) : null, truncated: Boolean(document.truncated) };
         }
-        if (spreadsheet) result.spreadsheet = { name: safeSpreadsheetName(spreadsheet.name), chars: spreadsheet.content.length, rowCount: Number.isSafeInteger(spreadsheet.rowCount) ? spreadsheet.rowCount : null, columnCount: Number.isSafeInteger(spreadsheet.columnCount) ? spreadsheet.columnCount : null, truncated: Boolean(spreadsheet.truncated) };\n        if (presentation) result.presentation = { name: safePresentationName(presentation.name), chars: presentation.content.length, slideCount: Number.isSafeInteger(presentation.slideCount) ? presentation.slideCount : null, truncated: Boolean(presentation.truncated) };
+        if (spreadsheet) result.spreadsheet = { name: safeSpreadsheetName(spreadsheet.name), chars: spreadsheet.content.length, rowCount: Number.isSafeInteger(spreadsheet.rowCount) ? spreadsheet.rowCount : null, columnCount: Number.isSafeInteger(spreadsheet.columnCount) ? spreadsheet.columnCount : null, truncated: Boolean(spreadsheet.truncated) };
+        if (presentation) result.presentation = { name: safePresentationName(presentation.name), chars: presentation.content.length, slideCount: Number.isSafeInteger(presentation.slideCount) ? presentation.slideCount : null, truncated: Boolean(presentation.truncated) };
         // Save explicit memory only after successful model generation, so a failed turn
         // cannot silently mutate memory while the UI reports that the request failed.
         if (pendingRememberText !== null) {
