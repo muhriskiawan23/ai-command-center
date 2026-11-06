@@ -19,7 +19,6 @@ Public AI workspace with Google sign-in, temporary guest sessions, private per-a
 - Security headers on API and HTML responses, including a restrictive Content Security Policy compatible with the dashboard's inline assets.
 
 - An on-demand, accessible About BOR AI dialog describing the product, current capabilities, privacy controls, and official repository.
-- A searchable prompt-template library across productivity, research, writing, study, business, and coding. Templates are inserted into the editable composer and are never submitted automatically.
 
 ## Architecture
 
@@ -36,6 +35,7 @@ Public AI workspace with Google sign-in, temporary guest sessions, private per-a
 | GET | `/api/agents` | Available agent IDs and names |
 | GET | `/api/usage` | Current visitor's daily quota usage and remaining units (private; no global totals) |
 | POST | `/api/chat` | Run a Coordinator or selected specialist; saves only for signed-in users |
+| POST | `/api/documents/pdf` | Convert one uploaded PDF into temporary Markdown context for chat (8 MB maximum) |
 | POST | `/api/feedback` | Save or update helpful/not-helpful feedback for an assistant answer owned by the signed-in user |
 | GET | `/api/config` | Public Google sign-in configuration |
 | GET | `/api/auth/nonce` | One-time sign-in nonce |
@@ -117,7 +117,7 @@ The repository is prepared for a controlled deployment after the checks above. N
 
 - Opening a conversation returns at most the newest 500 messages (`truncated: true` when older ones exist). The model still only sees the last 12 turns.
 - The browser aborts a chat request after 150 seconds and shows a retry button. If the server finished after the browser gave up, the exchange may already be stored, so retrying can create a duplicate (no idempotency key yet).
-- Every agent receives a fixed "platform capabilities" notice (`CAPABILITY_NOTICE` in `src/index.js`): BOR AI is text-only and must not claim to browse, read links or files, run code, or use other apps. Update that notice whenever a real capability is added.
+- Every agent receives a fixed "platform capabilities" notice (`CAPABILITY_NOTICE` in `src/index.js`): BOR AI can read user-supplied links under restrictions and uploaded PDFs through the PDF conversion flow, but cannot browse/search autonomously, read arbitrary files or images, run code, or use other apps. Update that notice whenever a real capability is added.
 
 See `docs/AUDIT-BOR-AI.md` for the full technical audit, severity ratings and what could not be tested.
 
@@ -133,11 +133,20 @@ The workspace sidebar includes a **Penggunaan** panel backed by `GET /api/usage`
 
 ## Link reader
 
-- Links typed in a message (`https://...` or `www....`, at most 3) are fetched by the Worker, converted to plain text (6,000 characters per page) and given to the model inside `<web_page>` blocks as **untrusted data**. The reply includes a `links` list and the UI shows which links were read or why they failed.
+- Links typed in a message (`https://...` or `www....`, at most 3) are fetched by the Worker, converted to plain text (up to 16,000 characters per page) and given to the model inside `<web_page>` blocks as **untrusted data**. The reply includes a `links` list and the UI shows which links were read or why they failed.
 - Guards (see `src/links.js`): http/https on ports 80/443 only, no credentials in the URL, no private/loopback/link-local/reserved IPs (IPv4 and IPv6, including obfuscated forms), no internal host names, never this Worker's own host; redirects are re-validated on every hop (max 3); 8 s timeout and 1 MB download cap per page.
 - A message with links costs 1 extra daily unit. Page text is never stored in D1.
-- Not supported: PDFs, images, pages that need JavaScript or a login (reported as failed, never guessed).
+- Not supported by the link reader: images, pages that need JavaScript or a login (reported as failed, never guessed). PDF URLs are still not fetched by the link reader; use the PDF attachment control instead.
 - `LINK_FETCHER` is a test hook (an alternative `fetch`); leave it unset in production.
+
+## PDF reader
+
+- Users can attach one PDF from the composer. The Worker accepts same-origin multipart uploads only, validates the `.pdf` extension and `%PDF-` signature, and enforces an 8 MB file limit.
+- The Worker converts the PDF through the Cloudflare Workers AI `env.AI.toMarkdown` binding, with PDF metadata excluded from conversion output. The conversion processes pages sequentially and can produce page headings such as `### Page 1`; BOR AI uses those headings for `[PDF p. N]` citations and removes page citations that do not match extracted page markers.
+- Extracted text is capped at 32,000 characters per document before being included in a chat request. Truncation and missing page markers are disclosed; page citations are not fabricated when reliable page boundaries are absent.
+- PDF content is marked as untrusted data and is never treated as instructions. The original PDF and extracted text are not saved to D1. Extracted text remains in browser memory for the active chat only; after reload or switching conversations, the user must attach the PDF again to ask follow-up questions.
+- Scanned/image-only PDFs, password-protected documents, complex layouts, and extraction quality are not guaranteed. The converter may fail or omit content; users should verify important figures and quotations against the original file.
+- Conversion consumes one daily usage unit and is subject to the existing request rate limiter. The PDF is transmitted to Cloudflare Workers AI for conversion; do not upload sensitive documents unless comfortable with that processing.
 
 ## Model call time limits
 
