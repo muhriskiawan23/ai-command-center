@@ -133,7 +133,7 @@ See `docs/AUDIT-BOR-AI.md` for the full technical audit, severity ratings and wh
 ## Model call time limits
 
 - Every model call is bounded: 45 s per call (`AI_CALL_TIMEOUT_MS`) and 100 s for a whole multi-agent chain (`AI_TOTAL_BUDGET_MS`); a single answer may retry once. The browser gives up after 150 s, so the server always answers first.
-- While a response is generating, the send control becomes a Stop button. Stopping aborts the browser request, propagates its signal to Workers AI where supported, prevents partial conversation/memory persistence, and refunds daily usage. A provider that does not honor cancellation may continue processing/billing its in-flight call.
+- While a response is generating, the send control becomes a Stop button. Stopping aborts the browser request; the Worker enables `enable_request_signal` and propagates the signal to Workers AI where supported. Cancelled turns are not saved and daily usage is refunded. A provider that does not honor cancellation may continue processing/billing its in-flight call.
 
 ## Modes and communication rules
 
