@@ -854,7 +854,7 @@ async function handleAuthRoute(request, env, url) {
 }
 async function handleConversationRoute(request, env, url) {
   if (url.pathname !== "/api/conversations" && !url.pathname.startsWith("/api/conversations/")) return null;
-  if (request.method === "DELETE" && !sameOrigin(request)) return json({ error: "Origin tidak valid." }, 403);
+  if (request.method !== "GET" && !sameOrigin(request)) return json({ error: "Origin tidak valid." }, 403);
   let user;
   try { user = await getSession(request, env); }
   catch (error) { console.error("Conversation session lookup failed:", error); return json({ error: "Penyimpanan riwayat belum tersedia." }, 503); }
@@ -880,12 +880,21 @@ async function handleConversationRoute(request, env, url) {
     if (truncated) rows = rows.slice(0, MESSAGES_PAGE_MAX);
     return json({ conversation, messages: rows.reverse(), truncated });
   }
+  if (request.method === "PATCH") {
+    const body = await readJsonBody(request);
+    const title = typeof body?.title === "string" ? body.title.trim().replace(/\\s+/g, " ") : "";
+    if (!title || title.length > 72) return json({ error: "Judul harus berisi 1–72 karakter." }, 400);
+    const result = await env.DB.prepare("UPDATE conversations SET title = ?, updated_at = ? WHERE id = ? AND user_id = ?")
+      .bind(title, Math.floor(Date.now() / 1000), conversationId, user.id).run();
+    if (!result.meta?.changes) return json({ error: "Chat tidak ditemukan." }, 404);
+    return json({ updated: true, id: conversationId, title });
+  }
   if (request.method === "DELETE") {
     const result = await env.DB.prepare("DELETE FROM conversations WHERE id = ? AND user_id = ?").bind(conversationId, user.id).run();
     if (!result.meta?.changes) return json({ error: "Chat tidak ditemukan." }, 404);
     return json({ deleted: true, id: conversationId });
   }
-  return json({ error: "Metode HTTP tidak didukung untuk endpoint ini." }, 405, { Allow: "GET, DELETE" });
+  return json({ error: "Metode HTTP tidak didukung untuk endpoint ini." }, 405, { Allow: "GET, PATCH, DELETE" });
 }
 // ---- Memory routes ---------------------------------------------------------------------------------------------
 // GET /api/memory | PUT /api/memory/settings {enabled} | POST /api/memory {content} | DELETE /api/memory/:id | DELETE /api/memory
@@ -957,7 +966,7 @@ export default {
       if (response) return response;
     }
     if (url.pathname === "/api/conversations" || url.pathname.startsWith("/api/conversations/")) {
-      if (!["GET", "DELETE"].includes(request.method)) return json({ error: "Metode HTTP tidak didukung untuk endpoint ini." }, 405, { Allow: "GET, DELETE" });
+      if (!["GET", "DELETE", "PATCH"].includes(request.method)) return json({ error: "Metode HTTP tidak didukung untuk endpoint ini." }, 405, { Allow: "GET, PATCH, DELETE" });
       try { return await handleConversationRoute(request, env, url); }
       catch (error) { console.error("Conversation request failed:", error); return json({ error: "Riwayat chat gagal diproses." }, 503); }
     }
