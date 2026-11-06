@@ -774,7 +774,17 @@ $("historySearch").addEventListener("keydown",e=>{
   }
 });
 $("signOut").addEventListener("click",signOut);
-$("about").addEventListener("click",()=>toast("BOR AI · Intelligence without limits"));
+const aboutDialog=$("aboutDialog");
+$("about").addEventListener("click",()=>{
+  if(!aboutDialog.open)aboutDialog.showModal();
+  $("aboutClose").focus();
+});
+$("aboutClose").addEventListener("click",()=>aboutDialog.close());
+aboutDialog.addEventListener("click",event=>{
+  if(event.target!==aboutDialog)return;
+  const rect=aboutDialog.getBoundingClientRect();
+  if(event.clientX<rect.left||event.clientX>rect.right||event.clientY<rect.top||event.clientY>rect.bottom)aboutDialog.close();
+});
 document.querySelectorAll("[data-prompt]").forEach(b=>b.addEventListener("click",()=>{promptEl.value=b.dataset.prompt;resizePrompt();promptEl.focus()}));
 history.scrollRestoration="manual";
 syncInert();health();boot();
