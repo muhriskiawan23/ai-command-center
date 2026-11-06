@@ -131,16 +131,17 @@ test("pengguna dapat menghentikan generasi aktif tanpa menyimpan giliran parsial
   await page.locator("#prompt").fill("Permintaan yang akan dihentikan");
   await page.locator("#send").click();
   await expect(page.locator("#typing")).toBeVisible();
-  await expect(page.locator("#send")).toHaveAttribute("aria-label", "Hentikan generasi");
-  await page.locator("#send").click();
+  await expect(page.locator("#stopGeneration")).toBeVisible();
+  await page.locator("#stopGeneration").click();
+  await expect(page.locator("#stopGeneration")).toBeHidden();
+  await expect(page.locator("#send")).toBeVisible();
   await expect(page.locator("#prompt")).toBeEditable();
-  await expect(page.locator("#send")).toHaveAttribute("aria-label", "Kirim pesan");
   await expect(page.locator("#typing")).toHaveCount(0);
   await expect(page.locator(".message.failed")).toHaveCount(0);
   await expect(page.locator("#toast")).toContainText("Generasi dihentikan");
   expect(app.db.sqlite.prepare("SELECT COUNT(*) n FROM messages").get().n).toBe(0);
   expect(app.db.sqlite.prepare("SELECT COUNT(*) n FROM conversations").get().n).toBe(0);
-  expect(app.db.sqlite.prepare("SELECT COALESCE(SUM(units), 0) n FROM daily_usage").get().n).toBe(0);
+  await expect.poll(() => app.db.sqlite.prepare("SELECT COALESCE(SUM(units), 0) n FROM daily_usage").get().n, { timeout: 5000 }).toBe(0);
   app.control.aiHang = false;
 });
 
