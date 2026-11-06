@@ -67,3 +67,19 @@ test("About BOR AI opens an accessible, user-invoked dialog with a close control
   assert.match(appCss, /@media\(max-width:560px\)/);
 });
 
+
+test("prompt template library is searchable, categorized, accessible, and never auto-submits", () => {
+  assert.match(page, /id="templatesDialog"/);
+  assert.match(page, /id="openTemplates"/);
+  assert.match(page, /id="templateSearch"/);
+  assert.match(page, /id="templateCategory"/);
+  assert.match(page, /id="templatesList"/);
+  assert.match(appJs, /const PROMPT_TEMPLATES=/);
+  assert.match(appJs, /function renderPromptTemplates\(\)/);
+  assert.match(appJs, /templateSearch.*addEventListener\("input",renderPromptTemplates\)/);
+  assert.match(appJs, /promptEl\.value=item\.prompt/);
+  assert.match(appJs, /Template dimuat\. Sesuaikan sebelum mengirim\./);
+  assert.doesNotMatch(appJs.slice(appJs.indexOf("function openPromptTemplates"), appJs.indexOf('history.scrollRestoration')), /submit\(/);
+  assert.match(appCss, /\.templates-dialog::backdrop/);
+  assert.match(appCss, /@media\(max-width:560px\)/);
+});
