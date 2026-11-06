@@ -156,6 +156,10 @@ body.drawer-open{overflow:hidden}
 }
 @media(prefers-reduced-motion:reduce){.about-dialog::backdrop{backdrop-filter:none}}
 
+/* Stage 23: compact CSV attachment chip reuses PDF styles. */
+.attach-csv{white-space:nowrap}
+.csv-attachment{border-color:#4b6040}
+
 /* ---- Answer feedback ---- */
 .answer-feedback{display:flex;align-items:center;flex-wrap:wrap;gap:7px;margin-top:9px;padding-top:8px;border-top:1px solid #343434;color:var(--muted);font-size:12px}
 .feedback-label{margin-right:3px}
