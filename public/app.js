@@ -588,7 +588,7 @@ function appendFailedTurn(message,text,noRetry=false,requestId=null){
 async function submit(options={}){
   if(busy||loadingChat||!inChatView())return;const text=promptEl.value.trim();if(!text)return;
   const replacing=options.replaceLastTurn===true;const previousTurn=options.previousTurn||null;
-  const requestId=options.requestId||(pendingRetryRequest?.text===text?pendingRetryRequest.requestId:crypto.randomUUID());
+  const requestId=options.requestId||(pendingRetryRequest?.text===text&&pendingRetryRequest.conversationId===activeId?pendingRetryRequest.requestId:crypto.randomUUID());
   busy=true;activeChatController=new AbortController();lockComposer();const agent=$("agent").value;
   let createdNew=false;
   if(!activeId){activeId=id();createdNew=true;conversations.push({id:activeId,serverId:null,title:text.replace(/\s+/g," ").slice(0,72),messages:[],updated:Date.now(),loaded:true})}
@@ -624,7 +624,7 @@ async function submit(options={}){
     const message="Maaf, permintaan gagal diproses. "+(e.message||"Periksa koneksi lalu coba lagi.");
     const at=chat.messages.indexOf(userEntry);if(at>=0)chat.messages.splice(at,1); /* giliran gagal tidak disimpan */
     if(replacing&&previousTurn){
-      pendingRetryRequest={text,requestId};
+      pendingRetryRequest={text,requestId,conversationId:startId};
       chat.messages.push(previousTurn.user,previousTurn.assistant);
       if(stillActive()){
         $("typing")?.remove();messagesEl.lastElementChild?.remove();
