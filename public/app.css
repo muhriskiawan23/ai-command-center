@@ -173,3 +173,8 @@ body.drawer-open{overflow:hidden}
 @media(max-width:560px){.feedback-panel{flex-direction:column}.feedback-panel textarea{width:100%;max-width:none}.feedback-submit{align-self:flex-start;min-height:40px}}
 
 @media(max-width:560px){.composer-tools{flex-wrap:wrap;gap:6px}.composer-tools .hint{display:none}.agent-select{max-width:155px}.pdf-attachment{max-width:130px}}
+
+/* Checklist export: preview text is rendered as plain text, never interpreted as HTML. */
+.checklist-export{flex:1 0 100%;min-width:0;margin-top:8px;padding:10px;border:1px solid #454545;border-radius:10px;background:#202020}
+.checklist-preview{max-height:220px;overflow:auto;margin:0 0 8px;padding:10px;border-radius:7px;background:#171717;color:#ddd;white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace}
+.checklist-export-actions{display:flex;flex-wrap:wrap;gap:6px}
