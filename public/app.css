@@ -191,3 +191,9 @@ body.drawer-open{overflow:hidden}
 .email-draft-prepare{min-height:40px;padding:0 13px;border:1px solid #657d4b;border-radius:9px;background:#303b27;color:#efffdb;font-size:12px;font-weight:650}
 .email-draft-open{white-space:nowrap}
 @media(max-width:560px){.email-draft-panel{width:calc(100% - 16px);padding:10px}.email-draft-grid{grid-template-columns:1fr}.email-draft-wide{grid-column:auto}.email-draft-prepare{width:100%;min-height:44px}}
+
+
+/* Stage 28: browser-native PDF export and print. */
+.print-chat{border-color:#596b4b;background:#293222;color:#e8f2df}
+.print-chat:hover:not(:disabled){background:#35432b;border-color:#71865d}
+@media(max-width:560px){.topbar-actions{gap:5px}.export-chat{padding:0 7px;font-size:10px}}
