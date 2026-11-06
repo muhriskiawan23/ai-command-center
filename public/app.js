@@ -137,7 +137,7 @@ const sidebar=$("sidebar"),backdrop=$("backdrop"),menuBtn=$("menuBtn"),workspace
 let state=AppState.INIT,conversations=[],activeId=null,busy=false,currentUser=null,historyQuery="",archivedView=false;
 /* navSeq: setiap navigasi chat menaikkan penghitung ini; pemuatan yang tertimpa navigasi lebih baru dibatalkan. */
 let navSeq=0,loadingChat=false;
-function lockComposer(){const lock=busy||loadingChat;const send=$("send");send.disabled=loadingChat;send.textContent=busy?"■":"↑";send.classList.toggle("is-stop",busy);send.setAttribute("aria-label",busy?"Hentikan generasi":"Kirim pesan");send.title=busy?"Hentikan generasi":"Kirim pesan";promptEl.readOnly=lock;$("exportConversation").disabled=lock}
+function lockComposer(){const lock=busy||loadingChat;const send=$("send"),stop=$("stopGeneration");send.disabled=lock;send.hidden=busy;stop.hidden=!busy;stop.disabled=!busy;promptEl.readOnly=lock;$("exportConversation").disabled=lock}
 
 /* Yang disimpan di sessionStorage HANYA penanda "sudah memilih Guest" (agar refresh tidak kembali ke Welcome).
    Isi chat guest tidak pernah ditulis ke storage mana pun. */
@@ -680,7 +680,8 @@ async function boot(){
 $("continueGuest").addEventListener("click",()=>{writeGuestFlag(true);currentUser=null;setState(AppState.GUEST);enterChat();loadGoogle()});
 $("gateRetry").addEventListener("click",boot);
 $("googleRetry").addEventListener("click",()=>loadGoogle(true));
-$("chatForm").addEventListener("submit",e=>{e.preventDefault();if(busy){activeChatController?.abort();return}submit()});
+$("chatForm").addEventListener("submit",e=>{e.preventDefault();submit()});
+$("stopGeneration").addEventListener("click",()=>{if(busy)activeChatController?.abort()});
 promptEl.addEventListener("input",resizePrompt);
 /* Enter sengaja TIDAK mengirim: Enter = baris baru di semua perangkat. Satu-satunya cara kirim lewat UI adalah tombol panah. */
 window.addEventListener("resize",resizePrompt);
