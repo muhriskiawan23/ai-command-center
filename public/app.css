@@ -100,3 +100,8 @@ body.drawer-open{overflow:hidden}
 .export-chat:hover:not(:disabled){background:#303030;border-color:#666}
 .export-chat:disabled{opacity:.5;cursor:not-allowed}
 @media(max-width:560px){.topbar{padding:0 12px}.topbar-actions{gap:8px}.export-chat{min-height:40px;padding:0 9px;font-size:11px}.health{font-size:10px;gap:5px}}
+
+
+/* Paginated account history */
+.history-load-more{display:block;width:calc(100% - 16px);margin:10px 8px;padding:10px 12px;border:1px solid var(--line,#444);border-radius:10px;background:transparent;color:inherit;font:inherit;cursor:pointer}
+.history-load-more:disabled{opacity:.6;cursor:wait}

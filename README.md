@@ -12,8 +12,8 @@ Public AI workspace with Google sign-in, temporary guest sessions, private per-a
 - Cloudflare chat rate limiting: 20 accepted chat requests per 60 seconds per client IP and Cloudflare location. Signed-in users are additionally limited per account, so quota cannot be multiplied by changing IP.
 - Public Guest Mode: conversations exist only in page memory and disappear when the visitor leaves or reloads. Only a "guest chosen" flag is kept in `sessionStorage` (per tab) so a refresh does not return to the Welcome screen; no chat content is ever stored.
 - Google sign-up/sign-in with server-verified ID tokens and secure, HttpOnly sessions.
-- Signed-in users get private D1-backed conversation history, individual chat deletion, delete-all history, persistent conversation pinning, archive/restore, and plain-text export of the currently open conversation with a privacy warning. Long exports disclose when the 500-message read limit applies.
-- Conversation read, pin, archive, rename, and delete endpoints enforce account ownership on the server. Conversation export is generated in the browser from the currently loaded conversation; it does not create a public share link or send chat content to another service.
+- Signed-in users get private D1-backed conversation history with cursor-based pagination, individual chat deletion, delete-all history, persistent conversation pinning, archive/restore, and plain-text export of the currently open conversation with a privacy warning. Long exports disclose when the 500-message read limit applies.
+- Conversation read, pin, archive, rename, and delete endpoints enforce account ownership on the server. History listing uses stable descending keyset pagination (pinned, updated time, ID), with every page scoped to the authenticated account. Conversation export is generated in the browser from the currently loaded conversation; it does not create a public share link or send chat content to another service.
 - Security headers on API and HTML responses, including a restrictive Content Security Policy compatible with the dashboard's inline assets.
 
 ## Architecture
@@ -35,7 +35,7 @@ Public AI workspace with Google sign-in, temporary guest sessions, private per-a
 | POST | `/api/auth/google` | Verify Google ID token and create a session |
 | GET | `/api/auth/me` | Current signed-in account |
 | POST | `/api/auth/logout` | End the current session |
-| GET | `/api/conversations` | List the current user's active conversations (or `?archived=1` for archived chats) |
+| GET | `/api/conversations` | List the current user's active conversations (or `?archived=1` for archived chats), 100 at a time with a keyset cursor |
 | GET | `/api/conversations/:id` | Read a conversation owned by the current user |
 | DELETE | `/api/conversations/:id` | Delete one owned conversation |
 | DELETE | `/api/conversations` | Delete all conversations owned by the current user |

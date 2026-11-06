@@ -867,15 +867,36 @@ async function handleConversationRoute(request, env, url) {
   if (url.pathname === "/api/conversations" && request.method === "GET") {
     const query = String(url.searchParams.get("q") || "").trim().slice(0, 100);
     const archived = url.searchParams.get("archived") === "1" ? 1 : 0;
-    const result = query
-      ? await env.DB.prepare(
-          "SELECT c.id, c.title, c.pinned, c.archived, c.created_at, c.updated_at FROM conversations c " +
-          "WHERE c.user_id = ? AND c.archived = ? AND (instr(lower(c.title), lower(?)) > 0 OR EXISTS (" +
-          "SELECT 1 FROM messages m WHERE m.conversation_id = c.id AND m.user_id = c.user_id AND instr(lower(m.content), lower(?)) > 0)) " +
-          "ORDER BY c.pinned DESC, c.updated_at DESC LIMIT 100"
-        ).bind(user.id, archived, query, query).all()
-      : await env.DB.prepare("SELECT id, title, pinned, archived, created_at, updated_at FROM conversations WHERE user_id = ? AND archived = ? ORDER BY pinned DESC, updated_at DESC LIMIT 100").bind(user.id, archived).all();
-    return json({ conversations: result.results || [], query, archived: Boolean(archived) });
+    const rawPinned = url.searchParams.get("cursorPinned");
+    const rawUpdated = url.searchParams.get("cursorUpdated");
+    const rawId = url.searchParams.get("cursorId");
+    const hasCursor = rawPinned !== null || rawUpdated !== null || rawId !== null;
+    if (hasCursor && !(rawPinned !== null && rawUpdated !== null && rawId !== null &&
+        /^[01]$/.test(rawPinned) && /^\d{1,12}$/.test(rawUpdated) && /^[a-zA-Z0-9-]{8,80}$/.test(rawId))) {
+      return json({ error: "Cursor riwayat tidak valid." }, 400);
+    }
+    const clauses = ["c.user_id = ?", "c.archived = ?"];
+    const values = [user.id, archived];
+    if (query) {
+      clauses.push("(instr(lower(c.title), lower(?)) > 0 OR EXISTS (" +
+        "SELECT 1 FROM messages m WHERE m.conversation_id = c.id AND m.user_id = c.user_id AND instr(lower(m.content), lower(?)) > 0))");
+      values.push(query, query);
+    }
+    if (hasCursor) {
+      const pinned = Number(rawPinned), updated = Number(rawUpdated);
+      clauses.push("(c.pinned < ? OR (c.pinned = ? AND c.updated_at < ?) OR (c.pinned = ? AND c.updated_at = ? AND c.id < ?))");
+      values.push(pinned, pinned, updated, pinned, updated, rawId);
+    }
+    const result = await env.DB.prepare(
+      "SELECT c.id, c.title, c.pinned, c.archived, c.created_at, c.updated_at FROM conversations c " +
+      "WHERE " + clauses.join(" AND ") + " ORDER BY c.pinned DESC, c.updated_at DESC, c.id DESC LIMIT 101"
+    ).bind(...values).all();
+    const rows = result.results || [];
+    const hasMore = rows.length > 100;
+    const conversations = rows.slice(0, 100);
+    const last = conversations.at(-1);
+    const nextCursor = hasMore && last ? { pinned: Number(last.pinned), updated: Number(last.updated_at), id: last.id } : null;
+    return json({ conversations, query, archived: Boolean(archived), hasMore, nextCursor });
   }
   if (url.pathname === "/api/conversations" && request.method === "DELETE") {
     await env.DB.prepare("DELETE FROM conversations WHERE user_id = ?").bind(user.id).run();

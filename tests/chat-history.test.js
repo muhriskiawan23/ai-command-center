@@ -258,3 +258,38 @@ test("akun: arsip dan pulihkan percakapan secara privat tanpa menghapus pesannya
   assert.equal(detail.messages[0].content, "Konten tetap utuh");
   await app.close();
 });
+
+
+test("akun: pagination riwayat memakai cursor stabil, mempertahankan urutan pin, dan tetap terisolasi", async () => {
+  const { app, token } = await setup();
+  for (let i = 0; i < 205; i++) {
+    const id = "conv-page-" + String(i).padStart(4, "0");
+    seedConversation(app.db, { id, userId: ALICE.id, title: "Percakapan halaman " + i, updatedAt: 1000 + i });
+    if (i === 3 || i === 150) app.db.sqlite.prepare("UPDATE conversations SET pinned = 1 WHERE id = ?").run(id);
+  }
+  seedSession(app.db, { id: "sub-bob", email: "bob@example.com", name: "Bob" });
+  seedConversation(app.db, { id: "conv-bob-page000", userId: "sub-bob", title: "Tidak boleh terlihat", updatedAt: 9999 });
+  const headers = { Origin: app.url, Cookie: `__Host-borai_session=${token}` };
+  const firstResponse = await fetch(app.url + "/api/conversations", { headers });
+  assert.equal(firstResponse.status, 200);
+  const first = await firstResponse.json();
+  assert.equal(first.conversations.length, 100);
+  assert.equal(first.hasMore, true);
+  assert.equal(first.conversations[0].pinned, 1);
+  const next = async page => {
+    const cursor = new URLSearchParams({ cursorPinned: String(page.nextCursor.pinned), cursorUpdated: String(page.nextCursor.updated), cursorId: page.nextCursor.id });
+    return (await fetch(app.url + "/api/conversations?" + cursor, { headers })).json();
+  };
+  const second = await next(first);
+  assert.equal(second.conversations.length, 100);
+  assert.equal(second.hasMore, true);
+  const third = await next(second);
+  assert.equal(third.conversations.length, 5);
+  assert.equal(third.hasMore, false);
+  const ids = [...first.conversations, ...second.conversations, ...third.conversations].map(c => c.id);
+  assert.equal(new Set(ids).size, 205);
+  assert.ok(!ids.includes("conv-bob-page000"));
+  const malformed = await fetch(app.url + "/api/conversations?cursorPinned=2", { headers });
+  assert.equal(malformed.status, 400);
+  await app.close();
+});

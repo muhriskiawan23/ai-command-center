@@ -135,6 +135,7 @@ const AppState={INIT:"initializing",UNAUTH:"unauthenticated",GUEST:"guest",AUTH:
 const promptEl=$("prompt"),messagesEl=$("messages"),welcomeEl=$("welcome"),conversation=$("conversation");
 const sidebar=$("sidebar"),backdrop=$("backdrop"),menuBtn=$("menuBtn"),workspace=$("workspace");
 let state=AppState.INIT,conversations=[],activeId=null,busy=false,currentUser=null,historyQuery="",archivedView=false;
+let historyCursor=null,historyHasMore=false,historyLoadingMore=false,historyRequestSeq=0;
 /* navSeq: setiap navigasi chat menaikkan penghitung ini; pemuatan yang tertimpa navigasi lebih baru dibatalkan. */
 let navSeq=0,loadingChat=false;
 function lockComposer(){const lock=busy||loadingChat;const send=$("send"),stop=$("stopGeneration");send.disabled=lock;send.hidden=busy;stop.hidden=!busy;stop.disabled=!busy;promptEl.readOnly=lock;$("exportConversation").disabled=lock}
@@ -161,7 +162,7 @@ function resetChatView(){
   activeId=null;$("exportConversation").hidden=true;messagesEl.replaceChildren();messagesEl.hidden=true;welcomeEl.hidden=false;
   $("workflow").hidden=true;promptEl.value="";resizePrompt();
 }
-function clearSessionData(){currentUser=null;conversations=[];resetChatView();renderHistory()}
+function clearSessionData(){historyRequestSeq++;historyCursor=null;historyHasMore=false;historyLoadingMore=false;currentUser=null;conversations=[];resetChatView();renderHistory()}
 function expireSession(){
   if(state!==AppState.AUTH)return;
   clearSessionData();writeGuestFlag(false);
@@ -414,7 +415,7 @@ $("memoryClearAll").addEventListener("click",async()=>{
 });
 
 /* ---------- 6. Chat ---------- */
-const sortedConversations=()=>[...conversations].sort((a,b)=>Number(Boolean(b.pinned))-Number(Boolean(a.pinned))||(b.updated||0)-(a.updated||0));
+const sortedConversations=()=>[...conversations].sort((a,b)=>Number(Boolean(b.pinned))-Number(Boolean(a.pinned))||(b.updated||0)-(a.updated||0)||String(b.id).localeCompare(String(a.id)));
 function renderHistory(){
   const nav=$("history");nav.replaceChildren();
   if(!inChatView()){$("historyCount").textContent="";return}
@@ -441,6 +442,12 @@ function renderHistory(){
   }
   if(!visible.length){
     const empty=document.createElement("p");empty.className="history-empty";empty.textContent=query?"Tidak ada percakapan yang cocok.":archivedView?"Belum ada percakapan yang diarsipkan.":"Belum ada percakapan.";nav.append(empty);
+  }
+  if(state===AppState.AUTH&&historyHasMore){
+    const more=document.createElement("button");more.type="button";more.className="history-load-more";
+    more.textContent=historyLoadingMore?"Memuat…":"Muat lebih banyak";
+    more.disabled=historyLoadingMore;more.setAttribute("aria-label","Muat lebih banyak percakapan");
+    more.addEventListener("click",loadMoreHistory);nav.append(more);
   }
 }
 /* Menampilkan chat tanpa menyentuh history; pemanggil yang menentukan rute.
@@ -481,14 +488,35 @@ async function enterChat(){
     await applyRoute();
   }finally{loadingChat=false;lockComposer()}
 }
-async function syncUserHistory(query=historyQuery){
-  historyQuery=String(query||"").trim().slice(0,100);
+async function syncUserHistory(query=historyQuery,append=false){
+  const nextQuery=String(query||"").trim().slice(0,100);
+  if(!append){historyRequestSeq++;historyQuery=nextQuery;historyCursor=null;historyHasMore=false;historyLoadingMore=false;}
+  const requestSeq=historyRequestSeq;
   const params=new URLSearchParams();
   if(historyQuery)params.set("q",historyQuery);
   if(archivedView)params.set("archived","1");
+  if(append&&historyCursor){
+    params.set("cursorPinned",String(historyCursor.pinned));
+    params.set("cursorUpdated",String(historyCursor.updated));
+    params.set("cursorId",historyCursor.id);
+  }
   const suffix=params.toString()?"?"+params.toString():"";
   const d=await api("/api/conversations"+suffix);
-  conversations=(d.conversations||[]).map(c=>({id:c.id,serverId:c.id,title:c.title,pinned:Boolean(c.pinned),archived:Boolean(c.archived),messages:[],updated:(c.updated_at||0)*1000,loaded:false}));
+  if(requestSeq!==historyRequestSeq)return;
+  const incoming=(d.conversations||[]).map(c=>({id:c.id,serverId:c.id,title:c.title,pinned:Boolean(c.pinned),archived:Boolean(c.archived),messages:[],updated:(c.updated_at||0)*1000,loaded:false}));
+  if(append){
+    const known=new Set(conversations.map(c=>c.id));
+    conversations=conversations.concat(incoming.filter(c=>!known.has(c.id)));
+  }else conversations=incoming;
+  historyHasMore=Boolean(d.hasMore);
+  historyCursor=d.nextCursor||null;
+}
+async function loadMoreHistory(){
+  if(historyLoadingMore||!historyHasMore||state!==AppState.AUTH)return;
+  historyLoadingMore=true;renderHistory();
+  try{await syncUserHistory(historyQuery,true)}
+  catch(error){toast(error.message||"Gagal memuat halaman riwayat")}
+  finally{historyLoadingMore=false;renderHistory()}
 }
 /* Konteks yang dikirim ke server. Sama dengan batas di server (12 pesan / 8000 karakter / 2000 per pesan);
    giliran yang gagal tidak pernah masuk chat.messages sehingga tidak ikut terkirim. */
