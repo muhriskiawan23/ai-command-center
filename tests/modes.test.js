@@ -82,3 +82,24 @@ test("kesadaran emosi tidak menyimpan apa pun: tidak ada tabel atau kolom emosi 
   assert.ok(!columns.some((c) => /emotion|mood|sentiment|feeling/i.test(c)), `kolom tak terduga: ${columns.join(",")}`);
   await app.close();
 });
+
+
+test("Coordinator drafts requested writing artifacts instead of explaining how to write them", async () => {
+  const { app, post, system } = await setup();
+  const res = await post("Buatkan email lamaran kerja untuk posisi Full Stack Developer. Email tujuan: hr@example.com. Saya punya pengalaman membuat aplikasi web.");
+  assert.equal(res.status, 200);
+  const prompt = system(app.aiCalls.at(-1));
+  assert.match(prompt, /produce that artifact itself as the primary answer/);
+  assert.match(prompt, /For an email, write a usable subject line, greeting, complete body, closing, and signature/);
+  assert.match(prompt, /Do not invent names, dates, qualifications, achievements/);
+  await app.close();
+});
+
+test("Writer menghasilkan artefak final, bukan uraian tentang artefak", async () => {
+  const { app, post, system } = await setup();
+  await post("Susun email balasan profesional untuk undangan wawancara.");
+  const prompt = system(app.aiCalls.at(-1));
+  assert.match(prompt, /output the finished copy itself first/);
+  assert.match(prompt, /For emails, include a subject, greeting, complete body, closing, and signature/);
+  await app.close();
+});
