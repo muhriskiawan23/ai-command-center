@@ -50,7 +50,7 @@ function escapeHTML(s){return String(s).replace(/[&<>\"']/g,c=>({"&":"&amp;","<"
   }
 
 
-  function appendMessage(role,content,scroll=true){const row=document.createElement("article");row.className="message "+role;const avatar=document.createElement("div");avatar.className="avatar";avatar.textContent=role==="assistant"?"✳":"";const body=document.createElement("div");body.className="message-body";const rendered=document.createElement("div");rendered.className="message-text";rendered.innerHTML=markdown(content);body.append(rendered);const actions=document.createElement("div");actions.className="message-actions";const copyBtn=document.createElement("button");copyBtn.type="button";copyBtn.className="message-action";copyBtn.textContent="Salin";copyBtn.addEventListener("click",()=>copyText(content));const markdownBtn=document.createElement("button");markdownBtn.type="button";markdownBtn.className="message-action";markdownBtn.textContent="Markdown";markdownBtn.addEventListener("click",()=>downloadMarkdown(content,role));const plainBtn=document.createElement("button");plainBtn.type="button";plainBtn.className="message-action";plainBtn.textContent="Teks";plainBtn.addEventListener("click",()=>downloadText(content,role));actions.append(copyBtn,markdownBtn,plainBtn);body.append(actions);row.append(avatar,body);messagesEl.append(row);if(scroll)conversation.scrollTop=conversation.scrollHeight}
+  function appendMessage(role,content,scroll=true,controls={}){const row=document.createElement("article");row.className="message "+role;const avatar=document.createElement("div");avatar.className="avatar";avatar.textContent=role==="assistant"?"✳":"";const body=document.createElement("div");body.className="message-body";const rendered=document.createElement("div");rendered.className="message-text";rendered.innerHTML=markdown(content);body.append(rendered);const actions=document.createElement("div");actions.className="message-actions";const copyBtn=document.createElement("button");copyBtn.type="button";copyBtn.className="message-action";copyBtn.textContent="Salin";copyBtn.addEventListener("click",()=>copyText(content));const markdownBtn=document.createElement("button");markdownBtn.type="button";markdownBtn.className="message-action";markdownBtn.textContent="Markdown";markdownBtn.addEventListener("click",()=>downloadMarkdown(content,role));const plainBtn=document.createElement("button");plainBtn.type="button";plainBtn.className="message-action";plainBtn.textContent="Teks";plainBtn.addEventListener("click",()=>downloadText(content,role));actions.append(copyBtn,markdownBtn,plainBtn);if(controls.edit){const editBtn=document.createElement("button");editBtn.type="button";editBtn.className="message-action edit-message";editBtn.textContent="Edit & kirim";editBtn.addEventListener("click",()=>replaceLastTurn("edit",content));actions.append(editBtn)}if(controls.regenerate){const regenBtn=document.createElement("button");regenBtn.type="button";regenBtn.className="message-action regenerate-message";regenBtn.textContent="Buat ulang";regenBtn.addEventListener("click",()=>replaceLastTurn("regenerate",content));actions.append(regenBtn)}body.append(actions);row.append(avatar,body);messagesEl.append(row);if(scroll)conversation.scrollTop=conversation.scrollHeight}
 function showTyping(){const row=document.createElement("article");row.className="message assistant";row.id="typing";row.innerHTML='<div class="avatar">✳</div><div class="message-body"><span class="typing"><span></span><span></span><span></span></span></div>' ;messagesEl.append(row);conversation.scrollTop=conversation.scrollHeight}
 function renderWorkflow(steps){const items=$("workflowItems");items.replaceChildren();if(!Array.isArray(steps)||!steps.length){$("workflow").hidden=true;return}$("workflow").hidden=false;for(const step of steps){const block=document.createElement("div");block.className="workflow-step";const label=document.createElement("strong");label.textContent=step.agent||"Langkah";const status=document.createElement("span");status.textContent=step.status||"completed";status.className="workflow-status";block.append(label,status);const output=document.createElement("pre");output.textContent=step.output||"";block.append(output);items.append(block)}}
 /* Textarea tumbuh mengikuti isi (scrollHeight) sampai max-height dari CSS, lalu berhenti dan scroll di dalam. */
@@ -432,7 +432,7 @@ async function showChat(cid){
   }
   if(seq!==navSeq)return null;
   activeId=cid;welcomeEl.hidden=true;messagesEl.hidden=false;messagesEl.replaceChildren();
-  for(const m of c.messages)appendMessage(m.role,m.content,false);
+  for(let i=0;i<c.messages.length;i++){const m=c.messages[i];const last=i===c.messages.length-1;const previous=i===c.messages.length-2;appendMessage(m.role,m.content,false,{edit:m.role==="user"&&previous&&c.messages.at(-1)?.role==="assistant",regenerate:m.role==="assistant"&&last&&c.messages.at(-2)?.role==="user"});}
   $("workflow").hidden=true;renderHistory();conversation.scrollTop=conversation.scrollHeight;
   return true;
 }
@@ -499,8 +499,9 @@ function appendFailedTurn(message,text,noRetry=false){
   });
   body.append(btn);
 }
-async function submit(){
+async function submit(options={}){
   if(busy||loadingChat||!inChatView())return;const text=promptEl.value.trim();if(!text)return;
+  const replacing=options.replaceLastTurn===true;const previousTurn=options.previousTurn||null;
   busy=true;lockComposer();const agent=$("agent").value;
   let createdNew=false;
   if(!activeId){activeId=id();createdNew=true;conversations.push({id:activeId,serverId:null,title:text.replace(/\s+/g," ").slice(0,72),messages:[],updated:Date.now(),loaded:true})}
@@ -510,11 +511,11 @@ async function submit(){
   if(createdNew)replaceRoute({name:"chat",id:chat.id});
   const stillActive=()=>activeId===startId;const start=Date.now();
   try{
-    const payload={message:text,agent};if(history.length)payload.history=history;if(state===AppState.AUTH&&chat.serverId)payload.conversationId=chat.serverId;
+    const payload={message:text,agent};if(history.length)payload.history=history;if(state===AppState.AUTH&&chat.serverId)payload.conversationId=chat.serverId;if(replacing&&state===AppState.AUTH&&chat.serverId)payload.replaceLastTurn=true;
     const data=await postJson("/api/chat",payload,CHAT_TIMEOUT_MS);
     if(typeof data.response!=="string"||!data.response.trim())throw new Error("AI tidak menghasilkan jawaban.");
     chat.messages.push({role:"assistant",content:data.response});chat.updated=Date.now();
-    if(stillActive()){$("typing")?.remove();appendMessage("assistant",data.response);appendSources(data.links);renderWorkflow(data.steps)}
+    if(stillActive()){$("typing")?.remove();appendMessage("assistant",data.response,true,{regenerate:true});addEditActionToLastUser();appendSources(data.links);renderWorkflow(data.steps)}
     if(state===AppState.AUTH&&data.saved&&data.conversationId){
       chat.serverId=data.conversationId;chat.id=data.conversationId;chat.loaded=true;
       if(stillActive()){activeId=chat.id;replaceRoute({name:"chat",id:chat.id})}
@@ -527,9 +528,45 @@ async function submit(){
   }catch(e){
     const message="Maaf, permintaan gagal diproses. "+(e.message||"Periksa koneksi lalu coba lagi.");
     const at=chat.messages.indexOf(userEntry);if(at>=0)chat.messages.splice(at,1); /* giliran gagal tidak disimpan */
-    if(stillActive()){$("typing")?.remove();appendFailedTurn(message,text,e.code==="daily_limit")}
-    toast("Permintaan gagal");
+    if(replacing&&previousTurn){
+      chat.messages.push(previousTurn.user,previousTurn.assistant);
+      if(stillActive()){
+        $("typing")?.remove();messagesEl.lastElementChild?.remove();
+        appendMessage("user",previousTurn.user.content,true,{edit:true});
+        appendMessage("assistant",previousTurn.assistant.content,true,{regenerate:true});
+      }
+      promptEl.value=text;resizePrompt();toast(message);
+    }else{
+      if(stillActive()){$("typing")?.remove();appendFailedTurn(message,text,e.code==="daily_limit")}
+      toast("Permintaan gagal");
+    }
   }finally{busy=false;lockComposer();renderHistory();if(!isDrawerMode())promptEl.focus()}
+}
+function addEditActionToLastUser(){
+  const row=messagesEl.children[messagesEl.children.length-2];if(!row?.classList.contains("user"))return;
+  const actions=row.querySelector(".message-actions");if(!actions||actions.querySelector(".edit-message"))return;
+  const content=row.querySelector(".message-text")?.textContent||"";
+  const btn=document.createElement("button");btn.type="button";btn.className="message-action edit-message";btn.textContent="Edit & kirim";
+  btn.addEventListener("click",()=>replaceLastTurn("edit",content));actions.append(btn);
+}
+function replaceLastTurn(action,content){
+  if(busy||loadingChat)return;
+  const chat=conversations.find(c=>c.id===activeId);if(!chat||chat.messages.length<2)return;
+  const assistant=chat.messages.at(-1),user=chat.messages.at(-2);
+  if(user.role!=="user"||assistant.role!=="assistant")return;
+  let nextText=user.content;
+  if(action==="edit"){
+    const edited=window.prompt("Edit pesan terakhir:",user.content);
+    if(edited===null)return;
+    nextText=edited.trim();
+    if(!nextText){toast("Pesan tidak boleh kosong.");return}
+    if(nextText.length>12000){toast("Pesan maksimal 12.000 karakter.");return}
+  }
+  const previousTurn={user:{...user},assistant:{...assistant}};
+  chat.messages.splice(-2,2);
+  messagesEl.lastElementChild?.remove();messagesEl.lastElementChild?.remove();
+  promptEl.value=nextText;resizePrompt();
+  submit({replaceLastTurn:true,previousTurn});
 }
 async function renameChat(cid){
   if(busy||loadingChat)return;

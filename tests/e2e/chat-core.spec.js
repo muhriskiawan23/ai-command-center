@@ -231,3 +231,26 @@ test("akun: judul percakapan dapat diubah dan tetap tersimpan setelah reload", a
   await expect(page.locator(".history-item")).toContainText("Judul hasil edit");
   expect(app.db.sqlite.prepare("SELECT title FROM conversations").get().title).toBe("Judul hasil edit");
 });
+
+
+test("akun: pesan terakhir dapat diedit dan jawaban dapat dibuat ulang", async ({ page, app, context }) => {
+  await loginAs(context, app, ALICE);
+  await page.goto(app.url);
+  await expect(page.locator("#prompt")).toBeVisible();
+  await send(page, "Pertanyaan versi awal");
+  await expect(page.locator(".message.assistant:not(#typing)")).toHaveCount(1);
+  await expect(page.locator(".edit-message")).toBeVisible();
+  await expect(page.locator(".regenerate-message")).toBeVisible();
+
+  page.once("dialog", dialog => dialog.accept("Pertanyaan versi edit"));
+  await page.locator(".edit-message").click();
+  await expect(page.locator(".message.assistant:not(#typing)")).toHaveCount(1);
+  await expect(page.locator(".message.user .message-text")).toContainText("Pertanyaan versi edit");
+  expect(app.db.sqlite.prepare("SELECT content FROM messages WHERE role = 'user'").all().map(r => r.content)).toEqual(["Pertanyaan versi edit"]);
+
+  await page.locator(".regenerate-message").click();
+  await expect(page.locator(".message.assistant:not(#typing)")).toHaveCount(1);
+  expect(app.db.sqlite.prepare("SELECT COUNT(*) n FROM messages").get().n).toBe(2);
+  expect(app.db.sqlite.prepare("SELECT content FROM messages WHERE role = 'user'").get().content).toBe("Pertanyaan versi edit");
+  expect(app.aiCalls.length).toBe(3);
+});

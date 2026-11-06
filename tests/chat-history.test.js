@@ -170,3 +170,36 @@ test("rename percakapan: validasi judul, origin, dan kepemilikan akun ditegakkan
   assert.equal((await patch(url, { title: "x".repeat(73) })).status, 400);
   await app.close();
 });
+
+
+test("akun: edit dan regenerate mengganti giliran terakhir secara atomik tanpa menghapus konteks sebelumnya", async () => {
+  const { app, post, sent } = await setup();
+  const first = await (await post({ message: "Konteks awal tetap ada." })).json();
+  await post({ message: "Pertanyaan lama.", conversationId: first.conversationId });
+  app.control.aiFail = true;
+  const failed = await post({ message: "Edit gagal sementara.", conversationId: first.conversationId, replaceLastTurn: true });
+  assert.equal(failed.status, 502);
+  let rows = app.db.sqlite.prepare("SELECT role, content FROM messages WHERE conversation_id = ? ORDER BY id").all(first.conversationId);
+  assert.deepEqual(rows.map(r => r.role), ["user", "assistant", "user", "assistant"]);
+  assert.equal(rows[0].content, "Konteks awal tetap ada.");
+  assert.equal(rows[2].content, "Pertanyaan lama.");
+  app.control.aiFail = false;
+  const edited = await post({ message: "Pertanyaan sudah diedit.", conversationId: first.conversationId, replaceLastTurn: true });
+  assert.equal(edited.status, 200);
+  const turns = sent(app.aiCalls.at(-1));
+  assert.deepEqual(turns.map(m => m.role), ["user", "assistant", "user"]);
+  assert.equal(turns[0].content, "Konteks awal tetap ada.");
+  assert.equal(turns[2].content, "Pertanyaan sudah diedit.");
+  rows = app.db.sqlite.prepare("SELECT role, content FROM messages WHERE conversation_id = ? ORDER BY id").all(first.conversationId);
+  assert.deepEqual(rows.map(r => r.role), ["user", "assistant", "user", "assistant"]);
+  assert.equal(rows[2].content, "Pertanyaan sudah diedit.");
+  assert.equal(rows.some(r => r.content === "Pertanyaan lama."), false);
+  await app.close();
+});
+
+test("akun: penggantian giliran ditolak jika tidak ada pasangan user-assistant terakhir", async () => {
+  const { app, post } = await setup();
+  const response = await post({ message: "Tidak punya chat sebelumnya.", replaceLastTurn: true });
+  assert.equal(response.status, 400);
+  await app.close();
+});
