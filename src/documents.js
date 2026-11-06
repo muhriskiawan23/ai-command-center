@@ -17,6 +17,9 @@ export function normalizePdfConversion(result, fileName) {
   }
   const raw = item.data.trim();
   if (!raw) return { ok: false };
+  // Markdown conversion extracts existing PDF text; headings alone usually mean a scan/image-only PDF.
+  const extractableText = raw.replace(/^#{1,6}\\s+.*$/gm, "").replace(/^\\s*[-*_]{3,}\\s*$/gm, "").trim();
+  if (!extractableText) return { ok: false, reason: "no_text" };
   const content = raw.slice(0, PDF_CONTEXT_MAX_CHARS);
   const pageNumbers = [...content.matchAll(/^#{1,4}\s*Page\s+(\d+)\s*$/gim)]
     .map((match) => Number(match[1]))
