@@ -27,20 +27,24 @@ class AiTimeoutError extends Error {
 function positiveMs(value, fallback) { const n = Number(value); return Number.isFinite(n) && n > 0 ? n : fallback; }
 
 // Wraps env.AI so every model call is bounded by min(per-call timeout, time left in the request budget).
-// A timed-out call cannot be cancelled on the provider side; we simply stop waiting for it.
-function withAiDeadline(env, deadline) {
+class AiCancelledError extends Error { constructor() { super("Chat request cancelled"); this.name = "AiCancelledError"; } }
+function throwIfCancelled(signal) { if (signal?.aborted) throw new AiCancelledError(); }
+// Propagate request cancellation to the model binding where supported and prevent cancelled turns from being saved.
+function withAiDeadline(env, deadline, signal) {
   const perCall = positiveMs(env.AI_CALL_TIMEOUT_MS, AI_CALL_TIMEOUT_DEFAULT_MS);
   return {
     ...env,
     AI: {
-      async run(model, payload) {
+      async run(model, payload, options = {}) {
+        throwIfCancelled(signal);
         const remaining = deadline - Date.now();
         if (remaining < Math.min(250, perCall / 2)) throw new AiTimeoutError("budget"); // too little time left to be worth a call
         let timer;
         try {
           return await Promise.race([
-            env.AI.run(model, payload),
-            new Promise((_, reject) => { timer = setTimeout(() => reject(new AiTimeoutError("timeout")), Math.min(perCall, remaining)); })
+            env.AI.run(model, payload, { ...options, ...(signal ? { signal } : {}) }),
+            new Promise((_, reject) => { timer = setTimeout(() => reject(new AiTimeoutError("timeout")), Math.min(perCall, remaining)); }),
+            ...(signal ? [new Promise((_, reject) => signal.addEventListener("abort", () => reject(new AiCancelledError()), { once: true }))] : [])
           ]);
         } finally { clearTimeout(timer); }
       }
@@ -54,7 +58,7 @@ function withSystemExtra(env, extra) {
   return {
     ...env,
     AI: {
-      run: (model, payload) => {
+      run: (model, payload, options) => {
         const messages = payload.messages.map((m) => ({ ...m }));
         const systemIndex = messages.findIndex((m) => m.role === "system");
         if (systemIndex >= 0) {
@@ -70,7 +74,7 @@ function withSystemExtra(env, extra) {
             content: `<user_memory_context>\n${extra}\n</user_memory_context>\n\nCURRENT REQUEST:\n${messages[userIndex].content}`
           };
         }
-        return env.AI.run(model, { ...payload, messages });
+        return env.AI.run(model, { ...payload, messages }, options);
       }
     }
   };
@@ -1111,7 +1115,7 @@ export default {
         }
       } catch (error) { console.error("Memory handling failed:", error); memoryNote = ""; memoryItems = []; }
       const memoryEnv = withSystemExtra(env, buildMemoryBlock(memoryItems));
-      const aiEnv = withAiDeadline(memoryEnv, Date.now() + budgetMs);
+      const aiEnv = withAiDeadline(memoryEnv, Date.now() + budgetMs, request.signal);
       let pages = "";
       let links = [];
       if (found.urls.length) {
@@ -1130,6 +1134,7 @@ export default {
           const response = await runAgent(aiEnv, agentId, message, "", history, pages);
           result = { agent: AGENTS[agentId].name, model: MODEL, workflow: "single-agent", response };
         }
+        throwIfCancelled(request.signal);
         // Save explicit memory only after successful model generation, so a failed turn
         // cannot silently mutate memory while the UI reports that the request failed.
         if (pendingRememberText !== null) {
@@ -1156,6 +1161,10 @@ export default {
         if (links.length) result.links = links;
         return json(result);
       } catch (error) {
+        if (error instanceof AiCancelledError || request.signal.aborted) {
+          await refundUsage(env, usage.day, usage.charges);
+          return json({ error: "Generasi dihentikan.", code: "generation_cancelled" }, 499);
+        }
         console.error("AI request failed:", error);
         await refundUsage(env, usage.day, usage.charges); // a failed request does not consume the user's daily allowance
         if (error instanceof AiTimeoutError) return json({ error: "AI terlalu lama merespons. Silakan coba lagi, atau pecah permintaan menjadi lebih singkat.", code: "ai_timeout" }, 504);
