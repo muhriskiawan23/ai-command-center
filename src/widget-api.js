@@ -28,7 +28,7 @@ function withCors(response, origin) {
 }
 
 async function requireOwner(request, env, deps) {
-  if (!deps.sameOrigin(request)) return { error: deps.json({ error: "Origin tidak valid." }, 403) };
+  if (!["GET", "HEAD"].includes(request.method) && !deps.sameOrigin(request)) return { error: deps.json({ error: "Origin tidak valid." }, 403) };
   let user;
   try { user = await deps.getSession(request, env); }
   catch { return { error: deps.json({ error: "Status login tidak dapat diperiksa." }, 503) }; }
