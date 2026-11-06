@@ -236,7 +236,7 @@ test("akun: arsip dan pulihkan percakapan secara privat tanpa menghapus pesannya
   const { app, token } = await setup();
   seedConversation(app.db, { id: "conv-alice-arch01", userId: ALICE.id, title: "Chat untuk arsip", messages: [{ role: "user", content: "Konten tetap utuh" }] });
   seedSession(app.db, { id: "sub-bob", email: "bob@example.com", name: "Bob" });
-  seedConversation(app.db, { id: "conv-bob-arch001", userId: "sub-bob", title: "Arsip milik Bob" });
+  seedConversation(app.db, { id: "conv-bob-arch001", userId: "sub-bob", title: "Arsip milik Bob", updatedAt: 100 });
   const headers = { Origin: app.url, Cookie: `__Host-borai_session=${token}`, "Content-Type": "application/json" };
   const active = async () => (await fetch(app.url + "/api/conversations", { headers })).json();
   const archivedList = async () => (await fetch(app.url + "/api/conversations?archived=1", { headers })).json();
