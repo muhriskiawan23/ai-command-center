@@ -167,3 +167,5 @@ body.drawer-open{overflow:hidden}
 .feedback-submit{min-height:34px;border:1px solid #4a4a4a;border-radius:8px;background:#303030;color:var(--text);padding:6px 10px;font-size:12px}
 .feedback-submit:disabled,.feedback-vote:disabled{opacity:.55;cursor:wait}
 @media(max-width:560px){.feedback-panel{flex-direction:column}.feedback-panel textarea{width:100%;max-width:none}.feedback-submit{align-self:flex-start;min-height:40px}}
+
+@media(max-width:560px){.composer-tools{flex-wrap:wrap;gap:6px}.composer-tools .hint{display:none}.agent-select{max-width:155px}.pdf-attachment{max-width:130px}}
