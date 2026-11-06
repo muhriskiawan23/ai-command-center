@@ -28,7 +28,7 @@ export function parseXlsxWorkbook(workbook, options = {}) {
   const maxColumns = Math.max(1, Math.min(MAX_COLUMNS, Number(options.maxColumns) || MAX_COLUMNS));
   const names = workbook.SheetNames.slice(0, maxSheets);
   if (!names.length) throw new Error("Workbook Excel tidak memiliki sheet yang dapat dibaca.");
-  const output = [], summaries = [];
+  const output = [];
   let rowCount = 0, columnCount = 0, truncated = workbook.SheetNames.length > names.length;
   for (const sheetName of names) {
     const sheet = workbook.Sheets[sheetName];
@@ -54,7 +54,7 @@ export function parseXlsxWorkbook(workbook, options = {}) {
     }
     const headers = (matrix[0] || []).map((value, index) => value || "Kolom " + (index + 1));
     const dataRows = matrix.slice(1);
-    output.push("| " + headers.map(v => v.replace(/\|/g, "\|")).join(" | ") + " |");
+    output.push("| " + headers.map(v => v.replace(/\|/g, "\\|")).join(" | ") + " |");
     for (const row of dataRows) output.push("| " + row.map(v => v.replace(/\|/g, "\|")).join(" | ") + " |");
     const sums = [];
     for (let c = 0; c < takeColumns; c++) {
@@ -87,7 +87,7 @@ export async function parseXlsxLocally(file, options = {}) {
   let workbook;
   try {
     const buffer = await file.arrayBuffer();
-    workbook = xlsx.read(buffer, { type: "array", cellFormula: true, cellText: true, cellDates: true, bookVBA: false });
+    workbook = xlsx.read(buffer, { type: "array", cellFormula: true, cellText: true, cellDates: true, bookVBA: false, sheetRows: MAX_ROWS + 1 });
   } catch {
     throw new Error("File Excel rusak, tidak didukung, atau gagal dibuka.");
   }
