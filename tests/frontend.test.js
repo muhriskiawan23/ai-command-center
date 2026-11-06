@@ -7,8 +7,8 @@ const appJs = readFileSync(new URL("../public/app.js", import.meta.url), "utf8")
 const appCss = readFileSync(new URL("../public/app.css", import.meta.url), "utf8");
 const html = page + "\n" + appJs + "\n" + appCss;
 
-test("dashboard inline JavaScript parses without syntax errors", () => {
-  assert.match(page, /<script src="\/app\.js"/, "index.html must load /app.js");
+test("dashboard JavaScript parses without syntax errors", () => {
+  assert.match(page, /<script src="\/app\.js"/);
   assert.doesNotThrow(() => new Function(appJs));
 });
 
@@ -24,9 +24,21 @@ test("dashboard contains the controls used by its application script", () => {
 });
 
 test("dashboard escapes model output before applying Markdown formatting", () => {
-  assert.match(html, /function escapeHTML\(s\)/);
-  assert.match(html, /function markdown\(input\)/);
-  assert.match(html, /src=escapeHTML\(src\)/);
+  assert.match(appJs, /function escapeHTML\(s\)/);
+  assert.match(appJs, /function markdown\(input\)/);
+  assert.match(appJs, /escapeHTML\(/);
+});
+
+test("assistant message actions offer copy and downloadable text/Markdown", () => {
+  assert.match(appJs, /function copyText\(value\)/);
+  assert.match(appJs, /function downloadText\(value, role/);
+  assert.match(appJs, /function downloadMarkdown\(value, role/);
+  assert.match(appJs, /text\/plain;charset=utf-8/);
+  assert.match(appJs, /text\/markdown;charset=utf-8/);
+  assert.match(appJs, /Salin/);
+  assert.match(appJs, /Markdown/);
+  assert.match(appJs, /Teks/);
+  assert.match(appJs, /URL\.createObjectURL\(blob\)/);
 });
 
 test("dashboard has a mobile layout and reduced-motion support", () => {
