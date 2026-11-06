@@ -5,8 +5,8 @@
 > **Official X:** [@BORAI_Official](https://x.com/BORAI_Official)  
 > **Platform:** [BOR AI Platform](https://ai-command-center.muhriskiawan23.workers.dev)  
 > **Source code:** [muhriskiawan23/ai-command-center](https://github.com/muhriskiawan23/ai-command-center)  
-> **Document version:** 1.0  
-> **Last reviewed:** 6 November 2026
+> **Document version:** 1.1  
+> **Last reviewed:** 7 November 2026
 
 This document describes BOR AI using information from the founder and the public project repository. It separates capabilities evidenced in the repository from plans and proposals. If this document conflicts with newer official project documentation or a dated founder announcement, prefer the newer source and verify the implementation before describing it as available.
 
