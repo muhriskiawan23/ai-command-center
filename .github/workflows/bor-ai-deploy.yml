@@ -1,6 +1,9 @@
 name: BOR AI production deploy
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
     inputs:
       run_chat_smoke:
