@@ -46,6 +46,13 @@ test("dashboard has a mobile layout and reduced-motion support", () => {
   assert.match(html, /prefers-reduced-motion:reduce/);
 });
 
+test("link-reading answers show numbered citations mapped to safe clickable source links", () => {
+  assert.match(appJs, /function appendSources\\(links\\)/);
+  assert.match(appJs, /l\\.sourceId/);
+  assert.match(appJs, /l\\.url/);
+  assert.match(appJs, /link\\.rel="noopener noreferrer"/);
+});
+
 test("guest mode never persists browser chat history and account history is server-backed", () => {
   assert.doesNotMatch(html, /localStorage/);
   assert.match(html, /Guest Mode/);
