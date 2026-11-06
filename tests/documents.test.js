@@ -163,3 +163,64 @@ test("chat rejects oversized or malformed PDF context before model inference", a
   assert.equal(response.status, 400);
   assert.equal(calls, 0);
 });
+
+test("PDF no-text response exposes a stable OCR fallback code and refunds usage", async () => {
+  let calls = 0;
+  const env = {
+    AI: { async toMarkdown() { calls++; return [{ format: "markdown", data: "### Page 1\\n" }]; } },
+    RATE_LIMITER: { async limit() { return { success: true }; } }
+  };
+  const form = new FormData();
+  form.append("file", new Blob(["%PDF-1.7\\nmock scanned pdf"], { type: "application/pdf" }), "scan.pdf");
+  const response = await worker.fetch(new Request("https://example.test/api/documents/pdf", {
+    method: "POST", headers: { Origin: "https://example.test" }, body: form
+  }), env);
+  const body = await response.json();
+  assert.equal(response.status, 422);
+  assert.equal(body.code, "PDF_NO_TEXT");
+  assert.equal(calls, 1);
+});
+import { ocrScannedPdf } from "../public/pdf-ocr.js";
+
+test("browser OCR extracts page text locally and terminates the worker", async () => {
+  const events = [];
+  let terminated = false;
+  const pdfjs = {
+    getDocument: () => ({ promise: Promise.resolve({
+      numPages: 1,
+      getPage: async () => ({
+        getViewport: () => ({ width: 100, height: 100 }),
+        render: () => ({ promise: Promise.resolve() }),
+        cleanup() {}
+      }),
+      destroy: async () => {}
+    }) })
+  };
+  const fakeCanvas = { width: 0, height: 0, getContext: () => ({}) };
+  const result = await ocrScannedPdf({ name: "scan.pdf", arrayBuffer: async () => new ArrayBuffer(8) }, {
+    pdfjs,
+    createWorker: async () => ({
+      recognize: async () => ({ data: { text: "Hasil scan terbaca" } }),
+      terminate: async () => { terminated = true; }
+    }),
+    onProgress: event => events.push(event),
+  });
+  globalThis.document = globalThis.document || { createElement: () => fakeCanvas };
+  assert.match(result.content, /### Page 1/);
+  assert.match(result.content, /Hasil scan terbaca/);
+  assert.equal(result.ocr, true);
+  assert.equal(terminated, true);
+  assert.ok(events.some(event => event.status === "recognizing"));
+});
+
+test("browser OCR rejects documents above ten pages before loading OCR model", async () => {
+  let workerStarted = false;
+  const pdfjs = { getDocument: () => ({ promise: Promise.resolve({ numPages: 11, destroy: async () => {} }) }) };
+  await assert.rejects(
+    ocrScannedPdf({ name: "large.pdf", arrayBuffer: async () => new ArrayBuffer(8) }, {
+      pdfjs, createWorker: async () => { workerStarted = true; }
+    }),
+    /maksimal 10 halaman/
+  );
+  assert.equal(workerStarted, false);
+});
