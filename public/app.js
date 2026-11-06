@@ -173,11 +173,11 @@ function exportConversationFile(){
 const AppState={INIT:"initializing",UNAUTH:"unauthenticated",GUEST:"guest",AUTH:"authenticated",EXPIRED:"session-expired",ERROR:"error"};
 const promptEl=$("prompt"),messagesEl=$("messages"),welcomeEl=$("welcome"),conversation=$("conversation");
 const sidebar=$("sidebar"),backdrop=$("backdrop"),menuBtn=$("menuBtn"),workspace=$("workspace");
-let state=AppState.INIT,conversations=[],activeId=null,busy=false,currentUser=null,historyQuery="",archivedView=false,activePdf=null;
+let state=AppState.INIT,conversations=[],activeId=null,busy=false,currentUser=null,historyQuery="",archivedView=false,activePdf=null,activeCsv=null;
 let historyCursor=null,historyHasMore=false,historyLoadingMore=false,historyRequestSeq=0;
 /* navSeq: setiap navigasi chat menaikkan penghitung ini; pemuatan yang tertimpa navigasi lebih baru dibatalkan. */
 let navSeq=0,loadingChat=false;
-function lockComposer(){const lock=busy||loadingChat;const send=$("send"),stop=$("stopGeneration");send.disabled=lock;send.hidden=busy;stop.hidden=!busy;stop.disabled=!busy;promptEl.readOnly=lock;$("exportConversation").disabled=lock;$("attachPdf").disabled=lock;}
+function lockComposer(){const lock=busy||loadingChat;const send=$("send"),stop=$("stopGeneration");send.disabled=lock;send.hidden=busy;stop.hidden=!busy;stop.disabled=!busy;promptEl.readOnly=lock;$("exportConversation").disabled=lock;$("attachPdf").disabled=lock;$("attachCsv").disabled=lock;}
 
 /* Yang disimpan di sessionStorage HANYA penanda "sudah memilih Guest" (agar refresh tidak kembali ke Welcome).
    Isi chat guest tidak pernah ditulis ke storage mana pun. */
@@ -197,7 +197,7 @@ function setState(next,notice=""){
   syncInert();renderAuth();
 }
 function resetChatView(){
-  navSeq++;loadingChat=false;activePdf=null;renderPdfAttachment();lockComposer();
+  navSeq++;loadingChat=false;activePdf=null;activeCsv=null;renderPdfAttachment();renderCsvAttachment();lockComposer();
   activeId=null;$("exportConversation").hidden=true;messagesEl.replaceChildren();messagesEl.hidden=true;welcomeEl.hidden=false;
   $("workflow").hidden=true;promptEl.value="";resizePrompt();
 }
@@ -531,8 +531,8 @@ async function showChat(cid){
     finally{if(seq===navSeq){loadingChat=false;lockComposer()}}
   }
   if(seq!==navSeq)return null;
-  activePdf=null;renderPdfAttachment();activeId=cid;$("exportConversation").hidden=false;welcomeEl.hidden=true;messagesEl.hidden=false;messagesEl.replaceChildren();
-  for(let i=0;i<c.messages.length;i++){const m=c.messages[i];const last=i===c.messages.length-1;const previous=i===c.messages.length-2;appendMessage(m.role,m.content,false,{edit:m.role==="user"&&previous&&c.messages.at(-1)?.role==="assistant",regenerate:m.role==="assistant"&&last&&c.messages.at(-2)?.role==="user",responseId:m.role==="assistant"?m.id:null,conversationId:c.serverId||c.id,feedback:m.feedback||null});if(m.role==="assistant"&&m.links?.length)appendSources(m.links);if(m.role==="assistant"&&m.pdf)appendPdfSource(m.pdf);}
+  activePdf=null;activeCsv=null;renderPdfAttachment();renderCsvAttachment();activeId=cid;$("exportConversation").hidden=false;welcomeEl.hidden=true;messagesEl.hidden=false;messagesEl.replaceChildren();
+  for(let i=0;i<c.messages.length;i++){const m=c.messages[i];const last=i===c.messages.length-1;const previous=i===c.messages.length-2;appendMessage(m.role,m.content,false,{edit:m.role==="user"&&previous&&c.messages.at(-1)?.role==="assistant",regenerate:m.role==="assistant"&&last&&c.messages.at(-2)?.role==="user",responseId:m.role==="assistant"?m.id:null,conversationId:c.serverId||c.id,feedback:m.feedback||null});if(m.role==="assistant"&&m.links?.length)appendSources(m.links);if(m.role==="assistant"&&m.pdf)appendPdfSource(m.pdf);if(m.role==="assistant"&&m.spreadsheet)appendSpreadsheetSource(m.spreadsheet);}
   $("workflow").hidden=true;renderHistory();conversation.scrollTop=conversation.scrollHeight;
   return true;
 }
@@ -631,6 +631,19 @@ function renderPdfAttachment(){
   wrap.hidden=!activePdf;name.textContent=activePdf?activePdf.name+" · PDF siap":"";
   $("attachPdf").textContent=activePdf?"Ganti PDF":"＋ PDF";
 }
+function appendSpreadsheetSource(spreadsheet){
+  const row=messagesEl.lastElementChild;const body=row&&row.querySelector(".message-body");if(!body||!spreadsheet)return;
+  const box=document.createElement("div");box.className="sources csv-source";
+  const head=document.createElement("strong");head.textContent="File CSV yang dianalisis:";box.append(head);
+  const item=document.createElement("div");item.className="source ok";
+  item.textContent="✓ "+String(spreadsheet.name||"spreadsheet.csv")+(Number.isSafeInteger(spreadsheet.rowCount)?" · "+spreadsheet.rowCount.toLocaleString("id-ID")+" baris":"")+(Number.isSafeInteger(spreadsheet.columnCount)?" · "+spreadsheet.columnCount+" kolom":"")+(spreadsheet.truncated?" · ringkasan dibatasi":"");
+  box.append(item);body.append(box);
+}
+function renderCsvAttachment(){
+  const wrap=$("csvAttachment"),name=$("csvName");if(!wrap||!name)return;
+  wrap.hidden=!activeCsv;name.textContent=activeCsv?activeCsv.name+" · CSV siap":"";
+  $("attachCsv").textContent=activeCsv?"Ganti CSV":"＋ CSV";
+}
 async function uploadPdf(file){
   if(!file)return;
   if(!file.name.toLowerCase().endsWith(".pdf")){toast("Pilih file PDF (.pdf).");return;}
@@ -639,6 +652,7 @@ async function uploadPdf(file){
   const button=$("attachPdf");button.disabled=true;button.textContent="Membaca…";
   try{
     const {extractPdfLocally}=await import("/pdf-ocr.js");
+    activeCsv=null;renderCsvAttachment();
     activePdf=await extractPdfLocally(file,{
       pdfjs:window.pdfjsLib,
       tesseract:window.Tesseract,
@@ -653,6 +667,20 @@ async function uploadPdf(file){
     toast(activePdf.ocr?"OCR lokal selesai. Teks PDF siap dianalisis.":"PDF berhasil dibaca secara lokal. Tanyakan isinya di kolom chat.");
   }catch(error){toast(error.message||"PDF gagal dibaca.");}
   finally{button.disabled=busy||loadingChat;renderPdfAttachment()}
+}
+async function uploadCsv(file){
+  if(!file)return;
+  if(!file.name.toLowerCase().endsWith(".csv")){toast("Pilih file CSV (.csv).");return;}
+  if(file.size>5*1024*1024){toast("Ukuran CSV maksimal 5 MB.");return;}
+  if(file.size<1){toast("File CSV kosong.");return;}
+  const button=$("attachCsv");button.disabled=true;button.textContent="Membaca…";
+  try{
+    const {parseCsvLocally}=await import("/csv-reader.js");
+    const parsed=await parseCsvLocally(file);
+    activePdf=null;renderPdfAttachment();activeCsv=parsed;renderCsvAttachment();
+    toast("CSV berhasil dibaca secara lokal. Tanyakan analisisnya di kolom chat.");
+  }catch(error){toast(error.message||"CSV gagal dibaca.");}
+  finally{button.disabled=busy||loadingChat;renderCsvAttachment()}
 }
 function appendFailedTurn(message,text,noRetry=false,requestId=null){
   appendMessage("assistant",message);
@@ -680,12 +708,12 @@ async function submit(options={}){
   if(createdNew)replaceRoute({name:"chat",id:chat.id});
   const stillActive=()=>activeId===startId;const start=Date.now();
   try{
-    const payload={message:text,agent,requestId};if(activePdf)payload.document={name:activePdf.name,content:activePdf.content,truncated:activePdf.truncated};if(history.length)payload.history=history;if(state===AppState.AUTH&&chat.serverId)payload.conversationId=chat.serverId;if(replacing&&state===AppState.AUTH&&chat.serverId)payload.replaceLastTurn=true;
+    const payload={message:text,agent,requestId};if(activePdf)payload.document={name:activePdf.name,content:activePdf.content,truncated:activePdf.truncated};if(activeCsv)payload.spreadsheet={name:activeCsv.name,content:activeCsv.content,rowCount:activeCsv.rowCount,columnCount:activeCsv.columnCount,truncated:activeCsv.truncated};if(history.length)payload.history=history;if(state===AppState.AUTH&&chat.serverId)payload.conversationId=chat.serverId;if(replacing&&state===AppState.AUTH&&chat.serverId)payload.replaceLastTurn=true;
     const data=await postJson("/api/chat",payload,CHAT_TIMEOUT_MS,activeChatController.signal);
     if(typeof data.response!=="string"||!data.response.trim())throw new Error("AI tidak menghasilkan jawaban.");
     if(pendingRetryRequest?.requestId===requestId)pendingRetryRequest=null;
     chat.messages.push({role:"assistant",content:data.response,id:data.responseId||null,feedback:null,links:data.links||[],pdf:data.pdf||null});chat.updated=Date.now();
-    if(stillActive()){$("typing")?.remove();appendMessage("assistant",data.response,true,{regenerate:true,responseId:data.saved?data.responseId:null,conversationId:data.saved?data.conversationId:null});addEditActionToLastUser();appendSources(data.links);if(data.pdf)appendPdfSource(data.pdf);renderWorkflow(data.steps)}
+    if(stillActive()){$("typing")?.remove();appendMessage("assistant",data.response,true,{regenerate:true,responseId:data.saved?data.responseId:null,conversationId:data.saved?data.conversationId:null});addEditActionToLastUser();appendSources(data.links);if(data.pdf)appendPdfSource(data.pdf);if(data.spreadsheet)appendSpreadsheetSource(data.spreadsheet);renderWorkflow(data.steps)}
     if(state===AppState.AUTH&&data.saved&&data.conversationId){
       chat.serverId=data.conversationId;chat.id=data.conversationId;chat.loaded=true;
       if(stillActive()){activeId=chat.id;replaceRoute({name:"chat",id:chat.id})}
@@ -825,6 +853,9 @@ $("chatForm").addEventListener("submit",e=>{e.preventDefault();submit()});
 $("attachPdf").addEventListener("click",()=>{if(!busy&&!loadingChat)$("pdfFile").click()});
 $("pdfFile").addEventListener("change",event=>{const file=event.target.files?.[0];event.target.value="";uploadPdf(file)});
 $("clearPdf").addEventListener("click",()=>{activePdf=null;renderPdfAttachment();toast("PDF dilepas dari chat.")});
+$("attachCsv").addEventListener("click",()=>{if(!busy&&!loadingChat)$("csvFile").click()});
+$("csvFile").addEventListener("change",event=>{const file=event.target.files?.[0];event.target.value="";uploadCsv(file)});
+$("clearCsv").addEventListener("click",()=>{activeCsv=null;renderCsvAttachment();toast("CSV dilepas dari chat.")});
 $("stopGeneration").addEventListener("click",()=>{if(busy)activeChatController?.abort()});
 promptEl.addEventListener("input",resizePrompt);
 /* Enter sengaja TIDAK mengirim: Enter = baris baru di semua perangkat. Satu-satunya cara kirim lewat UI adalah tombol panah. */
