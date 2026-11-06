@@ -204,8 +204,8 @@ test("browser OCR extracts page text locally and terminates the worker", async (
       terminate: async () => { terminated = true; }
     }),
     onProgress: event => events.push(event),
+    createCanvas: () => fakeCanvas,
   });
-  globalThis.document = globalThis.document || { createElement: () => fakeCanvas };
   assert.match(result.content, /### Page 1/);
   assert.match(result.content, /Hasil scan terbaca/);
   assert.equal(result.ocr, true);
