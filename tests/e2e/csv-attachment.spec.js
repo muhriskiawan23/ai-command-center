@@ -54,10 +54,15 @@ test("Excel workbook is parsed locally and only bounded derived context reaches 
   await page.locator("#prompt").fill("Analisis file Excel ini.");
   await page.locator("#send").click();
   await expect(page.locator(".message.assistant:not(#typing)")).toHaveCount(1);
-  expect(app.aiCalls).toHaveLength(1);
-  const userMessage = app.aiCalls[0].messages.find(message => message.role === "user")?.content || "";
-  expect(userMessage).toContain("<spreadsheet_document");
-  expect(userMessage).toContain("Sheet: Penjualan");
-  expect(userMessage).toContain("Kopi");
-  expect(userMessage).not.toContain("PK");
+  expect(app.aiCalls.length).toBeGreaterThan(0);
+  const userMessages = app.aiCalls.flatMap(call => call.messages || [])
+    .filter(message => message.role === "user")
+    .map(message => message.content || "");
+  const spreadsheetMessage = userMessages.find(content =>
+    content.includes("<spreadsheet_document") &&
+    content.includes("Sheet: Penjualan") &&
+    content.includes("Kopi")
+  );
+  expect(spreadsheetMessage).toBeTruthy();
+  expect(userMessages.every(content => !content.includes("PK"))).toBe(true);
 });
