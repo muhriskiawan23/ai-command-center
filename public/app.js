@@ -18,7 +18,7 @@ function id(){return Date.now().toString(36)+Math.random().toString(36).slice(2,
 function toast(message){const el=$("toast");el.textContent=message;el.hidden=false;clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.hidden=true,2200)}
 function escapeHTML(s){return String(s).replace(/[&<>\"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
 function markdown(input){let src=String(input||"").replace(/\r\n?/g,"\n");const blocks=[];src=src.replace(/```([\w+-]*)[ \t]*\n([\s\S]*?)```/g,(_,lang,code)=>{const key="@@CB"+blocks.length+"@@";blocks.push({lang,code});return key});const lines=src.split(/\n/);let out="";for(const line of lines){const trimmed=line.trim();if(trimmed.startsWith("@@CB")){const idx=Number(trimmed.slice(4,-2));const block=blocks[idx];out+="<pre><code"+(block.lang?` class=\"language-`+escapeHTML(block.lang)+`\"`:"")+">"+escapeHTML(block.code)+"</code></pre>\n";continue}if(/^\s*[-*+]\s+/.test(line)){out+="<li>"+escapeHTML(line.replace(/^\s*[-*+]\s+/,'').trim())+"</li>\n";continue}if(/^\s*\d+[.)]\s+/.test(line)){out+="<li>"+escapeHTML(line.replace(/^\s*\d+[.)]\s+/,'').trim())+"</li>\n";continue}if(/^\s*#{1,6}\s+/.test(line)){out+="<h"+(/^#+/.exec(line)[0].length)+">"+escapeHTML(line.replace(/^\s*#{1,6}\s+/,'').trim())+"</h"+(/^#+/.exec(line)[0].length)+">\n";continue}out+=escapeHTML(line)+"\n"}return out.replace(/\n{3,}/g,"\n\n").replace(/<li>.*?<\/li>\n(?=<li>)/gs,'');}
-function appendMessage(role,content,scroll=true){const row=document.createElement("article");row.className="message "+role;const avatar=document.createElement("div");avatar.className="avatar";avatar.textContent=role==="assistant"?"✳":"";const body=document.createElement("div");body.className="message-body";const rendered=document.createElement("div");rendered.className="message-text";rendered.innerHTML=markdown(content);body.append(rendered);const actions=document.createElement("div");actions.className="message-actions";const copyBtn=document.createElement("button");copyBtn.type="button";copyBtn.className="message-action";copyBtn.textContent="Salin";copyBtn.addEventListener("click",()=>copyText(content));const markdownBtn=document.createElement("button");markdownBtn.type="button";markdownBtn.className="message-action";markdownBtn.textContent="Markdown";markdownBtn.addEventListener("click",()=>downloadMarkdown(content,role));const plainBtn=document.createElement("button");plainBtn.type="button";plainBtn.className="message-action";plainBtn.textContent="Teks";plainBtn.addEventListener("click",()=>downloadText(content,role));actions.append(copyBtn,markdownBtn,plainBtn);body.append(actions);row.append(avatar,body);messagesEl.append(row);if(scroll)conversation.scrollTop=conversation.scrollHeight}
+function appendMessage(role,content,scroll=true){const row=document.createElement("article");row.className="message "+role;const avatar=document.createElement("div");avatar.className="avatar";avatar.textContent=role==="assistant"?"✳":"";const body=document.createElement("div");body.className="message-body";const rendered=document.createElement("div");rendered.className="message-text";rendered.innerHTML=markdown(content);body.append(rendered);const actions=document.createElement("div");actions.className="message-actions";const copyBtn=document.createElement("button");copyBtn.type="button";copyBtn.className="message-action";copyBtn.textContent="Salin";copyBtn.addEventListener("click",()=>copyText(content));const markdownBtn=document.createElement("button");markdownBtn.type="button";markdownBtn.className="message-action";markdownBtn.textContent="Markdown";markdownBtn.addEventListener("click",()=>downloadMarkdown(content,role));const plainBtn=document.createElement("button");plainBtn.type="button";plainBtn.className="message-action";plainBtn.textContent="Teks";plainBtn.addEventListener("click",()=>downloadText(content,role));const checklistBtn=document.createElement("button");checklistBtn.type="button";checklistBtn.className="message-action";checklistBtn.textContent="Checklist";checklistBtn.addEventListener("click",()=>downloadChecklist(content,role));actions.append(copyBtn,markdownBtn,plainBtn,checklistBtn);body.append(actions);row.append(avatar,body);messagesEl.append(row);if(scroll)conversation.scrollTop=conversation.scrollHeight}
 function showTyping(){const row=document.createElement("article");row.className="message assistant";row.id="typing";row.innerHTML='<div class="avatar">✳</div><div class="message-body"><span class="typing"><span></span><span></span><span></span></span></div>' ;messagesEl.append(row);conversation.scrollTop=conversation.scrollHeight}
 function renderWorkflow(steps){const items=$("workflowItems");items.replaceChildren();if(!Array.isArray(steps)||!steps.length){$("workflow").hidden=true;return}$("workflow").hidden=false;for(const step of steps){const block=document.createElement("div");block.className="workflow-step";const label=document.createElement("strong");label.textContent=step.agent||"Langkah";const status=document.createElement("span");status.textContent=step.status||"completed";status.className="workflow-status";block.append(label,status);const output=document.createElement("pre");output.textContent=step.output||"";block.append(output);items.append(block)}}
 /* Textarea tumbuh mengikuti isi (scrollHeight) sampai max-height dari CSS, lalu berhenti dan scroll di dalam. */
@@ -73,6 +73,39 @@ function downloadMarkdown(value, role="assistant"){
   a.href=url;a.download=(role==="assistant"?"bor-ai-response":"bor-ai-message")+".md";a.click();
   URL.revokeObjectURL(url);
   toast("Markdown berhasil diunduh.");
+}
+function toChecklistMarkdown(text){
+  const lines=String(text||"").split(/\r?\n/);
+  const out=[];
+  let found=false;
+  for(const line of lines){
+    const trimmed=line.trim();
+    if(/^[-*+]\s+/.test(trimmed)){
+      found=true;
+      out.push("- [ ] "+trimmed.replace(/^[-*+]\s+/,""));
+      continue;
+    }
+    if(/^\d+\.\s+/.test(trimmed)){
+      found=true;
+      out.push("- [ ] "+trimmed.replace(/^\d+\.\s+/,""));
+      continue;
+    }
+    out.push(line);
+  }
+  return found ? out.join("\n") : "";
+}
+function downloadChecklist(value, role="assistant"){
+  const checklist=toChecklistMarkdown(value);
+  if(!checklist.trim()){
+    toast("Jawaban ini tidak memiliki daftar yang bisa dikonversi ke checklist.");
+    return;
+  }
+  const blob=new Blob([checklist],{type:"text/markdown;charset=utf-8"});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  a.href=url;a.download=(role==="assistant"?"bor-ai-checklist":"bor-ai-checklist")+".md";a.click();
+  URL.revokeObjectURL(url);
+  toast("Checklist berhasil diunduh.");
 }
 
 /* ---------- 2. State aplikasi ---------- */
@@ -252,11 +285,11 @@ async function openRemoteChat(cid){
 }
 window.addEventListener("popstate",e=>{
   const s=e.state;
-  if(memoryOpen&&s?.overlay!=="memory"){closeMemoryDom();return}              /* prioritas 1: Back menutup panel Memori */
+  if(memoryOpen&&s?.overlay!=="memory"){closeMemoryDom();return}
   if(s?.overlay==="memory"){if(state===AppState.AUTH&&!memoryOpen)openMemoryDom();return}
-  if(drawerOpen&&s?.overlay!=="drawer"){closeDrawerDom();return}           /* prioritas 2: Back menutup drawer */
-  if(s?.overlay==="drawer"){if(isDrawerMode()&&inChatView()&&!drawerOpen)openDrawerDom();return} /* Forward ke entri drawer */
-  applyRoute();                                                              /* prioritas 3: rute in-app */
+  if(drawerOpen&&s?.overlay!=="drawer"){closeDrawerDom();return}
+  if(s?.overlay==="drawer"){if(isDrawerMode()&&inChatView()&&!drawerOpen)openDrawerDom();return}
+  applyRoute();
 });
 
 /* ---------- 5. Drawer (<=1024px) ---------- */
@@ -290,7 +323,7 @@ function openDrawer(){
 }
 function closeDrawer(){
   if(!drawerOpen)return;
-  if(history.state?.overlay==="drawer")history.back(); /* popstate yang menutup DOM */
+  if(history.state?.overlay==="drawer")history.back();
   else closeDrawerDom();
 }
 menuBtn.addEventListener("click",()=>drawerOpen?closeDrawer():openDrawer());
@@ -419,8 +452,6 @@ async function syncUserHistory(){
   const d=await api("/api/conversations");
   conversations=(d.conversations||[]).map(c=>({id:c.id,serverId:c.id,title:c.title,messages:[],updated:(c.updated_at||0)*1000,loaded:false}));
 }
-/* Konteks yang dikirim ke server. Sama dengan batas di server (12 pesan / 8000 karakter / 2000 per pesan);
-   giliran yang gagal tidak pernah masuk chat.messages sehingga tidak ikut terkirim. */
 function buildHistory(chat){
   const out=[];let total=0;
   for(let i=chat.messages.length-1;i>=0&&out.length<12;i--){
@@ -431,9 +462,6 @@ function buildHistory(chat){
   while(out.length&&out[0].role!=="user")out.shift();
   return out;
 }
-/* Kebijakan kegagalan: giliran yang gagal TIDAK disimpan (server atomik: pesan user + jawaban disimpan bersamaan hanya jika AI berhasil).
-   Gelembung error hanya tampil di layar ini, punya tombol "Coba lagi", dan hilang saat chat dimuat ulang. */
-/* Menunjukkan link mana yang benar-benar terbaca (atau gagal dan kenapa) di bawah jawaban; teks diisi lewat textContent. */
 function appendSources(links){
   const row=messagesEl.lastElementChild;const body=row&&row.querySelector(".message-body");if(!body||!links||!links.length)return;
   const box=document.createElement("div");box.className="sources";
@@ -449,7 +477,7 @@ function appendFailedTurn(message,text,noRetry=false){
   appendMessage("assistant",message);
   const row=messagesEl.lastElementChild;const body=row&&row.querySelector(".message-body");if(!body)return;
   row.classList.add("failed");
-  if(noRetry)return; /* batas harian: mencoba lagi sekarang percuma */
+  if(noRetry)return;
   const btn=document.createElement("button");btn.type="button";btn.className="retry-btn";btn.textContent="↻ Coba lagi";
   btn.addEventListener("click",()=>{
     if(busy||loadingChat)return;
@@ -481,11 +509,10 @@ async function submit(){
     if(data.saveWarning)toast(data.saveWarning);
     else if(!stillActive())toast("Jawaban untuk \""+chat.title+"\" sudah siap");
     else toast("Selesai dalam "+((Date.now()-start)/1000).toFixed(1)+" detik");
-    /* Server memperlakukan sesi kedaluwarsa sebagai guest (chat tetap jalan, tidak tersimpan): deteksi di sini. */
     if(state===AppState.AUTH&&!data.saved&&!data.saveWarning)verifySession();
   }catch(e){
     const message="Maaf, permintaan gagal diproses. "+(e.message||"Periksa koneksi lalu coba lagi.");
-    const at=chat.messages.indexOf(userEntry);if(at>=0)chat.messages.splice(at,1); /* giliran gagal tidak disimpan */
+    const at=chat.messages.indexOf(userEntry);if(at>=0)chat.messages.splice(at,1);
     if(stillActive()){$("typing")?.remove();appendFailedTurn(message,text,e.code==="daily_limit")}
     toast("Permintaan gagal");
   }finally{busy=false;lockComposer();renderHistory();if(!isDrawerMode())promptEl.focus()}
@@ -525,7 +552,6 @@ $("gateRetry").addEventListener("click",boot);
 $("googleRetry").addEventListener("click",()=>loadGoogle(true));
 $("chatForm").addEventListener("submit",e=>{e.preventDefault();submit()});
 promptEl.addEventListener("input",resizePrompt);
-/* Enter sengaja TIDAK mengirim: Enter = baris baru di semua perangkat. Satu-satunya cara kirim lewat UI adalah tombol panah. */
 window.addEventListener("resize",resizePrompt);
 $("newChat").addEventListener("click",newChat);
 $("clearHistory").addEventListener("click",clearHistory);
