@@ -33,6 +33,7 @@ Public AI workspace with Google sign-in, temporary guest sessions, private per-a
 | GET | `/api/agents` | Available agent IDs and names |
 | GET | `/api/usage` | Current visitor's daily quota usage and remaining units (private; no global totals) |
 | POST | `/api/chat` | Run a Coordinator or selected specialist; saves only for signed-in users |
+| POST | `/api/feedback` | Save or update helpful/not-helpful feedback for an assistant answer owned by the signed-in user |
 | GET | `/api/config` | Public Google sign-in configuration |
 | GET | `/api/auth/nonce` | One-time sign-in nonce |
 | POST | `/api/auth/google` | Verify Google ID token and create a session |
@@ -156,5 +157,6 @@ The workspace sidebar includes a **Penggunaan** panel backed by `GET /api/usage`
 - Tables come from migration `0003`. If it has not been applied, chat keeps working, the memory API answers `503 memory_unavailable`, and nothing is stored. **Run `bor-ai-deploy` to apply migrations.**
 - Persistent conversation pinning uses the additive `0004_conversation_pinning.sql` migration.
 - Archive/restore uses the additive `0005_conversation_archive.sql` migration. The production workflow applies pending migrations only when the founder explicitly runs the deploy workflow; CI uses an isolated test database.
+- Answer feedback uses the additive `0007_answer_feedback.sql` migration. Signed-in users can rate a saved assistant answer as helpful/not helpful and optionally add a reason (maximum 500 characters). Feedback is attached to the exact assistant message, can be updated, and is protected by account/conversation ownership checks. Guest feedback is not persisted. The production workflow applies this migration only when the founder explicitly runs the deploy workflow; CI uses an isolated test database.
 - Integrations with other platforms: see `docs/INTEGRATIONS-PLAN.md` (proposal).
 
