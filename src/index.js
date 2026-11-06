@@ -1026,6 +1026,7 @@ export default {
         const owned = await env.DB.prepare("SELECT id FROM conversations WHERE id = ? AND user_id = ?").bind(body.conversationId, user.id).first();
         if (!owned) return json({ error: "Chat tidak ditemukan." }, 404);
       }
+      if (body.replaceLastTurn && !user) return json({ error: "Penggantian giliran memerlukan akun yang masuk." }, 401);
       if (env.CHAT_LIMITER?.limit) {
         let rateLimit;
         try {
@@ -1049,6 +1050,7 @@ export default {
             const latest = await env.DB.prepare("SELECT rowid AS rid, role FROM messages WHERE conversation_id = ? AND user_id = ? ORDER BY rowid DESC LIMIT 2").bind(body.conversationId, user.id).all();
             const rows = latest.results || [];
             if (rows.length !== 2 || rows[0].role !== "assistant" || rows[1].role !== "user") {
+              await refundUsage(env, usage.day, usage.charges);
               return json({ error: "Tidak ada giliran terakhir yang bisa diganti." }, 409);
             }
             replaceRows = rows.map(row => row.rid);
@@ -1058,9 +1060,7 @@ export default {
           } else {
             history = body.conversationId ? await loadStoredHistory(env, user, body.conversationId) : [];
           }
-        } catch (error) { console.error("Chat history lookup failed:", error); return json({ error: "Riwayat chat gagal dimuat. Coba muat ulang." }, 503); }
-      } else if (body.replaceLastTurn) {
-        return json({ error: "Penggantian giliran memerlukan akun yang masuk." }, 401);
+        } catch (error) { console.error("Chat history lookup failed:", error); await refundUsage(env, usage.day, usage.charges); return json({ error: "Riwayat chat gagal dimuat. Coba muat ulang." }, 503); }
       }
       // Single answers may retry once (2 calls); the multi-agent chain gets its own total budget.
       const perCallMs = positiveMs(env.AI_CALL_TIMEOUT_MS, AI_CALL_TIMEOUT_DEFAULT_MS);
