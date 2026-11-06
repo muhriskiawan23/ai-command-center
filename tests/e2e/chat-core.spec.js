@@ -203,6 +203,8 @@ test("akun: judul percakapan dapat diubah dan tetap tersimpan setelah reload", a
   await expect(page.locator("#prompt")).toBeVisible();
   await send(page, "Judul awal percakapan");
   await expect(page.locator(".message.assistant:not(#typing)")).toHaveCount(1);
+  // Mobile/tablet layouts keep conversation history inside the closed navigation drawer.
+  if (page.viewportSize().width <= 1024) await page.locator("#menuBtn").click();
 
   page.on("dialog", (dialog) => dialog.accept("Judul hasil edit"));
   await page.getByRole("button", { name: "Ubah judul Judul awal percakapan" }).click();
