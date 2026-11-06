@@ -132,3 +132,29 @@ test("link ke host aplikasi sendiri tidak dibaca", async () => {
   assert.equal(body.links[0].ok, false);
   await app.close();
 });
+
+test("sitasi palsu dihapus secara deterministik ketika semua tautan gagal dibaca", async () => {
+  const { app, post } = await setup(async () => new Response("blocked", { status: 403 }));
+  app.control.aiText = "Cloud computing adalah layanan komputasi awan [1]. Sumber: [1].";
+  const response = await post("Jelaskan isi https://contoh.id/cloud");
+  const body = await response.json();
+  assert.equal(response.status, 200);
+  assert.ok(!/\\[1\\]/.test(body.response), body.response);
+  assert.match(body.response, /tidak ada tautan yang berhasil dibaca/);
+  assert.equal(body.links[0].ok, false);
+  await app.close();
+});
+
+test("hanya ID sitasi dari sumber sukses yang dipertahankan", async () => {
+  const { app, post } = await setup(async (url) => url.includes("gagal") ? new Response("blocked", { status: 403 }) : okPage()());
+  app.control.aiText = "Harga beras medium Rp 14.500/kg [1]. Klaim lain tidak didukung [2].";
+  const response = await post("Bandingkan https://berhasil.id/data dan https://gagal.id/data");
+  const body = await response.json();
+  assert.equal(response.status, 200);
+  assert.match(body.response, /Rp 14\\.500\\/kg \\[1\\]/);
+  assert.ok(!/\\[2\\]/.test(body.response), body.response);
+  assert.match(body.response, /sitasi yang tidak cocok/);
+  assert.deepEqual(body.links.map((link) => link.ok), [true, false]);
+  await app.close();
+});
+
