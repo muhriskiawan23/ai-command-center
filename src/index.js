@@ -1289,7 +1289,15 @@ export default {
         }
         throwIfCancelled(request.signal);
         // Enforce citation integrity against successful fetches; prompts alone are not a security boundary.
-        if (links.length && typeof result.response === "string") result.response = validateCitationReferences(result.response, links);
+        if (links.length) {
+          if (typeof result.response === "string") result.response = validateCitationReferences(result.response, links);
+          if (Array.isArray(result.steps)) {
+            result.steps = result.steps.map((step) => ({
+              ...step,
+              ...(typeof step.output === "string" ? { output: validateCitationReferences(step.output, links) } : {})
+            }));
+          }
+        }
         // Save explicit memory only after successful model generation, so a failed turn
         // cannot silently mutate memory while the UI reports that the request failed.
         if (pendingRememberText !== null) {

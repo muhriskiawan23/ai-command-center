@@ -139,7 +139,7 @@ test("sitasi palsu dihapus secara deterministik ketika semua tautan gagal dibaca
   const response = await post("Jelaskan isi https://contoh.id/cloud");
   const body = await response.json();
   assert.equal(response.status, 200);
-  assert.ok(!/\\[1\\]/.test(body.response), body.response);
+  assert.ok(!body.response.includes("[1]"), body.response);
   assert.match(body.response, /tidak ada tautan yang berhasil dibaca/);
   assert.equal(body.links[0].ok, false);
   await app.close();
@@ -152,7 +152,7 @@ test("hanya ID sitasi dari sumber sukses yang dipertahankan", async () => {
   const body = await response.json();
   assert.equal(response.status, 200);
   assert.ok(body.response.includes("Rp 14.500/kg [1]"), body.response);
-  assert.ok(!/\\[2\\]/.test(body.response), body.response);
+  assert.ok(!body.response.includes("[2]"), body.response);
   assert.match(body.response, /sitasi yang tidak cocok/);
   assert.deepEqual(body.links.map((link) => link.ok), [true, false]);
   await app.close();
