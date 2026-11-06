@@ -29,7 +29,7 @@ export function parseCsvRows(text, delimiter = detectCsvDelimiter(text), options
   const maxRows = options.maxRows ?? CSV_MAX_ROWS, maxColumns = options.maxColumns ?? CSV_MAX_COLUMNS;
   const input = String(text).replace(/^\uFEFF/, "");
   const rows = [];
-  let row = [], field = "", quoted = false, endedOnRow = false;
+  let row = [], field = "", quoted = false, endedOnRow = false, columnsTruncated = false;
   for (let i = 0; i < input.length; i++) {
     const char = input[i];
     if (quoted) {
@@ -41,17 +41,17 @@ export function parseCsvRows(text, delimiter = detectCsvDelimiter(text), options
     else if (char === "\n" || char === "\r") {
       if (char === "\r" && input[i + 1] === "\n") i++;
       row.push(field); field = "";
-      if (row.some(cell => cell.length) && rows.length < maxRows + 2) rows.push(row.slice(0, maxColumns));
+      if (row.some(cell => cell.length) && rows.length < maxRows + 2) { if (row.length > maxColumns) columnsTruncated = true; rows.push(row.slice(0, maxColumns)); }
       row = []; endedOnRow = true;
     } else { field += char; endedOnRow = false; }
   }
   if (quoted) throw new Error("CSV memiliki tanda kutip yang tidak berpasangan.");
   if (!endedOnRow || field.length || row.length) {
     row.push(field);
-    if (row.some(cell => cell.length) && rows.length < maxRows + 2) rows.push(row.slice(0, maxColumns));
+    if (row.some(cell => cell.length) && rows.length < maxRows + 2) { if (row.length > maxColumns) columnsTruncated = true; rows.push(row.slice(0, maxColumns)); }
   }
   const truncated = rows.length > maxRows + 1;
-  return { rows: rows.slice(0, maxRows + 1), truncated, delimiter };
+  return { rows: rows.slice(0, maxRows + 1), truncated, columnsTruncated, delimiter };
 }
 function safeCell(value) {
   return String(value ?? "").replace(/\|/g, "\\|").replace(/[\r\n]+/g, " ").trim();
@@ -60,7 +60,8 @@ function parseNumber(value, delimiter) {
   const raw = String(value ?? "").trim().replace(/[ \u00a0]/g, "");
   if (!raw) return null;
   let normalized = raw;
-  if (delimiter !== "," && /^-?\d+,\d+$/.test(raw)) normalized = raw.replace(",", ".");
+  if (delimiter !== "," && /^-?\d{1,3}(\.\d{3})+(,\d+)?$/.test(raw)) normalized = raw.replace(/\./g, "").replace(",", ".");
+  else if (delimiter !== "," && /^-?\d+,\d+$/.test(raw)) normalized = raw.replace(",", ".");
   else if (/^-?\d{1,3}(,\d{3})+(\.\d+)?$/.test(raw)) normalized = raw.replace(/,/g, "");
   if (!/^-?\d+(\.\d+)?$/.test(normalized)) return null;
   const number = Number(normalized);
@@ -72,6 +73,7 @@ function summarizeColumns(headers, dataRows, delimiter) {
     const numbers = values.map(value => parseNumber(value, delimiter)).filter(value => value !== null);
     if (!values.length || numbers.length !== values.length) return null;
     const sum = numbers.reduce((total, value) => total + value, 0);
+    if (!Number.isFinite(sum)) return null;
     return { header, count: numbers.length, sum, average: sum / numbers.length, min: Math.min(...numbers), max: Math.max(...numbers) };
   }).filter(Boolean);
 }
@@ -101,12 +103,12 @@ export function parseCsvText(text, options = {}) {
   else lines.push("- Tidak ada kolom numerik yang dapat diringkas secara konsisten.");
   lines.push("", "Pratinjau baris awal (nilai sel diperlakukan sebagai teks):", "| " + headers.map(safeCell).join(" | ") + " |", "| " + headers.map(() => "---").join(" | ") + " |");
   for (const row of preview) lines.push("| " + headers.map((_, index) => safeCell(row[index])).join(" | ") + " |");
-  if (dataRows.length > preview.length || parsed.truncated) lines.push("", "CATATAN: Pratinjau hanya menampilkan " + preview.length + " dari " + dataRows.length + " baris yang diproses. Ringkasan numerik dihitung dari seluruh baris yang diproses.");
+  if (dataRows.length > preview.length || parsed.truncated || parsed.columnsTruncated) lines.push("", "CATATAN: Pratinjau menampilkan " + preview.length + " dari " + dataRows.length + " baris yang diproses. Dataset dapat memiliki baris/kolom tambahan yang tidak diproses; ringkasan numerik hanya mencakup data yang diproses.");
   let content = lines.join("\n");
   const maxChars = options.maxChars ?? CSV_CONTEXT_MAX_CHARS;
   const contentTruncated = content.length > maxChars;
   if (contentTruncated) content = content.slice(0, maxChars - 45) + "\n[Konten CSV dipotong untuk batas konteks.]";
-  return { name: String(options.name || "spreadsheet.csv").slice(0, 120), content, rowCount: dataRows.length, columnCount: headers.length, truncated: parsed.truncated || dataRows.length > preview.length || contentTruncated, delimiter: parsed.delimiter };
+  return { name: String(options.name || "spreadsheet.csv").slice(0, 120), content, rowCount: dataRows.length, columnCount: headers.length, truncated: parsed.truncated || parsed.columnsTruncated || dataRows.length > preview.length || contentTruncated, delimiter: parsed.delimiter };
 }
 export async function parseCsvLocally(file, options = {}) {
   if (!file || typeof file.text !== "function" || typeof file.size !== "number") throw new Error("File CSV tidak dapat dibaca.");
