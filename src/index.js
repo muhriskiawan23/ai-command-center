@@ -1,4 +1,5 @@
 import { extractUrls, readLinks, buildPageContext, summarizeLinks } from "./links.js";
+import { validateCitationReferences } from "./citations.js";
 import { MEMORY_MAX_ITEMS, MEMORY_MAX_CHARS, getMemoryState, setMemoryEnabled, addMemory, deleteMemory, deleteAllMemories, parseRememberCommand, buildMemoryBlock } from "./memory.js";
 
 const MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
@@ -1287,6 +1288,8 @@ export default {
           result = { agent: AGENTS[agentId].name, model: MODEL, workflow: "single-agent", response };
         }
         throwIfCancelled(request.signal);
+        // Enforce citation integrity against successful fetches; prompts alone are not a security boundary.
+        if (links.length && typeof result.response === "string") result.response = validateCitationReferences(result.response, links);
         // Save explicit memory only after successful model generation, so a failed turn
         // cannot silently mutate memory while the UI reports that the request failed.
         if (pendingRememberText !== null) {
