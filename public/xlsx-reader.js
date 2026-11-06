@@ -5,7 +5,7 @@ const MAX_COLUMNS = 100;
 const MAX_CONTEXT_CHARS = 10_000;
 
 function cleanCell(value) {
-  return String(value ?? "").replace(/[\\u0000-\\u0008\\u000b\\u000c\\u000e-\\u001f\\u007f]/g, " ").replace(/\\s+/g, " ").trim();
+  return String(value ?? "").replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim();
 }
 function displayCell(cell) {
   if (!cell) return "";
@@ -54,8 +54,8 @@ export function parseXlsxWorkbook(workbook, options = {}) {
     }
     const headers = (matrix[0] || []).map((value, index) => value || "Kolom " + (index + 1));
     const dataRows = matrix.slice(1);
-    output.push("| " + headers.map(v => v.replace(/\\|/g, "\\|")).join(" | ") + " |");
-    for (const row of dataRows) output.push("| " + row.map(v => v.replace(/\\|/g, "\\|")).join(" | ") + " |");
+    output.push("| " + headers.map(v => v.replace(/\|/g, "\|")).join(" | ") + " |");
+    for (const row of dataRows) output.push("| " + row.map(v => v.replace(/\|/g, "\|")).join(" | ") + " |");
     const sums = [];
     for (let c = 0; c < takeColumns; c++) {
       const values = [];
@@ -74,9 +74,9 @@ export function parseXlsxWorkbook(workbook, options = {}) {
     if (rowCount >= maxRows || columnCount >= maxColumns && availableColumns > takeColumns) { truncated = true; break; }
   }
   if (!output.length) throw new Error("Tidak ada data tabel yang dapat dibaca dari workbook.");
-  let content = output.join("\\n");
+  let content = output.join("\n");
   if (content.length > MAX_CONTEXT_CHARS) { content = content.slice(0, MAX_CONTEXT_CHARS); truncated = true; }
-  if (truncated) content += "\\n\\nCATATAN: Data workbook dibatasi oleh batas sheet, baris, kolom, atau panjang konteks.";
+  if (truncated) content += "\n\nCATATAN: Data workbook dibatasi oleh batas sheet, baris, kolom, atau panjang konteks.";
   return { name: cleanCell(options.name || "spreadsheet.xlsx").slice(0, 120), kind: "xlsx", content, rowCount, columnCount, sheetCount: names.length, truncated };
 }
 export async function parseXlsxLocally(file, options = {}) {
