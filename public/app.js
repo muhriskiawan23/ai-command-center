@@ -106,6 +106,26 @@ function downloadMarkdown(value, role="assistant"){
   URL.revokeObjectURL(url);
   toast("Markdown berhasil diunduh.");
 }
+function exportConversationFile(){
+  if(busy||loadingChat)return;
+  const chat=conversations.find(item=>item.id===activeId);
+  if(!chat||!Array.isArray(chat.messages)||!chat.messages.length){toast("Belum ada pesan untuk diekspor.");return;}
+  const title=String(chat.title||"Percakapan BOR AI").replace(/[\u0000-\u001f\u007f]/g," ").replace(/\s+/g," ").trim().slice(0,72)||"Percakapan BOR AI";
+  const lines=["BOR AI — Ekspor Percakapan","Judul: "+title,"Diekspor: "+new Date().toLocaleString(),"","CATATAN PRIVASI: Ekspor ini dapat berisi informasi pribadi atau sensitif. Simpan dengan aman dan bagikan hanya jika Anda memang menghendakinya."];
+  if(chat.truncated)lines.push("CATATAN KELENGKAPAN: Percakapan ini melebihi batas tampilan 500 pesan. File ini hanya berisi 500 pesan terakhir yang tersedia.");
+  lines.push("","=".repeat(64));
+  for(const message of chat.messages){
+    if(!message||!["user","assistant"].includes(message.role)||typeof message.content!=="string")continue;
+    lines.push("",message.role==="user"?"PENGGUNA":"BOR AI","-".repeat(32),message.content);
+  }
+  const blob=new Blob([lines.join("\n")],{type:"text/plain;charset=utf-8"});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  const safeName=title.toLocaleLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,48)||"percakapan";
+  a.href=url;a.download="bor-ai-"+safeName+".txt";a.click();
+  URL.revokeObjectURL(url);
+  toast("Percakapan berhasil diekspor.");
+}
 
 /* ---------- 2. State aplikasi ---------- */
 const AppState={INIT:"initializing",UNAUTH:"unauthenticated",GUEST:"guest",AUTH:"authenticated",EXPIRED:"session-expired",ERROR:"error"};
@@ -114,7 +134,7 @@ const sidebar=$("sidebar"),backdrop=$("backdrop"),menuBtn=$("menuBtn"),workspace
 let state=AppState.INIT,conversations=[],activeId=null,busy=false,currentUser=null,historyQuery="",archivedView=false;
 /* navSeq: setiap navigasi chat menaikkan penghitung ini; pemuatan yang tertimpa navigasi lebih baru dibatalkan. */
 let navSeq=0,loadingChat=false;
-function lockComposer(){const lock=busy||loadingChat;$("send").disabled=lock;promptEl.readOnly=lock}
+function lockComposer(){const lock=busy||loadingChat;$("send").disabled=lock;promptEl.readOnly=lock;$("exportConversation").disabled=lock}
 
 /* Yang disimpan di sessionStorage HANYA penanda "sudah memilih Guest" (agar refresh tidak kembali ke Welcome).
    Isi chat guest tidak pernah ditulis ke storage mana pun. */
@@ -135,7 +155,7 @@ function setState(next,notice=""){
 }
 function resetChatView(){
   navSeq++;loadingChat=false;lockComposer();
-  activeId=null;messagesEl.replaceChildren();messagesEl.hidden=true;welcomeEl.hidden=false;
+  activeId=null;$("exportConversation").hidden=true;messagesEl.replaceChildren();messagesEl.hidden=true;welcomeEl.hidden=false;
   $("workflow").hidden=true;promptEl.value="";resizePrompt();
 }
 function clearSessionData(){currentUser=null;conversations=[];resetChatView();renderHistory()}
@@ -278,7 +298,7 @@ async function applyRoute(){
 async function openRemoteChat(cid){
   try{
     const d=await api("/api/conversations/"+encodeURIComponent(cid));
-    if(!conversations.some(c=>c.id===cid))conversations.push({id:cid,serverId:cid,title:d.conversation?.title||"Percakapan",pinned:Boolean(d.conversation?.pinned),messages:d.messages||[],updated:(d.conversation?.updated_at||0)*1000,loaded:true});
+    if(!conversations.some(c=>c.id===cid))conversations.push({id:cid,serverId:cid,title:d.conversation?.title||"Percakapan",pinned:Boolean(d.conversation?.pinned),messages:d.messages||[],truncated:Boolean(d.truncated),updated:(d.conversation?.updated_at||0)*1000,loaded:true});
     return showChat(cid);
   }catch{return false}
 }
@@ -430,12 +450,12 @@ async function showChat(cid){
     try{
       const d=await api("/api/conversations/"+encodeURIComponent(c.serverId));
       if(seq!==navSeq)return null;
-      c.messages=d.messages||[];c.loaded=true;c.title=d.conversation?.title||c.title;c.pinned=Boolean(d.conversation?.pinned);if(d.truncated)toast("Percakapan panjang: hanya 500 pesan terakhir yang ditampilkan.");
+      c.messages=d.messages||[];c.loaded=true;c.truncated=Boolean(d.truncated);c.title=d.conversation?.title||c.title;c.pinned=Boolean(d.conversation?.pinned);if(d.truncated)toast("Percakapan panjang: hanya 500 pesan terakhir yang ditampilkan.");
     }catch(e){if(seq!==navSeq)return null;toast(e.message||"Gagal memuat chat");return false}
     finally{if(seq===navSeq){loadingChat=false;lockComposer()}}
   }
   if(seq!==navSeq)return null;
-  activeId=cid;welcomeEl.hidden=true;messagesEl.hidden=false;messagesEl.replaceChildren();
+  activeId=cid;$("exportConversation").hidden=false;welcomeEl.hidden=true;messagesEl.hidden=false;messagesEl.replaceChildren();
   for(let i=0;i<c.messages.length;i++){const m=c.messages[i];const last=i===c.messages.length-1;const previous=i===c.messages.length-2;appendMessage(m.role,m.content,false,{edit:m.role==="user"&&previous&&c.messages.at(-1)?.role==="assistant",regenerate:m.role==="assistant"&&last&&c.messages.at(-2)?.role==="user"});}
   $("workflow").hidden=true;renderHistory();conversation.scrollTop=conversation.scrollHeight;
   return true;
@@ -512,7 +532,7 @@ async function submit(options={}){
   busy=true;lockComposer();const agent=$("agent").value;
   let createdNew=false;
   if(!activeId){activeId=id();createdNew=true;conversations.push({id:activeId,serverId:null,title:text.replace(/\s+/g," ").slice(0,72),messages:[],updated:Date.now(),loaded:true})}
-  const chat=conversations.find(c=>c.id===activeId);const startId=chat.id;
+  const chat=conversations.find(c=>c.id===activeId);$("exportConversation").hidden=false;const startId=chat.id;
   const history=buildHistory(chat);const userEntry={role:"user",content:text};chat.messages.push(userEntry);chat.updated=Date.now();
   welcomeEl.hidden=true;messagesEl.hidden=false;appendMessage("user",text);promptEl.value="";resizePrompt();showTyping();renderHistory();
   if(createdNew)replaceRoute({name:"chat",id:chat.id});
@@ -655,6 +675,7 @@ promptEl.addEventListener("input",resizePrompt);
 /* Enter sengaja TIDAK mengirim: Enter = baris baru di semua perangkat. Satu-satunya cara kirim lewat UI adalah tombol panah. */
 window.addEventListener("resize",resizePrompt);
 $("newChat").addEventListener("click",newChat);
+$("exportConversation").addEventListener("click",exportConversationFile);
 $("clearHistory").addEventListener("click",clearHistory);
 $("toggleArchived").addEventListener("click",async()=>{
   if(busy||loadingChat)return;

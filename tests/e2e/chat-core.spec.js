@@ -278,6 +278,30 @@ test("akun: percakapan dapat disematkan, diprioritaskan, dan tetap tersimpan set
 });
 
 
+
+test("akun: ekspor percakapan mengunduh seluruh pesan yang dimuat dan menyertakan peringatan privasi", async ({ page, app, context }) => {
+  await loginAs(context, app, ALICE);
+  await page.goto(app.url);
+  await expect(page.locator("#prompt")).toBeVisible();
+  await send(page, "Pesan privat untuk ekspor");
+  await expect(page.locator(".message.assistant:not(#typing)")).toHaveCount(1);
+  const exportButton = page.locator("#exportConversation");
+  await expect(exportButton).toBeVisible();
+  await expect(exportButton).toBeEnabled();
+
+  const downloadPromise = page.waitForEvent("download");
+  await exportButton.click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toMatch(/^bor-ai-pesan-privat-untuk-ekspor\.txt$/);
+  const filePath = await download.path();
+  const { readFile } = await import("node:fs/promises");
+  const exported = await readFile(filePath, "utf8");
+  expect(exported).toContain("BOR AI — Ekspor Percakapan");
+  expect(exported).toContain("Pesan privat untuk ekspor");
+  expect(exported).toContain("CATATAN PRIVASI");
+  expect(exported).toContain("BOR AI");
+});
+
 test("akun: percakapan dapat diarsipkan dan dipulihkan dari tampilan arsip", async ({ page, app, context }) => {
   await loginAs(context, app, ALICE);
   await page.goto(app.url);
