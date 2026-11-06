@@ -634,7 +634,7 @@ function renderPdfAttachment(){
 function appendSpreadsheetSource(spreadsheet){
   const row=messagesEl.lastElementChild;const body=row&&row.querySelector(".message-body");if(!body||!spreadsheet)return;
   const box=document.createElement("div");box.className="sources csv-source";
-  const head=document.createElement("strong");head.textContent="File CSV yang dianalisis:";box.append(head);
+  const head=document.createElement("strong");head.textContent="Spreadsheet yang dianalisis:";box.append(head);
   const item=document.createElement("div");item.className="source ok";
   item.textContent="✓ "+String(spreadsheet.name||"spreadsheet.csv")+(Number.isSafeInteger(spreadsheet.rowCount)?" · "+spreadsheet.rowCount.toLocaleString("id-ID")+" baris":"")+(Number.isSafeInteger(spreadsheet.columnCount)?" · "+spreadsheet.columnCount+" kolom":"")+(spreadsheet.truncated?" · ringkasan dibatasi":"");
   box.append(item);body.append(box);
