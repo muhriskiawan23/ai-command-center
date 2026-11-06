@@ -31,6 +31,7 @@
     {
       "binding": "DB",
       "database_name": "bor-ai-chat",
+      "database_id": "d71231a9-9a04-471c-b904-d1bc843940aa",
       "migrations_dir": "migrations"
     }
   ]
