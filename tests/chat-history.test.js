@@ -151,7 +151,7 @@ test("akun: retry dengan request ID yang sama memutar ulang jawaban tersimpan ta
 
 test("akun: sumber sitasi link tersimpan dan dikembalikan saat percakapan dibuka ulang", async () => {
   const { app, post, token } = await setup({ extraEnv: {
-    LINK_FETCHER: async () => new Response("<!doctype html><html><head><title>Artikel Uji</title></head><body><p>Fakta dari sumber uji.</p></body></html>", { headers: { "content-type": "text/html" } })
+    LINK_FETCHER: async () => new Response("<!doctype html><html><head><title>Artikel Uji</title></head><body><p>Ini adalah paragraf sumber uji yang cukup panjang supaya dianggap berisi teks yang berguna bagi model dan dapat diverifikasi dalam riwayat percakapan tersimpan.</p></body></html>", { headers: { "content-type": "text/html" } })
   } });
   const requestId = "c8e4f9c2-48a1-4a8d-9c33-8d9dbd7b1c23";
   const firstResponse = await post({ message: "Ringkas https://example.com/article", requestId });
