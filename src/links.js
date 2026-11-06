@@ -212,6 +212,26 @@ export function readLinks(urls, options) {
   return Promise.all(urls.map((url) => readLink(url, options)));
 }
 
+// Remove model-generated citation markers unless they point to a successfully fetched source.
+// This is a deterministic safety net; prompt instructions alone cannot guarantee citation integrity.
+export function validateCitationReferences(response, sources = []) {
+  if (typeof response !== "string") return response;
+  const validIds = new Set(
+    sources.filter((source) => source?.ok === true)
+      .map((source) => Number(source.sourceId))
+      .filter((id) => Number.isInteger(id) && id > 0)
+  );
+  const cleaned = response.replace(/\[(\d{1,3})\](?!\()/g, (marker, rawId) =>
+    validIds.has(Number(rawId)) ? marker : ""
+  ).trim();
+  if (validIds.size) return cleaned;
+  const failures = sources.filter((source) => source?.ok === false)
+    .map((source) => [source.host || "URL", source.reason].filter(Boolean).join(": "))
+    .filter(Boolean);
+  const detail = failures.length ? ` Detail: ${failures.join("; ")}.` : "";
+  return `${cleaned}\n\nCatatan sumber: tidak ada URL yang berhasil dibaca. Jawaban di atas tidak bersumber dari konten URL yang diberikan dan tidak memiliki sitasi terverifikasi.${detail}`.trim();
+}
+
 // ---- Output for the model and for the UI ------------------------------------------------------------------------
 
 export function buildPageContext(results) {
