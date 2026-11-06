@@ -949,11 +949,21 @@ async function readJsonBody(request) {
   } catch { return null; }
 }
 
-async function persistConversation(env, user, conversationId, message, response) {
+async function persistConversation(env, user, conversationId, message, response, replaceRows = []) {
   const now = Math.floor(Date.now() / 1000);
   const id = conversationId || crypto.randomUUID();
   const title = message.replace(/\s+/g, " ").slice(0, 72) || "Percakapan baru";
   const statements = [];
+  if (replaceRows.length) {
+    const latest = await env.DB.prepare("SELECT rowid AS rid, role FROM messages WHERE conversation_id = ? AND user_id = ? ORDER BY rowid DESC LIMIT 2").bind(id, user.id).all();
+    const rows = latest.results || [];
+    if (rows.length !== 2 || rows[0].role !== "assistant" || rows[1].role !== "user" ||
+        !replaceRows.includes(rows[0].rid) || !replaceRows.includes(rows[1].rid)) {
+      throw new Error("Percakapan berubah. Muat ulang chat sebelum mengedit atau membuat ulang jawaban.");
+    }
+    statements.push(env.DB.prepare("DELETE FROM messages WHERE rowid IN (?, ?) AND conversation_id = ? AND user_id = ?")
+      .bind(replaceRows[0], replaceRows[1], id, user.id));
+  }
   if (!conversationId) {
     statements.push(env.DB.prepare("INSERT INTO conversations (id, user_id, title, created_at, updated_at) VALUES (?, ?, ?, ?, ?)")
       .bind(id, user.id, title, now, now));
@@ -1004,6 +1014,8 @@ export default {
       if (!message) return json({ error: "Pesan tidak boleh kosong." }, 400);
       if (message.length > 12000) return json({ error: "Pesan terlalu panjang (maksimal 12.000 karakter)." }, 400);
       if (body?.conversationId !== undefined && (typeof body.conversationId !== "string" || !/^[a-zA-Z0-9-]{8,80}$/.test(body.conversationId))) return json({ error: "ID percakapan tidak valid." }, 400);
+      if (body?.replaceLastTurn !== undefined && typeof body.replaceLastTurn !== "boolean") return json({ error: "Permintaan penggantian giliran tidak valid." }, 400);
+      if (body?.replaceLastTurn && !body.conversationId) return json({ error: "Percakapan untuk diganti tidak ditemukan." }, 400);
       const clientHistory = parseClientHistory(body?.history);
       if (clientHistory.error) return json({ error: clientHistory.error }, 400);
       let user = null;
@@ -1030,9 +1042,25 @@ export default {
       const usage = await enforceDailyLimits(env, request, user, (useMultiAgent ? MULTI_AGENT_UNITS : 1) + (found.urls.length ? 1 : 0));
       if (!usage.ok) return usage.response;
       let history = clientHistory.history;
+      let replaceRows = [];
       if (user) {
-        try { history = body.conversationId ? await loadStoredHistory(env, user, body.conversationId) : []; }
-        catch (error) { console.error("Chat history lookup failed:", error); history = []; }
+        try {
+          if (body.replaceLastTurn) {
+            const latest = await env.DB.prepare("SELECT rowid AS rid, role FROM messages WHERE conversation_id = ? AND user_id = ? ORDER BY rowid DESC LIMIT 2").bind(body.conversationId, user.id).all();
+            const rows = latest.results || [];
+            if (rows.length !== 2 || rows[0].role !== "assistant" || rows[1].role !== "user") {
+              return json({ error: "Tidak ada giliran terakhir yang bisa diganti." }, 409);
+            }
+            replaceRows = rows.map(row => row.rid);
+            const previous = await env.DB.prepare("SELECT role, content FROM messages WHERE conversation_id = ? AND user_id = ? AND rowid NOT IN (?, ?) ORDER BY rowid DESC LIMIT ?")
+              .bind(body.conversationId, user.id, replaceRows[0], replaceRows[1], HISTORY_MAX_MESSAGES).all();
+            history = trimHistory((previous.results || []).reverse());
+          } else {
+            history = body.conversationId ? await loadStoredHistory(env, user, body.conversationId) : [];
+          }
+        } catch (error) { console.error("Chat history lookup failed:", error); return json({ error: "Riwayat chat gagal dimuat. Coba muat ulang." }, 503); }
+      } else if (body.replaceLastTurn) {
+        return json({ error: "Penggantian giliran memerlukan akun yang masuk." }, 401);
       }
       // Single answers may retry once (2 calls); the multi-agent chain gets its own total budget.
       const perCallMs = positiveMs(env.AI_CALL_TIMEOUT_MS, AI_CALL_TIMEOUT_DEFAULT_MS);
@@ -1089,7 +1117,7 @@ export default {
         if (memoryNote && typeof result.response === "string") result.response = `${result.response}\n\n${memoryNote}`;
         if (user) {
           try {
-            result.conversationId = await persistConversation(env, user, body.conversationId || null, message, result.response);
+            result.conversationId = await persistConversation(env, user, body.conversationId || null, message, result.response, replaceRows);
             result.saved = true;
           } catch (error) {
             console.error("Chat persistence failed:", error);
