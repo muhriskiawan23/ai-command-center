@@ -278,7 +278,7 @@ async function applyRoute(){
 async function openRemoteChat(cid){
   try{
     const d=await api("/api/conversations/"+encodeURIComponent(cid));
-    if(!conversations.some(c=>c.id===cid))conversations.push({id:cid,serverId:cid,title:d.conversation?.title||"Percakapan",messages:d.messages||[],updated:(d.conversation?.updated_at||0)*1000,loaded:true});
+    if(!conversations.some(c=>c.id===cid))conversations.push({id:cid,serverId:cid,title:d.conversation?.title||"Percakapan",pinned:Boolean(d.conversation?.pinned),messages:d.messages||[],updated:(d.conversation?.updated_at||0)*1000,loaded:true});
     return showChat(cid);
   }catch{return false}
 }
@@ -391,7 +391,7 @@ $("memoryClearAll").addEventListener("click",async()=>{
 });
 
 /* ---------- 6. Chat ---------- */
-const sortedConversations=()=>[...conversations].sort((a,b)=>(b.updated||0)-(a.updated||0));
+const sortedConversations=()=>[...conversations].sort((a,b)=>Number(Boolean(b.pinned))-Number(Boolean(a.pinned))||(b.updated||0)-(a.updated||0));
 function renderHistory(){
   const nav=$("history");nav.replaceChildren();
   if(!inChatView()){$("historyCount").textContent="";return}
@@ -406,11 +406,12 @@ function renderHistory(){
     const icon=document.createElement("span");icon.textContent="▤";icon.setAttribute("aria-hidden","true");
     const title=document.createElement("span");title.textContent=c.title||"Percakapan baru";
     b.append(icon,title);b.title=c.title||"Percakapan baru";b.onclick=()=>selectChat(c.id);
+    const pin=document.createElement("button");pin.className="pin-chat";pin.type="button";pin.textContent=c.pinned?"★":"☆";pin.title=c.pinned?"Lepas sematan":"Sematkan";pin.setAttribute("aria-label",(c.pinned?"Lepas sematan ":"Sematkan ")+(c.title||"chat"));pin.setAttribute("aria-pressed",String(Boolean(c.pinned)));pin.onclick=e=>{e.stopPropagation();pinChat(c.id)};
     const rename=document.createElement("button");rename.className="rename-chat";rename.type="button";rename.textContent="✎";rename.title="Ubah judul";rename.setAttribute("aria-label","Ubah judul "+(c.title||"chat"));
     rename.onclick=e=>{e.stopPropagation();renameChat(c.id)};
     const del=document.createElement("button");del.className="delete-chat";del.type="button";del.textContent="×";del.title="Hapus chat";del.setAttribute("aria-label","Hapus "+(c.title||"chat"));
     del.onclick=e=>{e.stopPropagation();deleteChat(c.id)};
-    row.append(b,rename,del);nav.append(row);
+    row.append(b,pin,rename,del);nav.append(row);
   }
   if(!visible.length){
     const empty=document.createElement("p");empty.className="history-empty";empty.textContent=query?"Tidak ada percakapan yang cocok.":"Belum ada percakapan.";nav.append(empty);
@@ -426,7 +427,7 @@ async function showChat(cid){
     try{
       const d=await api("/api/conversations/"+encodeURIComponent(c.serverId));
       if(seq!==navSeq)return null;
-      c.messages=d.messages||[];c.loaded=true;c.title=d.conversation?.title||c.title;if(d.truncated)toast("Percakapan panjang: hanya 500 pesan terakhir yang ditampilkan.");
+      c.messages=d.messages||[];c.loaded=true;c.title=d.conversation?.title||c.title;c.pinned=Boolean(d.conversation?.pinned);if(d.truncated)toast("Percakapan panjang: hanya 500 pesan terakhir yang ditampilkan.");
     }catch(e){if(seq!==navSeq)return null;toast(e.message||"Gagal memuat chat");return false}
     finally{if(seq===navSeq){loadingChat=false;lockComposer()}}
   }
@@ -458,7 +459,7 @@ async function syncUserHistory(query=historyQuery){
   historyQuery=String(query||"").trim().slice(0,100);
   const params=historyQuery?"?q="+encodeURIComponent(historyQuery):"";
   const d=await api("/api/conversations"+params);
-  conversations=(d.conversations||[]).map(c=>({id:c.id,serverId:c.id,title:c.title,messages:[],updated:(c.updated_at||0)*1000,loaded:false}));
+  conversations=(d.conversations||[]).map(c=>({id:c.id,serverId:c.id,title:c.title,pinned:Boolean(c.pinned),messages:[],updated:(c.updated_at||0)*1000,loaded:false}));
 }
 /* Konteks yang dikirim ke server. Sama dengan batas di server (12 pesan / 8000 karakter / 2000 per pesan);
    giliran yang gagal tidak pernah masuk chat.messages sehingga tidak ikut terkirim. */
@@ -584,6 +585,18 @@ async function renameChat(cid){
     }else chat.title=title;
     renderHistory();toast("Judul chat diperbarui.");
   }catch(e){toast(e.message||"Gagal mengubah judul chat")}
+}
+async function pinChat(cid){
+  if(busy||loadingChat)return;
+  const chat=conversations.find(c=>c.id===cid);if(!chat)return;
+  const pinned=!Boolean(chat.pinned);
+  try{
+    if(state===AppState.AUTH){
+      if(!chat.serverId){toast("Kirim pesan terlebih dahulu agar chat tersimpan sebelum disematkan.");return}
+      await api("/api/conversations/"+encodeURIComponent(chat.serverId),{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({pinned})});
+    }
+    chat.pinned=pinned;renderHistory();toast(pinned?"Chat disematkan.":"Sematan chat dilepas.");
+  }catch(e){toast(e.message||"Gagal mengubah sematan chat")}
 }
 async function deleteChat(cid){
   if(busy)return;const chat=conversations.find(c=>c.id===cid);if(!chat)return;
