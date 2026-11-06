@@ -759,7 +759,7 @@ async function submit(options={}){
   busy=true;activeChatController=new AbortController();lockComposer();const agent=$("agent").value;
   let createdNew=false;
   if(!activeId){activeId=id();createdNew=true;conversations.push({id:activeId,serverId:null,title:text.replace(/\s+/g," ").slice(0,72),messages:[],updated:Date.now(),loaded:true})}
-  const chat=conversations.find(c=>c.id===activeId);$("exportConversation").hidden=false;const startId=chat.id;
+  const chat=conversations.find(c=>c.id===activeId);$("exportConversation").hidden=false;$("printConversation").hidden=false;const startId=chat.id;
   const history=buildHistory(chat);const userEntry={role:"user",content:text};chat.messages.push(userEntry);chat.updated=Date.now();
   welcomeEl.hidden=true;messagesEl.hidden=false;appendMessage("user",text);promptEl.value="";resizePrompt();showTyping();renderHistory();
   if(createdNew)replaceRoute({name:"chat",id:chat.id});
