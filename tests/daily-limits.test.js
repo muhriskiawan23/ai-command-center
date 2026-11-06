@@ -89,6 +89,34 @@ test("batas global: ditolak untuk semua; jatah pengguna yang ditolak dikembalika
   await app.close();
 });
 
+test("error saat menaikkan counter global mengembalikan jatah pengguna yang sudah terpotong", async () => {
+  const { app, post, usage } = await setup();
+  const originalPrepare = app.db.prepare.bind(app.db);
+  app.db.prepare = (sql) => {
+    const statement = originalPrepare(sql);
+    if (!sql.includes("INSERT INTO daily_usage")) return statement;
+    return {
+      bind: (...values) => {
+        const bound = statement.bind(...values);
+        if (values[1] !== "global") return bound;
+        return { ...bound, first: async () => { throw new Error("simulated global counter D1 failure"); } };
+      }
+    };
+  };
+
+  const failed = await post("global counter error");
+  assert.equal(failed.status, 503);
+  assert.equal(usage().guest, 0);                                    // charge parsial tidak boleh tertinggal
+  assert.equal(usage().global, undefined);                            // global belum berhasil dikonsumsi
+  assert.equal(app.aiCalls.length, 0);                                // AI tidak dipanggil setelah kegagalan kuota
+
+  app.db.prepare = originalPrepare;
+  assert.equal((await post("recovered")).status, 200);                // setelah DB pulih, permintaan normal berjalan
+  assert.equal(usage().guest, 1);
+  assert.equal(usage().global, 1);
+  await app.close();
+});
+
 test("AI gagal: jatah dikembalikan sehingga kegagalan tidak menghabiskan batas harian", async () => {
   const { app, post, usage } = await setup({ DAILY_LIMIT_GUEST: "2" });
   app.control.aiFail = true;
