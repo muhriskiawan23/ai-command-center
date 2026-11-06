@@ -180,7 +180,7 @@ test("PDF no-text response exposes a stable OCR fallback code and refunds usage"
   assert.equal(body.code, "PDF_NO_TEXT");
   assert.equal(calls, 1);
 });
-import { ocrScannedPdf } from "../public/pdf-ocr.js";
+import { extractPdfLocally, ocrScannedPdf } from "../public/pdf-ocr.js";
 
 test("browser OCR extracts page text locally and terminates the worker", async () => {
   const events = [];
@@ -222,5 +222,23 @@ test("browser OCR rejects documents above ten pages before loading OCR model", a
     }),
     /maksimal 10 halaman/
   );
+  assert.equal(workerStarted, false);
+});
+
+test("text-layer PDFs are extracted locally without starting the OCR worker", async () => {
+  let workerStarted = false;
+  const pdfjs = { getDocument: () => ({ promise: Promise.resolve({
+    numPages: 1,
+    getPage: async () => ({
+      getTextContent: async () => ({ items: [{ str: "Teks PDF asli" }, { str: "halaman satu" }] }),
+      cleanup() {}
+    }),
+    destroy: async () => {}
+  }) }) };
+  const result = await extractPdfLocally({ name: "text.pdf", arrayBuffer: async () => new ArrayBuffer(8) }, {
+    pdfjs, createWorker: async () => { workerStarted = true; }
+  });
+  assert.match(result.content, /Teks PDF asli halaman satu/);
+  assert.equal(result.ocr, false);
   assert.equal(workerStarted, false);
 });
