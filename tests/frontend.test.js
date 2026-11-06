@@ -1,11 +1,21 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import vm from "node:vm";
 import { readFileSync } from "node:fs";
 
 const page = readFileSync(new URL("../public/index.html", import.meta.url), "utf8");
 const appJs = readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
 const appCss = readFileSync(new URL("../public/app.css", import.meta.url), "utf8");
 const html = page + "\n" + appJs + "\n" + appCss;
+
+function getChecklistConverter() {
+  const start = appJs.indexOf("function toChecklistMarkdown(text)");
+  const end = appJs.indexOf("function downloadChecklist(", start);
+  assert.notEqual(start, -1, "checklist converter should be implemented");
+  assert.notEqual(end, -1, "checklist download action should follow the converter");
+  const source = appJs.slice(start, end) + "\\ntoChecklistMarkdown;";
+  return vm.runInNewContext(source);
+}
 
 test("dashboard JavaScript parses without syntax errors", () => {
   assert.match(page, /<script src="\/app\.js"/);
@@ -38,7 +48,31 @@ test("assistant message actions offer copy and downloadable text/Markdown", () =
   assert.match(appJs, /Salin/);
   assert.match(appJs, /Markdown/);
   assert.match(appJs, /Teks/);
-  assert.match(appJs, /URL\.createObjectURL\(blob\)/);
+  assert.match(appJs, /URL\.createObjectURL\(url\)|URL\.createObjectURL\(blob\)/);
+});
+
+test("checklist action is available on rendered messages and downloads Markdown", () => {
+  assert.match(appJs, /textContent="Checklist"/);
+  assert.match(appJs, /downloadChecklist\(content,role\)/);
+  assert.match(appJs, /text\/markdown;charset=utf-8/);
+});
+
+test("checklist converter turns unordered and ordered list items into tasks", () => {
+  const convert = getChecklistConverter();
+  assert.equal(convert("- First\n* Second\n+ Third\n1. Fourth\n2) Keep this unchanged"),
+    "- [ ] First\n- [ ] Second\n- [ ] Third\n- [ ] Fourth\n2) Keep this unchanged");
+});
+
+test("checklist conversion preserves headings, paragraphs, and fenced code", () => {
+  const convert = getChecklistConverter();
+  const input = "# Steps\n\nIntro paragraph.\n\n- Do this\n\n```md\n- literal example\n```";
+  assert.equal(convert(input), "# Steps\n\nIntro paragraph.\n\n- [ ] Do this\n\n```md\n- literal example\n```");
+});
+
+test("checklist converter returns no file content when there is no list or input is empty", () => {
+  const convert = getChecklistConverter();
+  assert.equal(convert(""), "");
+  assert.equal(convert("Only a paragraph.\n# Heading"), "");
 });
 
 test("dashboard has a mobile layout and reduced-motion support", () => {
