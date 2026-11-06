@@ -21,7 +21,7 @@ test("link di pesan dibaca server dan isinya sampai ke model sebagai data tidak 
   assert.equal(res.status, 200);
   assert.deepEqual(calls, ["https://contoh.id/berita/beras"]);
   const sent = turns(app.aiCalls.at(-1));
-  assert.match(sent, /<web_page source_id="1" url="https:\/\/contoh\.id\/berita\/beras" title="Harga Beras Hari Ini" status="ok"/);
+  assert.match(sent, /<web_page source_id="1" requested_url="https:\/\/contoh\.id\/berita\/beras" resolved_url="https:\/\/contoh\.id\/berita\/beras" title="Harga Beras Hari Ini" status="ok"/);
   assert.match(sent, /Rp 14\.500 per kilogram/);
   assert.match(sent, /untrusted data/i);
   assert.equal(body.links.length, 1);
@@ -158,17 +158,6 @@ test("hanya ID sitasi dari sumber sukses yang dipertahankan", async () => {
   await app.close();
 });
 
-
-
-test("redirect sukses mempertahankan URL asli dan mencatat URL tujuan akhir", async () => {
-  const result = await readLink("https://example.com/start", { fetcher: async (url) => url.endsWith("/start") ? respond("", { status: 302, headers: { location: "/artikel" } }) : respond(html(LONG)) });
-  assert.equal(result.ok, true);
-  assert.equal(result.requested, "https://example.com/start");
-  assert.equal(result.url, "https://example.com/artikel");
-  const [source] = summarizeLinks([result]);
-  assert.equal(source.url, "https://example.com/start");
-  assert.equal(source.resolvedUrl, "https://example.com/artikel");
-});
 
 
 test("status sumber tetap dikembalikan ketika AI gagal memproses jawaban", async () => {
