@@ -1,7 +1,7 @@
 // Pembaca link: ekstraksi URL, perlindungan SSRF, redirect, batas ukuran/waktu, dan ekstraksi teks.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { extractUrls, validateUrl, blockedHostReason, htmlToText, readLink, buildPageContext, MAX_DOWNLOAD_BYTES, MAX_PAGE_CHARS } from "../src/links.js";
+import { extractUrls, validateUrl, blockedHostReason, htmlToText, readLink, buildPageContext, summarizeLinks, MAX_DOWNLOAD_BYTES, MAX_PAGE_CHARS } from "../src/links.js";
 
 const html = (body, title = "Judul Uji") => `<!doctype html><html><head><title>${title}</title><style>.x{}</style><script>alert(1)</script></head><body>${body}</body></html>`;
 const respond = (body, { status = 200, type = "text/html; charset=utf-8", headers = {} } = {}) => new Response(body, { status, headers: { "content-type": type, ...headers } });
@@ -43,6 +43,20 @@ test("ekstraksi teks HTML: buang script/style/head, ambil judul, dekode entitas,
   assert.equal((ctx.match(/<web_page /g) || []).length, 1);
   assert.equal((ctx.match(/<\/web_page>/g) || []).length, 1);          // penutup palsu dari isi halaman tidak lolos
   assert.ok(!/title="[^"]*"[^>]*onload/.test(ctx));
+  assert.match(ctx, /source_id="1"/);
+  assert.match(ctx, /CITATIONS:/);
+});
+
+test("sumber link memiliki ID stabil dan URL hanya diberikan untuk halaman yang berhasil dibaca", () => {
+  const sources = summarizeLinks([
+    { ok: true, url: "https://a.example/article", title: "Artikel A", chars: 120, truncated: false },
+    { ok: false, url: "https://b.example/private", reason: "situs membalas 403" }
+  ]);
+  assert.equal(sources[0].sourceId, 1);
+  assert.equal(sources[0].url, "https://a.example/article");
+  assert.equal(sources[1].sourceId, 2);
+  assert.equal(sources[1].ok, false);
+  assert.equal("url" in sources[1], false);
 });
 
 test("membaca halaman: sukses, dipotong, dan teks tersimpan apa adanya", async () => {
