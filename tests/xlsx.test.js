@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseXlsxArrayBuffer, parseXlsxLocally, XLSX_MAX_BYTES } from "../public/xlsx-reader.js";
+import { parseXlsxArrayBuffer, parseXlsxLocally, XLSX_MAX_BYTES, XLSX_MAX_TOTAL_ROWS } from "../public/xlsx-reader.js";
 
 function fakeXlsx(withFormula = false) {
   const sheet = {
@@ -43,4 +43,10 @@ test("rejects non-xlsx files and files over the local size limit", async () => {
 
 test("rejects invalid ZIP signature before parsing", async () => {
   await assert.rejects(parseXlsxLocally({ name: "broken.xlsx", size: 8, arrayBuffer: async () => new ArrayBuffer(8) }, { xlsx: fakeXlsx() }), /bukan workbook/);
+});
+
+test("caps total processed rows across all workbook sheets", () => {
+  const result = parseXlsxArrayBuffer(new ArrayBuffer(8), { name: "sales.xlsx", xlsx: fakeXlsx(), maxTotalRows: 1 });
+  assert.equal(result.rowCount, 1);
+  assert.equal(result.truncated, true);
 });
