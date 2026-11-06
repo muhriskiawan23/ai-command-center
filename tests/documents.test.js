@@ -131,15 +131,15 @@ test("chat receives the PDF as untrusted context and rejects invented page citat
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       message: "Ringkas laporan ini.",
-      document: { name: "report.pdf", content: "### Page 1\\nPenjualan naik." }
+      document: { name: "report.pdf", content: "### Page 1\nPenjualan naik." }
     })
   }), env);
   const body = await response.json();
   assert.equal(response.status, 200);
   assert.match(captured, /<pdf_document name="report.pdf">/);
   assert.match(captured, /untrusted source data/);
-  assert.match(body.response, /\\[PDF p\\. 1\\]/);
-  assert.doesNotMatch(body.response, /\\[PDF p\\. 99\\]/);
+  assert.match(body.response, /\[PDF p\. 1\]/);
+  assert.doesNotMatch(body.response, /\[PDF p\. 99\]/);
   assert.equal(body.pdf.name, "report.pdf");
   assert.equal(body.pdf.pageCount, 1);
 });
