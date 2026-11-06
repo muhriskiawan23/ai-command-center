@@ -882,7 +882,7 @@ async function handleConversationRoute(request, env, url) {
   }
   if (request.method === "PATCH") {
     const body = await readJsonBody(request);
-    const title = typeof body?.title === "string" ? body.title.trim().replace(/\\s+/g, " ") : "";
+    const title = typeof body?.title === "string" ? body.title.trim().replace(/\s+/g, " ") : "";
     if (!title || title.length > 72) return json({ error: "Judul harus berisi 1–72 karakter." }, 400);
     const result = await env.DB.prepare("UPDATE conversations SET title = ?, updated_at = ? WHERE id = ? AND user_id = ?")
       .bind(title, Math.floor(Date.now() / 1000), conversationId, user.id).run();
