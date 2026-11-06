@@ -1341,8 +1341,8 @@ export default {
         }
         console.error("AI request failed:", error);
         await refundUsage(env, usage.day, usage.charges); // a failed request does not consume the user's daily allowance
-        if (error instanceof AiTimeoutError) return json({ error: "AI terlalu lama merespons. Silakan coba lagi, atau pecah permintaan menjadi lebih singkat.", code: "ai_timeout" }, 504);
-        return json({ error: "AI gagal memproses permintaan. Silakan coba lagi beberapa saat." }, 502);
+        if (error instanceof AiTimeoutError) return json({ error: "AI terlalu lama merespons. Silakan coba lagi, atau pecah permintaan menjadi lebih singkat.", code: "ai_timeout", stage: "ai_generation", links }, 504);
+        return json({ error: "AI gagal memproses permintaan. Silakan coba lagi beberapa saat.", code: "ai_error", stage: "ai_generation", links }, 502);
       }
     }
     if (url.pathname.startsWith("/api/") && ["/api/health", "/api/agents", "/api/chat"].includes(url.pathname)) {

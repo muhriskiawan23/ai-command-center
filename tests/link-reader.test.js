@@ -21,7 +21,7 @@ test("link di pesan dibaca server dan isinya sampai ke model sebagai data tidak 
   assert.equal(res.status, 200);
   assert.deepEqual(calls, ["https://contoh.id/berita/beras"]);
   const sent = turns(app.aiCalls.at(-1));
-  assert.match(sent, /<web_page source_id="1" url="https:\/\/contoh\.id\/berita\/beras" title="Harga Beras Hari Ini" status="ok"/);
+  assert.match(sent, /<web_page source_id="1" requested_url="https:\/\/contoh\.id\/berita\/beras" resolved_url="https:\/\/contoh\.id\/berita\/beras" title="Harga Beras Hari Ini" status="ok"/);
   assert.match(sent, /Rp 14\.500 per kilogram/);
   assert.match(sent, /untrusted data/i);
   assert.equal(body.links.length, 1);
@@ -158,3 +158,30 @@ test("hanya ID sitasi dari sumber sukses yang dipertahankan", async () => {
   await app.close();
 });
 
+
+
+test("status sumber tetap dikembalikan ketika AI gagal memproses jawaban", async () => {
+  const { app, post } = await setup(okPage());
+  app.control.aiFail = true;
+  const response = await post("Ringkas https://contoh.id/berita/beras");
+  const body = await response.json();
+  assert.equal(response.status, 502);
+  assert.equal(body.code, "ai_error");
+  assert.equal(body.stage, "ai_generation");
+  assert.equal(body.links.length, 1);
+  assert.equal(body.links[0].ok, true);
+  assert.equal(body.links[0].requestedUrl, "https://contoh.id/berita/beras");
+  await app.close();
+});
+
+test("status tautan gagal tetap dikembalikan ketika AI timeout/error", async () => {
+  const { app, post } = await setup(async () => new Response("blocked", { status: 403 }));
+  app.control.aiFail = true;
+  const response = await post("Baca https://contoh.id/private");
+  const body = await response.json();
+  assert.equal(response.status, 502);
+  assert.equal(body.links.length, 1);
+  assert.equal(body.links[0].ok, false);
+  assert.match(body.links[0].reason, /403/);
+  await app.close();
+});
