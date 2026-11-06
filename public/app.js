@@ -638,11 +638,29 @@ async function uploadPdf(file){
   if(file.size<8){toast("File PDF tidak valid.");return;}
   const button=$("attachPdf");button.disabled=true;button.textContent="Membaca…";
   try{
-    const form=new FormData();form.append("file",file,file.name);
-    const data=await api("/api/documents/pdf",{method:"POST",body:form,timeoutMs:120000});
-    if(!data.document||typeof data.document.content!=="string")throw new Error("Hasil ekstraksi PDF tidak valid.");
-    activePdf=data.document;renderPdfAttachment();
-    toast("PDF berhasil dibaca. Tanyakan isi dokumen di kolom chat.");
+    try{
+      const form=new FormData();form.append("file",file,file.name);
+      const data=await api("/api/documents/pdf",{method:"POST",body:form,timeoutMs:120000});
+      if(!data.document||typeof data.document.content!=="string")throw new Error("Hasil ekstraksi PDF tidak valid.");
+      activePdf=data.document;
+      toast("PDF berhasil dibaca. Tanyakan isi dokumen di kolom chat.");
+    }catch(error){
+      if(error.code!=="PDF_NO_TEXT")throw error;
+      button.textContent="Menyiapkan OCR…";
+      const {ocrScannedPdf}=await import("/pdf-ocr.js");
+      activePdf=await ocrScannedPdf(file,{
+        pdfjs:window.pdfjsLib,
+        tesseract:window.Tesseract,
+        onProgress:({status,progress,page,total})=>{
+          if(status==="loading-language")button.textContent="Unduh model OCR…";
+          else if(status==="recognizing")button.textContent="OCR halaman "+page+"/"+total+"…";
+          else if(status==="rendering")button.textContent="Render halaman "+page+"/"+total+"…";
+          else button.textContent="Memproses OCR…";
+        }
+      });
+      toast("OCR selesai. Teks PDF siap dianalisis.");
+    }
+    renderPdfAttachment();
   }catch(error){toast(error.message||"PDF gagal dibaca.");}
   finally{button.disabled=busy||loadingChat;renderPdfAttachment()}
 }
