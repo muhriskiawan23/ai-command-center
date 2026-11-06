@@ -110,7 +110,7 @@ function exportConversationFile(){
   if(busy||loadingChat)return;
   const chat=conversations.find(item=>item.id===activeId);
   if(!chat||!Array.isArray(chat.messages)||!chat.messages.length){toast("Belum ada pesan untuk diekspor.");return;}
-  const title=String(chat.title||"Percakapan BOR AI").replace(/[\\u0000-\\u001f\\u007f]/g," ").replace(/\\s+/g," ").trim().slice(0,72)||"Percakapan BOR AI";
+  const title=String(chat.title||"Percakapan BOR AI").replace(/[\u0000-\u001f\u007f]/g," ").replace(/\s+/g," ").trim().slice(0,72)||"Percakapan BOR AI";
   const lines=["BOR AI — Ekspor Percakapan","Judul: "+title,"Diekspor: "+new Date().toLocaleString(),"","CATATAN PRIVASI: Ekspor ini dapat berisi informasi pribadi atau sensitif. Simpan dengan aman dan bagikan hanya jika Anda memang menghendakinya."];
   if(chat.truncated)lines.push("CATATAN KELENGKAPAN: Percakapan ini melebihi batas tampilan 500 pesan. File ini hanya berisi 500 pesan terakhir yang tersedia.");
   lines.push("","=".repeat(64));
@@ -118,7 +118,7 @@ function exportConversationFile(){
     if(!message||!["user","assistant"].includes(message.role)||typeof message.content!=="string")continue;
     lines.push("",message.role==="user"?"PENGGUNA":"BOR AI","-".repeat(32),message.content);
   }
-  const blob=new Blob([lines.join("\\n")],{type:"text/plain;charset=utf-8"});
+  const blob=new Blob([lines.join("\n")],{type:"text/plain;charset=utf-8"});
   const url=URL.createObjectURL(blob);
   const a=document.createElement("a");
   const safeName=title.toLocaleLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,48)||"percakapan";
