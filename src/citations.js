@@ -17,7 +17,7 @@ export function validateCitationReferences(response, links = []) {
     if (index % 2 === 1) return part;
     return part.replace(/([ \t]*)\[(\d+)\](?!\s*\()/g, (marker, leadingSpace, rawId, offset, source) => {
       const before = source.slice(0, offset).replace(/[ \t]*$/, "");
-      if (offset > 0 && /[\\w\\]]/.test(source[offset - 1])) return marker;
+      if (offset > 0 && /[\w\]]/.test(source[offset - 1])) return marker;
       if (validIds.has(Number(rawId))) return marker;
       removed++;
       const after = source.slice(offset + marker.length);
