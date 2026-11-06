@@ -38,6 +38,7 @@ function mockDB({ user = { id: "google-sub-123", email: "owner@example.com", nam
           if (sql.includes("FROM sessions JOIN users")) return user;
           if (sql.includes("FROM conversations WHERE id = ? AND user_id = ?")) return ownedConversation;
           if (sql.includes("daily_usage")) return { units: 1 };
+          if (sql.includes("SELECT id FROM messages WHERE conversation_id")) return { id: 123 };
           return null;
         },
         async all() { calls.push({ type: "all", sql, values: this.values }); return { results: [] }; },

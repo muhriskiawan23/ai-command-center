@@ -66,3 +66,4 @@ test("About BOR AI opens an accessible, user-invoked dialog with a close control
   assert.match(appCss, /\.about-dialog::backdrop/);
   assert.match(appCss, /@media\(max-width:560px\)/);
 });
+

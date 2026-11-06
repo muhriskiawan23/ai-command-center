@@ -50,7 +50,45 @@ function escapeHTML(s){return String(s).replace(/[&<>\"']/g,c=>({"&":"&amp;","<"
   }
 
 
-  function appendMessage(role,content,scroll=true,controls={}){const row=document.createElement("article");row.className="message "+role;const avatar=document.createElement("div");avatar.className="avatar";avatar.textContent=role==="assistant"?"✳":"";const body=document.createElement("div");body.className="message-body";const rendered=document.createElement("div");rendered.className="message-text";rendered.innerHTML=markdown(content);body.append(rendered);const actions=document.createElement("div");actions.className="message-actions";const copyBtn=document.createElement("button");copyBtn.type="button";copyBtn.className="message-action";copyBtn.textContent="Salin";copyBtn.addEventListener("click",()=>copyText(content));const markdownBtn=document.createElement("button");markdownBtn.type="button";markdownBtn.className="message-action";markdownBtn.textContent="Markdown";markdownBtn.addEventListener("click",()=>downloadMarkdown(content,role));const plainBtn=document.createElement("button");plainBtn.type="button";plainBtn.className="message-action";plainBtn.textContent="Teks";plainBtn.addEventListener("click",()=>downloadText(content,role));actions.append(copyBtn,markdownBtn,plainBtn);if(controls.edit){const editBtn=document.createElement("button");editBtn.type="button";editBtn.className="message-action edit-message";editBtn.textContent="Edit & kirim";editBtn.addEventListener("click",()=>replaceLastTurn("edit",content));actions.append(editBtn)}if(controls.regenerate){const regenBtn=document.createElement("button");regenBtn.type="button";regenBtn.className="message-action regenerate-message";regenBtn.textContent="Buat ulang";regenBtn.addEventListener("click",()=>replaceLastTurn("regenerate",content));actions.append(regenBtn)}body.append(actions);row.append(avatar,body);messagesEl.append(row);if(scroll)conversation.scrollTop=conversation.scrollHeight}
+  function appendMessage(role,content,scroll=true,controls={}) {
+    const row=document.createElement("article");row.className="message "+role;
+    const avatar=document.createElement("div");avatar.className="avatar";avatar.textContent=role==="assistant"?"✳":"";
+    const body=document.createElement("div");body.className="message-body";
+    const rendered=document.createElement("div");rendered.className="message-text";rendered.innerHTML=markdown(content);body.append(rendered);
+    const actions=document.createElement("div");actions.className="message-actions";
+    const copyBtn=document.createElement("button");copyBtn.type="button";copyBtn.className="message-action";copyBtn.textContent="Salin";copyBtn.addEventListener("click",()=>copyText(content));
+    const markdownBtn=document.createElement("button");markdownBtn.type="button";markdownBtn.className="message-action";markdownBtn.textContent="Markdown";markdownBtn.addEventListener("click",()=>downloadMarkdown(content,role));
+    const plainBtn=document.createElement("button");plainBtn.type="button";plainBtn.className="message-action";plainBtn.textContent="Teks";plainBtn.addEventListener("click",()=>downloadText(content,role));actions.append(copyBtn,markdownBtn,plainBtn);
+    if(controls.edit){const editBtn=document.createElement("button");editBtn.type="button";editBtn.className="message-action edit-message";editBtn.textContent="Edit & kirim";editBtn.addEventListener("click",()=>replaceLastTurn("edit",content));actions.append(editBtn)}
+    if(controls.regenerate){const regenBtn=document.createElement("button");regenBtn.type="button";regenBtn.className="message-action regenerate-message";regenBtn.textContent="Buat ulang";regenBtn.addEventListener("click",()=>replaceLastTurn("regenerate",content));actions.append(regenBtn)}
+    body.append(actions);
+    if(role==="assistant"&&state===AppState.AUTH&&controls.responseId&&controls.conversationId){
+      const feedback=document.createElement("div");feedback.className="answer-feedback";
+      const label=document.createElement("span");label.className="feedback-label";label.textContent="Apakah jawaban ini membantu?";
+      const helpful=document.createElement("button");helpful.type="button";helpful.className="feedback-vote";helpful.textContent="👍";helpful.setAttribute("aria-label","Jawaban membantu");helpful.title="Membantu";
+      const unhelpful=document.createElement("button");unhelpful.type="button";unhelpful.className="feedback-vote";unhelpful.textContent="👎";unhelpful.setAttribute("aria-label","Jawaban tidak membantu");unhelpful.title="Tidak membantu";
+      const status=document.createElement("span");status.className="feedback-status";status.setAttribute("role","status");
+      const panel=document.createElement("div");panel.className="feedback-panel";panel.hidden=true;
+      const reason=document.createElement("textarea");reason.maxLength=500;reason.rows=2;reason.placeholder="Apa yang perlu diperbaiki? (opsional)";reason.setAttribute("aria-label","Alasan feedback opsional");
+      const send=document.createElement("button");send.type="button";send.className="feedback-submit";send.textContent="Kirim feedback";
+      const existing=controls.feedback||null;
+      if(existing){helpful.setAttribute("aria-pressed",String(existing.rating==="helpful"));unhelpful.setAttribute("aria-pressed",String(existing.rating==="not_helpful"));status.textContent="Feedback tersimpan";if(existing.rating==="not_helpful"){panel.hidden=false;reason.value=existing.reason||"";send.textContent="Perbarui feedback"}}
+      const submitFeedback=async(rating,reasonText="")=>{
+        helpful.disabled=true;unhelpful.disabled=true;send.disabled=true;status.textContent="Mengirim…";
+        try{
+          const saved=await postJson("/api/feedback",{conversationId:controls.conversationId,responseId:controls.responseId,rating,reason:reasonText});
+          helpful.setAttribute("aria-pressed",String(saved.rating==="helpful"));unhelpful.setAttribute("aria-pressed",String(saved.rating==="not_helpful"));
+          status.textContent="Feedback tersimpan";panel.hidden=saved.rating!=="not_helpful";
+        }catch(error){status.textContent=error.message||"Feedback gagal disimpan."}
+        finally{helpful.disabled=false;unhelpful.disabled=false;send.disabled=false}
+      };
+      helpful.addEventListener("click",()=>submitFeedback("helpful"));
+      unhelpful.addEventListener("click",()=>{panel.hidden=false;reason.focus()});
+      send.addEventListener("click",()=>submitFeedback("not_helpful",reason.value.trim()));
+      panel.append(reason,send);feedback.append(label,helpful,unhelpful,status,panel);body.append(feedback);
+    }
+    row.append(avatar,body);messagesEl.append(row);if(scroll)conversation.scrollTop=conversation.scrollHeight;
+  }
 function showTyping(){const row=document.createElement("article");row.className="message assistant";row.id="typing";row.innerHTML='<div class="avatar">✳</div><div class="message-body"><span class="typing"><span></span><span></span><span></span></span></div>' ;messagesEl.append(row);conversation.scrollTop=conversation.scrollHeight}
 function renderWorkflow(steps){const items=$("workflowItems");items.replaceChildren();if(!Array.isArray(steps)||!steps.length){$("workflow").hidden=true;return}$("workflow").hidden=false;for(const step of steps){const block=document.createElement("div");block.className="workflow-step";const label=document.createElement("strong");label.textContent=step.agent||"Langkah";const status=document.createElement("span");status.textContent=step.status||"completed";status.className="workflow-status";block.append(label,status);const output=document.createElement("pre");output.textContent=step.output||"";block.append(output);items.append(block)}}
 /* Textarea tumbuh mengikuti isi (scrollHeight) sampai max-height dari CSS, lalu berhenti dan scroll di dalam. */
@@ -494,7 +532,7 @@ async function showChat(cid){
   }
   if(seq!==navSeq)return null;
   activeId=cid;$("exportConversation").hidden=false;welcomeEl.hidden=true;messagesEl.hidden=false;messagesEl.replaceChildren();
-  for(let i=0;i<c.messages.length;i++){const m=c.messages[i];const last=i===c.messages.length-1;const previous=i===c.messages.length-2;appendMessage(m.role,m.content,false,{edit:m.role==="user"&&previous&&c.messages.at(-1)?.role==="assistant",regenerate:m.role==="assistant"&&last&&c.messages.at(-2)?.role==="user"});}
+  for(let i=0;i<c.messages.length;i++){const m=c.messages[i];const last=i===c.messages.length-1;const previous=i===c.messages.length-2;appendMessage(m.role,m.content,false,{edit:m.role==="user"&&previous&&c.messages.at(-1)?.role==="assistant",regenerate:m.role==="assistant"&&last&&c.messages.at(-2)?.role==="user",responseId:m.role==="assistant"?m.id:null,conversationId:c.serverId||c.id,feedback:m.feedback||null});}
   $("workflow").hidden=true;renderHistory();conversation.scrollTop=conversation.scrollHeight;
   return true;
 }
@@ -602,8 +640,8 @@ async function submit(options={}){
     const data=await postJson("/api/chat",payload,CHAT_TIMEOUT_MS,activeChatController.signal);
     if(typeof data.response!=="string"||!data.response.trim())throw new Error("AI tidak menghasilkan jawaban.");
     if(pendingRetryRequest?.requestId===requestId)pendingRetryRequest=null;
-    chat.messages.push({role:"assistant",content:data.response});chat.updated=Date.now();
-    if(stillActive()){$("typing")?.remove();appendMessage("assistant",data.response,true,{regenerate:true});addEditActionToLastUser();appendSources(data.links);renderWorkflow(data.steps)}
+    chat.messages.push({role:"assistant",content:data.response,id:data.responseId||null,feedback:null});chat.updated=Date.now();
+    if(stillActive()){$("typing")?.remove();appendMessage("assistant",data.response,true,{regenerate:true,responseId:data.saved?data.responseId:null,conversationId:data.saved?data.conversationId:null});addEditActionToLastUser();appendSources(data.links);renderWorkflow(data.steps)}
     if(state===AppState.AUTH&&data.saved&&data.conversationId){
       chat.serverId=data.conversationId;chat.id=data.conversationId;chat.loaded=true;
       if(stillActive()){activeId=chat.id;replaceRoute({name:"chat",id:chat.id})}

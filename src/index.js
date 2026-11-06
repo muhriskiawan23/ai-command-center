@@ -908,11 +908,19 @@ async function handleConversationRoute(request, env, url) {
     const conversation = await env.DB.prepare("SELECT id, title, pinned, archived, created_at, updated_at FROM conversations WHERE id = ? AND user_id = ?").bind(conversationId, user.id).first();
     if (!conversation) return json({ error: "Chat tidak ditemukan." }, 404);
     // Bounded response: the newest MESSAGES_PAGE_MAX messages, oldest-first. `truncated` tells the client older ones exist.
-    const result = await env.DB.prepare("SELECT role, content, created_at FROM messages WHERE conversation_id = ? AND user_id = ? ORDER BY id DESC LIMIT ?").bind(conversationId, user.id, MESSAGES_PAGE_MAX + 1).all();
+    const result = await env.DB.prepare(
+      "SELECT m.id, m.role, m.content, m.created_at, f.rating AS feedback_rating, f.reason AS feedback_reason " +
+      "FROM messages m LEFT JOIN answer_feedback f ON f.message_id = m.id AND f.user_id = m.user_id " +
+      "WHERE m.conversation_id = ? AND m.user_id = ? ORDER BY m.id DESC LIMIT ?"
+    ).bind(conversationId, user.id, MESSAGES_PAGE_MAX + 1).all();
     let rows = result.results || [];
     const truncated = rows.length > MESSAGES_PAGE_MAX;
     if (truncated) rows = rows.slice(0, MESSAGES_PAGE_MAX);
-    return json({ conversation, messages: rows.reverse(), truncated });
+    const messages = rows.reverse().map((row) => ({
+      id: row.id, role: row.role, content: row.content, created_at: row.created_at,
+      feedback: row.feedback_rating ? { rating: row.feedback_rating, reason: row.feedback_reason || "" } : null
+    }));
+    return json({ conversation, messages, truncated });
   }
   if (request.method === "PATCH") {
     const parsed = await readJsonRequest(request, 4096);
@@ -1006,12 +1014,12 @@ async function findSavedChatRequest(env, user, requestId) {
   if (!env.DB || !user || !requestId) return null;
   try {
     const row = await env.DB.prepare(
-      "SELECT u.conversation_id, a.content AS response FROM messages u " +
+      "SELECT u.conversation_id, a.id AS response_id, a.content AS response FROM messages u " +
       "JOIN messages a ON a.conversation_id = u.conversation_id AND a.user_id = u.user_id " +
       "AND a.role = 'assistant' AND a.id > u.id " +
       "WHERE u.user_id = ? AND u.idempotency_key = ? ORDER BY a.id ASC LIMIT 1"
     ).bind(user.id, requestId).first();
-    return row?.response ? { conversationId: row.conversation_id, response: row.response } : null;
+    return row?.response ? { conversationId: row.conversation_id, responseId: Number(row.response_id), response: row.response } : null;
   } catch (error) {
     if (/no such column/i.test(String(error?.message))) return null;
     throw error;
@@ -1057,7 +1065,47 @@ async function persistConversation(env, user, conversationId, message, response,
     );
     await env.DB.batch(legacyStatements);
   }
-  return id;
+  const saved = await env.DB.prepare("SELECT id FROM messages WHERE conversation_id = ? AND user_id = ? AND role = 'assistant' ORDER BY id DESC LIMIT 1").bind(id, user.id).first();
+  if (!saved) throw new Error("Jawaban tersimpan tidak dapat ditemukan.");
+  return { conversationId: id, responseId: Number(saved.id) };
+}
+
+async function handleFeedbackRoute(request, env, url) {
+  if (url.pathname !== "/api/feedback") return null;
+  if (request.method !== "POST") return json({ error: "Metode HTTP tidak didukung untuk endpoint ini." }, 405, { Allow: "POST" });
+  if (!sameOrigin(request)) return json({ error: "Origin tidak valid." }, 403);
+  if (!env.DB) return json({ error: "Penyimpanan feedback belum tersedia." }, 503);
+  let user;
+  try { user = await getSession(request, env); }
+  catch (error) { console.error("Feedback session lookup failed:", error); return json({ error: "Status login tidak dapat diperiksa." }, 503); }
+  if (!user) return authRequiredResponse();
+  const parsed = await readJsonRequest(request, 2048);
+  if (parsed.error) return parsed.error;
+  const body = parsed.body || {};
+  const conversationId = typeof body.conversationId === "string" ? body.conversationId : "";
+  const responseId = Number(body.responseId);
+  const rating = body.rating;
+  const reason = typeof body.reason === "string" ? body.reason.trim() : "";
+  if (!/^[a-zA-Z0-9-]{8,80}$/.test(conversationId) || !Number.isSafeInteger(responseId) || responseId < 1) return json({ error: "Referensi jawaban tidak valid." }, 400);
+  if (!["helpful", "not_helpful"].includes(rating)) return json({ error: "Penilaian tidak valid." }, 400);
+  if (reason.length > 500) return json({ error: "Alasan feedback maksimal 500 karakter." }, 400);
+  const owned = await env.DB.prepare(
+    "SELECT m.id FROM messages m JOIN conversations c ON c.id = m.conversation_id AND c.user_id = m.user_id " +
+    "WHERE m.id = ? AND m.conversation_id = ? AND m.user_id = ? AND m.role = 'assistant'"
+  ).bind(responseId, conversationId, user.id).first();
+  if (!owned) return json({ error: "Jawaban tidak ditemukan." }, 404);
+  const now = Math.floor(Date.now() / 1000);
+  try {
+    await env.DB.prepare(
+      "INSERT INTO answer_feedback (user_id, conversation_id, message_id, rating, reason, created_at, updated_at) " +
+      "VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(user_id, message_id) DO UPDATE SET rating = excluded.rating, reason = excluded.reason, updated_at = excluded.updated_at"
+    ).bind(user.id, conversationId, responseId, rating, reason, now, now).run();
+    return json({ saved: true, responseId, rating, reason });
+  } catch (error) {
+    if (/no such table/i.test(String(error?.message))) return json({ error: "Fitur feedback belum tersedia. Migrasi database perlu diterapkan.", code: "feedback_unavailable" }, 503);
+    console.error("Feedback save failed:", error);
+    return json({ error: "Feedback gagal disimpan. Coba lagi." }, 503);
+  }
 }
 
 async function handleUsageRoute(request, env) {
@@ -1092,6 +1140,10 @@ export default {
     if (url.pathname.startsWith("/api/auth/") || url.pathname === "/api/config") {
       const response = await handleAuthRoute(request, env, url);
       if (response) return response;
+    }
+    if (url.pathname === "/api/feedback") {
+      try { return await handleFeedbackRoute(request, env, url); }
+      catch (error) { console.error("Feedback request failed:", error); return json({ error: "Feedback gagal diproses." }, 503); }
     }
     if (url.pathname === "/api/usage") {
       try { return await handleUsageRoute(request, env); }
@@ -1145,7 +1197,7 @@ export default {
       if (user && body.requestId) {
         try {
           const saved = await findSavedChatRequest(env, user, body.requestId);
-          if (saved) return json({ agent: AGENTS[agentId].name, model: MODEL, workflow: "idempotent-replay", response: saved.response, conversationId: saved.conversationId, saved: true, replayed: true });
+          if (saved) return json({ agent: AGENTS[agentId].name, model: MODEL, workflow: "idempotent-replay", response: saved.response, conversationId: saved.conversationId, responseId: saved.responseId, saved: true, replayed: true });
         } catch (error) {
           console.error("Chat idempotency lookup failed:", error);
           return json({ error: "Status permintaan sebelumnya tidak dapat diperiksa. Coba muat ulang riwayat chat." }, 503);
@@ -1242,7 +1294,9 @@ export default {
         if (memoryNote && typeof result.response === "string") result.response = `${result.response}\n\n${memoryNote}`;
         if (user) {
           try {
-            result.conversationId = await persistConversation(env, user, body.conversationId || null, message, result.response, replaceRows, body.requestId || null);
+            const persisted = await persistConversation(env, user, body.conversationId || null, message, result.response, replaceRows, body.requestId || null);
+            result.conversationId = persisted.conversationId;
+            result.responseId = persisted.responseId;
             result.saved = true;
           } catch (error) {
             if (body.requestId) {
@@ -1250,7 +1304,7 @@ export default {
                 const saved = await findSavedChatRequest(env, user, body.requestId);
                 if (saved) {
                   await refundUsage(env, usage.day, usage.charges);
-                  return json({ agent: AGENTS[agentId].name, model: MODEL, workflow: "idempotent-replay", response: saved.response, conversationId: saved.conversationId, saved: true, replayed: true });
+                  return json({ agent: AGENTS[agentId].name, model: MODEL, workflow: "idempotent-replay", response: saved.response, conversationId: saved.conversationId, responseId: saved.responseId, saved: true, replayed: true });
                 }
               } catch (lookupError) { console.error("Chat idempotency recovery failed:", lookupError); }
             }
