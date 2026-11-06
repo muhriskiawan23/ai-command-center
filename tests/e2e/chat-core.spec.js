@@ -13,6 +13,22 @@ async function send(page, text) {
   await page.locator("#send").click();
 }
 
+test("akun dapat melihat ringkasan kuota harian dari sidebar, termasuk di mobile", async ({ page, app, context }) => {
+  await loginAs(context, app, ALICE);
+  await page.goto(app.url);
+  await expect(page.locator("#prompt")).toBeVisible();
+  await send(page, "Tampilkan ringkasan penggunaan saya.");
+  await expect(page.locator(".message.assistant:not(#typing)")).toHaveCount(1);
+  if (page.viewportSize().width <= 1024) await page.locator("#menuBtn").click();
+  await page.locator("#openUsage").click();
+  await expect(page.locator("#usagePanel")).toBeVisible();
+  await expect(page.locator("#usageSummary")).toContainText("Akun Google");
+  await expect(page.locator("#usageSummary")).toContainText("/ 150 unit");
+  await expect(page.locator("#usageRemaining")).toContainText("unit tersisa");
+  await expect(page.locator("#usageReset")).toContainText("Reset");
+  await expect(page.locator("#usageError")).toBeHidden();
+});
+
 test.describe("CHAT — memori percakapan, kegagalan, batas laju", () => {
   test("guest: pesan kedua membawa konteks pesan pertama (multi-turn)", async ({ page, app }) => {
     await enterGuest(page, app);
