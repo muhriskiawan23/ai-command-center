@@ -235,7 +235,7 @@ test.describe("pembaca link", () => {
     await expect(page.locator(".message.assistant:not(#typing)")).toHaveCount(1);
     const sources = page.locator(".sources");
     await expect(sources).toBeVisible();
-    await expect(sources).toContainText("Tautan yang dibaca");
+    await expect(sources).toContainText("Sumber yang dibaca");
     await expect(sources.locator(".source.ok")).toContainText("contoh.id");
     await expect(sources.locator(".source.fail")).toContainText("rusak.id");
     await expect(sources.locator(".source.fail")).toContainText("500");
