@@ -30,14 +30,17 @@ export function parseXlsxWorkbook(workbook, options = {}) {
   if (!names.length) throw new Error("Workbook Excel tidak memiliki sheet yang dapat dibaca.");
   const output = [];
   let rowCount = 0, columnCount = 0, truncated = workbook.SheetNames.length > names.length;
-  for (const sheetName of names) {
+  for (let sheetIndex = 0; sheetIndex < names.length; sheetIndex++) {
+    const sheetName = names[sheetIndex];
     const sheet = workbook.Sheets[sheetName];
     if (!sheet || !sheet["!ref"]) continue;
     const range = options.decodeRange ? options.decodeRange(sheet["!ref"]) : null;
     if (!range) throw new Error("Rentang sheet Excel tidak dapat dibaca.");
     const availableRows = range.e.r - range.s.r + 1;
     const availableColumns = range.e.c - range.s.c + 1;
-    const takeRows = Math.max(0, Math.min(availableRows, maxRows - rowCount));
+    const remainingDataRows = maxRows - rowCount;
+    if (remainingDataRows <= 0) { truncated = true; break; }
+    const takeRows = Math.max(0, Math.min(availableRows, remainingDataRows + 1));
     const takeColumns = Math.max(0, Math.min(availableColumns, maxColumns));
     if (takeRows < availableRows || takeColumns < availableColumns) truncated = true;
     if (!takeRows || !takeColumns) { truncated = true; break; }
@@ -71,7 +74,11 @@ export function parseXlsxWorkbook(workbook, options = {}) {
     }
     if (sums.length) output.push("Ringkasan numerik (sel angka, formula dikecualikan): " + sums.join("; "));
     rowCount += dataRows.length; columnCount = Math.max(columnCount, takeColumns);
-    if (rowCount >= maxRows || columnCount >= maxColumns && availableColumns > takeColumns) { truncated = true; break; }
+    if (rowCount >= maxRows) {
+      if (takeRows < availableRows || sheetIndex < names.length - 1) truncated = true;
+      break;
+    }
+    if (columnCount >= maxColumns && availableColumns > takeColumns) { truncated = true; break; }
   }
   if (!output.length) throw new Error("Tidak ada data tabel yang dapat dibaca dari workbook.");
   let content = output.join("\n");
