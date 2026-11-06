@@ -86,3 +86,45 @@ export async function ocrScannedPdf(file, {
     ocr: true
   };
 }
+
+export async function extractPdfLocally(file, options = {}) {
+  const pdfjs = options.pdfjs || globalThis.pdfjsLib;
+  if (!file || typeof file.arrayBuffer !== "function") throw new Error("File PDF tidak valid.");
+  if (!pdfjs?.getDocument) throw new Error("Komponen pembaca PDF belum termuat. Periksa koneksi lalu muat ulang halaman.");
+  const pdf = await pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
+  if (!Number.isInteger(pdf.numPages) || pdf.numPages < 1) {
+    await pdf.destroy?.();
+    throw new Error("Halaman PDF tidak ditemukan.");
+  }
+  const pages = [];
+  let chars = 0;
+  try {
+    for (let pageNumber = 1; pageNumber <= pdf.numPages && chars < MAX_OCR_TEXT_CHARS; pageNumber++) {
+      const page = await pdf.getPage(pageNumber);
+      try {
+        const textContent = await page.getTextContent();
+        const text = (textContent.items || []).map(item => typeof item.str === "string" ? item.str : "").join(" ").replace(/\s+/g, " ").trim();
+        if (text) {
+          const block = "### Page " + pageNumber + "\n" + text;
+          const clipped = block.slice(0, Math.max(0, MAX_OCR_TEXT_CHARS - chars));
+          if (clipped) pages.push(clipped);
+          chars += clipped.length + 2;
+        }
+      } finally {
+        page.cleanup?.();
+      }
+    }
+    if (pages.length) {
+      return {
+        name: String(file.name || "document.pdf").replace(/[\/\\\u0000-\u001f]/g, "_").slice(0, 120),
+        content: pages.join("\n\n").slice(0, MAX_OCR_TEXT_CHARS).trim(),
+        pageCount: pdf.numPages,
+        truncated: chars >= MAX_OCR_TEXT_CHARS,
+        ocr: false
+      };
+    }
+  } finally {
+    await pdf.destroy?.();
+  }
+  return ocrScannedPdf(file, options);
+}
