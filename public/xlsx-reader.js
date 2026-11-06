@@ -1,5 +1,6 @@
 export const XLSX_MAX_BYTES = 5 * 1024 * 1024;
 export const XLSX_MAX_ROWS_PER_SHEET = 10_000;
+export const XLSX_MAX_TOTAL_ROWS = 10_000;
 export const XLSX_MAX_COLUMNS = 100;
 export const XLSX_MAX_SHEETS = 10;
 export const XLSX_CONTEXT_MAX_CHARS = 10_000;
@@ -80,8 +81,19 @@ export function parseXlsxArrayBuffer(buffer, options = {}) {
   const workbook = XLSX.read(new Uint8Array(buffer), { type: "array", cellFormula: true, cellDates: false, bookVBA: false });
   if (!Array.isArray(workbook.SheetNames) || !workbook.SheetNames.length) throw new Error("Workbook Excel tidak memiliki sheet.");
   const selected = workbook.SheetNames.slice(0, XLSX_MAX_SHEETS);
-  const sheets = selected.map(name => readSheet(XLSX, workbook.Sheets[name], name, options));
-  const truncatedSheets = workbook.SheetNames.length > selected.length;
+  const maxTotalRows = Math.max(1, Math.min(XLSX_MAX_TOTAL_ROWS, Number(options.maxTotalRows) || XLSX_MAX_TOTAL_ROWS));
+  const sheets = [];
+  let remainingRows = maxTotalRows, rowLimitReached = false;
+  for (const name of selected) {
+    if (remainingRows <= 0) { rowLimitReached = true; break; }
+    const sheet = readSheet(XLSX, workbook.Sheets[name], name, {
+      ...options,
+      maxRows: Math.min(XLSX_MAX_ROWS_PER_SHEET, remainingRows)
+    });
+    sheets.push(sheet);
+    remainingRows -= sheet.rows;
+  }
+  const truncatedSheets = workbook.SheetNames.length > selected.length || rowLimitReached;
   let content = [
     "Excel workbook: " + String(options.name || "spreadsheet.xlsx").replace(/[\r\n]/g, " ").slice(0, 120),
     "Jumlah sheet diproses: " + sheets.length + (truncatedSheets ? " (sheet tambahan tidak diproses)" : ""),
