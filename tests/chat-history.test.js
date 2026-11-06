@@ -124,3 +124,30 @@ test("alur multi-agent juga menerima riwayat (researcher dan writer)", async () 
   assert.ok(withHistory.length >= 2, `hanya ${withHistory.length} panggilan yang membawa riwayat`);
   await app.close();
 });
+
+
+test("rename percakapan: validasi judul, origin, dan kepemilikan akun ditegakkan server-side", async () => {
+  const app = await startHarness();
+  const aliceToken = seedSession(app.db, ALICE);
+  app.db.sqlite.prepare("INSERT INTO users (id,email,name,picture,created_at,updated_at) VALUES (?,?,?,?,?,?)")
+    .run("sub-bob", "bob@example.com", "Bob", "", 100, 100);
+  seedConversation(app.db, { id: "conv-alice-rename", userId: ALICE.id, title: "Judul lama", updatedAt: 100 });
+  seedConversation(app.db, { id: "conv-bob-rename", userId: "sub-bob", title: "Milik Bob", updatedAt: 100 });
+  const url = app.url + "/api/conversations/conv-alice-rename";
+  const patch = (target, body, origin = app.url) => fetch(target, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Origin: origin, Cookie: `__Host-borai_session=${aliceToken}` },
+    body: JSON.stringify(body)
+  });
+
+  const updated = await patch(url, { title: "Judul baru" });
+  assert.equal(updated.status, 200);
+  assert.deepEqual(await updated.json(), { updated: true, id: "conv-alice-rename", title: "Judul baru" });
+  assert.equal(app.db.sqlite.prepare("SELECT title FROM conversations WHERE id = ?").get("conv-alice-rename").title, "Judul baru");
+
+  assert.equal((await patch(app.url + "/api/conversations/conv-bob-rename", { title: "Diambil alih" })).status, 404);
+  assert.equal((await patch(url, { title: "Judul palsu" }, "https://attacker.example")).status, 403);
+  assert.equal((await patch(url, { title: "   " })).status, 400);
+  assert.equal((await patch(url, { title: "x".repeat(73) })).status, 400);
+  await app.close();
+});
