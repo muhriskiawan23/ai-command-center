@@ -1062,7 +1062,11 @@ export default {
       const response = await handleAuthRoute(request, env, url);
       if (response) return response;
     }
-    if (url.pathname === "/api/usage") {\n      try { return await handleUsageRoute(request, env); }\n      catch (error) { console.error("Usage request failed:", error); return json({ error: "Data penggunaan gagal diproses." }, 503); }\n    }\n    if (url.pathname === "/api/conversations" || url.pathname.startsWith("/api/conversations/")) {
+    if (url.pathname === "/api/usage") {
+      try { return await handleUsageRoute(request, env); }
+      catch (error) { console.error("Usage request failed:", error); return json({ error: "Data penggunaan gagal diproses." }, 503); }
+    }
+    if (url.pathname === "/api/conversations" || url.pathname.startsWith("/api/conversations/")) {
       if (!["GET", "PATCH", "DELETE"].includes(request.method)) return json({ error: "Metode HTTP tidak didukung untuk endpoint ini." }, 405, { Allow: "GET, PATCH, DELETE" });
       try { return await handleConversationRoute(request, env, url); }
       catch (error) { console.error("Conversation request failed:", error); return json({ error: "Riwayat chat gagal diproses." }, 503); }
