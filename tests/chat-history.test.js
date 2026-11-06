@@ -234,7 +234,7 @@ test("akun: pin percakapan tersimpan, diurutkan lebih dulu, dan tetap terisolasi
 
 test("akun: arsip dan pulihkan percakapan secara privat tanpa menghapus pesannya", async () => {
   const { app, token } = await setup();
-  seedConversation(app.db, { id: "conv-alice-arch01", userId: ALICE.id, title: "Chat untuk arsip", messages: [{ role: "user", content: "Konten tetap utuh" }] });
+  seedConversation(app.db, { id: "conv-alice-arch01", userId: ALICE.id, title: "Chat untuk arsip", updatedAt: 100, messages: [{ role: "user", content: "Konten tetap utuh" }] });
   seedSession(app.db, { id: "sub-bob", email: "bob@example.com", name: "Bob" });
   seedConversation(app.db, { id: "conv-bob-arch001", userId: "sub-bob", title: "Arsip milik Bob", updatedAt: 100 });
   const headers = { Origin: app.url, Cookie: `__Host-borai_session=${token}`, "Content-Type": "application/json" };
