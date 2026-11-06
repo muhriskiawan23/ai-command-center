@@ -59,12 +59,21 @@ test("sumber link memiliki ID stabil dan URL hanya diberikan untuk halaman yang 
   assert.equal("url" in sources[1], false);
 });
 
-test("membaca halaman: sukses, dipotong, dan teks tersimpan apa adanya", async () => {
+test("membaca halaman: sukses, dipotong, dan teks tersimpan apa adanya hingga batas 16.000 karakter", async () => {
   const result = await readLink("https://example.com/a", { fetcher: async () => respond(html(`<p>${LONG}</p><p>${"x".repeat(MAX_PAGE_CHARS * 2)}</p>`)) });
   assert.equal(result.ok, true);
   assert.equal(result.title, "Judul Uji");
   assert.equal(result.truncated, true);
   assert.equal(result.text.length, MAX_PAGE_CHARS);
+});
+
+test("ekstraksi mempertahankan bagian artikel setelah 6.000 karakter", async () => {
+  const marker = "BAGIAN_PENTING_IaaS_PaaS_SaaS";
+  const body = `<p>${"awal ".repeat(1400)}</p><p>${marker}</p>`;
+  const result = await readLink("https://example.com/artikel-panjang", { fetcher: async () => respond(html(body)) });
+  assert.equal(result.ok, true);
+  assert.ok(result.text.length > 6000);
+  assert.ok(result.text.includes(marker));
 });
 
 test("redirect: tiap lompatan divalidasi ulang; ke IP privat ditolak dan tidak pernah diambil", async () => {
