@@ -634,15 +634,15 @@ function renderPdfAttachment(){
 function appendSpreadsheetSource(spreadsheet){
   const row=messagesEl.lastElementChild;const body=row&&row.querySelector(".message-body");if(!body||!spreadsheet)return;
   const box=document.createElement("div");box.className="sources csv-source";
-  const head=document.createElement("strong");head.textContent="File CSV yang dianalisis:";box.append(head);
+  const head=document.createElement("strong");head.textContent="Spreadsheet yang dianalisis:";box.append(head);
   const item=document.createElement("div");item.className="source ok";
   item.textContent="✓ "+String(spreadsheet.name||"spreadsheet.csv")+(Number.isSafeInteger(spreadsheet.rowCount)?" · "+spreadsheet.rowCount.toLocaleString("id-ID")+" baris":"")+(Number.isSafeInteger(spreadsheet.columnCount)?" · "+spreadsheet.columnCount+" kolom":"")+(spreadsheet.truncated?" · ringkasan dibatasi":"");
   box.append(item);body.append(box);
 }
 function renderCsvAttachment(){
   const wrap=$("csvAttachment"),name=$("csvName");if(!wrap||!name)return;
-  wrap.hidden=!activeCsv;name.textContent=activeCsv?activeCsv.name+" · CSV siap":"";
-  $("attachCsv").textContent=activeCsv?"Ganti CSV":"＋ CSV";
+  wrap.hidden=!activeCsv;const isExcel=/\.xlsx$/i.test(activeCsv?.name||"");name.textContent=activeCsv?activeCsv.name+(isExcel?" · Excel siap":" · CSV siap"):"";
+  $("attachCsv").textContent=activeCsv?(isExcel?"Ganti Excel":"Ganti CSV"):"＋ CSV / Excel";
 }
 async function uploadPdf(file){
   if(!file)return;
@@ -668,18 +668,31 @@ async function uploadPdf(file){
   }catch(error){toast(error.message||"PDF gagal dibaca.");}
   finally{button.disabled=busy||loadingChat;renderPdfAttachment()}
 }
+async function ensureXlsxLibrary(){
+  if(window.XLSX?.read)return window.XLSX;
+  if(window.xlsxLibraryLoading)return window.xlsxLibraryLoading;
+  window.xlsxLibraryLoading=new Promise((resolve,reject)=>{
+    const script=document.createElement("script");
+    script.src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js";
+    script.onload=()=>window.XLSX?.read?resolve(window.XLSX):reject(new Error("Pustaka Excel tidak berhasil dimuat."));
+    script.onerror=()=>reject(new Error("Pustaka Excel gagal diunduh. Periksa koneksi lalu coba lagi."));
+    document.head.append(script);
+  });
+  try{return await window.xlsxLibraryLoading}finally{window.xlsxLibraryLoading=null}
+}
 async function uploadCsv(file){
   if(!file)return;
-  if(!file.name.toLowerCase().endsWith(".csv")){toast("Pilih file CSV (.csv).");return;}
-  if(file.size>5*1024*1024){toast("Ukuran CSV maksimal 5 MB.");return;}
-  if(file.size<1){toast("File CSV kosong.");return;}
+  const filename=file.name.toLowerCase();const isExcel=filename.endsWith(".xlsx");if(!isExcel&&!filename.endsWith(".csv")){toast("Pilih file CSV atau Excel (.xlsx).");return;}
+  if(file.size>5*1024*1024){toast("Ukuran file maksimal 5 MB.");return;}
+  if(file.size<1){toast("File kosong.");return;}
   const button=$("attachCsv");button.disabled=true;button.textContent="Membaca…";
   try{
-    const {parseCsvLocally}=await import("/csv-reader.js");
-    const parsed=await parseCsvLocally(file);
+    let parsed;
+    if(isExcel){const xlsx=await ensureXlsxLibrary();const {parseXlsxLocally}=await import("/xlsx-reader.js");parsed=await parseXlsxLocally(file,{xlsx});}
+    else{const {parseCsvLocally}=await import("/csv-reader.js");parsed=await parseCsvLocally(file);}
     activePdf=null;renderPdfAttachment();activeCsv=parsed;renderCsvAttachment();
-    toast("CSV berhasil dibaca secara lokal. Tanyakan analisisnya di kolom chat.");
-  }catch(error){toast(error.message||"CSV gagal dibaca.");}
+    toast(isExcel?"Excel berhasil dibaca secara lokal. Tanyakan analisisnya di kolom chat.":"CSV berhasil dibaca secara lokal. Tanyakan analisisnya di kolom chat.");
+  }catch(error){toast(error.message||"File gagal dibaca.");}
   finally{button.disabled=busy||loadingChat;renderCsvAttachment()}
 }
 function appendFailedTurn(message,text,noRetry=false,requestId=null){
