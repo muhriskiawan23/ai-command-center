@@ -18,7 +18,10 @@ Public AI workspace with Google sign-in, temporary guest sessions, private per-a
 - Signed-in chat submissions carry a client request ID. If the browser loses the response after the Worker has saved the turn, retrying the same request replays the saved answer instead of generating or storing a duplicate. This requires migration `0006_chat_request_idempotency.sql`; guest chats remain memory-only and are not persisted for deduplication.
 - Security headers on API and HTML responses, including a restrictive Content Security Policy compatible with the dashboard's inline assets.
 
-- An on-demand, accessible About BOR AI dialog describing the product, current capabilities, privacy controls, and official repository.\n\n## Architecture
+- An on-demand, accessible About BOR AI dialog describing the product, current capabilities, privacy controls, and official repository.
+- A searchable prompt-template library across productivity, research, writing, study, business, and coding. Templates are inserted into the editable composer and are never submitted automatically.
+
+## Architecture
 
 - `src/index.js`: Cloudflare Worker API and orchestration.
 - `public/index.html`: frontend dashboard.
