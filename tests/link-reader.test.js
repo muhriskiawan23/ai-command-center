@@ -148,7 +148,7 @@ test("sitasi palsu dihapus secara deterministik ketika semua tautan gagal dibaca
 test("hanya ID sitasi dari sumber sukses yang dipertahankan", async () => {
   const { app, post } = await setup(async (url) => url.includes("gagal") ? new Response("blocked", { status: 403 }) : okPage()());
   app.control.aiText = "Harga beras medium Rp 14.500/kg [1]. Klaim lain tidak didukung [2].";
-  const response = await post("Tolong ringkas isi halaman https://berhasil.id/data dan https://gagal.id/data");
+  const response = await post("Tolong ringkas isi halaman https://berhasil.id/berita dan https://gagal.id/berita");
   const body = await response.json();
   assert.equal(response.status, 200);
   assert.ok(body.response.includes("Rp 14.500/kg [1]"), body.response);
