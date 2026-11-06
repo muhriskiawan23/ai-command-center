@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures.js";
 
 test("assistant answer can be converted to a checklist and copied or downloaded", async ({ page, app }) => {
-  app.control.aiText = "# Action plan\n\n- Review the report\n1. Confirm the figures\n\nKeep this paragraph.\n\n```md\n- This is code, not a task\n```";
+  app.control.aiText = "# Action plan\n\n- Review the report\n1. Confirm the figures\n\nKeep this paragraph. The team should compare the latest results with the previous reporting period, document any material differences, and record the evidence used for each conclusion. This additional context keeps the fixture response representative of a complete assistant answer.\n\n```md\n- This is code, not a task\n```";
   await page.goto(app.url);
   await page.locator("#continueGuest").click();
   await expect(page.locator("#app")).toBeVisible();
