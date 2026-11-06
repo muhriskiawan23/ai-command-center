@@ -148,6 +148,36 @@ test("akun: retry dengan request ID yang sama memutar ulang jawaban tersimpan ta
   await app.close();
 });
 
+
+test("akun: sumber sitasi link tersimpan dan dikembalikan saat percakapan dibuka ulang", async () => {
+  const { app, post, token } = await setup({ extraEnv: {
+    LINK_FETCHER: async () => new Response("<!doctype html><html><head><title>Artikel Uji</title></head><body><p>Ini adalah paragraf sumber uji yang cukup panjang supaya dianggap berisi teks yang berguna bagi model dan dapat diverifikasi dalam riwayat percakapan tersimpan.</p></body></html>", { headers: { "content-type": "text/html" } })
+  } });
+  const requestId = "c8e4f9c2-48a1-4a8d-9c33-8d9dbd7b1c23";
+  const firstResponse = await post({ message: "Ringkas https://example.com/article", requestId });
+  assert.equal(firstResponse.status, 200);
+  const first = await firstResponse.json();
+  assert.equal(first.saved, true);
+  assert.equal(first.links[0].sourceId, 1);
+  assert.equal(first.links[0].url, "https://example.com/article");
+  const stored = app.db.sqlite.prepare("SELECT links_json FROM messages WHERE id = ?").get(first.responseId);
+  assert.equal(JSON.parse(stored.links_json)[0].url, "https://example.com/article");
+
+  const detail = await fetch(app.url + "/api/conversations/" + first.conversationId, {
+    headers: { Origin: app.url, Cookie: `__Host-borai_session=${token}` }
+  });
+  assert.equal(detail.status, 200);
+  const history = await detail.json();
+  const savedAnswer = history.messages.find(message => message.id === first.responseId);
+  assert.equal(savedAnswer.links[0].sourceId, 1);
+  assert.equal(savedAnswer.links[0].url, "https://example.com/article");
+
+  const replay = await (await post({ message: "Ringkas https://example.com/article", requestId })).json();
+  assert.equal(replay.replayed, true);
+  assert.equal(replay.links[0].url, "https://example.com/article");
+  await app.close();
+});
+
 test("akun: request ID malformed ditolak sebelum pemanggilan AI", async () => {
   const { app, post } = await setup();
   const response = await post({ message: "ID tidak valid", requestId: "not-a-uuid" });
