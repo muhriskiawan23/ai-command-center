@@ -909,7 +909,7 @@ async function handleConversationRoute(request, env, url) {
     if (!conversation) return json({ error: "Chat tidak ditemukan." }, 404);
     // Bounded response: the newest MESSAGES_PAGE_MAX messages, oldest-first. `truncated` tells the client older ones exist.
     const result = await env.DB.prepare(
-      "SELECT m.id, m.role, m.content, m.created_at, f.rating AS feedback_rating, f.reason AS feedback_reason " +
+      "SELECT m.id, m.role, m.content, m.links_json, m.created_at, f.rating AS feedback_rating, f.reason AS feedback_reason " +
       "FROM messages m LEFT JOIN answer_feedback f ON f.message_id = m.id AND f.user_id = m.user_id " +
       "WHERE m.conversation_id = ? AND m.user_id = ? ORDER BY m.id DESC LIMIT ?"
     ).bind(conversationId, user.id, MESSAGES_PAGE_MAX + 1).all();
@@ -918,6 +918,7 @@ async function handleConversationRoute(request, env, url) {
     if (truncated) rows = rows.slice(0, MESSAGES_PAGE_MAX);
     const messages = rows.reverse().map((row) => ({
       id: row.id, role: row.role, content: row.content, created_at: row.created_at,
+      links: row.links_json ? safeParseLinks(row.links_json) : [],
       feedback: row.feedback_rating ? { rating: row.feedback_rating, reason: row.feedback_reason || "" } : null
     }));
     return json({ conversation, messages, truncated });
@@ -1014,19 +1015,26 @@ async function findSavedChatRequest(env, user, requestId) {
   if (!env.DB || !user || !requestId) return null;
   try {
     const row = await env.DB.prepare(
-      "SELECT u.conversation_id, a.id AS response_id, a.content AS response FROM messages u " +
+      "SELECT u.conversation_id, a.id AS response_id, a.content AS response, a.links_json AS links_json FROM messages u " +
       "JOIN messages a ON a.conversation_id = u.conversation_id AND a.user_id = u.user_id " +
       "AND a.role = 'assistant' AND a.id > u.id " +
       "WHERE u.user_id = ? AND u.idempotency_key = ? ORDER BY a.id ASC LIMIT 1"
     ).bind(user.id, requestId).first();
-    return row?.response ? { conversationId: row.conversation_id, responseId: Number(row.response_id), response: row.response } : null;
+    return row?.response ? { conversationId: row.conversation_id, responseId: Number(row.response_id), response: row.response, links: row.links_json ? safeParseLinks(row.links_json) : [] } : null;
   } catch (error) {
     if (/no such column/i.test(String(error?.message))) return null;
     throw error;
   }
 }
 
-async function persistConversation(env, user, conversationId, message, response, replaceRows = [], requestId = null) {
+function safeParseLinks(value) {
+  try {
+    const links = JSON.parse(value);
+    return Array.isArray(links) ? links.filter((link) => link && typeof link === "object" && Number.isInteger(link.sourceId) && typeof link.ok === "boolean") : [];
+  } catch { return []; }
+}
+
+async function persistConversation(env, user, conversationId, message, response, replaceRows = [], requestId = null, links = []) {
   const now = Math.floor(Date.now() / 1000);
   const id = conversationId || crypto.randomUUID();
   const title = message.replace(/\s+/g, " ").slice(0, 72) || "Percakapan baru";
@@ -1052,7 +1060,7 @@ async function persistConversation(env, user, conversationId, message, response,
   } else {
     statements.push(env.DB.prepare("INSERT INTO messages (conversation_id, user_id, role, content, created_at) VALUES (?, ?, 'user', ?, ?)").bind(id, user.id, message, now));
   }
-  statements.push(env.DB.prepare("INSERT INTO messages (conversation_id, user_id, role, content, created_at) VALUES (?, ?, 'assistant', ?, ?)").bind(id, user.id, response, now));
+  statements.push(env.DB.prepare("INSERT INTO messages (conversation_id, user_id, role, content, created_at, links_json) VALUES (?, ?, 'assistant', ?, ?, ?)").bind(id, user.id, response, now, links.length ? JSON.stringify(links) : null));
   try {
     await env.DB.batch(statements);
   } catch (error) {
@@ -1061,7 +1069,7 @@ async function persistConversation(env, user, conversationId, message, response,
     const legacyStatements = statements.slice(0, -2);
     legacyStatements.push(
       env.DB.prepare("INSERT INTO messages (conversation_id, user_id, role, content, created_at) VALUES (?, ?, 'user', ?, ?)").bind(id, user.id, message, now),
-      env.DB.prepare("INSERT INTO messages (conversation_id, user_id, role, content, created_at) VALUES (?, ?, 'assistant', ?, ?)").bind(id, user.id, response, now)
+      env.DB.prepare("INSERT INTO messages (conversation_id, user_id, role, content, created_at, links_json) VALUES (?, ?, 'assistant', ?, ?, ?)").bind(id, user.id, response, now, links.length ? JSON.stringify(links) : null)
     );
     await env.DB.batch(legacyStatements);
   }
@@ -1197,7 +1205,7 @@ export default {
       if (user && body.requestId) {
         try {
           const saved = await findSavedChatRequest(env, user, body.requestId);
-          if (saved) return json({ agent: AGENTS[agentId].name, model: MODEL, workflow: "idempotent-replay", response: saved.response, conversationId: saved.conversationId, responseId: saved.responseId, saved: true, replayed: true });
+          if (saved) return json({ agent: AGENTS[agentId].name, model: MODEL, workflow: "idempotent-replay", response: saved.response, links: saved.links, conversationId: saved.conversationId, responseId: saved.responseId, saved: true, replayed: true });
         } catch (error) {
           console.error("Chat idempotency lookup failed:", error);
           return json({ error: "Status permintaan sebelumnya tidak dapat diperiksa. Coba muat ulang riwayat chat." }, 503);
@@ -1294,7 +1302,7 @@ export default {
         if (memoryNote && typeof result.response === "string") result.response = `${result.response}\n\n${memoryNote}`;
         if (user) {
           try {
-            const persisted = await persistConversation(env, user, body.conversationId || null, message, result.response, replaceRows, body.requestId || null);
+            const persisted = await persistConversation(env, user, body.conversationId || null, message, result.response, replaceRows, body.requestId || null, links);
             result.conversationId = persisted.conversationId;
             result.responseId = persisted.responseId;
             result.saved = true;
