@@ -80,12 +80,12 @@ export const SPREADSHEET_CONTEXT_MAX_CHARS = 10_000;
 
 export function safeSpreadsheetName(value) {
   const raw = String(value || "spreadsheet.csv")
-    .replace(/[\\x00-\\x1f\\x7f]/g, "")
-    .replace(/[\\/\\\\<>:"|?*]/g, "_")
+    .replace(/[\x00-\x1f\x7f]/g, "")
+    .replace(/[\/\\<>:"|?*]/g, "_")
     .trim()
     .slice(0, 120);
   const extension = raw.toLowerCase().endsWith(".xlsx") ? ".xlsx" : ".csv";
-  const base = raw.replace(/\\.(csv|xlsx)$/i, "") || "spreadsheet";
+  const base = raw.replace(/\.(csv|xlsx)$/i, "") || "spreadsheet";
   return base + extension;
 }
 
@@ -103,5 +103,5 @@ export function buildSpreadsheetContext(spreadsheet) {
     "<" + tag + " name=\"" + name + "\">",
     content,
     "</" + tag + ">"
-  ].join("\\n");
+  ].join("\n");
 }
