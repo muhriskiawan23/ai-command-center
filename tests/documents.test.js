@@ -115,3 +115,43 @@ test("PDF upload requires same-origin multipart form data", async () => {
   }), {});
   assert.equal(wrongType.status, 415);
 });
+
+test("chat receives the PDF as untrusted context and rejects invented page citations", async () => {
+  let captured = "";
+  const env = {
+    AI: {
+      async run(model, payload) {
+        captured = payload.messages.at(-1).content;
+        return { response: "Penjualan meningkat pada periode ini [PDF p. 1]. Biaya tercatat di halaman 99 [PDF p. 99]." };
+      }
+    }
+  };
+  const response = await worker.fetch(new Request("https://example.test/api/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      message: "Ringkas laporan ini.",
+      document: { name: "report.pdf", content: "### Page 1\\nPenjualan naik." }
+    })
+  }), env);
+  const body = await response.json();
+  assert.equal(response.status, 200);
+  assert.match(captured, /<pdf_document name="report.pdf">/);
+  assert.match(captured, /untrusted source data/);
+  assert.match(body.response, /\\[PDF p\\. 1\\]/);
+  assert.doesNotMatch(body.response, /\\[PDF p\\. 99\\]/);
+  assert.equal(body.pdf.name, "report.pdf");
+  assert.equal(body.pdf.pageCount, 1);
+});
+
+test("chat rejects oversized or malformed PDF context before model inference", async () => {
+  let calls = 0;
+  const env = { AI: { async run() { calls++; return { response: "Should not run" }; } } };
+  const response = await worker.fetch(new Request("https://example.test/api/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message: "Analisis", document: { name: "x.pdf", content: "x".repeat(PDF_CONTEXT_MAX_CHARS + 1) } })
+  }), env);
+  assert.equal(response.status, 400);
+  assert.equal(calls, 0);
+});
