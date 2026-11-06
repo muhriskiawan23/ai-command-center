@@ -529,7 +529,7 @@ async function renameChat(cid){
   const chat=conversations.find(c=>c.id===cid);if(!chat)return;
   const proposed=window.prompt("Nama percakapan (maksimal 72 karakter):",chat.title||"");
   if(proposed===null)return;
-  const title=proposed.trim().replace(/\\s+/g," ");
+  const title=proposed.trim().replace(/\s+/g," ");
   if(!title||title.length>72){toast("Judul harus berisi 1–72 karakter.");return}
   if(title===(chat.title||""))return;
   try{
