@@ -151,7 +151,7 @@ test("hanya ID sitasi dari sumber sukses yang dipertahankan", async () => {
   const response = await post("Bandingkan https://berhasil.id/data dan https://gagal.id/data");
   const body = await response.json();
   assert.equal(response.status, 200);
-  assert.match(body.response, /Rp 14\\.500\\/kg \\[1\\]/);
+  assert.ok(body.response.includes("Rp 14.500/kg [1]"), body.response);
   assert.ok(!/\\[2\\]/.test(body.response), body.response);
   assert.match(body.response, /sitasi yang tidak cocok/);
   assert.deepEqual(body.links.map((link) => link.ok), [true, false]);
