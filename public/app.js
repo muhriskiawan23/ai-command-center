@@ -602,10 +602,17 @@ function buildHistory(chat){
 function appendSources(links){
   const row=messagesEl.lastElementChild;const body=row&&row.querySelector(".message-body");if(!body||!links||!links.length)return;
   const box=document.createElement("div");box.className="sources";
-  const head=document.createElement("strong");head.textContent="Tautan yang dibaca:";box.append(head);
+  const head=document.createElement("strong");head.textContent="Sumber yang dibaca:";box.append(head);
   for(const l of links){
     const item=document.createElement("div");item.className="source "+(l.ok?"ok":"fail");
-    item.textContent=l.ok?("✓ "+l.host+(l.title?" — "+l.title:"")+(l.truncated?" (dipotong)":"")): ("✗ "+(l.host||"tautan")+" — "+l.reason);
+    if(l.ok){
+      item.append(document.createTextNode("✓ ["+l.sourceId+"] "));
+      if(typeof l.url==="string"&&/^https?:\\/\\//i.test(l.url)){
+        const link=document.createElement("a");link.href=l.url;link.target="_blank";link.rel="noopener noreferrer";
+        link.textContent=l.host+(l.title?" — "+l.title:"");item.append(link);
+      }else item.append(document.createTextNode(l.host+(l.title?" — "+l.title:"")));
+      if(l.truncated)item.append(document.createTextNode(" (dipotong)"));
+    }else item.textContent="✗ "+(l.host||"tautan")+" — "+l.reason;
     box.append(item);
   }
   body.append(box);
