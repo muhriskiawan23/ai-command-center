@@ -341,3 +341,21 @@ test("akun: percakapan dapat diarsipkan dan dipulihkan dari tampilan arsip", asy
   await expect(page.getByRole("button", { name: "Arsipkan Percakapan untuk diarsipkan" })).toBeVisible();
   expect(app.db.sqlite.prepare("SELECT archived FROM conversations WHERE title = ?").get("Percakapan untuk diarsipkan").archived).toBe(0);
 });
+
+
+test("akun: riwayat lebih dari 100 percakapan dapat dimuat bertahap dari sidebar", async ({ page, app, context }) => {
+  await loginAs(context, app, ALICE);
+  const insert = app.db.sqlite.prepare("INSERT INTO conversations (id,user_id,title,created_at,updated_at) VALUES (?,?,?,?,?)");
+  for (let i = 0; i < 103; i++) {
+    const id = "conv-pagination-" + String(i).padStart(4, "0");
+    insert.run(id, ALICE.id, "Riwayat paginasi " + i, 1000 + i, 1000 + i);
+  }
+  await page.goto(app.url);
+  await expect(page.locator(".history-row")).toHaveCount(100);
+  const more = page.getByRole("button", { name: "Muat lebih banyak percakapan" });
+  await expect(more).toBeVisible();
+  await more.click();
+  await expect(page.locator(".history-row")).toHaveCount(103);
+  await expect(more).toHaveCount(0);
+  await expect(page.locator(".history-item").filter({ hasText: "Riwayat paginasi 0" })).toHaveCount(1);
+});
