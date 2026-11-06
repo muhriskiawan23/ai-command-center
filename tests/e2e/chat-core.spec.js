@@ -140,6 +140,7 @@ test("pengguna dapat menghentikan generasi aktif tanpa menyimpan giliran parsial
   await expect(page.locator("#toast")).toContainText("Generasi dihentikan");
   expect(app.db.sqlite.prepare("SELECT COUNT(*) n FROM messages").get().n).toBe(0);
   expect(app.db.sqlite.prepare("SELECT COUNT(*) n FROM conversations").get().n).toBe(0);
+  expect(app.db.sqlite.prepare("SELECT COALESCE(SUM(units), 0) n FROM daily_usage").get().n).toBe(0);
   app.control.aiHang = false;
 });
 
