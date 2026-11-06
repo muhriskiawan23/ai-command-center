@@ -17,237 +17,54 @@ const $=id=>document.getElementById(id);
 function id(){return Date.now().toString(36)+Math.random().toString(36).slice(2,8)}
 function toast(message){const el=$("toast");el.textContent=message;el.hidden=false;clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.hidden=true,2200)}
 function escapeHTML(s){return String(s).replace(/[&<>\"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
-function markdown(input){let src=String(input||"").replace(/\r\n?/g,"\n");const blocks=[];src=src.replace(/```([\w+-]*)[ \t]*\n([\s\S]*?)```/g,(_,lang,code)=>{const key="@@CB"+blocks.length+"@@";blocks.push({lang,code});return key});const lines=src.split(/\n/);let out="";for(const line of lines){const trimmed=line.trim();if(trimmed.startsWith("@@CB")){const idx=Number(trimmed.slice(4,-2));const block=blocks[idx];out+="<pre><code"+(block.lang?` class=\"language-`+escapeHTML(block.lang)+`\"`:"")+">"+escapeHTML(block.code)+"</code></pre>\n";continue}if(/^\s*[-*+]\s+/.test(line)){out+="<li>"+escapeHTML(line.replace(/^\s*[-*+]\s+/,'').trim())+"</li>\n";continue}if(/^\s*\d+[.)]\s+/.test(line)){out+="<li>"+escapeHTML(line.replace(/^\s*\d+[.)]\s+/,'').trim())+"</li>\n";continue}if(/^\s*#{1,6}\s+/.test(line)){out+="<h"+(/^#+/.exec(line)[0].length)+">"+escapeHTML(line.replace(/^\s*#{1,6}\s+/,'').trim())+"</h"+(/^#+/.exec(line)[0].length)+">\n";continue}out+=escapeHTML(line)+"\n"}return out.replace(/\n{3,}/g,"\n\n").replace(/<li>.*?<\/li>\n(?=<li>)/gs,'');}
+function markdown(input){let src=String(input||"").replace(/\r\n?/g,"\n");const blocks=[];src=src.replace(/```([\w+-]*)[ \t]*\n([\s\S]*?)```/g,(_,lang,code)=>{const key="@@CB"+blocks.length+"@@";blocks.push({lang,code});return key});src=escapeHTML(src);src=src.replace(/`([^`]+)`/g,"<code>$1</code>");src=src.replace(/\*\*(.+?)\*\*/g,"<strong>$1</strong>").replace(/\*(.+?)\*/g,"<em>$1</em>").replace(/~~(.+?)~~/g,"<del>$1</del>").replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,'<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');let lines=src.split("\n"),out="",inList=false;for(const line of lines){const t=line.trim();if(/^@@CB\d+@@$/.test(t)){if(inList){out+="</ul>";inList=false}const i=Number(t.slice(4,-2)),b=blocks[i];out+="<pre><code"+(b.lang?' class="language-'+escapeHTML(b.lang)+'"':"")+">"+escapeHTML(b.code)+"</code></pre>";continue}const m=/^\s*[-*+]\s+(.+)$/.exec(line);if(m){if(!inList){out+="<ul>";inList=true}out+="<li>"+m[1]+"</li>";continue}if(inList){out+="</ul>";inList=false}const h=/^(#{1,6})\s+(.+)$/.exec(t);if(h){out+="<h"+h[1].length+">"+h[2]+"</h"+h[1].length+">";continue}if(!t){out+="<br>";continue}out+="<p>"+line+"</p>"}if(inList)out+="</ul>";for(let i=0;i<blocks.length;i++)out=out.replace("@@CB"+i+"@@","");return out}
 function appendMessage(role,content,scroll=true){const row=document.createElement("article");row.className="message "+role;const avatar=document.createElement("div");avatar.className="avatar";avatar.textContent=role==="assistant"?"✳":"";const body=document.createElement("div");body.className="message-body";const rendered=document.createElement("div");rendered.className="message-text";rendered.innerHTML=markdown(content);body.append(rendered);const actions=document.createElement("div");actions.className="message-actions";const copyBtn=document.createElement("button");copyBtn.type="button";copyBtn.className="message-action";copyBtn.textContent="Salin";copyBtn.addEventListener("click",()=>copyText(content));const markdownBtn=document.createElement("button");markdownBtn.type="button";markdownBtn.className="message-action";markdownBtn.textContent="Markdown";markdownBtn.addEventListener("click",()=>downloadMarkdown(content,role));const plainBtn=document.createElement("button");plainBtn.type="button";plainBtn.className="message-action";plainBtn.textContent="Teks";plainBtn.addEventListener("click",()=>downloadText(content,role));const checklistBtn=document.createElement("button");checklistBtn.type="button";checklistBtn.className="message-action";checklistBtn.textContent="Checklist";checklistBtn.addEventListener("click",()=>downloadChecklist(content,role));actions.append(copyBtn,markdownBtn,plainBtn,checklistBtn);body.append(actions);row.append(avatar,body);messagesEl.append(row);if(scroll)conversation.scrollTop=conversation.scrollHeight}
-function showTyping(){const row=document.createElement("article");row.className="message assistant";row.id="typing";row.innerHTML='<div class="avatar">✳</div><div class="message-body"><span class="typing"><span></span><span></span><span></span></span></div>' ;messagesEl.append(row);conversation.scrollTop=conversation.scrollHeight}
+function showTyping(){const row=document.createElement("article");row.className="message assistant";row.id="typing";row.innerHTML='<div class="avatar">✳</div><div class="message-body"><span class="typing"><span></span><span></span><span></span></span></div>';messagesEl.append(row);conversation.scrollTop=conversation.scrollHeight}
 function renderWorkflow(steps){const items=$("workflowItems");items.replaceChildren();if(!Array.isArray(steps)||!steps.length){$("workflow").hidden=true;return}$("workflow").hidden=false;for(const step of steps){const block=document.createElement("div");block.className="workflow-step";const label=document.createElement("strong");label.textContent=step.agent||"Langkah";const status=document.createElement("span");status.textContent=step.status||"completed";status.className="workflow-status";block.append(label,status);const output=document.createElement("pre");output.textContent=step.output||"";block.append(output);items.append(block)}}
 /* Textarea tumbuh mengikuti isi (scrollHeight) sampai max-height dari CSS, lalu berhenti dan scroll di dalam. */
-function resizePrompt(){
-  promptEl.style.height="auto";
-  const max=parseFloat(getComputedStyle(promptEl).maxHeight)||220;
-  const needed=promptEl.scrollHeight;
-  promptEl.style.height=Math.min(needed,max)+"px";
-  promptEl.style.overflowY=needed>max?"auto":"hidden";
-}
-async function health(){try{const r=await fetch(API+"/api/health");if(!r.ok)throw Error();const d=await r.json();$("healthDot").className="dot "+(d.ok?"ok":"bad");$("healthText").textContent=d.ok?["Layanan aktif","Terhubung ke BOR AI"]:["Layanan tidak aktif","Status tidak siap"];$("healthDot").title=d.ok?"Layanan aktif":"Layanan gagal";}catch{const dot=$("healthDot");dot.className="dot bad";dot.title="Layanan tidak dapat dicek";$("healthText").textContent="Status tidak siap";}}
+function resizePrompt(){promptEl.style.height="auto";const max=parseFloat(getComputedStyle(promptEl).maxHeight)||220;const needed=promptEl.scrollHeight;promptEl.style.height=Math.min(needed,max)+"px";promptEl.style.overflowY=needed>max?"auto":"hidden"}
+async function health(){try{const r=await fetch(API+"/api/health");if(!r.ok)throw Error();const d=await r.json();$("healthDot").className="dot "+(d.ok?"ok":"bad");$("healthText").textContent=d.ok?["Layanan aktif","Terhubung ke BOR AI"]:["Layanan tidak aktif","Status tidak siap"];$("healthDot").title=d.ok?"Layanan aktif":"Layanan gagal"}catch{const dot=$("healthDot");dot.className="dot bad";dot.title="Layanan tidak dapat dicek";$("healthText").textContent="Status tidak siap"}}
 
-const CHAT_TIMEOUT_MS=150000; /* alur multi-agent bisa beberapa panggilan model berurutan; lewat ini dianggap macet */
-async function api(path,opts={}){
-  const {timeoutMs,...fetchOpts}=opts;let res,timer,timedOut=false;
-  const ctrl=timeoutMs?new AbortController():null;
-  if(ctrl){fetchOpts.signal=ctrl.signal;timer=setTimeout(()=>{timedOut=true;ctrl.abort()},timeoutMs)}
-  try{res=await fetch(API+path,{credentials:"same-origin",...fetchOpts})}
-  catch{
-    throw Object.assign(new Error(timedOut?"Server terlalu lama merespons (lebih dari "+Math.round(timeoutMs/1000)+" detik). Coba lagi.":"Tidak dapat terhubung ke server. Periksa koneksi Anda."),{status:0});
-  }finally{clearTimeout(timer)}
-  let data=null;try{data=await res.json()}catch{}
-  if(!res.ok){
-    const err=new Error((data&&data.error)||"HTTP "+res.status);err.status=res.status;err.code=data&&data.code;
-    if(res.status===401&&state===AppState.AUTH)expireSession();
-    throw err;
-  }
-  return data||{};
-}
+const CHAT_TIMEOUT_MS=150000;
+async function api(path,opts={}){const {timeoutMs,...fetchOpts}=opts;let res,timer,timedOut=false;const ctrl=timeoutMs?new AbortController():null;if(ctrl){fetchOpts.signal=ctrl.signal;timer=setTimeout(()=>{timedOut=true;ctrl.abort()},timeoutMs)}try{res=await fetch(API+path,{credentials:"same-origin",...fetchOpts})}catch{throw Object.assign(new Error(timedOut?"Server terlalu lama merespons (lebih dari "+Math.round(timeoutMs/1000)+" detik). Coba lagi.":"Tidak dapat terhubung ke server. Periksa koneksi Anda."),{status:0})}finally{clearTimeout(timer)}let data=null;try{data=await res.json()}catch{}if(!res.ok){const err=new Error((data&&data.error)||"HTTP "+res.status);err.status=res.status;err.code=data&&data.code;if(res.status===401&&state===AppState.AUTH)expireSession();throw err}return data||{}}
 const postJson=(path,body,timeoutMs)=>api(path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body),timeoutMs});
-function copyText(value){
-  const text=String(value||"").trim();
-  if(!text){toast("Tidak ada konten untuk disalin.");return;}
-  navigator.clipboard?.writeText(text).then(()=>toast("Konten tersalin."),()=>toast("Clipboard tidak tersedia."));
-}
-function downloadText(value, role="assistant"){
-  const text=String(value||"").trim();
-  if(!text){toast("Tidak ada konten untuk diunduh.");return;}
-  const blob=new Blob([text],{type:"text/plain;charset=utf-8"});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement("a");
-  a.href=url;a.download=(role==="assistant"?"bor-ai-response":"bor-ai-message")+".txt";a.click();
-  URL.revokeObjectURL(url);
-  toast("Teks berhasil diunduh.");
-}
-function downloadMarkdown(value, role="assistant"){
-  const text=String(value||"").trim();
-  if(!text){toast("Tidak ada konten untuk diunduh.");return;}
-  const blob=new Blob([text],{type:"text/markdown;charset=utf-8"});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement("a");
-  a.href=url;a.download=(role==="assistant"?"bor-ai-response":"bor-ai-message")+".md";a.click();
-  URL.revokeObjectURL(url);
-  toast("Markdown berhasil diunduh.");
-}
-function toChecklistMarkdown(text){
-  const lines=String(text||"").split(/\r?\n/);
-  const out=[];
-  let found=false;
-  for(const line of lines){
-    const trimmed=line.trim();
-    if(/^[-*+]\s+/.test(trimmed)){
-      found=true;
-      out.push("- [ ] "+trimmed.replace(/^[-*+]\s+/,""));
-      continue;
-    }
-    if(/^\d+\.\s+/.test(trimmed)){
-      found=true;
-      out.push("- [ ] "+trimmed.replace(/^\d+\.\s+/,""));
-      continue;
-    }
-    out.push(line);
-  }
-  return found ? out.join("\n") : "";
-}
-function downloadChecklist(value, role="assistant"){
-  const checklist=toChecklistMarkdown(value);
-  if(!checklist.trim()){
-    toast("Jawaban ini tidak memiliki daftar yang bisa dikonversi ke checklist.");
-    return;
-  }
-  const blob=new Blob([checklist],{type:"text/markdown;charset=utf-8"});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement("a");
-  a.href=url;a.download=(role==="assistant"?"bor-ai-checklist":"bor-ai-checklist")+".md";a.click();
-  URL.revokeObjectURL(url);
-  toast("Checklist berhasil diunduh.");
-}
+function copyText(value){const text=String(value||"").trim();if(!text){toast("Tidak ada konten untuk disalin.");return}navigator.clipboard?.writeText(text).then(()=>toast("Konten tersalin."),()=>toast("Clipboard tidak tersedia."))}
+function downloadText(value,role="assistant"){const text=String(value||"").trim();if(!text){toast("Tidak ada konten untuk diunduh.");return}const blob=new Blob([text],{type:"text/plain;charset=utf-8"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=(role==="assistant"?"bor-ai-response":"bor-ai-message")+".txt";a.click();URL.revokeObjectURL(url);toast("Teks berhasil diunduh.")}
+function downloadMarkdown(value,role="assistant"){const text=String(value||"").trim();if(!text){toast("Tidak ada konten untuk diunduh.");return}const blob=new Blob([text],{type:"text/markdown;charset=utf-8"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=(role==="assistant"?"bor-ai-response":"bor-ai-message")+".md";a.click();URL.revokeObjectURL(url);toast("Markdown berhasil diunduh.")}
+function downloadChecklist(value,role="assistant"){const checklist=toChecklistMarkdown(value);if(!checklist.trim()){toast("Jawaban ini tidak memiliki daftar yang bisa dikonversi ke checklist.");return}const blob=new Blob([checklist],{type:"text/markdown;charset=utf-8"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=(role==="assistant"?"bor-ai-checklist":"bor-ai-checklist")+".md";a.click();URL.revokeObjectURL(url);toast("Checklist berhasil diunduh.")}
 
 /* ---------- 2. State aplikasi ---------- */
 const AppState={INIT:"initializing",UNAUTH:"unauthenticated",GUEST:"guest",AUTH:"authenticated",EXPIRED:"session-expired",ERROR:"error"};
 const promptEl=$("prompt"),messagesEl=$("messages"),welcomeEl=$("welcome"),conversation=$("conversation");
 const sidebar=$("sidebar"),backdrop=$("backdrop"),menuBtn=$("menuBtn"),workspace=$("workspace");
 let state=AppState.INIT,conversations=[],activeId=null,busy=false,currentUser=null;
-/* navSeq: setiap navigasi chat menaikkan penghitung ini; pemuatan yang tertimpa navigasi lebih baru dibatalkan. */
 let navSeq=0,loadingChat=false;
 function lockComposer(){const lock=busy||loadingChat;$("send").disabled=lock;promptEl.readOnly=lock}
-
-/* Yang disimpan di sessionStorage HANYA penanda "sudah memilih Guest" (agar refresh tidak kembali ke Welcome).
-   Isi chat guest tidak pernah ditulis ke storage mana pun. */
 const GUEST_FLAG="borai.guest";
 function readGuestFlag(){try{return sessionStorage.getItem(GUEST_FLAG)==="1"}catch{return false}}
 function writeGuestFlag(on){try{if(on)sessionStorage.setItem(GUEST_FLAG,"1");else sessionStorage.removeItem(GUEST_FLAG)}catch{}}
-
 function inChatView(){return state===AppState.GUEST||state===AppState.AUTH}
-function setState(next,notice=""){
-  state=next;document.body.dataset.state=next;
-  $("boot").hidden=next!==AppState.INIT;
-  $("gate").hidden=!(next===AppState.UNAUTH||next===AppState.EXPIRED||next===AppState.ERROR);
-  $("app").hidden=!inChatView();
-  const n=$("gateNotice");n.textContent=notice;n.hidden=!notice;
-  $("gateRetry").hidden=next!==AppState.ERROR;
-  if(!inChatView()){closeMemoryDom(false);closeDrawerDom(false)}
-  syncInert();renderAuth();
-}
-function resetChatView(){
-  navSeq++;loadingChat=false;lockComposer();
-  activeId=null;messagesEl.replaceChildren();messagesEl.hidden=true;welcomeEl.hidden=false;
-  $("workflow").hidden=true;promptEl.value="";resizePrompt();
-}
+function setState(next,notice=""){state=next;document.body.dataset.state=next;$("boot").hidden=next!==AppState.INIT;$("gate").hidden=!(next===AppState.UNAUTH||next===AppState.EXPIRED||next===AppState.ERROR);$("app").hidden=!inChatView();const n=$("gateNotice");n.textContent=notice;n.hidden=!notice;$("gateRetry").hidden=next!==AppState.ERROR;if(!inChatView()){closeMemoryDom(false);closeDrawerDom(false)}syncInert();renderAuth()}
+function resetChatView(){navSeq++;loadingChat=false;lockComposer();activeId=null;messagesEl.replaceChildren();messagesEl.hidden=true;welcomeEl.hidden=false;$("workflow").hidden=true;promptEl.value="";resizePrompt()}
 function clearSessionData(){currentUser=null;conversations=[];resetChatView();renderHistory()}
-function expireSession(){
-  if(state!==AppState.AUTH)return;
-  clearSessionData();writeGuestFlag(false);
-  setState(AppState.EXPIRED,"Sesi Anda berakhir. Masuk lagi untuk mengakses riwayat chat, atau lanjutkan sebagai Guest.");
-  loadGoogle(true);
-}
+function expireSession(){if(state!==AppState.AUTH)return;clearSessionData();writeGuestFlag(false);setState(AppState.EXPIRED,"Sesi Anda berakhir. Masuk lagi untuk mengakses riwayat chat, atau lanjutkan sebagai Guest.");loadGoogle(true)}
 async function verifySession(){try{const d=await api("/api/auth/me");if(!d.authenticated)expireSession()}catch{}}
-
-function renderAuth(){
-  const logged=state===AppState.AUTH&&Boolean(currentUser);
-  $("authTitle").textContent=logged?"Masuk sebagai":"Guest Mode";
-  $("authDescription").textContent=logged?(currentUser.email||"Riwayat chat tersimpan di akun Google."):"Chat guest hanya ada di halaman ini dan hilang saat dimuat ulang. Masuk dengan Google untuk menyimpan riwayat permanen.";
-  $("googleButton").hidden=logged;$("userProfile").hidden=!logged;$("signOut").hidden=!logged;
-  $("googleSideStatus").hidden=logged||!$("googleSideStatus").textContent;
-  $("userProfile").replaceChildren();
-  if(logged){
-    const wrap=document.createElement("div");wrap.className="auth-user";
-    if(currentUser.picture){const img=document.createElement("img");img.src=currentUser.picture;img.alt="";wrap.append(img)}
-    const info=document.createElement("div");info.className="auth-user-info";
-    const name=document.createElement("strong");name.textContent=currentUser.name||"Akun Google";
-    const email=document.createElement("small");email.textContent=currentUser.email||"";
-    info.append(name,email);wrap.append(info);$("userProfile").append(wrap);
-  }
-  renderHistory();
-}
+function renderAuth(){const logged=state===AppState.AUTH&&Boolean(currentUser);$("authTitle").textContent=logged?"Masuk sebagai":"Guest Mode";$("authDescription").textContent=logged?(currentUser.email||"Riwayat chat tersimpan di akun Google."):"Chat guest hanya ada di halaman ini dan hilang saat dimuat ulang. Masuk dengan Google untuk menyimpan riwayat permanen.";$("googleButton").hidden=logged;$("userProfile").hidden=!logged;$("signOut").hidden=!logged;$("googleSideStatus").hidden=logged||!$("googleSideStatus").textContent;$("userProfile").replaceChildren();if(logged){const wrap=document.createElement("div");wrap.className="auth-user";if(currentUser.picture){const img=document.createElement("img");img.src=currentUser.picture;img.alt="";wrap.append(img)}const info=document.createElement("div");info.className="auth-user-info";const name=document.createElement("strong");name.textContent=currentUser.name||"Akun Google";const email=document.createElement("small");email.textContent=currentUser.email||"";info.append(name,email);wrap.append(info);$("userProfile").append(wrap)}renderHistory()}
 
 /* ---------- 3. Google Sign-In ---------- */
 const gsi={status:"idle",clientId:null,nonce:null,nonceAt:0,loading:null};
-const NONCE_MAX_AGE_MS=4*60*1000; /* cookie nonce server berumur 5 menit */
-const GSI_MESSAGES={
-  loading:"Menyiapkan login Google…",
-  "not-configured":"Login Google belum dikonfigurasi di server. Anda tetap bisa memakai Guest.",
-  "sdk-failed":"Google Sign-In gagal dimuat (periksa koneksi atau pemblokir konten). Anda tetap bisa memakai Guest.",
-  error:"Login Google belum siap. Anda tetap bisa memakai Guest."
-};
-function setGsiStatus(status,detail){
-  gsi.status=status;
-  const ready=status==="ready";
-  const text=ready?"":(detail||GSI_MESSAGES[status]||"");
-  $("googleButtonGate").hidden=!ready;$("googleDisabled").hidden=ready;
-  $("googleReason").textContent=text;$("googleReason").hidden=!text;
-  $("googleRetry").hidden=!(status==="sdk-failed"||status==="error");
-  $("googleSideStatus").textContent=text;$("googleSideStatus").hidden=!text||(state===AppState.AUTH);
-}
-function waitForGsiSdk(){
-  if(window.google?.accounts?.id)return Promise.resolve();
-  return new Promise(resolve=>{
-    const sdk=document.querySelector('script[src*="accounts.google.com/gsi/client"]');let done=false;
-    const finish=()=>{if(!done){done=true;resolve()}};
-    sdk?.addEventListener("load",finish,{once:true});sdk?.addEventListener("error",finish,{once:true});setTimeout(finish,7000);
-  });
-}
-async function refreshNonce(){
-  const d=await api("/api/auth/nonce");
-  gsi.nonce=d.nonce;gsi.nonceAt=Date.now();
-  window.google.accounts.id.initialize({client_id:gsi.clientId,nonce:gsi.nonce,auto_select:false,callback:handleGoogleCredential});
-}
-function renderGoogleButtons(){
-  if(gsi.status!=="ready"||!window.google?.accounts?.id)return;
-  const opts={theme:"filled_black",size:"large",shape:"pill",text:"continue_with"};
-  window.google.accounts.id.renderButton($("googleButtonGate"),{...opts,width:260});
-  window.google.accounts.id.renderButton($("googleButton"),{...opts,width:220});
-}
-function loadGoogle(force=false){
-  if(state===AppState.AUTH)return Promise.resolve();
-  if(gsi.loading)return gsi.loading;
-  if(gsi.status==="ready"&&!force){renderGoogleButtons();return Promise.resolve()}
-  gsi.loading=(async()=>{
-    setGsiStatus("loading");
-    try{
-      const cfg=await api("/api/config");
-      if(!cfg.googleSignInEnabled||!cfg.googleClientId){setGsiStatus("not-configured");return}
-      gsi.clientId=cfg.googleClientId;
-      await waitForGsiSdk();
-      if(!window.google?.accounts?.id){setGsiStatus("sdk-failed");return}
-      await refreshNonce();
-      setGsiStatus("ready");renderGoogleButtons();
-    }catch(e){setGsiStatus("error",e.message?("Login Google belum siap: "+e.message):undefined)}
-  })().finally(()=>{gsi.loading=null});
-  return gsi.loading;
-}
-/* Nonce sisi server kedaluwarsa 5 menit: perbarui diam-diam agar halaman yang dibiarkan terbuka tetap bisa login. */
-async function refreshNonceIfStale(){
-  if(gsi.status!=="ready"||state===AppState.AUTH||document.hidden)return;
-  if(Date.now()-gsi.nonceAt<NONCE_MAX_AGE_MS)return;
-  try{await refreshNonce();renderGoogleButtons()}catch{}
-}
+const NONCE_MAX_AGE_MS=4*60*1000;
+const GSI_MESSAGES={loading:"Menyiapkan login Google…","not-configured":"Login Google belum dikonfigurasi di server. Anda tetap bisa memakai Guest.","sdk-failed":"Google Sign-In gagal dimuat (periksa koneksi atau pemblokir konten). Anda tetap bisa memakai Guest.",error:"Login Google belum siap. Anda tetap bisa memakai Guest."};
+function setGsiStatus(status,detail){gsi.status=status;const ready=status==="ready";const text=ready?"":(detail||GSI_MESSAGES[status]||"");$("googleButtonGate").hidden=!ready;$("googleDisabled").hidden=ready;$("googleReason").textContent=text;$("googleReason").hidden=!text;$("googleRetry").hidden=!(status==="sdk-failed"||status==="error");$("googleSideStatus").textContent=text;$("googleSideStatus").hidden=!text||(state===AppState.AUTH)}
+function waitForGsiSdk(){if(window.google?.accounts?.id)return Promise.resolve();return new Promise(resolve=>{const sdk=document.querySelector('script[src*="accounts.google.com/gsi/client"]');let done=false;const finish=()=>{if(!done){done=true;resolve()}};sdk?.addEventListener("load",finish,{once:true});sdk?.addEventListener("error",finish,{once:true});setTimeout(finish,7000)})}
+async function refreshNonce(){const d=await api("/api/auth/nonce");gsi.nonce=d.nonce;gsi.nonceAt=Date.now();window.google.accounts.id.initialize({client_id:gsi.clientId,nonce:gsi.nonce,auto_select:false,callback:handleGoogleCredential})}
+function renderGoogleButtons(){if(gsi.status!=="ready"||!window.google?.accounts?.id)return;const opts={theme:"filled_black",size:"large",shape:"pill",text:"continue_with"};window.google.accounts.id.renderButton($("googleButtonGate"),{...opts,width:260});window.google.accounts.id.renderButton($("googleButton"),{...opts,width:220})}
+function loadGoogle(force=false){if(state===AppState.AUTH)return Promise.resolve();if(gsi.loading)return gsi.loading;if(gsi.status==="ready"&&!force){renderGoogleButtons();return Promise.resolve()}gsi.loading=(async()=>{setGsiStatus("loading");try{const cfg=await api("/api/config");if(!cfg.googleSignInEnabled||!cfg.googleClientId){setGsiStatus("not-configured");return}gsi.clientId=cfg.googleClientId;await waitForGsiSdk();if(!window.google?.accounts?.id){setGsiStatus("sdk-failed");return}await refreshNonce();setGsiStatus("ready");renderGoogleButtons()}catch(e){setGsiStatus("error",e.message?("Login Google belum siap: "+e.message):undefined)}})().finally(()=>{gsi.loading=null});return gsi.loading}
+async function refreshNonceIfStale(){if(gsi.status!=="ready"||state===AppState.AUTH||document.hidden)return;if(Date.now()-gsi.nonceAt<NONCE_MAX_AGE_MS)return;try{await refreshNonce();renderGoogleButtons()}catch{}}
 setInterval(refreshNonceIfStale,60*1000);
 document.addEventListener("visibilitychange",()=>{if(!document.hidden)refreshNonceIfStale()});
-
-async function handleGoogleCredential(result){
-  try{
-    const d=await postJson("/api/auth/google",{credential:result.credential,nonce:gsi.nonce});
-    currentUser=d.user;writeGuestFlag(false);
-    setState(AppState.AUTH);await enterChat();toast("Berhasil masuk dengan Google");
-  }catch(e){
-    toast(e.message||"Login Google gagal");
-    if(state!==AppState.AUTH)refreshNonce().then(renderGoogleButtons).catch(()=>{});
-  }
-}
-async function signOut(){
-  try{await api("/api/auth/logout",{method:"POST",headers:{"Content-Type":"application/json"}})}
-  catch{toast("Gagal keluar dari akun");return}
-  try{window.google?.accounts?.id?.disableAutoSelect()}catch{}
-  clearSessionData();writeGuestFlag(false);
-  history.replaceState({borai:1},"",location.pathname+location.search);
-  setState(AppState.UNAUTH);loadGoogle(true);
-}
+async function handleGoogleCredential(result){try{const d=await postJson("/api/auth/google",{credential:result.credential,nonce:gsi.nonce});currentUser=d.user;writeGuestFlag(false);setState(AppState.AUTH);await enterChat();toast("Berhasil masuk dengan Google")}catch(e){toast(e.message||"Login Google gagal");if(state!==AppState.AUTH)refreshNonce().then(renderGoogleButtons).catch(()=>{})}}
+async function signOut(){try{await api("/api/auth/logout",{method:"POST",headers:{"Content-Type":"application/json"}})}catch{toast("Gagal keluar dari akun");return}try{window.google?.accounts?.id?.disableAutoSelect()}catch{}clearSessionData();writeGuestFlag(false);history.replaceState({borai:1},"",location.pathname+location.search);setState(AppState.UNAUTH);loadGoogle(true)}
 
 /* ---------- 4. Router (hash) + History API ---------- */
 const ROUTE_RE=/^#\/c\/([a-zA-Z0-9-]{8,80})$/;
@@ -256,307 +73,54 @@ const routeHash=r=>r.name==="chat"?"#/c/"+r.id:"#/";
 const hashNow=()=>location.hash||"#/";
 function pushRoute(r){if(routeHash(r)!==hashNow())history.pushState({borai:1,route:r},"",routeHash(r))}
 function replaceRoute(r){history.replaceState({borai:1,route:r},"",routeHash(r))}
-/* Pindah rute dari aksi pengguna. Jika drawer terbuka, entri drawer DIGANTI (bukan ditumpuk) agar Back kembali ke rute sebelumnya. */
-function commitRoute(r){
-  if(drawerOpen){
-    if(routeHash(r)===hashNow()){closeDrawer();return}
-    closeDrawerDom();replaceRoute(r);return;
-  }
-  pushRoute(r);
-}
-async function applyRoute(){
-  if(!inChatView())return;
-  const r=currentRoute();
-  if(r.name==="chat"){
-    let ok=false;
-    if(conversations.some(c=>c.id===r.id))ok=await showChat(r.id);
-    else if(state===AppState.AUTH)ok=await openRemoteChat(r.id);
-    if(ok||ok===null)return;
-    toast("Chat tidak ditemukan");replaceRoute({name:"new"});
-  }
-  resetChatView();renderHistory();
-}
-async function openRemoteChat(cid){
-  try{
-    const d=await api("/api/conversations/"+encodeURIComponent(cid));
-    if(!conversations.some(c=>c.id===cid))conversations.push({id:cid,serverId:cid,title:d.conversation?.title||"Percakapan",messages:d.messages||[],updated:(d.conversation?.updated_at||0)*1000,loaded:true});
-    return showChat(cid);
-  }catch{return false}
-}
-window.addEventListener("popstate",e=>{
-  const s=e.state;
-  if(memoryOpen&&s?.overlay!=="memory"){closeMemoryDom();return}
-  if(s?.overlay==="memory"){if(state===AppState.AUTH&&!memoryOpen)openMemoryDom();return}
-  if(drawerOpen&&s?.overlay!=="drawer"){closeDrawerDom();return}
-  if(s?.overlay==="drawer"){if(isDrawerMode()&&inChatView()&&!drawerOpen)openDrawerDom();return}
-  applyRoute();
-});
+function commitRoute(r){if(drawerOpen){if(routeHash(r)===hashNow()){closeDrawer();return}closeDrawerDom();replaceRoute(r);return}pushRoute(r)}
+async function applyRoute(){if(!inChatView())return;const r=currentRoute();if(r.name==="chat"){let ok=false;if(conversations.some(c=>c.id===r.id))ok=await showChat(r.id);else if(state===AppState.AUTH)ok=await openRemoteChat(r.id);if(ok||ok===null)return;toast("Chat tidak ditemukan");replaceRoute({name:"new"})}resetChatView();renderHistory()}
+async function openRemoteChat(cid){try{const d=await api("/api/conversations/"+encodeURIComponent(cid));if(!conversations.some(c=>c.id===cid))conversations.push({id:cid,serverId:cid,title:d.conversation?.title||"Percakapan",messages:d.messages||[],updated:(d.conversation?.updated_at||0)*1000,loaded:true});return showChat(cid)}catch{return false}}
+window.addEventListener("popstate",e=>{const s=e.state;if(memoryOpen&&s?.overlay!=="memory"){closeMemoryDom();return}if(s?.overlay==="memory"){if(state===AppState.AUTH&&!memoryOpen)openMemoryDom();return}if(drawerOpen&&s?.overlay!=="drawer"){closeDrawerDom();return}if(s?.overlay==="drawer"){if(isDrawerMode()&&inChatView()&&!drawerOpen)openDrawerDom();return}applyRoute()});
 
 /* ---------- 5. Drawer (<=1024px) ---------- */
 const mq=window.matchMedia("(max-width:1024px)");
 let drawerOpen=false,lastFocus=null;
 const isDrawerMode=()=>mq.matches;
-function syncInert(){
-  const dm=isDrawerMode();
-  sidebar.inert=dm&&!drawerOpen;workspace.inert=dm&&drawerOpen;
-}
-function openDrawerDom(){
-  if(drawerOpen)return;
-  drawerOpen=true;lastFocus=document.activeElement;
-  sidebar.classList.add("open");backdrop.hidden=false;document.body.classList.add("drawer-open");
-  menuBtn.setAttribute("aria-expanded","true");menuBtn.setAttribute("aria-label","Tutup menu");
-  syncInert();$("drawerClose").focus();
-}
-function closeDrawerDom(restoreFocus=true){
-  if(!drawerOpen)return;
-  drawerOpen=false;
-  sidebar.classList.remove("open");backdrop.hidden=true;document.body.classList.remove("drawer-open");
-  menuBtn.setAttribute("aria-expanded","false");menuBtn.setAttribute("aria-label","Buka menu");
-  syncInert();
-  if(restoreFocus&&lastFocus&&lastFocus.isConnected&&!sidebar.contains(lastFocus))lastFocus.focus();
-  else if(restoreFocus)menuBtn.focus();
-}
-function openDrawer(){
-  if(!isDrawerMode()||drawerOpen||!inChatView())return;
-  history.pushState({borai:1,overlay:"drawer",route:currentRoute()},"",location.href);
-  openDrawerDom();
-}
-function closeDrawer(){
-  if(!drawerOpen)return;
-  if(history.state?.overlay==="drawer")history.back();
-  else closeDrawerDom();
-}
-menuBtn.addEventListener("click",()=>drawerOpen?closeDrawer():openDrawer());
-$("drawerClose").addEventListener("click",closeDrawer);
-backdrop.addEventListener("click",closeDrawer);
+function syncInert(){const dm=isDrawerMode();sidebar.inert=dm&&!drawerOpen;workspace.inert=dm&&drawerOpen}
+function openDrawerDom(){if(drawerOpen)return;drawerOpen=true;lastFocus=document.activeElement;sidebar.classList.add("open");backdrop.hidden=false;document.body.classList.add("drawer-open");menuBtn.setAttribute("aria-expanded","true");menuBtn.setAttribute("aria-label","Tutup menu");syncInert();$("drawerClose").focus()}
+function closeDrawerDom(restoreFocus=true){if(!drawerOpen)return;drawerOpen=false;sidebar.classList.remove("open");backdrop.hidden=true;document.body.classList.remove("drawer-open");menuBtn.setAttribute("aria-expanded","false");menuBtn.setAttribute("aria-label","Buka menu");syncInert();if(restoreFocus&&lastFocus&&lastFocus.isConnected&&!sidebar.contains(lastFocus))lastFocus.focus();else if(restoreFocus)menuBtn.focus()}
+function openDrawer(){if(!isDrawerMode()||drawerOpen||!inChatView())return;history.pushState({borai:1,overlay:"drawer",route:currentRoute()},"",location.href);openDrawerDom()}
+function closeDrawer(){if(!drawerOpen)return;if(history.state?.overlay==="drawer")history.back();else closeDrawerDom()}
+menuBtn.addEventListener("click",()=>drawerOpen?closeDrawer():openDrawer());$("drawerClose").addEventListener("click",closeDrawer);backdrop.addEventListener("click",closeDrawer);
 document.addEventListener("keydown",e=>{if(e.key!=="Escape")return;if(memoryOpen){e.preventDefault();closeMemory()}else if(drawerOpen){e.preventDefault();closeDrawer()}});
 mq.addEventListener("change",()=>{if(!isDrawerMode())closeDrawerDom(false);syncInert()});
 
 /* ---------- 5b. Memori (opsional, hanya akun login) ---------- */
 const memoryPanel=$("memoryPanel");let memoryOpen=false,memoryLastFocus=null;
 function memoryErr(message){const el=$("memoryError");el.textContent=message||"";el.hidden=!message}
-function renderMemory(data){
-  $("memoryToggle").checked=Boolean(data.enabled);
-  const list=$("memoryList");list.replaceChildren();
-  $("memoryEmpty").hidden=data.memories.length>0;
-  for(const m of data.memories){
-    const li=document.createElement("li");li.className="memory-item";
-    const text=document.createElement("span");text.textContent=m.content;
-    const del=document.createElement("button");del.type="button";del.className="memory-del";del.textContent="Hapus";del.setAttribute("aria-label","Hapus memori: "+m.content);
-    del.addEventListener("click",async()=>{try{await api("/api/memory/"+encodeURIComponent(m.id),{method:"DELETE"});memoryErr("");await loadMemory()}catch(e){memoryErr(e.message)}});
-    li.append(text,del);list.append(li);
-  }
-  $("memoryCount").textContent=data.memories.length+" / "+data.limits.maxItems;
-  $("memoryClearAll").hidden=!data.memories.length;
-}
-async function loadMemory(){
-  try{renderMemory(await api("/api/memory"));memoryErr("")}
-  catch(e){memoryErr(e.code==="memory_unavailable"?"Memori belum tersedia di server (migrasi database belum diterapkan).":(e.message||"Gagal memuat memori."))}
-}
-function openMemoryDom(){
-  if(memoryOpen)return;
-  memoryOpen=true;memoryLastFocus=document.activeElement;memoryPanel.hidden=false;
-  document.body.classList.add("drawer-open");$("app").inert=true;$("memoryInput").value="";memoryErr("");$("memoryClose").focus();
-}
-function closeMemoryDom(restoreFocus=true){
-  if(!memoryOpen)return;
-  memoryOpen=false;memoryPanel.hidden=true;$("app").inert=false;
-  if(!drawerOpen)document.body.classList.remove("drawer-open");
-  if(restoreFocus&&memoryLastFocus&&memoryLastFocus.isConnected)memoryLastFocus.focus();
-}
-function openMemory(){
-  if(state!==AppState.AUTH){toast("Masuk dengan Google untuk memakai Memori.");return}
-  if(memoryOpen)return;
-  history.pushState({borai:1,overlay:"memory",route:currentRoute()},"",location.href);
-  openMemoryDom();loadMemory();
-}
+function renderMemory(data){$("memoryToggle").checked=Boolean(data.enabled);const list=$("memoryList");list.replaceChildren();$("memoryEmpty").hidden=data.memories.length>0;for(const m of data.memories){const li=document.createElement("li");li.className="memory-item";const text=document.createElement("span");text.textContent=m.content;const del=document.createElement("button");del.type="button";del.className="memory-del";del.textContent="Hapus";del.setAttribute("aria-label","Hapus memori: "+m.content);del.addEventListener("click",async()=>{try{await api("/api/memory/"+encodeURIComponent(m.id),{method:"DELETE"});memoryErr("");await loadMemory()}catch(e){memoryErr(e.message)}});li.append(text,del);list.append(li)}$("memoryCount").textContent=data.memories.length+" / "+data.limits.maxItems;$("memoryClearAll").hidden=!data.memories.length}
+async function loadMemory(){try{renderMemory(await api("/api/memory"));memoryErr("")}catch(e){memoryErr(e.code==="memory_unavailable"?"Memori belum tersedia di server (migrasi database belum diterapkan).":(e.message||"Gagal memuat memori."))}}
+function openMemoryDom(){if(memoryOpen)return;memoryOpen=true;memoryLastFocus=document.activeElement;memoryPanel.hidden=false;document.body.classList.add("drawer-open");$("app").inert=true;$("memoryInput").value="";memoryErr("");$("memoryClose").focus()}
+function closeMemoryDom(restoreFocus=true){if(!memoryOpen)return;memoryOpen=false;memoryPanel.hidden=true;$("app").inert=false;if(!drawerOpen)document.body.classList.remove("drawer-open");if(restoreFocus&&memoryLastFocus&&memoryLastFocus.isConnected)memoryLastFocus.focus()}
+function openMemory(){if(state!==AppState.AUTH){toast("Masuk dengan Google untuk memakai Memori.");return}if(memoryOpen)return;history.pushState({borai:1,overlay:"memory",route:currentRoute()},"",location.href);openMemoryDom();loadMemory()}
 function closeMemory(){if(!memoryOpen)return;if(history.state?.overlay==="memory")history.back();else closeMemoryDom()}
-async function addMemoryItem(){
-  const input=$("memoryInput");const content=input.value.trim();if(!content)return;
-  try{await postJson("/api/memory",{content});input.value="";memoryErr("");await loadMemory()}
-  catch(e){memoryErr(e.message)}
-}
-$("openMemory").addEventListener("click",openMemory);
-$("memoryClose").addEventListener("click",closeMemory);
-memoryPanel.addEventListener("click",e=>{if(e.target===memoryPanel)closeMemory()});
-$("memoryToggle").addEventListener("change",async e=>{
-  const want=e.target.checked;
-  try{await api("/api/memory/settings",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({enabled:want})});memoryErr("")}
-  catch(err){e.target.checked=!want;memoryErr(err.message)}
-});
-$("memoryAdd").addEventListener("click",addMemoryItem);
-$("memoryInput").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();addMemoryItem()}});
-$("memoryClearAll").addEventListener("click",async()=>{
-  if(!confirm("Hapus semua memori? Tindakan ini tidak bisa dibatalkan."))return;
-  try{await api("/api/memory",{method:"DELETE"});memoryErr("");await loadMemory()}catch(e){memoryErr(e.message)}
-});
+async function addMemoryItem(){const input=$("memoryInput");const content=input.value.trim();if(!content)return;try{await postJson("/api/memory",{content});input.value="";memoryErr("");await loadMemory()}catch(e){memoryErr(e.message)}}
+$("openMemory").addEventListener("click",openMemory);$("memoryClose").addEventListener("click",closeMemory);memoryPanel.addEventListener("click",e=>{if(e.target===memoryPanel)closeMemory()});
+$("memoryToggle").addEventListener("change",async e=>{const want=e.target.checked;try{await api("/api/memory/settings",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({enabled:want})});memoryErr("")}catch(err){e.target.checked=!want;memoryErr(err.message)}});
+$("memoryAdd").addEventListener("click",addMemoryItem);$("memoryInput").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();addMemoryItem()}});
+$("memoryClearAll").addEventListener("click",async()=>{if(!confirm("Hapus semua memori? Tindakan ini tidak bisa dibatalkan."))return;try{await api("/api/memory",{method:"DELETE"});memoryErr("");await loadMemory()}catch(e){memoryErr(e.message)}});
 
 /* ---------- 6. Chat ---------- */
 const sortedConversations=()=>[...conversations].sort((a,b)=>(b.updated||0)-(a.updated||0));
-function renderHistory(){
-  const nav=$("history");nav.replaceChildren();
-  if(!inChatView()){$("historyCount").textContent="";return}
-  $("historyLabel").textContent=state===AppState.AUTH?"Riwayat akun":"Sesi ini · Guest Mode";
-  $("historyCount").textContent=conversations.length?String(conversations.length):"";
-  for(const c of sortedConversations()){
-    const row=document.createElement("div");row.className="history-row";
-    const b=document.createElement("button");b.className="history-item"+(c.id===activeId?" active":"");b.type="button";
-    if(c.id===activeId)b.setAttribute("aria-current","page");
-    const icon=document.createElement("span");icon.textContent="▤";icon.setAttribute("aria-hidden","true");
-    const title=document.createElement("span");title.textContent=c.title||"Percakapan baru";
-    b.append(icon,title);b.title=c.title||"Percakapan baru";b.onclick=()=>selectChat(c.id);
-    const del=document.createElement("button");del.className="delete-chat";del.type="button";del.textContent="×";del.title="Hapus chat";del.setAttribute("aria-label","Hapus "+(c.title||"chat"));
-    del.onclick=e=>{e.stopPropagation();deleteChat(c.id)};
-    row.append(b,del);nav.append(row);
-  }
-}
-/* Menampilkan chat tanpa menyentuh history; pemanggil yang menentukan rute.
-   Mengembalikan true (tampil), false (gagal/tidak ada), atau null (dibatalkan oleh navigasi yang lebih baru). */
-async function showChat(cid){
-  const c=conversations.find(x=>x.id===cid);if(!c)return false;
-  const seq=++navSeq;
-  if(state===AppState.AUTH&&!c.loaded&&c.serverId){
-    loadingChat=true;lockComposer();
-    try{
-      const d=await api("/api/conversations/"+encodeURIComponent(c.serverId));
-      if(seq!==navSeq)return null;
-      c.messages=d.messages||[];c.loaded=true;c.title=d.conversation?.title||c.title;if(d.truncated)toast("Percakapan panjang: hanya 500 pesan terakhir yang ditampilkan.");
-    }catch(e){if(seq!==navSeq)return null;toast(e.message||"Gagal memuat chat");return false}
-    finally{if(seq===navSeq){loadingChat=false;lockComposer()}}
-  }
-  if(seq!==navSeq)return null;
-  activeId=cid;welcomeEl.hidden=true;messagesEl.hidden=false;messagesEl.replaceChildren();
-  for(const m of c.messages)appendMessage(m.role,m.content,false);
-  $("workflow").hidden=true;renderHistory();conversation.scrollTop=conversation.scrollHeight;
-  return true;
-}
-async function selectChat(cid){
-  if(!(await showChat(cid)))return;
-  commitRoute({name:"chat",id:cid});
-}
-function newChat(){
-  resetChatView();renderHistory();commitRoute({name:"new"});
-  if(!isDrawerMode())promptEl.focus();
-}
-async function enterChat(){
-  conversations=[];resetChatView();
-  /* Kunci composer selama riwayat dimuat: applyRoute() akan mereset tampilan, sehingga pesan yang dikirim lebih awal akan hilang. */
-  loadingChat=true;lockComposer();
-  try{
-    if(state===AppState.AUTH){try{await syncUserHistory()}catch(e){toast(e.message||"Gagal memuat riwayat")}}
-    renderHistory();
-    await applyRoute();
-  }finally{loadingChat=false;lockComposer()}
-}
-async function syncUserHistory(){
-  const d=await api("/api/conversations");
-  conversations=(d.conversations||[]).map(c=>({id:c.id,serverId:c.id,title:c.title,messages:[],updated:(c.updated_at||0)*1000,loaded:false}));
-}
-function buildHistory(chat){
-  const out=[];let total=0;
-  for(let i=chat.messages.length-1;i>=0&&out.length<12;i--){
-    const m=chat.messages[i];const content=String(m.content||"").trim().slice(0,2000);
-    if(!content)continue;if(total+content.length>8000)break;
-    total+=content.length;out.unshift({role:m.role==="assistant"?"assistant":"user",content});
-  }
-  while(out.length&&out[0].role!=="user")out.shift();
-  return out;
-}
-function appendSources(links){
-  const row=messagesEl.lastElementChild;const body=row&&row.querySelector(".message-body");if(!body||!links||!links.length)return;
-  const box=document.createElement("div");box.className="sources";
-  const head=document.createElement("strong");head.textContent="Tautan yang dibaca:";box.append(head);
-  for(const l of links){
-    const item=document.createElement("div");item.className="source "+(l.ok?"ok":"fail");
-    item.textContent=l.ok?("✓ "+l.host+(l.title?" — "+l.title:"")+(l.truncated?" (dipotong)":"")): ("✗ "+(l.host||"tautan")+" — "+l.reason);
-    box.append(item);
-  }
-  body.append(box);
-}
-function appendFailedTurn(message,text,noRetry=false){
-  appendMessage("assistant",message);
-  const row=messagesEl.lastElementChild;const body=row&&row.querySelector(".message-body");if(!body)return;
-  row.classList.add("failed");
-  if(noRetry)return;
-  const btn=document.createElement("button");btn.type="button";btn.className="retry-btn";btn.textContent="↻ Coba lagi";
-  btn.addEventListener("click",()=>{
-    if(busy||loadingChat)return;
-    const prev=row.previousElementSibling;row.remove();if(prev&&prev.classList.contains("user"))prev.remove();
-    promptEl.value=text;resizePrompt();submit();
-  });
-  body.append(btn);
-}
-async function submit(){
-  if(busy||loadingChat||!inChatView())return;const text=promptEl.value.trim();if(!text)return;
-  busy=true;lockComposer();const agent=$("agent").value;
-  let createdNew=false;
-  if(!activeId){activeId=id();createdNew=true;conversations.push({id:activeId,serverId:null,title:text.replace(/\s+/g," ").slice(0,72),messages:[],updated:Date.now(),loaded:true})}
-  const chat=conversations.find(c=>c.id===activeId);const startId=chat.id;
-  const history=buildHistory(chat);const userEntry={role:"user",content:text};chat.messages.push(userEntry);chat.updated=Date.now();
-  welcomeEl.hidden=true;messagesEl.hidden=false;appendMessage("user",text);promptEl.value="";resizePrompt();showTyping();renderHistory();
-  if(createdNew)replaceRoute({name:"chat",id:chat.id});
-  const stillActive=()=>activeId===startId;const start=Date.now();
-  try{
-    const payload={message:text,agent};if(history.length)payload.history=history;if(state===AppState.AUTH&&chat.serverId)payload.conversationId=chat.serverId;
-    const data=await postJson("/api/chat",payload,CHAT_TIMEOUT_MS);
-    if(typeof data.response!=="string"||!data.response.trim())throw new Error("AI tidak menghasilkan jawaban.");
-    chat.messages.push({role:"assistant",content:data.response});chat.updated=Date.now();
-    if(stillActive()){$("typing")?.remove();appendMessage("assistant",data.response);appendSources(data.links);renderWorkflow(data.steps)}
-    if(state===AppState.AUTH&&data.saved&&data.conversationId){
-      chat.serverId=data.conversationId;chat.id=data.conversationId;chat.loaded=true;
-      if(stillActive()){activeId=chat.id;replaceRoute({name:"chat",id:chat.id})}
-    }
-    if(data.saveWarning)toast(data.saveWarning);
-    else if(!stillActive())toast("Jawaban untuk \""+chat.title+"\" sudah siap");
-    else toast("Selesai dalam "+((Date.now()-start)/1000).toFixed(1)+" detik");
-    if(state===AppState.AUTH&&!data.saved&&!data.saveWarning)verifySession();
-  }catch(e){
-    const message="Maaf, permintaan gagal diproses. "+(e.message||"Periksa koneksi lalu coba lagi.");
-    const at=chat.messages.indexOf(userEntry);if(at>=0)chat.messages.splice(at,1);
-    if(stillActive()){$("typing")?.remove();appendFailedTurn(message,text,e.code==="daily_limit")}
-    toast("Permintaan gagal");
-  }finally{busy=false;lockComposer();renderHistory();if(!isDrawerMode())promptEl.focus()}
-}
-async function deleteChat(cid){
-  if(busy)return;const chat=conversations.find(c=>c.id===cid);if(!chat)return;
-  if(!confirm("Hapus percakapan ini?"))return;
-  try{
-    if(state===AppState.AUTH&&chat.serverId)await api("/api/conversations/"+encodeURIComponent(chat.serverId),{method:"DELETE"});
-    conversations=conversations.filter(c=>c.id!==cid);
-    if(activeId===cid){resetChatView();renderHistory();if(drawerOpen){commitRoute({name:"new"})}else replaceRoute({name:"new"})}else renderHistory();
-    toast("Chat dihapus");
-  }catch(e){toast(e.message||"Gagal menghapus chat")}
-}
-async function clearHistory(){
-  if(busy||!conversations.length)return;if(!confirm("Hapus semua riwayat chat?"))return;
-  try{
-    if(state===AppState.AUTH)await api("/api/conversations",{method:"DELETE"});
-    conversations=[];resetChatView();renderHistory();
-    if(drawerOpen)commitRoute({name:"new"});else replaceRoute({name:"new"});
-    toast("Semua riwayat dihapus");
-  }catch(e){toast(e.message||"Gagal menghapus riwayat")}
-}
+function renderHistory(){const nav=$("history");nav.replaceChildren();if(!inChatView()){$("historyCount").textContent="";return}$("historyLabel").textContent=state===AppState.AUTH?"Riwayat akun":"Sesi ini · Guest Mode";$("historyCount").textContent=conversations.length?String(conversations.length):"";for(const c of sortedConversations()){const row=document.createElement("div");row.className="history-row";const b=document.createElement("button");b.className="history-item"+(c.id===activeId?" active":"");b.type="button";if(c.id===activeId)b.setAttribute("aria-current","page");const icon=document.createElement("span");icon.textContent="▤";icon.setAttribute("aria-hidden","true");const title=document.createElement("span");title.textContent=c.title||"Percakapan baru";b.append(icon,title);b.title=c.title||"Percakapan baru";b.onclick=()=>selectChat(c.id);const del=document.createElement("button");del.className="delete-chat";del.type="button";del.textContent="×";del.title="Hapus chat";del.setAttribute("aria-label","Hapus "+(c.title||"chat"));del.onclick=e=>{e.stopPropagation();deleteChat(c.id)};row.append(b,del);nav.append(row)}}
+async function showChat(cid){const c=conversations.find(x=>x.id===cid);if(!c)return false;const seq=++navSeq;if(state===AppState.AUTH&&!c.loaded&&c.serverId){loadingChat=true;lockComposer();try{const d=await api("/api/conversations/"+encodeURIComponent(c.serverId));if(seq!==navSeq)return null;c.messages=d.messages||[];c.loaded=true;c.title=d.conversation?.title||c.title;if(d.truncated)toast("Percakapan panjang: hanya 500 pesan terakhir yang ditampilkan.")}catch(e){if(seq!==navSeq)return null;toast(e.message||"Gagal memuat chat");return false}finally{if(seq===navSeq){loadingChat=false;lockComposer()}}}if(seq!==navSeq)return null;activeId=cid;welcomeEl.hidden=true;messagesEl.hidden=false;messagesEl.replaceChildren();for(const m of c.messages)appendMessage(m.role,m.content,false);$("workflow").hidden=true;renderHistory();conversation.scrollTop=conversation.scrollHeight;return true}
+async function selectChat(cid){if(!(await showChat(cid)))return;commitRoute({name:"chat",id:cid})}
+function newChat(){resetChatView();renderHistory();commitRoute({name:"new"});if(!isDrawerMode())promptEl.focus()}
+async function enterChat(){conversations=[];resetChatView();loadingChat=true;lockComposer();try{if(state===AppState.AUTH){try{await syncUserHistory()}catch(e){toast(e.message||"Gagal memuat riwayat")}}renderHistory();await applyRoute()}finally{loadingChat=false;lockComposer()}}
+async function syncUserHistory(){const d=await api("/api/conversations");conversations=(d.conversations||[]).map(c=>({id:c.id,serverId:c.id,title:c.title,messages:[],updated:(c.updated_at||0)*1000,loaded:false}))}
+function buildHistory(chat){const out=[];let total=0;for(let i=chat.messages.length-1;i>=0&&out.length<12;i--){const m=chat.messages[i];const content=String(m.content||"").trim().slice(0,2000);if(!content)continue;if(total+content.length>8000)break;total+=content.length;out.unshift({role:m.role==="assistant"?"assistant":"user",content})}while(out.length&&out[0].role!=="user")out.shift();return out}
+function appendSources(links){const row=messagesEl.lastElementChild;const body=row&&row.querySelector(".message-body");if(!body||!links||!links.length)return;const box=document.createElement("div");box.className="sources";const head=document.createElement("strong");head.textContent="Tautan yang dibaca:";box.append(head);for(const l of links){const item=document.createElement("div");item.className="source "+(l.ok?"ok":"fail");item.textContent=l.ok?("✓ "+l.host+(l.title?" — "+l.title:"")+(l.truncated?" (dipotong)":"")): ("✗ "+(l.host||"tautan")+" — "+l.reason);box.append(item)}body.append(box)}
+function appendFailedTurn(message,text,noRetry=false){appendMessage("assistant",message);const row=messagesEl.lastElementChild;const body=row&&row.querySelector(".message-body");if(!body)return;row.classList.add("failed");if(noRetry)return;const btn=document.createElement("button");btn.type="button";btn.className="retry-btn";btn.textContent="↻ Coba lagi";btn.addEventListener("click",()=>{if(busy||loadingChat)return;const prev=row.previousElementSibling;row.remove();if(prev&&prev.classList.contains("user"))prev.remove();promptEl.value=text;resizePrompt();submit()});body.append(btn)}
+async function submit(){if(busy||loadingChat||!inChatView())return;const text=promptEl.value.trim();if(!text)return;busy=true;lockComposer();const agent=$("agent").value;let createdNew=false;if(!activeId){activeId=id();createdNew=true;conversations.push({id:activeId,serverId:null,title:text.replace(/\s+/g," ").slice(0,72),messages:[],updated:Date.now(),loaded:true})}const chat=conversations.find(c=>c.id===activeId);const startId=chat.id;const history=buildHistory(chat);const userEntry={role:"user",content:text};chat.messages.push(userEntry);chat.updated=Date.now();welcomeEl.hidden=true;messagesEl.hidden=false;appendMessage("user",text);promptEl.value="";resizePrompt();showTyping();renderHistory();if(createdNew)replaceRoute({name:"chat",id:chat.id});const stillActive=()=>activeId===startId;const start=Date.now();try{const payload={message:text,agent};if(history.length)payload.history=history;if(state===AppState.AUTH&&chat.serverId)payload.conversationId=chat.serverId;const data=await postJson("/api/chat",payload,CHAT_TIMEOUT_MS);if(typeof data.response!=="string"||!data.response.trim())throw new Error("AI tidak menghasilkan jawaban.");chat.messages.push({role:"assistant",content:data.response});chat.updated=Date.now();if(stillActive()){$("typing")?.remove();appendMessage("assistant",data.response);appendSources(data.links);renderWorkflow(data.steps)}if(state===AppState.AUTH&&data.saved&&data.conversationId){chat.serverId=data.conversationId;chat.id=data.conversationId;chat.loaded=true;if(stillActive()){activeId=chat.id;replaceRoute({name:"chat",id:chat.id})}}if(data.saveWarning)toast(data.saveWarning);else if(!stillActive())toast("Jawaban untuk \""+chat.title+"\" sudah siap");else toast("Selesai dalam "+((Date.now()-start)/1000).toFixed(1)+" detik");if(state===AppState.AUTH&&!data.saved&&!data.saveWarning)verifySession()}catch(e){const message="Maaf, permintaan gagal diproses. "+(e.message||"Periksa koneksi lalu coba lagi.");const at=chat.messages.indexOf(userEntry);if(at>=0)chat.messages.splice(at,1);if(stillActive()){$("typing")?.remove();appendFailedTurn(message,text,e.code==="daily_limit")}toast("Permintaan gagal")}finally{busy=false;lockComposer();renderHistory();if(!isDrawerMode())promptEl.focus()}}
+async function deleteChat(cid){if(busy)return;const chat=conversations.find(c=>c.id===cid);if(!chat)return;if(!confirm("Hapus percakapan ini?"))return;try{if(state===AppState.AUTH&&chat.serverId)await api("/api/conversations/"+encodeURIComponent(chat.serverId),{method:"DELETE"});conversations=conversations.filter(c=>c.id!==cid);if(activeId===cid){resetChatView();renderHistory();if(drawerOpen)commitRoute({name:"new"});else replaceRoute({name:"new"})}else renderHistory();toast("Chat dihapus")}catch(e){toast(e.message||"Gagal menghapus chat")}}
+async function clearHistory(){if(busy||!conversations.length)return;if(!confirm("Hapus semua riwayat chat?"))return;try{if(state===AppState.AUTH)await api("/api/conversations",{method:"DELETE"});conversations=[];resetChatView();renderHistory();if(drawerOpen)commitRoute({name:"new"});else replaceRoute({name:"new"});toast("Semua riwayat dihapus")}catch(e){toast(e.message||"Gagal menghapus riwayat")}}
 
 /* ---------- 7. Boot ---------- */
-async function boot(){
-  setState(AppState.INIT);
-  let me;
-  try{me=await api("/api/auth/me")}
-  catch{setState(AppState.ERROR,"Status akun tidak dapat diperiksa. Periksa koneksi lalu coba lagi, atau lanjutkan sebagai Guest.");loadGoogle();return}
-  if(me.authenticated){currentUser=me.user;setState(AppState.AUTH);await enterChat();return}
-  if(readGuestFlag()){setState(AppState.GUEST);await enterChat();loadGoogle();return}
-  setState(AppState.UNAUTH);loadGoogle();
-}
-$("continueGuest").addEventListener("click",()=>{writeGuestFlag(true);currentUser=null;setState(AppState.GUEST);enterChat();loadGoogle()});
-$("gateRetry").addEventListener("click",boot);
-$("googleRetry").addEventListener("click",()=>loadGoogle(true));
-$("chatForm").addEventListener("submit",e=>{e.preventDefault();submit()});
-promptEl.addEventListener("input",resizePrompt);
-window.addEventListener("resize",resizePrompt);
-$("newChat").addEventListener("click",newChat);
-$("clearHistory").addEventListener("click",clearHistory);
-$("signOut").addEventListener("click",signOut);
-$("about").addEventListener("click",()=>toast("BOR AI · Intelligence without limits"));
-document.querySelectorAll("[data-prompt]").forEach(b=>b.addEventListener("click",()=>{promptEl.value=b.dataset.prompt;resizePrompt();promptEl.focus()}));
-history.scrollRestoration="manual";
-syncInert();health();boot();
+async function boot(){setState(AppState.INIT);let me;try{me=await api("/api/auth/me")}catch{setState(AppState.ERROR,"Status akun tidak dapat diperiksa. Periksa koneksi lalu coba lagi, atau lanjutkan sebagai Guest.");loadGoogle();return}if(me.authenticated){currentUser=me.user;setState(AppState.AUTH);await enterChat();return}if(readGuestFlag()){setState(AppState.GUEST);await enterChat();loadGoogle();return}setState(AppState.UNAUTH);loadGoogle()}
+$("continueGuest").addEventListener("click",()=>{writeGuestFlag(true);currentUser=null;setState(AppState.GUEST);enterChat();loadGoogle()});$("gateRetry").addEventListener("click",boot);$("googleRetry").addEventListener("click",()=>loadGoogle(true));$("chatForm").addEventListener("submit",e=>{e.preventDefault();submit()});promptEl.addEventListener("input",resizePrompt);window.addEventListener("resize",resizePrompt);$("newChat").addEventListener("click",newChat);$("clearHistory").addEventListener("click",clearHistory);$("signOut").addEventListener("click",signOut);$("about").addEventListener("click",()=>toast("BOR AI · Intelligence without limits"));document.querySelectorAll("[data-prompt]").forEach(b=>b.addEventListener("click",()=>{promptEl.value=b.dataset.prompt;resizePrompt();promptEl.focus()}));history.scrollRestoration="manual";syncInert();health();boot();
