@@ -116,7 +116,7 @@ async function api(path,opts={}){
   }finally{clearTimeout(timer)}
   let data=null;try{data=await res.json()}catch{}
   if(!res.ok){
-    const err=new Error((data&&data.error)||"HTTP "+res.status);err.status=res.status;err.code=data&&data.code;
+    const err=new Error((data&&data.error)||"HTTP "+res.status);err.status=res.status;err.code=data&&data.code;err.data=data;
     if(res.status===401&&state===AppState.AUTH)expireSession();
     throw err;
   }
@@ -609,7 +609,8 @@ function appendSources(links){
       item.append(document.createTextNode("✓ ["+l.sourceId+"] "));
       if(typeof l.url==="string"&&/^https?:\/\//i.test(l.url)){
         const link=document.createElement("a");link.href=l.url;link.target="_blank";link.rel="noopener noreferrer";
-        link.textContent=l.host+(l.title?" — "+l.title:"");item.append(link);
+        link.textContent=l.url+(l.title?" — "+l.title:"");item.append(link);
+        if(l.resolvedUrl&&l.resolvedUrl!==l.url){const redirect=document.createElement("small");redirect.textContent="Dialihkan ke "+l.resolvedUrl;item.append(redirect);}
       }else item.append(document.createTextNode(l.host+(l.title?" — "+l.title:"")));
       if(l.truncated)item.append(document.createTextNode(" (dipotong)"));
     }else item.textContent="✗ "+(l.host||"tautan")+" — "+l.reason;
@@ -678,7 +679,7 @@ async function submit(options={}){
       }
       promptEl.value=text;resizePrompt();toast(message);
     }else{
-      if(stillActive()){$("typing")?.remove();appendFailedTurn(message,text,e.code==="daily_limit",requestId)}
+      if(stillActive()){$("typing")?.remove();appendFailedTurn(message,text,e.code==="daily_limit",requestId);if(e.data?.links?.length)appendSources(e.data.links)}
       toast("Permintaan gagal");
     }
   }finally{busy=false;activeChatController=null;lockComposer();renderHistory();if(!isDrawerMode())promptEl.focus()}
