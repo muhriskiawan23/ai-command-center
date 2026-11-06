@@ -38,7 +38,7 @@ The public repository README describes a web-based AI workspace with:
 - A multi-agent sequence: Researcher → Analyst → Fact Checker → Writer.
 - Specialist modes including Researcher, Analyst, Writer, Fact Checker, Strategist, Coder, Planner, Critic, Summarizer, Translator, and Text Analyst, alongside Coordinator.
 - Guest sessions and Google sign-in for account-based use.
-- Private, account-scoped conversation history for signed-in users, including conversation rename, search, and pinning.
+- Private, account-scoped conversation history for signed-in users, including conversation rename, search, pinning, and archive/restore.
 - Optional, explicit user memory for signed-in users; it is off by default and stores only information the user chooses to save.
 - A link reader: users can include up to three ordinary web links in a message; the service attempts to fetch and extract readable page text for the model. Some pages will fail, including pages requiring JavaScript, login, or unsupported formats.
 
@@ -46,7 +46,7 @@ The repository describes Cloudflare Workers, Workers AI, Cloudflare D1, and stat
 
 ### Important capability boundaries
 
-Signed-in users can organize saved conversations by renaming, searching, and pinning them; pin state is stored per account.
+Signed-in users can organize saved conversations by renaming, searching, pinning, and archiving them. Archived conversations can be restored; archive state is stored per account.
 
 The current documented product is primarily a text-chat assistant. Do not claim that it currently:
 - Performs unrestricted live web search or independently monitors news and trends.
