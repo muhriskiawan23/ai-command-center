@@ -45,7 +45,8 @@ The public repository README describes a web-based AI workspace with:
 - An on-demand About BOR AI dialog that summarizes the product, documented current capabilities, privacy controls, AI limitations, and official repository link. It does not appear automatically.\n- A daily usage panel showing the current signed-in account or guest IP-hash quota units used, remaining units, and the daily reset time (07:00 WIB). It does not reveal global usage or monetary billing estimates.
 - Optional, explicit user memory for signed-in users; it is off by default and stores only information the user chooses to save.
 - A link reader: users can include up to three ordinary web links in a message; the service attempts to fetch and extract readable page text for the model (up to 16,000 characters per page). Successful pages can be cited with numbered inline references such as [1], mapped to a clickable source list. Failed pages are not offered as citation sources. Pages requiring JavaScript, login, or unsupported formats may fail.
-- A PDF Reader: users can attach one PDF up to 8 MB. The Worker converts it to Markdown through the Cloudflare Workers AI `toMarkdown` binding, then provides up to 32,000 characters of extracted text to the model as untrusted document context. When page headings are present in the extraction, answers can cite `[PDF p. N]`; invalid page citations are removed. The PDF and extracted text are not stored in D1; the extracted context is held in browser memory for the active chat only and must be reattached after reload or switching conversations. Scanned/image-only or password-protected PDFs and complex layouts are not guaranteed.
+- A PDF Reader: users can attach one PDF up to 8 MB. PDF.js extracts text locally in the browser; scanned/image-only PDFs use Tesseract.js OCR locally (English and Indonesian, maximum 10 pages). Extracted text is held in browser memory for the active chat and sent with a chat request only when the user asks a question. Page references are available when extraction exposes page boundaries.
+- A CSV Analyst: users can attach one CSV file up to 5 MB. Parsing, bounded row preview, and deterministic numeric column summaries run locally in the browser. The raw file is not uploaded; bounded derived text is included in the chat request only when the user asks a question. Formulas are treated as literal text and never executed.
 
 The repository describes Cloudflare Workers, Workers AI, Cloudflare D1, and static frontend assets as core infrastructure. The repository's audit identifies Llama 3.3 70B on Workers AI as the model used in the audited implementation. Model availability and live runtime behavior can change; consult the current repository and test the live service before making a present-tense claim about availability.
 
@@ -55,7 +56,7 @@ Signed-in users can organize saved conversations by renaming, searching, pinning
 
 The current documented product is primarily a text-chat assistant. Signed-in retry deduplication depends on the additive database migration `0006_chat_request_idempotency.sql` being applied during a controlled release. Answer feedback depends on the additive migration `0007_answer_feedback.sql`; it is only available after that migration and the matching application release have been deployed. The daily usage panel reports quota units only (a normal request costs 1 unit; a multi-agent request costs 3); it is not a billing dashboard and does not provide measured latency, provider charges, or application-wide totals. Do not claim that it currently:
 - Performs unrestricted live web search or independently monitors news and trends.
-- Reads arbitrary uploaded files or images. PDF reading is a limited exception: one user-uploaded PDF at a time, up to 8 MB, with bounded text extraction and temporary in-memory context; it is not a general file manager or guaranteed OCR service.
+- Reads arbitrary uploaded files or images. PDF and CSV support are limited exceptions: one file at a time, with explicit size/row/context bounds and temporary in-memory derived text; they are not a general file manager or document library.
 - Generates or executes code, builds APKs, or deploys applications on a user's behalf.
 - Controls a user's browser, computer, or other applications.
 - Connects to Gmail, Calendar, Telegram, GitHub, Slack, Discord, WhatsApp, or other third-party services as a live integration.
@@ -93,7 +94,7 @@ BOR AI is in early active development. The repository contains an evolving produ
 
 A feature being discussed in a roadmap, issue, proposal, or founder conversation does not mean it has shipped. Always check the current platform and repository before saying a feature is available.
 
-Production deployment is a controlled, manual operation described in the repository. A successful code test, preview build, or health check alone does not prove that every live feature—including real model inference, authentication, database migrations, and usage controls—is working. Do not claim a deployment or release has happened unless a current official announcement or verifiable release confirms it.
+Production deployment is triggered automatically by pushes to `main`; the workflow verifies the pinned D1 database and skips production migrations unless the manual `apply_db_migrations` input is explicitly enabled. A successful code test, preview build, or health check alone does not prove that every live feature—including real model inference, authentication, database migrations, and usage controls—is working. Do not claim a deployment or release has happened unless a current official announcement or verifiable release confirms it.
 
 ## 7. Roadmap direction — plans, not promises
 
@@ -147,7 +148,7 @@ The documented Coordinator can route complex requests through Researcher, Analys
 Do not describe BOR AI as having unrestricted live web search. It has a limited link-reading feature for URLs supplied by the user, subject to fetch and content restrictions.
 
 ### Can BOR AI read uploaded files or images?
-The current documented capability boundary says arbitrary file and image reading is not implemented. Verify newer releases before making a different claim.
+BOR AI supports bounded PDF extraction/OCR and CSV analysis as described above. Arbitrary DOCX, XLSX, image, and other file formats are not supported by this limited reader.
 
 ### Is BOR AI open source?
 The source repository is publicly accessible on GitHub. Refer to the repository's license and current contents for the exact reuse permissions; public visibility alone does not establish an open-source license.

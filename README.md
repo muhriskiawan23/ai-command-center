@@ -18,7 +18,7 @@ Public AI workspace with Google sign-in, temporary guest sessions, private per-a
 - Signed-in chat submissions carry a client request ID. If the browser loses the response after the Worker has saved the turn, retrying the same request replays the saved answer instead of generating or storing a duplicate. This requires migration `0006_chat_request_idempotency.sql`; guest chats remain memory-only and are not persisted for deduplication.
 - Security headers on API and HTML responses, including a restrictive Content Security Policy compatible with the dashboard's inline assets.
 
-- Scanned/image-only PDFs are not OCRed by the current Markdown conversion flow. If conversion returns only page headings and no extractable text, BOR AI rejects the upload with a clear limitation message instead of treating an empty document as successfully read. Use a PDF with a text layer until an OCR capability is added.
+- PDF files are extracted locally in the browser with PDF.js; scanned/image-only PDFs fall back to local Tesseract.js OCR (English and Indonesian, up to 10 pages). CSV files up to 5 MB are parsed locally in the browser, with bounded row previews and deterministic numeric summaries. Only extracted/derived text is included in a chat request; raw files are not uploaded or stored by BOR AI. CSV cell contents are treated as untrusted data and formulas are never executed.
 - An on-demand, accessible About BOR AI dialog describing the product, current capabilities, privacy controls, and official repository.
 
 ## Architecture
@@ -72,7 +72,7 @@ The GitHub Actions preview workflow runs this dry-run build on pushes to the har
 
 ## Deployment
 
-Production deployment is manual and is available from GitHub Actions using the **BOR AI production deploy** workflow (`workflow_dispatch`). It provisions or reuses the named D1 database, injects the D1 UUID into the runner's Wrangler config, applies migrations, configures Google sign-in, deploys the Worker/assets, and checks the public endpoints.
+Production deployment runs automatically on pushes to `main` through the **BOR AI production deploy** workflow. Manual `workflow_dispatch` is also available; production D1 migrations remain opt-in and are skipped by default.
 
 Before running the workflow, add these **repository Actions secrets**:
 
@@ -80,7 +80,7 @@ Before running the workflow, add these **repository Actions secrets**:
 - `CLOUDFLARE_ACCOUNT_ID`: Cloudflare account ID.
 - `GOOGLE_CLIENT_ID`: Google OAuth 2.0 Client ID for a Web application. In Google Cloud Console, add `https://ai-command-center.muhriskiawan23.workers.dev` (or the chosen production custom domain) to **Authorized JavaScript origins**.
 
-Then open **Actions → BOR AI production deploy → Run workflow** on `main`. The workflow runs tests and a dry-run build before it creates/reuses `bor-ai-chat`, applies the D1 migration, stores `GOOGLE_CLIENT_ID` as a Worker secret, deploys, and verifies health, agents, and Google configuration. The optional live chat check is off by default because it consumes Workers AI usage.
+For a manual run, open **Actions → BOR AI production deploy → Run workflow** on `main`. The workflow verifies the pinned production D1 database, lists pending migrations, deploys Worker/assets, configures Google sign-in, and verifies public endpoints. Applying production D1 migrations requires explicitly enabling the `apply_db_migrations` input; it is off by default. The optional live chat check is off by default because it consumes Workers AI usage.
 
 After a successful workflow, complete a real-browser sign-in, persistence, deletion, and account-isolation check. Also verify Workers AI usage limits/billing and that the `CHAT_LIMITER` binding is active. A health check does not prove live AI inference works.
 Do not treat a Wrangler dry run or health check as proof that live AI inference works. A live chat invocation is a separate release check.
