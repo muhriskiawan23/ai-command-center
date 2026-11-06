@@ -111,7 +111,7 @@ function downloadMarkdown(value, role="assistant"){
 const AppState={INIT:"initializing",UNAUTH:"unauthenticated",GUEST:"guest",AUTH:"authenticated",EXPIRED:"session-expired",ERROR:"error"};
 const promptEl=$("prompt"),messagesEl=$("messages"),welcomeEl=$("welcome"),conversation=$("conversation");
 const sidebar=$("sidebar"),backdrop=$("backdrop"),menuBtn=$("menuBtn"),workspace=$("workspace");
-let state=AppState.INIT,conversations=[],activeId=null,busy=false,currentUser=null,historyQuery="";
+let state=AppState.INIT,conversations=[],activeId=null,busy=false,currentUser=null,historyQuery="",archivedView=false;
 /* navSeq: setiap navigasi chat menaikkan penghitung ini; pemuatan yang tertimpa navigasi lebih baru dibatalkan. */
 let navSeq=0,loadingChat=false;
 function lockComposer(){const lock=busy||loadingChat;$("send").disabled=lock;promptEl.readOnly=lock}
@@ -395,10 +395,12 @@ const sortedConversations=()=>[...conversations].sort((a,b)=>Number(Boolean(b.pi
 function renderHistory(){
   const nav=$("history");nav.replaceChildren();
   if(!inChatView()){$("historyCount").textContent="";return}
-  $("historyLabel").textContent=state===AppState.AUTH?"Riwayat akun":"Sesi ini · Guest Mode";
+  $("historyLabel").textContent=archivedView?"Arsip":state===AppState.AUTH?"Riwayat akun":"Sesi ini · Guest Mode";
   $("historyCount").textContent=conversations.length?String(conversations.length):"";
+  $("toggleArchived").textContent=archivedView?"▤ Lihat riwayat":"▣ Lihat arsip";
+  $("toggleArchived").setAttribute("aria-pressed",String(archivedView));
   const query=historyQuery.toLocaleLowerCase();
-  const visible=sortedConversations().filter(c=>!query||String(c.title||"").toLocaleLowerCase().includes(query)||(state===AppState.GUEST&&c.messages.some(m=>String(m.content||"").toLocaleLowerCase().includes(query))));
+  const visible=sortedConversations().filter(c=>Boolean(c.archived)===archivedView&&(!query||String(c.title||"").toLocaleLowerCase().includes(query)||(state===AppState.GUEST&&c.messages.some(m=>String(m.content||"").toLocaleLowerCase().includes(query)))));
   for(const c of visible){
     const row=document.createElement("div");row.className="history-row";
     const b=document.createElement("button");b.className="history-item"+(c.id===activeId?" active":"");b.type="button";
@@ -407,14 +409,15 @@ function renderHistory(){
     const title=document.createElement("span");title.textContent=c.title||"Percakapan baru";
     b.append(icon,title);b.title=c.title||"Percakapan baru";b.onclick=()=>selectChat(c.id);
     const pin=document.createElement("button");pin.className="pin-chat";pin.type="button";pin.textContent=c.pinned?"★":"☆";pin.title=c.pinned?"Lepas sematan":"Sematkan";pin.setAttribute("aria-label",(c.pinned?"Lepas sematan ":"Sematkan ")+(c.title||"chat"));pin.setAttribute("aria-pressed",String(Boolean(c.pinned)));pin.onclick=e=>{e.stopPropagation();pinChat(c.id)};
+    const archive=document.createElement("button");archive.className="archive-chat";archive.type="button";archive.textContent=archivedView?"↩":"▣";archive.title=archivedView?"Pulihkan dari arsip":"Arsipkan";archive.setAttribute("aria-label",(archivedView?"Pulihkan dari arsip ":"Arsipkan ")+(c.title||"chat"));archive.onclick=e=>{e.stopPropagation();archiveChat(c.id)};
     const rename=document.createElement("button");rename.className="rename-chat";rename.type="button";rename.textContent="✎";rename.title="Ubah judul";rename.setAttribute("aria-label","Ubah judul "+(c.title||"chat"));
     rename.onclick=e=>{e.stopPropagation();renameChat(c.id)};
     const del=document.createElement("button");del.className="delete-chat";del.type="button";del.textContent="×";del.title="Hapus chat";del.setAttribute("aria-label","Hapus "+(c.title||"chat"));
     del.onclick=e=>{e.stopPropagation();deleteChat(c.id)};
-    row.append(b,pin,rename,del);nav.append(row);
+    row.append(b,pin,archive,rename,del);nav.append(row);
   }
   if(!visible.length){
-    const empty=document.createElement("p");empty.className="history-empty";empty.textContent=query?"Tidak ada percakapan yang cocok.":"Belum ada percakapan.";nav.append(empty);
+    const empty=document.createElement("p");empty.className="history-empty";empty.textContent=query?"Tidak ada percakapan yang cocok.":archivedView?"Belum ada percakapan yang diarsipkan.":"Belum ada percakapan.";nav.append(empty);
   }
 }
 /* Menampilkan chat tanpa menyentuh history; pemanggil yang menentukan rute.
@@ -457,9 +460,12 @@ async function enterChat(){
 }
 async function syncUserHistory(query=historyQuery){
   historyQuery=String(query||"").trim().slice(0,100);
-  const params=historyQuery?"?q="+encodeURIComponent(historyQuery):"";
-  const d=await api("/api/conversations"+params);
-  conversations=(d.conversations||[]).map(c=>({id:c.id,serverId:c.id,title:c.title,pinned:Boolean(c.pinned),messages:[],updated:(c.updated_at||0)*1000,loaded:false}));
+  const params=new URLSearchParams();
+  if(historyQuery)params.set("q",historyQuery);
+  if(archivedView)params.set("archived","1");
+  const suffix=params.toString()?"?"+params.toString():"";
+  const d=await api("/api/conversations"+suffix);
+  conversations=(d.conversations||[]).map(c=>({id:c.id,serverId:c.id,title:c.title,pinned:Boolean(c.pinned),archived:Boolean(c.archived),messages:[],updated:(c.updated_at||0)*1000,loaded:false}));
 }
 /* Konteks yang dikirim ke server. Sama dengan batas di server (12 pesan / 8000 karakter / 2000 per pesan);
    giliran yang gagal tidak pernah masuk chat.messages sehingga tidak ikut terkirim. */
@@ -598,6 +604,19 @@ async function pinChat(cid){
     chat.pinned=pinned;renderHistory();toast(pinned?"Chat disematkan.":"Sematan chat dilepas.");
   }catch(e){toast(e.message||"Gagal mengubah sematan chat")}
 }
+async function archiveChat(cid){
+  if(busy||loadingChat)return;
+  const chat=conversations.find(c=>c.id===cid);if(!chat)return;
+  const archived=!Boolean(chat.archived);
+  try{
+    if(state===AppState.AUTH){
+      if(!chat.serverId){toast("Chat belum tersimpan di akun.");return}
+      await api("/api/conversations/"+encodeURIComponent(chat.serverId),{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({archived})});
+    }
+    chat.archived=archived;renderHistory();
+    toast(archived?"Chat dipindahkan ke arsip.":"Chat dipulihkan dari arsip.");
+  }catch(e){toast(e.message||"Gagal mengubah arsip chat")}
+}
 async function deleteChat(cid){
   if(busy)return;const chat=conversations.find(c=>c.id===cid);if(!chat)return;
   if(!confirm("Hapus percakapan ini?"))return;
@@ -637,6 +656,14 @@ promptEl.addEventListener("input",resizePrompt);
 window.addEventListener("resize",resizePrompt);
 $("newChat").addEventListener("click",newChat);
 $("clearHistory").addEventListener("click",clearHistory);
+$("toggleArchived").addEventListener("click",async()=>{
+  if(busy||loadingChat)return;
+  archivedView=!archivedView;
+  if(state===AppState.AUTH){
+    try{await syncUserHistory();renderHistory()}
+    catch(e){archivedView=!archivedView;toast(e.message||"Gagal memuat arsip")}
+  }else renderHistory();
+});
 $("historySearchForm").addEventListener("submit",async e=>{
   e.preventDefault();
   const query=$("historySearch").value.trim().slice(0,100);

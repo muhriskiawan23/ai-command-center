@@ -862,15 +862,16 @@ async function handleConversationRoute(request, env, url) {
   if (!env.DB) return json({ error: "Penyimpanan riwayat belum tersedia." }, 503);
   if (url.pathname === "/api/conversations" && request.method === "GET") {
     const query = String(url.searchParams.get("q") || "").trim().slice(0, 100);
+    const archived = url.searchParams.get("archived") === "1" ? 1 : 0;
     const result = query
       ? await env.DB.prepare(
-          "SELECT c.id, c.title, c.pinned, c.created_at, c.updated_at FROM conversations c " +
-          "WHERE c.user_id = ? AND (instr(lower(c.title), lower(?)) > 0 OR EXISTS (" +
+          "SELECT c.id, c.title, c.pinned, c.archived, c.created_at, c.updated_at FROM conversations c " +
+          "WHERE c.user_id = ? AND c.archived = ? AND (instr(lower(c.title), lower(?)) > 0 OR EXISTS (" +
           "SELECT 1 FROM messages m WHERE m.conversation_id = c.id AND m.user_id = c.user_id AND instr(lower(m.content), lower(?)) > 0)) " +
           "ORDER BY c.pinned DESC, c.updated_at DESC LIMIT 100"
-        ).bind(user.id, query, query).all()
-      : await env.DB.prepare("SELECT id, title, pinned, created_at, updated_at FROM conversations WHERE user_id = ? ORDER BY pinned DESC, updated_at DESC LIMIT 100").bind(user.id).all();
-    return json({ conversations: result.results || [], query });
+        ).bind(user.id, archived, query, query).all()
+      : await env.DB.prepare("SELECT id, title, pinned, archived, created_at, updated_at FROM conversations WHERE user_id = ? AND archived = ? ORDER BY pinned DESC, updated_at DESC LIMIT 100").bind(user.id, archived).all();
+    return json({ conversations: result.results || [], query, archived: Boolean(archived) });
   }
   if (url.pathname === "/api/conversations" && request.method === "DELETE") {
     await env.DB.prepare("DELETE FROM conversations WHERE user_id = ?").bind(user.id).run();
@@ -879,7 +880,7 @@ async function handleConversationRoute(request, env, url) {
   const conversationId = url.pathname.slice("/api/conversations/".length);
   if (!/^[a-zA-Z0-9-]{8,80}$/.test(conversationId)) return json({ error: "Chat tidak ditemukan." }, 404);
   if (request.method === "GET") {
-    const conversation = await env.DB.prepare("SELECT id, title, pinned, created_at, updated_at FROM conversations WHERE id = ? AND user_id = ?").bind(conversationId, user.id).first();
+    const conversation = await env.DB.prepare("SELECT id, title, pinned, archived, created_at, updated_at FROM conversations WHERE id = ? AND user_id = ?").bind(conversationId, user.id).first();
     if (!conversation) return json({ error: "Chat tidak ditemukan." }, 404);
     // Bounded response: the newest MESSAGES_PAGE_MAX messages, oldest-first. `truncated` tells the client older ones exist.
     const result = await env.DB.prepare("SELECT role, content, created_at FROM messages WHERE conversation_id = ? AND user_id = ? ORDER BY id DESC LIMIT ?").bind(conversationId, user.id, MESSAGES_PAGE_MAX + 1).all();
@@ -894,11 +895,13 @@ async function handleConversationRoute(request, env, url) {
     const body = parsed.body || {};
     const hasTitle = Object.prototype.hasOwnProperty.call(body, "title");
     const hasPinned = Object.prototype.hasOwnProperty.call(body, "pinned");
-    if (!hasTitle && !hasPinned) return json({ error: "Tidak ada perubahan yang diminta." }, 400);
+    const hasArchived = Object.prototype.hasOwnProperty.call(body, "archived");
+    if (!hasTitle && !hasPinned && !hasArchived) return json({ error: "Tidak ada perubahan yang diminta." }, 400);
     const updates = [];
     const values = [];
     let title;
     let pinned;
+    let archived;
     if (hasTitle) {
       title = typeof body.title === "string" ? body.title.trim() : "";
       if (!title || title.length > 72) return json({ error: "Judul harus berisi 1–72 karakter." }, 400);
@@ -911,10 +914,16 @@ async function handleConversationRoute(request, env, url) {
       updates.push("pinned = ?");
       values.push(pinned ? 1 : 0);
     }
+    if (hasArchived) {
+      if (typeof body.archived !== "boolean") return json({ error: "Field 'archived' harus berupa boolean." }, 400);
+      archived = body.archived;
+      updates.push("archived = ?");
+      values.push(archived ? 1 : 0);
+    }
     values.push(conversationId, user.id);
     const result = await env.DB.prepare("UPDATE conversations SET " + updates.join(", ") + " WHERE id = ? AND user_id = ?").bind(...values).run();
     if (!result.meta?.changes) return json({ error: "Chat tidak ditemukan." }, 404);
-    return json({ updated: true, id: conversationId, ...(hasTitle ? { title } : {}), ...(hasPinned ? { pinned } : {}) });
+    return json({ updated: true, id: conversationId, ...(hasTitle ? { title } : {}), ...(hasPinned ? { pinned } : {}), ...(hasArchived ? { archived } : {}) });
   }
   if (request.method === "DELETE") {
     const result = await env.DB.prepare("DELETE FROM conversations WHERE id = ? AND user_id = ?").bind(conversationId, user.id).run();

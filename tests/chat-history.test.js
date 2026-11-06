@@ -230,3 +230,31 @@ test("akun: pin percakapan tersimpan, diurutkan lebih dulu, dan tetap terisolasi
   assert.equal(detail.conversation.pinned, 1);
   await app.close();
 });
+
+
+test("akun: arsip dan pulihkan percakapan secara privat tanpa menghapus pesannya", async () => {
+  const { app, token } = await setup();
+  seedConversation(app.db, { id: "conv-alice-arch01", userId: ALICE.id, title: "Chat untuk arsip", updatedAt: 100, messages: [{ role: "user", content: "Konten tetap utuh" }] });
+  seedSession(app.db, { id: "sub-bob", email: "bob@example.com", name: "Bob" });
+  seedConversation(app.db, { id: "conv-bob-arch001", userId: "sub-bob", title: "Arsip milik Bob", updatedAt: 100 });
+  const headers = { Origin: app.url, Cookie: `__Host-borai_session=${token}`, "Content-Type": "application/json" };
+  const active = async () => (await fetch(app.url + "/api/conversations", { headers })).json();
+  const archivedList = async () => (await fetch(app.url + "/api/conversations?archived=1", { headers })).json();
+  const archive = await fetch(app.url + "/api/conversations/conv-alice-arch01", { method: "PATCH", headers, body: JSON.stringify({ archived: true }) });
+  assert.equal(archive.status, 200);
+  assert.deepEqual(await archive.json(), { updated: true, id: "conv-alice-arch01", archived: true });
+  assert.deepEqual((await active()).conversations, []);
+  assert.deepEqual((await archivedList()).conversations.map(c => c.id), ["conv-alice-arch01"]);
+  const archivedSearch = await (await fetch(app.url + "/api/conversations?archived=1&q=arsip", { headers })).json();
+  assert.deepEqual(archivedSearch.conversations.map(c => c.id), ["conv-alice-arch01"]);
+  const unauthorized = await fetch(app.url + "/api/conversations/conv-bob-arch001", { method: "PATCH", headers, body: JSON.stringify({ archived: true }) });
+  assert.equal(unauthorized.status, 404);
+  const invalid = await fetch(app.url + "/api/conversations/conv-alice-arch01", { method: "PATCH", headers, body: JSON.stringify({ archived: 1 }) });
+  assert.equal(invalid.status, 400);
+  const restore = await fetch(app.url + "/api/conversations/conv-alice-arch01", { method: "PATCH", headers, body: JSON.stringify({ archived: false }) });
+  assert.equal(restore.status, 200);
+  assert.deepEqual((await active()).conversations.map(c => c.id), ["conv-alice-arch01"]);
+  const detail = await (await fetch(app.url + "/api/conversations/conv-alice-arch01", { headers })).json();
+  assert.equal(detail.messages[0].content, "Konten tetap utuh");
+  await app.close();
+});

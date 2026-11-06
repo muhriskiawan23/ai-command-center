@@ -276,3 +276,22 @@ test("akun: percakapan dapat disematkan, diprioritaskan, dan tetap tersimpan set
   await expect(page.getByRole("button", { name: "Lepas sematan Percakapan yang akan disematkan" })).toBeVisible();
   expect(app.db.sqlite.prepare("SELECT pinned FROM conversations WHERE title = ?").get("Percakapan yang akan disematkan").pinned).toBe(1);
 });
+
+
+test("akun: percakapan dapat diarsipkan dan dipulihkan dari tampilan arsip", async ({ page, app, context }) => {
+  await loginAs(context, app, ALICE);
+  await page.goto(app.url);
+  await expect(page.locator("#prompt")).toBeVisible();
+  await send(page, "Percakapan untuk diarsipkan");
+  await expect(page.locator(".message.assistant:not(#typing)")).toHaveCount(1);
+  if (page.viewportSize().width <= 1024) await page.locator("#menuBtn").click();
+  await page.getByRole("button", { name: "Arsipkan Percakapan untuk diarsipkan" }).click();
+  await expect(page.getByRole("button", { name: "Arsipkan Percakapan untuk diarsipkan" })).toHaveCount(0);
+  await page.locator("#toggleArchived").click();
+  await expect(page.getByRole("button", { name: "Pulihkan dari arsip Percakapan untuk diarsipkan" })).toBeVisible();
+  await page.getByRole("button", { name: "Pulihkan dari arsip Percakapan untuk diarsipkan" }).click();
+  await expect(page.getByRole("button", { name: "Pulihkan dari arsip Percakapan untuk diarsipkan" })).toHaveCount(0);
+  await page.locator("#toggleArchived").click();
+  await expect(page.getByRole("button", { name: "Arsipkan Percakapan untuk diarsipkan" })).toBeVisible();
+  expect(app.db.sqlite.prepare("SELECT archived FROM conversations WHERE title = ?").get("Percakapan untuk diarsipkan").archived).toBe(0);
+});
