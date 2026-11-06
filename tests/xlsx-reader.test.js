@@ -34,3 +34,9 @@ test("bounds sheets, rows, columns and context", () => {
 test("rejects unavailable parser and oversized file before reading", async () => {
   await assert.rejects(parseXlsxLocally({ size: XLSX_LIMITS.maxBytes + 1, arrayBuffer: async () => new ArrayBuffer(0) }, { xlsx: null }), /maksimal 5 MB/);
 });
+
+test("allows exactly the configured number of data rows without a false truncation warning", () => {
+  const result = parseXlsxWorkbook(workbook, { ...utils, maxRows: 2 });
+  assert.equal(result.rowCount, 2);
+  assert.equal(result.truncated, false);
+});
