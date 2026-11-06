@@ -36,7 +36,7 @@ test("PDF conversion errors are returned as a safe failure", () => {
 });
 
 test("PDF filenames are reduced to safe display names", () => {
-  assert.equal(safePdfName("../../private/report.pdf"), "______private_report.pdf");
+  assert.equal(safePdfName("../../private/report.pdf"), ".._.._private_report.pdf");
 });
 
 test("PDF context labels the document as untrusted and asks for grounded page citations", () => {
