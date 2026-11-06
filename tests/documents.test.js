@@ -167,11 +167,11 @@ test("chat rejects oversized or malformed PDF context before model inference", a
 test("PDF no-text response exposes a stable OCR fallback code and refunds usage", async () => {
   let calls = 0;
   const env = {
-    AI: { async toMarkdown() { calls++; return [{ format: "markdown", data: "### Page 1\\n" }]; } },
+    AI: { async toMarkdown() { calls++; return [{ format: "markdown", data: "### Page 1\n" }]; } },
     RATE_LIMITER: { async limit() { return { success: true }; } }
   };
   const form = new FormData();
-  form.append("file", new Blob(["%PDF-1.7\\nmock scanned pdf"], { type: "application/pdf" }), "scan.pdf");
+  form.append("file", new Blob(["%PDF-1.7\nmock scanned pdf"], { type: "application/pdf" }), "scan.pdf");
   const response = await worker.fetch(new Request("https://example.test/api/documents/pdf", {
     method: "POST", headers: { Origin: "https://example.test" }, body: form
   }), env);
