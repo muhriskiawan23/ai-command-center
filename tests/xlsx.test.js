@@ -31,7 +31,7 @@ test("reads multiple workbook sheets and computes deterministic numeric summarie
 });
 
 test("formula cells are represented as literal formulas, not cached values", () => {
-  const result = parseXlsxArrayBuffer(new ArrayBuffer(8), { name: "sales.xlsx", xlsx: fakeXlsx() });
+  const result = parseXlsxArrayBuffer(new ArrayBuffer(8), { name: "sales.xlsx", xlsx: fakeXlsx(true) });
   assert.match(result.content, /=40\+40/);
   assert.doesNotMatch(result.content, /\| Teh \| 80 \|/);
 });
