@@ -23,6 +23,15 @@ jobs:
     timeout-minutes: 15
     environment: production
     steps:
+      - name: Reject dispatches outside main
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "::error::Production deployment must be dispatched from the main branch. Selected ref: $GITHUB_REF"
+            exit 1
+          fi
+
       - name: Check out main
         uses: actions/checkout@v4
         with:

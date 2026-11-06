@@ -3,7 +3,9 @@ name: BOR AI tests
 on:
   push:
     branches:
+      - main
       - bor-ai/stage-02-quality-hardening
+      - bor-ai/stage-12-reliability-release
   pull_request:
     branches:
       - main
@@ -12,21 +14,32 @@ permissions:
   contents: read
 
 concurrency:
-  group: bor-ai-tests-${{ github.ref }}
+  group: bor-ai-tests-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   test:
+    name: Unit, syntax, and preview validation
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Run automated tests and syntax checks
-        run: |
-          npm test
-          npm run check
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Run automated tests
+        run: npm test
+
+      - name: Check Worker syntax
+        run: npm run check
+
+      - name: Build Worker preview (no deployment)
+        run: npm run preview
