@@ -14,7 +14,6 @@ test("guest can search and insert an editable prompt template without auto-submi
   await expect(card).toContainText("Analisis kritis");
   await card.getByRole("button", { name: "Gunakan template" }).click();
   await expect(dialog).toBeHidden();
-  await expect(page.locator("#prompt")).toContainText("");
   await expect(page.locator("#prompt")).toHaveValue(/Analisis secara kritis/);
   expect(app.aiCalls).toHaveLength(0);
 });
