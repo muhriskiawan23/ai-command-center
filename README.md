@@ -22,6 +22,7 @@ Public AI workspace with Google sign-in, temporary guest sessions, private per-a
 - Assistant responses include a local Checklist conversion action that preserves surrounding Markdown and code blocks, then offers copy and `.md` download without an AI call.
 - An Email Draft Generator collects recipient, subject, purpose, key points, tone, and language, then prepares a structured prompt for Writer mode. It does not send email or connect to an email account; users review and send the result manually.\n- Answers and complete conversations can be printed or saved as PDF through the browser print dialog. The print view is generated locally from already-loaded chat content; no PDF service, external API, or additional server upload is used. Choose “Save as PDF” in the browser or system print destination.
 - An on-demand, accessible About BOR AI dialog describing the product, current capabilities, privacy controls, and official repository.
+- An embeddable BOR AI chat widget and public single-turn chat API with per-site API keys, exact origin allow-lists, per-key daily quotas, and immediate key revocation. API keys are hashed at rest and shown only once at creation. Requires additive migration `0009_public_api_keys.sql`; see `docs/PUBLIC-API.md`.
 
 ## Architecture
 
@@ -40,6 +41,9 @@ Public AI workspace with Google sign-in, temporary guest sessions, private per-a
 | POST | `/api/chat` | Run a Coordinator or selected specialist; saves only for signed-in users |
 | POST | `/api/documents/pdf` | Convert one uploaded PDF into temporary Markdown context for chat (8 MB maximum) |
 | POST | `/api/feedback` | Save or update helpful/not-helpful feedback for an assistant answer owned by the signed-in user |
+| GET/POST | `/api/developer/keys` | List or create API keys for the signed-in account (secret shown only once) |
+| DELETE | `/api/developer/keys/:id` | Revoke an owned public API key |
+| POST | `/api/public/chat` | Public single-turn chat for allow-listed origins using a bearer API key |
 | GET | `/api/config` | Public Google sign-in configuration |
 | GET | `/api/auth/nonce` | One-time sign-in nonce |
 | POST | `/api/auth/google` | Verify Google ID token and create a session |
