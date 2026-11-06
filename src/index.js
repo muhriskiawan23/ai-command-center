@@ -1250,7 +1250,9 @@ export default {
       const message = typeof body?.message === "string" ? body.message.trim() : "";
       const document = body?.document;
       if (document !== undefined && (!document || typeof document !== "object" || typeof document.name !== "string" || typeof document.content !== "string" || !document.content.trim() || document.content.length > PDF_CONTEXT_MAX_CHARS)) return json({ error: "Konteks PDF tidak valid atau terlalu besar. Unggah ulang dokumen." }, 400);
-      const presentation = body?.presentation;\n      if (presentation !== undefined && (!presentation || typeof presentation !== "object" || typeof presentation.name !== "string" || typeof presentation.content !== "string" || !presentation.content.trim() || presentation.content.length > PRESENTATION_CONTEXT_MAX_CHARS)) return json({ error: "Konteks PowerPoint tidak valid atau terlalu besar. Unggah ulang file." }, 400);\n      const spreadsheet = body?.spreadsheet;
+      const presentation = body?.presentation;
+      if (presentation !== undefined && (!presentation || typeof presentation !== "object" || typeof presentation.name !== "string" || typeof presentation.content !== "string" || !presentation.content.trim() || presentation.content.length > PRESENTATION_CONTEXT_MAX_CHARS)) return json({ error: "Konteks PowerPoint tidak valid atau terlalu besar. Unggah ulang file." }, 400);
+      const spreadsheet = body?.spreadsheet;
       if (spreadsheet !== undefined && (!spreadsheet || typeof spreadsheet !== "object" || typeof spreadsheet.name !== "string" || typeof spreadsheet.content !== "string" || !spreadsheet.content.trim() || spreadsheet.content.length > SPREADSHEET_CONTEXT_MAX_CHARS)) return json({ error: "Konteks spreadsheet tidak valid atau terlalu besar. Unggah ulang file." }, 400);
       if (body?.agent !== undefined && (typeof body.agent !== "string" || !Object.prototype.hasOwnProperty.call(AGENTS, body.agent))) return json({ error: "Agent tidak dikenal." }, 400);
       const agentId = body?.agent || "coordinator";
