@@ -507,7 +507,7 @@ async function submit(options={}){
   if(!activeId){activeId=id();createdNew=true;conversations.push({id:activeId,serverId:null,title:text.replace(/\s+/g," ").slice(0,72),messages:[],updated:Date.now(),loaded:true})}
   const chat=conversations.find(c=>c.id===activeId);const startId=chat.id;
   const history=buildHistory(chat);const userEntry={role:"user",content:text};chat.messages.push(userEntry);chat.updated=Date.now();
-  welcomeEl.hidden=true;messagesEl.hidden=false;appendMessage("user",text,true,{edit:true});promptEl.value="";resizePrompt();showTyping();renderHistory();
+  welcomeEl.hidden=true;messagesEl.hidden=false;appendMessage("user",text);promptEl.value="";resizePrompt();showTyping();renderHistory();
   if(createdNew)replaceRoute({name:"chat",id:chat.id});
   const stillActive=()=>activeId===startId;const start=Date.now();
   try{
@@ -515,7 +515,7 @@ async function submit(options={}){
     const data=await postJson("/api/chat",payload,CHAT_TIMEOUT_MS);
     if(typeof data.response!=="string"||!data.response.trim())throw new Error("AI tidak menghasilkan jawaban.");
     chat.messages.push({role:"assistant",content:data.response});chat.updated=Date.now();
-    if(stillActive()){$("typing")?.remove();appendMessage("assistant",data.response,true,{regenerate:true});appendSources(data.links);renderWorkflow(data.steps)}
+    if(stillActive()){$("typing")?.remove();appendMessage("assistant",data.response,true,{regenerate:true});addEditActionToLastUser();appendSources(data.links);renderWorkflow(data.steps)}
     if(state===AppState.AUTH&&data.saved&&data.conversationId){
       chat.serverId=data.conversationId;chat.id=data.conversationId;chat.loaded=true;
       if(stillActive()){activeId=chat.id;replaceRoute({name:"chat",id:chat.id})}
@@ -541,6 +541,13 @@ async function submit(options={}){
       toast("Permintaan gagal");
     }
   }finally{busy=false;lockComposer();renderHistory();if(!isDrawerMode())promptEl.focus()}
+}
+function addEditActionToLastUser(){
+  const row=messagesEl.children[messagesEl.children.length-2];if(!row?.classList.contains("user"))return;
+  const actions=row.querySelector(".message-actions");if(!actions||actions.querySelector(".edit-message"))return;
+  const content=row.querySelector(".message-text")?.textContent||"";
+  const btn=document.createElement("button");btn.type="button";btn.className="message-action edit-message";btn.textContent="Edit & kirim";
+  btn.addEventListener("click",()=>replaceLastTurn("edit",content));actions.append(btn);
 }
 function replaceLastTurn(action,content){
   if(busy||loadingChat)return;
