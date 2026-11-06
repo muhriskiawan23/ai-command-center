@@ -1346,7 +1346,7 @@ export default {
         links = summarizeLinks(results);
         if (found.ignored) links.push({ ok: false, host: "", reason: `hanya ${found.urls.length} link pertama yang dibaca; ${found.ignored} lainnya diabaikan` });
       }
-      if (pdfContext || spreadsheetContext) pages = [pages, pdfContext, spreadsheetContext].filter(Boolean).join("\n\n");
+      if (pdfContext || spreadsheetContext || presentationContext) pages = [pages, pdfContext, spreadsheetContext, presentationContext].filter(Boolean).join("\n\n");
       try {
         let result;
         if (useMultiAgent) result = { ...await runMultiAgent(aiEnv, message, history, pages), model: MODEL };
