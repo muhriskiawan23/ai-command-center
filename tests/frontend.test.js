@@ -2,20 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import vm from "node:vm";
 import { readFileSync } from "node:fs";
+import { toChecklistMarkdown } from "../src/checklist.js";
 
 const page = readFileSync(new URL("../public/index.html", import.meta.url), "utf8");
 const appJs = readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
 const appCss = readFileSync(new URL("../public/app.css", import.meta.url), "utf8");
 const html = page + "\n" + appJs + "\n" + appCss;
-
-function getChecklistConverter() {
-  const start = appJs.indexOf("function toChecklistMarkdown(text)");
-  const end = appJs.indexOf("function downloadChecklist(", start);
-  assert.notEqual(start, -1, "checklist converter should be implemented");
-  assert.notEqual(end, -1, "checklist download action should follow the converter");
-  const source = appJs.slice(start, end) + "\ntoChecklistMarkdown;";
-  return vm.runInNewContext(source);
-}
 
 test("dashboard JavaScript parses without syntax errors", () => {
   assert.match(page, /<script src="\/app\.js"/);
@@ -57,17 +49,32 @@ test("checklist action is available on rendered messages and downloads Markdown"
   assert.match(appJs, /text\/markdown;charset=utf-8/);
 });
 
-test("checklist converter converts unordered and numbered items while preserving surrounding text", () => {
-  const convert = getChecklistConverter();
-  assert.equal(convert("# Steps\nIntro paragraph.\n- First\n* Second\n+ Third\n1. Fourth\n2) Keep this unchanged"),
-    "# Steps\nIntro paragraph.\n- [ ] First\n- [ ] Second\n- [ ] Third\n- [ ] Fourth\n2) Keep this unchanged");
+test("checklist converter converts unordered and numbered list items", () => {
+  assert.equal(
+    toChecklistMarkdown("- First\n* Second\n+ Third\n1. Fourth\n2) Keep this unchanged"),
+    "- [ ] First\n- [ ] Second\n- [ ] Third\n- [ ] Fourth\n2) Keep this unchanged"
+  );
 });
 
-test("checklist converter handles CRLF and ignores blank/non-list-only content", () => {
-  const convert = getChecklistConverter();
-  assert.equal(convert("Heading\r\n\r\n1. First\r\n2. Second"), "Heading\r\n\r\n- [ ] First\n- [ ] Second");
-  assert.equal(convert(""), "");
-  assert.equal(convert("Only a paragraph.\n# Heading"), "");
+test("checklist conversion preserves headings, paragraphs, and fenced code", () => {
+  const input = "# Steps\n\nIntro paragraph.\n\n- Do this\n\n```md\n- literal example\n1. keep this\n```\n\n~~~text\n* also literal\n~~~";
+  const expected = "# Steps\n\nIntro paragraph.\n\n- [ ] Do this\n\n```md\n- literal example\n1. keep this\n```\n\n~~~text\n* also literal\n~~~";
+  assert.equal(toChecklistMarkdown(input), expected);
+});
+
+test("checklist converter normalizes CRLF newlines", () => {
+  assert.equal(toChecklistMarkdown("Heading\r\n\r\n1. First\r\n2. Second"),
+    "Heading\n\n- [ ] First\n- [ ] Second");
+});
+
+test("checklist converter returns no content for empty input or text without list items", () => {
+  assert.equal(toChecklistMarkdown(""), "");
+  assert.equal(toChecklistMarkdown("Only a paragraph.\n# Heading"), "");
+});
+
+test("checklist helper remains a standalone JavaScript module", () => {
+  const helperSource = readFileSync(new URL("../src/checklist.js", import.meta.url), "utf8");
+  assert.doesNotThrow(() => new vm.SourceTextModule(helperSource));
 });
 
 test("dashboard has a mobile layout and reduced-motion support", () => {
