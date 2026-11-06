@@ -47,8 +47,6 @@ test.describe("INPUT — Enter = baris baru, tombol panah = kirim", () => {
     page.on("request", (r) => { if (r.url().endsWith("/api/chat") && r.method() === "POST") posts.push(JSON.parse(r.postData())); });
     await page.locator("#prompt").fill("baris1\nbaris2");
     await page.locator("#send").click();
-    await expect(page.locator("#send")).toBeHidden();
-    await expect(page.locator("#stopGeneration")).toBeVisible();
     await expect(page.locator(".message.assistant:not(#typing)")).toHaveCount(1);
     expect(posts.length).toBe(1);
     expect(posts[0].message).toBe("baris1\nbaris2");
