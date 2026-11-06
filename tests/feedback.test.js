@@ -39,7 +39,7 @@ test("feedback tersimpan pada jawaban yang tepat dan dapat diperbarui tanpa dupl
   assert.equal(response.status, 200);
   assert.equal(app.db.sqlite.prepare("SELECT COUNT(*) AS n FROM answer_feedback").get().n, 1);
   const stored = app.db.sqlite.prepare("SELECT user_id, conversation_id, message_id, rating, reason FROM answer_feedback").get();
-  assert.deepEqual(stored, { user_id: ALICE.id, conversation_id: "conv-alice-feedback", message_id: aliceResponseId, rating: "helpful", reason: "" });
+  assert.deepEqual({ ...stored }, { user_id: ALICE.id, conversation_id: "conv-alice-feedback", message_id: aliceResponseId, rating: "helpful", reason: "" });
   const history = await (await call(alice, "/api/conversations/conv-alice-feedback")).json();
   const answer = history.messages.find((message) => message.id === aliceResponseId);
   assert.deepEqual(answer.feedback, { rating: "helpful", reason: "" });
