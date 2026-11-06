@@ -23,6 +23,7 @@ test("akun: pencarian riwayat mencocokkan judul dan isi pesan, tanpa membocorkan
   const { app, token } = await setup();
   seedConversation(app.db, { id: "conv-alice-search1", userId: ALICE.id, title: "Rencana perjalanan", updatedAt: 200, messages: [{ role: "user", content: "Cari frasa rahasia-lokal" }, { role: "assistant", content: "Siap" }] });
   seedConversation(app.db, { id: "conv-alice-search2", userId: ALICE.id, title: "Catatan investasi", updatedAt: 100, messages: [{ role: "user", content: "Diskusi biasa" }] });
+  seedSession(app.db, { id: "sub-bob", email: "bob@example.com", name: "Bob" });
   seedConversation(app.db, { id: "conv-bob-search1", userId: "sub-bob", title: "Rencana perjalanan Boris", updatedAt: 300, messages: [{ role: "user", content: "rahasia-lokal" }] });
   const search = (q) => fetch(app.url + "/api/conversations?q=" + encodeURIComponent(q), {
     headers: { Origin: app.url, Cookie: `__Host-borai_session=${token}` }
