@@ -38,5 +38,6 @@
     }catch(error){add(error.message||"Koneksi gagal.","assistant");status.textContent="Periksa koneksi atau konfigurasi API key.";}
     finally{send.disabled=false;input.focus();}
   });
-  if (document.body) document.body.append(host);\n  else document.addEventListener("DOMContentLoaded", () => document.body.append(host), { once: true });
+  if (document.body) document.body.append(host);
+  else document.addEventListener("DOMContentLoaded", () => document.body.append(host), { once: true });
 })();
