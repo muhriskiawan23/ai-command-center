@@ -955,13 +955,13 @@ async function persistConversation(env, user, conversationId, message, response,
   const title = message.replace(/\s+/g, " ").slice(0, 72) || "Percakapan baru";
   const statements = [];
   if (replaceRows.length) {
-    const latest = await env.DB.prepare("SELECT rowid AS rid, role FROM messages WHERE conversation_id = ? AND user_id = ? ORDER BY rowid DESC LIMIT 2").bind(id, user.id).all();
+    const latest = await env.DB.prepare("SELECT id AS rid, role FROM messages WHERE conversation_id = ? AND user_id = ? ORDER BY id DESC LIMIT 2").bind(id, user.id).all();
     const rows = latest.results || [];
     if (rows.length !== 2 || rows[0].role !== "assistant" || rows[1].role !== "user" ||
         !replaceRows.includes(rows[0].rid) || !replaceRows.includes(rows[1].rid)) {
       throw new Error("Percakapan berubah. Muat ulang chat sebelum mengedit atau membuat ulang jawaban.");
     }
-    statements.push(env.DB.prepare("DELETE FROM messages WHERE rowid IN (?, ?) AND conversation_id = ? AND user_id = ?")
+    statements.push(env.DB.prepare("DELETE FROM messages WHERE id IN (?, ?) AND conversation_id = ? AND user_id = ?")
       .bind(replaceRows[0], replaceRows[1], id, user.id));
   }
   if (!conversationId) {
@@ -1047,14 +1047,14 @@ export default {
       if (user) {
         try {
           if (body.replaceLastTurn) {
-            const latest = await env.DB.prepare("SELECT rowid AS rid, role FROM messages WHERE conversation_id = ? AND user_id = ? ORDER BY rowid DESC LIMIT 2").bind(body.conversationId, user.id).all();
+            const latest = await env.DB.prepare("SELECT id AS rid, role FROM messages WHERE conversation_id = ? AND user_id = ? ORDER BY id DESC LIMIT 2").bind(body.conversationId, user.id).all();
             const rows = latest.results || [];
             if (rows.length !== 2 || rows[0].role !== "assistant" || rows[1].role !== "user") {
               await refundUsage(env, usage.day, usage.charges);
               return json({ error: "Tidak ada giliran terakhir yang bisa diganti." }, 409);
             }
             replaceRows = rows.map(row => row.rid);
-            const previous = await env.DB.prepare("SELECT role, content FROM messages WHERE conversation_id = ? AND user_id = ? AND rowid NOT IN (?, ?) ORDER BY rowid DESC LIMIT ?")
+            const previous = await env.DB.prepare("SELECT role, content FROM messages WHERE conversation_id = ? AND user_id = ? AND id NOT IN (?, ?) ORDER BY id DESC LIMIT ?")
               .bind(body.conversationId, user.id, replaceRows[0], replaceRows[1], HISTORY_MAX_MESSAGES).all();
             history = trimHistory((previous.results || []).reverse());
           } else {
