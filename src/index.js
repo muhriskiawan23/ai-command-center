@@ -836,6 +836,9 @@ async function handlePdfConversionRoute(request, env) {
     const normalized = normalizePdfConversion(converted, fileName);
     if (!normalized.ok) {
       await refundUsage(env, usage.day, usage.charges);
+      if (normalized.reason === "no_text") {
+        return json({ error: "PDF tidak memiliki teks yang dapat diekstrak. Jika dokumen berupa hasil scan atau foto, OCR belum tersedia. Gunakan PDF dengan text layer atau salin teks dari dokumen." }, 422);
+      }
       return json({ error: "PDF tidak berhasil diekstrak. File mungkin rusak, terenkripsi, atau tidak didukung." }, 422);
     }
     return json({ document: normalized.document });
