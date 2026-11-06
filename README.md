@@ -14,6 +14,7 @@ Public AI workspace with Google sign-in, temporary guest sessions, private per-a
 - Google sign-up/sign-in with server-verified ID tokens and secure, HttpOnly sessions.
 - Signed-in users get private D1-backed conversation history with cursor-based pagination, individual chat deletion, delete-all history, persistent conversation pinning, archive/restore, and plain-text export of the currently open conversation with a privacy warning. Long exports disclose when the 500-message read limit applies.
 - Conversation read, pin, archive, rename, and delete endpoints enforce account ownership on the server. History listing uses stable descending keyset pagination (pinned, updated time, ID), with every page scoped to the authenticated account. Conversation export is generated in the browser from the currently loaded conversation; it does not create a public share link or send chat content to another service.
+- A private daily usage summary for the current signed-in account or guest IP hash, showing used/remaining quota units and the 07:00 WIB reset time. It does not expose global usage or estimate monetary billing.
 - Security headers on API and HTML responses, including a restrictive Content Security Policy compatible with the dashboard's inline assets.
 
 ## Architecture
@@ -29,6 +30,7 @@ Public AI workspace with Google sign-in, temporary guest sessions, private per-a
 | --- | --- | --- |
 | GET | `/api/health` | Service health |
 | GET | `/api/agents` | Available agent IDs and names |
+| GET | `/api/usage` | Current visitor's daily quota usage and remaining units (private; no global totals) |
 | POST | `/api/chat` | Run a Coordinator or selected specialist; saves only for signed-in users |
 | GET | `/api/config` | Public Google sign-in configuration |
 | GET | `/api/auth/nonce` | One-time sign-in nonce |
@@ -115,6 +117,8 @@ The repository is prepared for a controlled deployment after the checks above. N
 See `docs/AUDIT-BOR-AI.md` for the full technical audit, severity ratings and what could not be tested.
 
 ## Daily usage limits (cost protection)
+
+The workspace sidebar includes a **Penggunaan** panel backed by `GET /api/usage`. It reports only the current account's units or the current guest IP's daily hashed counter, the configured limit, remaining units, and the next reset (07:00 WIB). It intentionally does not expose the application-wide counter or claim a monetary cost estimate; provider billing is not available from this counter.
 
 - Units per UTC day (resets 07:00 WIB): **guest 15** (per IP, stored only as a daily-rotating hash), **signed-in account 150**, **whole application 1,500**. A normal message costs 1 unit; a multi-agent request (several model calls) costs 3. A failed AI request gives its units back.
 - Defaults can be changed without code via the Worker variables `DAILY_LIMIT_GUEST`, `DAILY_LIMIT_USER`, `DAILY_LIMIT_GLOBAL`. Optionally set the secret `USAGE_SALT` so guest IP hashes cannot be brute-forced offline.
