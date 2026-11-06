@@ -149,5 +149,6 @@ See `docs/AUDIT-BOR-AI.md` for the full technical audit, severity ratings and wh
 - A conservative, heuristic filter rejects credentials, identity/payment numbers, contact details, health, religion, politics, sexual orientation/activity, ethnicity, personal finances, criminal records and being under 18. It can over-reject and can miss things; the UI warns users not to store sensitive data.
 - API: `GET/DELETE /api/memory`, `POST /api/memory`, `PUT /api/memory/settings`, `DELETE /api/memory/:id` (session required, same-origin for changes).
 - Tables come from migration `0003`. If it has not been applied, chat keeps working, the memory API answers `503 memory_unavailable`, and nothing is stored. **Run `bor-ai-deploy` to apply migrations.**
+- Persistent conversation pinning uses the additive `0004_conversation_pinning.sql` migration. The production workflow applies pending migrations only when the founder explicitly runs the deploy workflow; CI uses an isolated test database.
 - Integrations with other platforms: see `docs/INTEGRATIONS-PLAN.md` (proposal).
 
