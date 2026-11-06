@@ -38,7 +38,7 @@ The public repository README describes a web-based AI workspace with:
 - A multi-agent sequence: Researcher → Analyst → Fact Checker → Writer.
 - Specialist modes including Researcher, Analyst, Writer, Fact Checker, Strategist, Coder, Planner, Critic, Summarizer, Translator, and Text Analyst, alongside Coordinator.
 - Guest sessions and Google sign-in for account-based use.
-- Private, account-scoped conversation history for signed-in users.
+- Private, account-scoped conversation history for signed-in users, including the ability to rename and delete individual conversations.
 - Optional, explicit user memory for signed-in users; it is off by default and stores only information the user chooses to save.
 - A link reader: users can include up to three ordinary web links in a message; the service attempts to fetch and extract readable page text for the model. Some pages will fail, including pages requiring JavaScript, login, or unsupported formats.
 
