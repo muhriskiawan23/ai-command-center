@@ -882,6 +882,9 @@ async function boot(){
   if(readGuestFlag()){setState(AppState.GUEST);await enterChat();loadGoogle();return}
   setState(AppState.UNAUTH);loadGoogle();
 }
+$("openEmailDraft").addEventListener("click",()=>{if(busy||loadingChat)return;$("emailDraftPanel").hidden=!$("emailDraftPanel").hidden;if(!$("emailDraftPanel").hidden)$("emailPurpose").focus()});
+$("closeEmailDraft").addEventListener("click",()=>{$("emailDraftPanel").hidden=true});
+$("prepareEmailDraft").addEventListener("click",()=>{const r=window.BOREmailDraft?.buildPrompt({recipient:$("emailRecipient").value,subject:$("emailSubject").value,purpose:$("emailPurpose").value,points:$("emailPoints").value,tone:$("emailTone").value,language:$("emailLanguage").value});if(!r?.ok){toast(r?.error||"Generator email tidak tersedia.");$("emailPurpose").focus();return;}promptEl.value=r.prompt;$("agent").value="writer";$("emailDraftPanel").hidden=true;resizePrompt();promptEl.focus();toast("Instruksi draft email siap. Periksa lalu tekan tombol kirim.");});
 $("continueGuest").addEventListener("click",()=>{writeGuestFlag(true);currentUser=null;setState(AppState.GUEST);enterChat();loadGoogle()});
 $("gateRetry").addEventListener("click",boot);
 $("googleRetry").addEventListener("click",()=>loadGoogle(true));

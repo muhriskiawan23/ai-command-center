@@ -20,6 +20,7 @@ Public AI workspace with Google sign-in, temporary guest sessions, private per-a
 
 - PDF files are extracted locally in the browser with PDF.js; scanned/image-only PDFs fall back to local Tesseract.js OCR (English and Indonesian, up to 10 pages). CSV and Excel (.xlsx) files up to 5 MB are parsed locally in the browser, with bounded row previews and deterministic numeric summaries. PowerPoint (.pptx) files up to 5 MB are parsed locally for slide text (maximum 80 slides); visual elements, charts, and speaker notes are not extracted. Excel supports up to 10 sheets and 10,000 total data rows per workbook; formulas are shown as literal text and never executed. Only extracted/derived text is included in a chat request; raw files are not uploaded or stored by BOR AI. CSV/Excel cell contents are treated as untrusted data and formulas are never executed.
 - Assistant responses include a local Checklist conversion action that preserves surrounding Markdown and code blocks, then offers copy and `.md` download without an AI call.
+- An Email Draft Generator collects recipient, subject, purpose, key points, tone, and language, then prepares a structured prompt for Writer mode. It does not send email or connect to an email account; users review and send the result manually.
 - An on-demand, accessible About BOR AI dialog describing the product, current capabilities, privacy controls, and official repository.
 
 ## Architecture
