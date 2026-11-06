@@ -53,6 +53,20 @@ test.describe("CHAT — memori percakapan, kegagalan, batas laju", () => {
     expect(turns.at(-1)).toBe("Di kota mana saya tinggal?");
   });
 
+  test("akun: ubah nama percakapan tersimpan dan tetap ada setelah refresh", async ({ page, app, context }) => {
+    await loginAs(context, app, ALICE);
+    await page.goto(app.url);
+    await send(page, "Diskusi tentang roadmap produk");
+    await expect(page.locator(".message.assistant:not(#typing)")).toHaveCount(1);
+    if (page.viewportSize().width <= 1024) await page.locator("#menuBtn").click();
+    page.once("dialog", dialog => dialog.accept("Roadmap BOR AI"));
+    await page.locator(".rename-chat").first().click();
+    await expect(page.locator(".history-item")).toContainText("Roadmap BOR AI");
+    expect(app.db.sqlite.prepare("SELECT title FROM conversations").get().title).toBe("Roadmap BOR AI");
+    await page.reload();
+    await expect(page.locator(".history-item")).toContainText("Roadmap BOR AI");
+  });
+
   test("REGRESI: mengirim pesan saat riwayat akun masih dimuat tidak menghilangkan jawaban", async ({ page, app, context }) => {
     await loginAs(context, app, ALICE);
     await page.route("**/api/conversations", async (route) => { if (route.request().method() === "GET") await new Promise((r) => setTimeout(r, 800)); await route.continue(); });
