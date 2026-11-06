@@ -195,3 +195,20 @@ test("mode Translator dan Text Analyst tersedia di pemilih mode dan terkirim ke 
   await expect(page.locator(".message.assistant:not(#typing)")).toHaveCount(1);
   expect(posts[0].agent).toBe("translator");
 });
+
+
+test("akun: judul percakapan dapat diubah dan tetap tersimpan setelah reload", async ({ page, app, context }) => {
+  await loginAs(context, app, ALICE);
+  await page.goto(app.url);
+  await expect(page.locator("#prompt")).toBeVisible();
+  await send(page, "Judul awal percakapan");
+  await expect(page.locator(".message.assistant:not(#typing)")).toHaveCount(1);
+
+  page.on("dialog", (dialog) => dialog.accept("Judul hasil edit"));
+  await page.getByRole("button", { name: "Ubah judul Judul awal percakapan" }).click();
+  await expect(page.locator(".history-item")).toContainText("Judul hasil edit");
+
+  await page.reload();
+  await expect(page.locator(".history-item")).toContainText("Judul hasil edit");
+  expect(app.db.sqlite.prepare("SELECT title FROM conversations").get().title).toBe("Judul hasil edit");
+});
