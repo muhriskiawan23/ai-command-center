@@ -38,4 +38,6 @@ test("CSV context escapes XML delimiters and labels cell data untrusted", () => 
   assert.match(context, /&lt;ignore&gt;/);
   assert.match(context, /&amp; data/);
   assert.equal(safeSpreadsheetName("../../sales.csv"), ".._.._sales.csv");
+  assert.equal(safeSpreadsheetName("quarterly.xlsx"), "quarterly.xlsx");
+  assert.match(context, /<spreadsheet_document/);
 });
