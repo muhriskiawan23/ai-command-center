@@ -8,6 +8,7 @@ test("detects explicit search and news intent without treating ordinary chat as 
   assert.equal(detectResearchMode("Cari berita terbaru tentang ekonomi Indonesia"), "news");
   assert.equal(detectResearchMode("Search current AI regulation today"), "web");
   assert.equal(detectResearchMode("Jelaskan konsep manajemen risiko"), null);
+  assert.equal(detectResearchMode("Ringkas https://contoh.id/berita/beras"), null);
 });
 
 test("curated retrieval returns only relevant first-party passages with stable provenance", () => {
