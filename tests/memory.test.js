@@ -232,7 +232,7 @@ test("tabel memori belum ada (migrasi 0003 belum jalan): chat tetap normal, API 
   const res = await call(alice, "/api/memory");
   assert.equal(res.status, 503); assert.equal((await res.json()).code, "memory_unavailable");
   assert.equal((await chat(alice, "Halo")).status, 200);
-  assert.equal((await (await chat(alice, "Ingat bahwa aku suka kopi")).json()).response.includes("nonaktif"), true);
+  assert.equal((await (await chat(alice, "Ingat bahwa aku suka kopi", { language: "id" })).json()).response.includes("nonaktif"), true);
   await app.close();
 });
 
