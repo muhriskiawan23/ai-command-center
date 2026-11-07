@@ -57,7 +57,7 @@ test("rejects audio task when model has no verified audio capability", () => {
 });
 
 test("does not route to an external provider without explicit approval and consent", () => {
-  const external = candidate({ id: "external/model", provider: "external-test-provider", external: true, approved: true });
+  const external = candidate({ id: "external/model", provider: "external-test-provider", approved: true });
   const denied = evaluateModelCandidates({ task: "fast_chat", models: [external] });
   assert.equal(denied.eligible.length, 0);
   assert.equal(denied.rejected[0].reason, "external_provider_not_approved");
