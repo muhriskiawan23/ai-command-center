@@ -15,6 +15,11 @@ async function send(page, text) {
 const noHorizontalOverflow = (page) => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
 
 test.describe("AUTH — Welcome, Guest, session", () => {
+  test.beforeEach(async ({ page }) => {
+    // Tes auth memakai copy bahasa Indonesia; jangan bergantung pada locale browser CI.
+    await page.addInitScript(() => localStorage.setItem("borai-language-preference", "id"));
+  });
+
   test("pengunjung baru melihat Welcome, bukan chat, dan tidak ada flash UI chat", async ({ page, app }) => {
     await page.goto(app.url);
     await expect(page.locator("#gate")).toBeVisible();
