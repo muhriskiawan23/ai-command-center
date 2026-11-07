@@ -171,7 +171,7 @@ export async function handleGitHubOAuthRoute(request, env, url, { getSession, sa
       // Surface only sanitized provider diagnostics; never include tokens, codes, or request headers.
       if (diagnostic?.message) destination.searchParams.set("github_message", diagnostic.message);
       if (diagnostic?.requestId && /^[A-Za-z0-9-]{1,80}$/.test(diagnostic.requestId)) destination.searchParams.set("github_request", diagnostic.requestId);
-      if (diagnostic?.rateLimitRemaining && /^\\d{1,12}$/.test(diagnostic.rateLimitRemaining)) destination.searchParams.set("github_rate_remaining", diagnostic.rateLimitRemaining);
+      if (diagnostic?.rateLimitRemaining && /^\d{1,12}$/.test(diagnostic.rateLimitRemaining)) destination.searchParams.set("github_rate_remaining", diagnostic.rateLimitRemaining);
       return new Response(null, { status: 302, headers: { Location: destination.pathname + destination.search, "Set-Cookie": clearStateCookie(), "Cache-Control": "no-store" } });
     };
     if (!state || !stateCookie || state !== stateCookie) return fail("state_cookie");
