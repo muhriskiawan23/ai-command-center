@@ -304,7 +304,7 @@ export async function handleGitHubOAuthRoute(request, env, url, { getSession, sa
         return json({ installations: items.map((item) => ({ id: item.id, account: item.account?.login, accountType: item.account?.type, repositorySelection: item.repository_selection, appId: item.app_id, appSlug: item.app_slug })) }, 200, { "Cache-Control": "no-store" });
       }
       const installationId = url.searchParams.get("installation_id") || "";
-      if (!/^\\d{1,20}$/.test(installationId) || !items.some((item) => String(item.id) === installationId)) return json({ error: "Instalasi GitHub tidak valid atau bukan milik akun ini." }, 403);
+      if (!/^\d{1,20}$/.test(installationId) || !items.some((item) => String(item.id) === installationId)) return json({ error: "Instalasi GitHub tidak valid atau bukan milik akun ini." }, 403);
       const repositories = await githubJson(GITHUB_API + "/user/installations/" + installationId + "/repositories?per_page=100", token);
       if (repositories.error) return json({ error: repositories.error }, repositories.status);
       return json({ repositories: (repositories.data.repositories || []).map((item) => ({ id: item.id, fullName: item.full_name, name: item.name, private: item.private, defaultBranch: item.default_branch, permissions: { contents: item.permissions?.contents, pullRequests: item.permissions?.pull_requests, administration: item.permissions?.administration } })) }, 200, { "Cache-Control": "no-store" });
