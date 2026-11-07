@@ -13,7 +13,7 @@ Verified in `main` at the baseline SHA above:
 - `src/model-gateway.js` defines versioned task profiles, validates model metadata and routing constraints, applies hard eligibility gates, and ranks eligible candidates.
 - The existing Workers AI model `@cf/meta/llama-3.3-70b-instruct-fp8-fast` is the only eligible production candidate. No external provider credentials or adapters are active.
 - `runAgent()` routes specialist calls through the gateway; task profiles are mapped by agent role.
-- Web chat, Public API and Telegram share the gateway path and expose actual model trace metadata.
+- Web chat returns actual model trace metadata; Public API returns it in its response; Telegram shares the gateway path and emits internal per-call telemetry without exposing model metadata in the chat message.
 - Public API handling was corrected to preserve the string response returned by `runAgent()` and include model metadata.
 - Existing timeout/cancellation, memory, locale, quota, output validation/retry and persistence behavior remain part of the request path.
 - PDF conversion uses the separate `env.AI.toMarkdown()` binding and remains outside chat-model routing.
@@ -220,7 +220,7 @@ A request budget must include every agent call, retry and fallback, not merely o
 - Adaptive policy runs with the existing Workers AI model as the sole eligible candidate.
 - PR #94 was merged as `c64b8fdfdf5c2079ccfd242a43dc2c735496532b` and deployed as Worker version `02726d6c-1372-4e43-8f85-00e4a73eb43f`.
 - Post-deploy health, agents and Google sign-in configuration checks passed. Production D1 was verified read-only; no migrations were pending.
-- Model trace metadata exists, but durable operational telemetry and comparative quality evaluation remain follow-up work.
+- Per-model-call structured telemetry is emitted to Cloudflare Workers Logs by this milestone; durable metrics aggregation and comparative quality evaluation remain follow-up work.
 
 ### Phase D — Second provider pilot
 - Select one official provider only after a founder-approved budget and data policy.
