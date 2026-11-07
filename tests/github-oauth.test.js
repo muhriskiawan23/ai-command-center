@@ -115,12 +115,15 @@ test("callback distinguishes an invalid GitHub profile payload", async () => {
 
 test("callback preserves GitHub 403 and logs safe diagnostic metadata only", async () => {
   const originalFetch = globalThis.fetch;
+  let apiUserAgent = null;
   const originalWarn = console.warn;
   const warnings = [];
   console.warn = (...args) => warnings.push(args);
-  globalThis.fetch = async (url) => {
+  globalThis.fetch = async (url, init) => {
     if (String(url).includes("/login/oauth/access_token")) return json({ access_token: "ghu_sensitive-user-token" });
-    if (String(url).endsWith("/user")) return json(
+    if (String(url).endsWith("/user")) {
+      apiUserAgent = new Headers(init?.headers).get("User-Agent");
+      return json(
       { message: "Resource not accessible by integration" },
       403,
       {
@@ -130,7 +133,8 @@ test("callback preserves GitHub 403 and logs safe diagnostic metadata only", asy
         "retry-after": "60",
         "x-accepted-github-permissions": "profile=read"
       }
-    );
+      );
+    }
     throw new Error("Unexpected fetch URL");
   };
   try {
@@ -139,6 +143,7 @@ test("callback preserves GitHub 403 and logs safe diagnostic metadata only", asy
     });
     const response = await handleGitHubOAuthRoute(request, env(), new URL(request.url), deps);
     assert.match(response.headers.get("Location"), /^\/\?github=error&reason=profile_http_403&github_message=Resource\+not\+accessible\+by\+integration&github_request=REQ-123&github_rate_remaining=0$/);
+    assert.equal(apiUserAgent, "BOR-AI");
     assert.equal(warnings.length, 1);
     assert.equal(warnings[0][0], "GitHub API request failed");
     const diagnostic = warnings[0][1];
