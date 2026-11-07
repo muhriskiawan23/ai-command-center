@@ -170,6 +170,11 @@ export function evaluateModelCandidates({
           constraints.approvedProviders.includes(model.provider) && constraints.userConsent === true)) {
       reject("external_provider_not_approved"); continue;
     }
+    // External providers must always have an explicitly requested and verified
+    // data policy; provider approval and user consent alone are not sufficient.
+    if (isExternalProvider(model) && !constraints.dataPolicy) {
+      reject("external_provider_data_policy_required"); continue;
+    }
     if (constraints.dataPolicy &&
         (!Array.isArray(model.dataPolicies) || !model.dataPolicies.includes(constraints.dataPolicy))) {
       reject("data_policy_unverified_or_incompatible"); continue;
