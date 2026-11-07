@@ -2,7 +2,7 @@
 
 **Direction:** Hybrid + All Capabilities  
 **Repository:** `muhriskiawan23/ai-command-center`  
-**Baseline:** `main` at `b3e3084b2e730fdae6f23afb4aa025069b8c1680`  
+**Baseline:** `main` at `c64b8fdfdf5c2079ccfd242a43dc2c735496532b`  
 **Last repository audit:** 2026-11-08  
 **Release rule:** No pull request is merged and no production deployment is initiated without explicit founder approval.
 
@@ -23,22 +23,23 @@ The objective is not to claim that BOR AI is already better than ChatGPT, Claude
 
 | Area | Current implementation | Boundary / verification still needed |
 |---|---|---|
-| Chat and orchestration | Cloudflare Worker chat API; Coordinator plus specialist modes; Researcher → Analyst → Fact Checker → Writer flow for complex tasks | Uses one foundation model today: Cloudflare Workers AI `@cf/meta/llama-3.3-70b-instruct-fp8-fast`. Multi-agent orchestration is not multi-model routing. Real-model quality needs evaluation. |
+| Chat and orchestration | Cloudflare Worker chat API; Coordinator plus specialist modes; Researcher → Analyst → Fact Checker → Writer flow; adaptive model gateway routes task profiles through the shared `runAgent()` path | Gateway is integrated across web chat, Public API and Telegram. Only the existing Workers AI model `@cf/meta/llama-3.3-70b-instruct-fp8-fast` is currently eligible; no second provider is active. Real-model quality still needs evaluation. |
 | Accounts and history | Google sign-in, secure server sessions, private D1 chat history, pagination, pin/archive/delete/export, idempotent retries | Real Google sign-in and account lifecycle need production smoke tests. |
 | Memory | Explicit, user-controlled memory with enable/disable and deletion | Not online model training; memory behavior on the live model needs evaluation. |
 | Language and UI | Automatic device language, 10 interface languages, Arabic RTL, localized response handling | Translation quality and layout need human review on real devices and browsers. |
 | Web research | Optional Brave Search and News adapter, curated BOR AI knowledge, source IDs, freshness/trust rules, citation validation | Live search requires the Cloudflare Worker secret `BRAVE_SEARCH_API_KEY`; provider quota and live behavior are not proven by stub tests. |
-| Source-page reading | User-supplied URL reader with SSRF protections; PR #91 adds bounded reading of up to three search-result pages, page-read status and redirect-aware citation validation | PR #91 is open and draft. Its latest known head `06c4dee49ba9379e0a962f10470cd12ddea180ec` passed all four checks, but it has not been merged. |
+| Source-page reading | User-supplied URL reader with SSRF protections and bounded reading of up to three search-result pages, page-read status and redirect-aware citation validation | PR #91 is merged and deployed. Live Brave search still depends on a valid `BRAVE_SEARCH_API_KEY` and provider quota; this deployment did not prove live Brave availability. |
 | Documents | PDF conversion, local OCR fallback for scanned PDFs, CSV/XLSX parsing, PPTX text extraction | Image understanding, charts/visual extraction, speaker notes and arbitrary document formats are not implemented. |
 | Integrations | Telegram webhook; embeddable widget and public API keys; GitHub repository/PR read-only capabilities and OAuth foundation | Each external integration needs live credential, permission, revocation and abuse testing. Gmail/Drive, Calendar, Slack, WhatsApp and general browser automation are not complete. |
 | Developer/product APIs | Public single-turn chat API, per-site keys, origin allow-list and quotas | No general-purpose safe code execution or autonomous software-building runtime exists. |
 | Security and cost controls | Request limits, daily usage accounting, timeouts, session ownership checks, CSP/security headers, input bounds and regression tests | Production observability, spend controls, anti-bot, disaster recovery and full external penetration testing remain incomplete. |
-| Deployment | Cloudflare Worker and static assets, D1 migrations, GitHub Actions tests/preview/deploy workflow | The repository audit identified two possible deployment paths (Workers Builds and GitHub deploy workflow). Confirm one authoritative production path in Cloudflare settings before changing deployment automation. |
+| Deployment | Cloudflare Worker and static assets, D1 migrations, GitHub Actions tests/preview/deploy workflow | PR #94 merge commit `c64b8fdfdf5c2079ccfd242a43dc2c735496532b` is deployed. Production deploy workflow #61 completed successfully; D1 was verified read-only and no migrations were pending. |
 
 ### Open work at audit time
 
-- **PR #91 — Improve Web Research with source-page grounding:** open, draft, mergeable; all four checks pass on the latest head. Keep unmerged until the founder explicitly approves.
-- **Live Brave provider verification:** blocked until `BRAVE_SEARCH_API_KEY` is configured as a Cloudflare Worker secret. Never place the key in chat, source code, GitHub issues, or browser code.
+- **PR #91 — Source-page grounding:** merged and deployed; retain live-provider caveats until Brave is verified with real credentials and quota.
+- **PR #94 — Adaptive Multi-Model Gateway:** merged and deployed. Phase A/B and one-provider adaptive routing are integrated; only Workers AI is eligible. A second provider remains disabled pending explicit approval of provider, budget, data policy and consent.
+- **Live Brave provider verification:** status remains unverified until a controlled request confirms `BRAVE_SEARCH_API_KEY`, active plan/quota and successful live results. Never place the key in chat, source code, GitHub issues, or browser code.
 - **Historic audit document:** `docs/AUDIT-BOR-AI.md` is dated 2026-10-31. Treat its findings as historical leads, not as a fresh confirmation of current production behavior. Re-test each item before changing its status.
 
 ## 3. Execution principles and release gates
@@ -102,17 +103,18 @@ Acceptance:
 
 ### Milestone 2 — Adaptive Multi-Model Gateway and Intelligence Routing
 
-**Priority:** P0/P1 · **Status:** architecture specified; runtime gateway not implemented
+**Priority:** P0/P1 · **Status:** Phase A/B integrated and deployed; one-provider adaptive routing active; multi-provider expansion blocked on founder decisions
 
 **Founder decision:** Adaptive Multi-Model is the default strategy. The existing Workers AI model remains the only eligible production candidate until a second provider, budget and data policy are explicitly approved.
 
-Audit of current `main` confirms that:
-- `src/index.js` has one global `MODEL` constant (`@cf/meta/llama-3.3-70b-instruct-fp8-fast`), and `runAgent()` sends every specialist call to that same model.
-- Multi-agent currently means multiple specialist roles, not multiple models/providers.
-- Web chat, public API and Telegram share `runAgent()` / `runMultiAgent()`; this is the preferred shared gateway insertion point.
-- Timeout/cancellation, memory and locale wrappers already decorate the `env.AI.run` path and must be preserved.
-- PDF conversion uses `env.AI.toMarkdown()` separately and is not part of chat model routing.
-- No model catalog, provider adapters, task capability registry, adaptive policy, provider health/fallback system or model-cost telemetry was found in the inspected runtime/configuration.
+Post-merge audit of `main` confirms that:
+- `src/model-gateway.js` contains validated task profiles, model metadata validation, hard eligibility gates and adaptive candidate scoring.
+- `runAgent()` routes specialist calls through the gateway; the current Workers AI model is the only eligible candidate.
+- Web chat, Public API and Telegram share the gateway path and expose actual model trace metadata.
+- The Public API response path was corrected to handle the string returned by `runAgent()` rather than reading a nonexistent `.response` property.
+- Existing timeout/cancellation, memory, locale, quota, output validation/retry and persistence paths remain in the execution flow.
+- PDF conversion still uses `env.AI.toMarkdown()` separately and is not part of chat model routing.
+- No external provider adapter is active; provider expansion, measured quality telemetry and live comparative benchmarks remain future work.
 
 Architecture specification: [Adaptive Multi-Model Gateway](ADAPTIVE-MULTI-MODEL-GATEWAY.md).
 
@@ -249,12 +251,12 @@ Acceptance:
 
 The next work should proceed in this order:
 
-1. **PR #91:** complete independent review; all known CI checks are green on its latest head. Keep it unmerged until approval.
-2. **Live search readiness:** document and verify the Worker secret setup with the founder; do not request the key in chat.
-3. **Search quality and provider contract:** add the provider interface and evaluation fixtures before adding a second paid provider.
-4. **Model gateway design:** inventory supported Workers AI models and external provider constraints, then implement the smallest backward-compatible abstraction.
+1. **Post-merge regression audit:** verify PR #91 and PR #94 behavior in production; keep mocked CI evidence separate from live-provider evidence.
+2. **Live search readiness:** verify Brave Search/News with an approved Worker secret and active provider quota; never request or expose the key in chat.
+3. **Gateway hardening:** add route-level observability and deterministic Indonesian/English quality evaluations; measure cost per successful task.
+4. **Model inventory:** verify candidate Workers AI models and documented capability limits before adding any additional candidate.
 5. **Current audit refresh:** reproduce historic open findings and prioritize high-risk operational gaps.
-6. **Multimodal and sandbox prototypes:** run isolated technical spikes only after model/provider capability and cost are verified.
+6. **Multimodal and sandbox prototypes:** run isolated technical spikes only after model/provider capability, privacy and cost are verified.
 
 Parallel feature work should not bypass these dependencies.
 
