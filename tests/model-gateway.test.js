@@ -215,3 +215,37 @@ test("rejects disabled models and unknown task profiles", () => {
   assert.equal(disabled.rejected[0].reason, "model_disabled");
   assert.throws(() => selectModel({ task: "made_up_task" }), /Unknown task profile/);
 });
+
+
+test("rejects malformed routing limits instead of silently ignoring them", () => {
+  assert.throws(
+    () => evaluateModelCandidates({
+      task: "fast_chat", models: [candidate()], constraints: { deadlineMs: "1500" }
+    }),
+    /constraints.deadlineMs must be a finite non-negative number/
+  );
+  assert.throws(
+    () => evaluateModelCandidates({
+      task: "fast_chat", models: [candidate()], constraints: { maxCostUsd: "0.01" }
+    }),
+    /constraints.maxCostUsd must be a finite non-negative number/
+  );
+  assert.throws(
+    () => evaluateModelCandidates({
+      task: "fast_chat", models: [candidate()], requirements: { inputTokens: -1 }
+    }),
+    /requirements.inputTokens must be a non-negative safe integer/
+  );
+  assert.throws(
+    () => evaluateModelCandidates({
+      task: "fast_chat", models: [candidate()], requirements: { outputTokens: 1.5 }
+    }),
+    /requirements.outputTokens must be a non-negative safe integer/
+  );
+  assert.throws(
+    () => evaluateModelCandidates({
+      task: "fast_chat", models: [candidate()], requirements: { minQualityScore: 1.5 }
+    }),
+    /requirements.minQualityScore must be between 0 and 1/
+  );
+});
