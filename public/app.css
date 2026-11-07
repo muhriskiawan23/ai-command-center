@@ -428,6 +428,6 @@ html[dir="rtl"] pre, html[dir="rtl"] code, html[dir="rtl"] .message-text pre { d
 
 /* On narrow screens the RTL navigation drawer must enter from the right edge. */
 @media(max-width:1024px){
-  html[dir="rtl"] .sidebar { inset:0 0 0 auto; transform:translateX(105%); border-right:0; border-left:1px solid var(--line); }
+  html[dir="rtl"] .sidebar { left:auto; right:0; inset-block:0; width:min(310px,86vw); transform:translateX(105%); border-right:0; border-left:1px solid var(--line); }
   html[dir="rtl"] .sidebar.open { transform:translateX(0); }
 }
