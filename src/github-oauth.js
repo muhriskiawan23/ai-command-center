@@ -175,12 +175,16 @@ export async function handleGitHubOAuthRoute(request, env, url, { getSession, sa
       if (diagnostic?.rateLimitRemaining && /^\d{1,12}$/.test(diagnostic.rateLimitRemaining)) destination.searchParams.set("github_rate_remaining", diagnostic.rateLimitRemaining);
       return new Response(null, { status: 302, headers: { Location: destination.pathname + destination.search, "Set-Cookie": clearStateCookie(), "Cache-Control": "no-store" } });
     };
+    let callbackStage = "state_validation";
+    try {
     if (!state || !stateCookie || state !== stateCookie) return fail("state_cookie");
     if (state.length > 200) return fail("state_cookie");
     const now = Math.floor(Date.now() / 1000);
+    callbackStage = "state_lookup";
     const pending = await env.DB.prepare("SELECT user_id FROM github_oauth_states WHERE state_hash = ? AND expires_at > ?")
       .bind(await sha256Hex(state), now).first();
     if (!pending || pending.user_id !== user.id) return fail("state_expired_or_session");
+    callbackStage = "state_consume";
     await env.DB.prepare("DELETE FROM github_oauth_states WHERE state_hash = ?").bind(await sha256Hex(state)).run();
     // GitHub returns an error (for example access_denied) without an authorization code.
     // Handle this before validating code so cancellations are not misreported as state failures.
@@ -188,29 +192,43 @@ export async function handleGitHubOAuthRoute(request, env, url, { getSession, sa
       return new Response(null, { status: 302, headers: { Location: "/?github=cancelled", "Set-Cookie": clearStateCookie(), "Cache-Control": "no-store" } });
     }
     if (!code || code.length > 500) return fail("missing_code");
+    callbackStage = "token_exchange";
     const tokenResponse = await fetch("https://github.com/login/oauth/access_token", {
       method: "POST",
       headers: { Accept: "application/json", "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({ client_id: env.GITHUB_APP_CLIENT_ID, client_secret: env.GITHUB_APP_CLIENT_SECRET, code, redirect_uri: env.GITHUB_APP_REDIRECT_URI })
     });
     if (!tokenResponse.ok) return fail("token_http_" + tokenResponse.status);
+    callbackStage = "token_response_parse";
     const tokens = await tokenResponse.json();
     if (typeof tokens.access_token !== "string" || !tokens.access_token) {
       const providerError = typeof tokens.error === "string" && /^[a-z_]{1,40}$/.test(tokens.error) ? tokens.error : "unknown";
       return fail("token_" + providerError);
     }
+    callbackStage = "profile_lookup";
     const profile = await githubJson(GITHUB_API + "/user", tokens.access_token);
     if (profile.error) return fail("profile_http_" + (profile.status || 502), profile.diagnostic);
     if (!Number.isSafeInteger(profile.data?.id) || typeof profile.data?.login !== "string") return fail("profile_invalid");
+    callbackStage = "token_encrypt_access";
     const encryptedAccess = await encryptToken(tokens.access_token, env);
+    callbackStage = "token_encrypt_refresh";
     const encryptedRefresh = typeof tokens.refresh_token === "string" ? await encryptToken(tokens.refresh_token, env) : null;
     const accessExpires = now + Math.max(60, Number(tokens.expires_in) || 28800);
     const refreshExpires = encryptedRefresh ? now + Math.max(60, Number(tokens.refresh_token_expires_in) || 15897600) : null;
+    callbackStage = "connection_save";
     await env.DB.prepare(
       "INSERT INTO github_connections (user_id, github_user_id, github_login, github_avatar_url, encrypted_access_token, encrypted_refresh_token, access_token_expires_at, refresh_token_expires_at, connected_at, updated_at) " +
       "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET github_user_id=excluded.github_user_id, github_login=excluded.github_login, github_avatar_url=excluded.github_avatar_url, encrypted_access_token=excluded.encrypted_access_token, encrypted_refresh_token=excluded.encrypted_refresh_token, access_token_expires_at=excluded.access_token_expires_at, refresh_token_expires_at=excluded.refresh_token_expires_at, connected_at=excluded.connected_at, updated_at=excluded.updated_at"
     ).bind(user.id, profile.data.id, profile.data.login, String(profile.data.avatar_url || "").slice(0, 1000), encryptedAccess, encryptedRefresh, accessExpires, refreshExpires, now, now).run();
     return new Response(null, { status: 302, headers: { Location: "/?github=connected", "Set-Cookie": clearStateCookie(), "Cache-Control": "no-store" } });
+    } catch (error) {
+      // Log only the stage and error class; never log OAuth codes, state, tokens, or provider payloads.
+      console.error("GitHub OAuth callback failed", {
+        stage: callbackStage,
+        errorName: error instanceof Error ? error.name : "UnknownError"
+      });
+      return fail("callback_" + callbackStage);
+    }
   }
 
   if (path === "/api/github/connection") {
