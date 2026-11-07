@@ -154,12 +154,16 @@ test("IP tidak pernah disimpan mentah di database", async () => {
   await app.close();
 });
 
-test("tabel belum ada (migrasi belum dijalankan): chat tetap jalan, batas nonaktif, dan terlihat jelas di log", async () => {
+test("tabel daily_usage belum ada: chat gagal tertutup dan pembatasan tidak dilewati", async () => {
   const { app, post } = await setup();
   app.db.sqlite.exec("DROP TABLE daily_usage");
   const logs = []; const original = console.error; console.error = (...a) => logs.push(a.join(" "));
-  try { assert.equal((await post("tanpa tabel")).status, 200); } finally { console.error = original; }
-  assert.ok(logs.some((l) => /daily limits are DISABLED/i.test(l)), "harus ada peringatan jelas di log");
+  try {
+    const response = await post("tanpa tabel");
+    assert.equal(response.status, 503);
+    assert.match(await response.text(), /pembatasan pemakaian belum siap/i);
+  } finally { console.error = original; }
+  assert.ok(logs.some((l) => /Daily usage limits unavailable/i.test(l)), "harus ada peringatan jelas di log");
   await app.close();
 });
 
