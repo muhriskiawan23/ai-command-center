@@ -166,7 +166,9 @@ export async function handleGitHubReadRoute(request, env, url, { fetcher = fetch
   }
 
   const params = new URLSearchParams();
-  if (ref) params.set(route === "/api/github/commits" ? "sha" : "ref", ref);
+  if (ref && route === "/api/github/commits") params.set("sha", ref);
+  else if (ref && (route === "/api/github/tree" || route === "/api/github/file")) params.set("ref", ref);
+  else if (ref) return json({ error: "Parameter ref tidak didukung pada endpoint ini." }, 400);
   if (route === "/api/github/commits" || route === "/api/github/branches" || route === "/api/github/pulls") {
     const perPage = Math.min(100, Math.max(1, Number(url.searchParams.get("per_page")) || 30));
     params.set("per_page", String(perPage));
