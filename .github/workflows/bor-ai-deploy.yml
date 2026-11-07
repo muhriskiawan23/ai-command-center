@@ -112,12 +112,7 @@ jobs:
         if: ${{ !inputs.apply_db_migrations }}
         run: echo "Production D1 migrations were not applied. Review the migration list and explicitly enable apply_db_migrations on a later dispatch if needed."
 
-      - name: Deploy Worker and assets
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: npm run deploy
-
+      # Secret updates deploy a new Worker version; do this before publishing the code version.
       - name: Configure Google sign-in
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -126,6 +121,12 @@ jobs:
         run: |
           set -euo pipefail
           printf '%s' "$GOOGLE_CLIENT_ID" | npx --yes wrangler@4 secret put GOOGLE_CLIENT_ID --config wrangler.jsonc
+
+      - name: Deploy Worker and assets
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npm run deploy
 
       - name: Verify production endpoints
         run: |
