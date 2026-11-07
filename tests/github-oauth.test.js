@@ -94,6 +94,29 @@ test("callback reports GitHub profile API authorization failures precisely", asy
   }
 });
 
+test("callback reports a safe stage when token exchange throws", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalError = console.error;
+  const errors = [];
+  console.error = (...args) => errors.push(args);
+  globalThis.fetch = async () => { throw new Error("sensitive upstream detail"); };
+  try {
+    const request = new Request("https://example.test/api/github/callback?code=secret-code&state=random-state-token", {
+      headers: { Cookie: "__Host-borai_github_oauth_state=random-state-token" }
+    });
+    const response = await handleGitHubOAuthRoute(request, env(), new URL(request.url), deps);
+    assert.equal(response.status, 302);
+    assert.equal(response.headers.get("Location"), "/?github=error&reason=callback_token_exchange");
+    assert.equal(errors.length, 1);
+    assert.equal(errors[0][0], "GitHub OAuth callback failed");
+    assert.deepEqual(errors[0][1], { stage: "token_exchange", errorName: "Error" });
+    assert.doesNotMatch(JSON.stringify(errors), /secret-code|sensitive upstream detail|client-secret/);
+  } finally {
+    globalThis.fetch = originalFetch;
+    console.error = originalError;
+  }
+});
+
 test("callback distinguishes an invalid GitHub profile payload", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async (url) => {
