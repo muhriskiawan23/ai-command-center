@@ -182,7 +182,7 @@
       const translated=translate(trimmed);
       if(translated!==trimmed) node.nodeValue=raw.replace(trimmed,translated);
     }
-    root.querySelectorAll?.("input[placeholder],textarea[placeholder],button[title],[aria-label]").forEach(el=>{
+    const attributeSelector="input[placeholder],textarea[placeholder],button[title],[aria-label]";\n    const elements=[];\n    if(root.matches?.(attributeSelector)) elements.push(root);\n    elements.push(...(root.querySelectorAll?.(attributeSelector)||[]));\n    elements.forEach(el=>{
       for(const attr of ["placeholder","title","aria-label"]) {
         const value=el.getAttribute(attr);
         if(value) { const t=translate(value); if(t!==value) el.setAttribute(attr,t); }
