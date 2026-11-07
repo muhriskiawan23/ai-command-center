@@ -253,7 +253,13 @@ test("core UI translations cover forms, AI modes, privacy, and usage in every no
     const results = await page.evaluate((keys) => keys.map((key) => window.BORLocale.translate(key)), required);
     expect(results, `Missing core translations for locale ${locale}`).toHaveLength(required.length);
     for (let index = 0; index < required.length; index++) {
-      expect(results[index], `Untranslated key "${required[index]}" for locale ${locale}`).not.toBe(required[index]);
+      // English is the canonical source locale: an English label is already translated.
+      // Other locales must return a localized value rather than the English source key.
+      if (locale === "en") {
+        expect(results[index].trim().length).toBeGreaterThan(0);
+      } else {
+        expect(results[index], `Untranslated key "${required[index]}" for locale ${locale}`).not.toBe(required[index]);
+      }
       expect(results[index].trim().length).toBeGreaterThan(0);
     }
     expect(await page.locator("html").getAttribute("dir")).toBe(locale === "ar" ? "rtl" : "ltr");
