@@ -58,3 +58,56 @@ test("multi-agent chat records the selected model for every specialist call", as
     await app.close();
   }
 });
+
+
+test("emits structured privacy-safe telemetry with a shared request correlation ID", async () => {
+  const app = await startHarness();
+  const captured = [];
+  const originalLog = console.log;
+  console.log = (...args) => captured.push(args);
+  try {
+    const response = await fetch(app.url + "/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: app.url },
+      body: JSON.stringify({ message: "Pesan uji yang tidak boleh masuk ke log telemetry." })
+    });
+    assert.equal(response.status, 200);
+    const event = captured.map(args => args[0]).find(value =>
+      value && typeof value === "object" && value.event === "BOR_AI_MODEL_TELEMETRY"
+    );
+    assert.ok(event, "structured model telemetry event should be emitted");
+    assert.equal(event.schemaVersion, 1);
+    assert.equal(event.agentId, "coordinator");
+    assert.equal(event.outcome, "success");
+    assert.equal(typeof event.requestId, "string");
+    assert.ok(event.requestId.length >= 16);
+    assert.ok(Number.isFinite(event.durationMs) && event.durationMs >= 0);
+    assert.equal(event.retryCount, 0);
+    assert.equal(JSON.stringify(event).includes("Pesan uji"), false);
+    assert.equal(Object.hasOwn(event, "prompt"), false);
+    assert.equal(Object.hasOwn(event, "response"), false);
+  } finally {
+    console.log = originalLog;
+    await app.close();
+  }
+});
+
+test("telemetry logging failures do not turn successful model responses into errors", async () => {
+  const app = await startHarness();
+  const originalLog = console.log;
+  console.log = () => { throw new Error("log sink unavailable"); };
+  try {
+    const response = await fetch(app.url + "/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: app.url },
+      body: JSON.stringify({ message: "Halo BOR AI" })
+    });
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(typeof body.response, "string");
+    assert.ok(body.response.length > 0);
+  } finally {
+    console.log = originalLog;
+    await app.close();
+  }
+});
