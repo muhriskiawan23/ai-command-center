@@ -98,7 +98,8 @@ function renderWorkflow(steps){const items=$("workflowItems");items.replaceChild
 /* Textarea tumbuh mengikuti isi (scrollHeight) sampai max-height dari CSS, lalu berhenti dan scroll di dalam. */
 function resizePrompt(){
   promptEl.style.height="auto";
-  const max=parseFloat(getComputedStyle(promptEl).maxHeight)||220;
+  const viewportHeight=Math.min(window.innerHeight,window.visualViewport?.height||window.innerHeight);
+  const max=Math.min(220,viewportHeight*0.4);
   const needed=promptEl.scrollHeight;
   promptEl.style.height=Math.min(needed,max)+"px";
   promptEl.style.overflowY=needed>max?"auto":"hidden";
