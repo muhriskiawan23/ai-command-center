@@ -49,7 +49,7 @@ test.describe("AUTH — Welcome, Guest, session", () => {
     await expect(page.locator(".message.assistant:not(#typing)")).toHaveCount(1);
     const dump = await page.evaluate(() => JSON.stringify({ l: { ...localStorage }, s: { ...sessionStorage } }));
     expect(dump).not.toContain("rahasia-guest-123");
-    expect(JSON.parse(dump).l).toEqual({});
+    expect(JSON.parse(dump).l).toEqual({ "borai-language-preference": "id" });
   });
 
   test("user Google yang kembali langsung masuk tanpa flash 'Guest Mode' atau Welcome", async ({ page, app, context }) => {
