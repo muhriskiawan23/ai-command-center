@@ -3,6 +3,7 @@ import { PDF_MAX_BYTES, PDF_CONTEXT_MAX_CHARS, safePdfName, normalizePdfConversi
 import { validateCitationReferences } from "./citations.js";
 import { MEMORY_MAX_ITEMS, MEMORY_MAX_CHARS, getMemoryState, setMemoryEnabled, addMemory, deleteMemory, deleteAllMemories, parseRememberCommand, buildMemoryBlock } from "./memory.js";
 import { handleDeveloperKeysRoute, handlePublicChatRoute } from "./widget-api.js";
+import { handleTelegramWebhook } from "./telegram.js";
 
 const MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 const MAX_REQUEST_BYTES = 64 * 1024;
@@ -1221,6 +1222,24 @@ export default {
     if (url.pathname === "/api/public/chat") {
       try { return await handlePublicChatRoute(request, env, { AGENTS, MODEL, runAgent, withAiDeadline, json, readJsonRequest, CHAT_LIMITER: env.CHAT_LIMITER }); }
       catch (error) { console.error("Public API request failed:", error); return json({ error: "Public API gagal diproses." }, 503); }
+    }
+    if (url.pathname === "/api/integrations/telegram/webhook") {
+      try {
+        return await handleTelegramWebhook(request, env, {
+          fetcher: env.TELEGRAM_FETCHER || fetch,
+          shouldUseMultiAgent,
+          runAgent,
+          runMultiAgent,
+          withAiDeadline,
+          enforceDailyLimits,
+          refundUsage,
+          singleAgentBudgetMs: AI_CALL_TIMEOUT_DEFAULT_MS * 2,
+          multiAgentBudgetMs: AI_MULTI_AGENT_BUDGET_DEFAULT_MS
+        });
+      } catch (error) {
+        console.error("Telegram webhook failed:", error);
+        return json({ error: "Webhook Telegram gagal diproses." }, 503);
+      }
     }
     if (url.pathname === "/api/feedback") {
       try { return await handleFeedbackRoute(request, env, url); }
