@@ -45,7 +45,7 @@ export function seedConversation(db, { id, userId, title, updatedAt, messages = 
   for (const m of messages) db.sqlite.prepare("INSERT INTO messages (conversation_id,user_id,role,content,created_at) VALUES (?,?,?,?,?)").run(id, userId, m.role, m.content, updatedAt);
 }
 
-export async function startHarness({ port = 0, googleClientId = "test-client.apps.googleusercontent.com", aiDelayMs = 0, chatLimit = 0, extraEnv = {} } = {}) {
+export async function startHarness({ port = 0, googleClientId = "test-client.apps.googleusercontent.com", aiDelayMs = 0, chatLimit = Number.MAX_SAFE_INTEGER, extraEnv = {} } = {}) {
   const db = createD1();
   const aiCalls = [];
   const control = { aiFail: false, aiText: null, aiHang: false };
