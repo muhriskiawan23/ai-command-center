@@ -138,23 +138,19 @@ export async function handleGitHubOAuthRoute(request, env, url, { getSession, sa
     const state = url.searchParams.get("state") || "";
     const code = url.searchParams.get("code") || "";
     const stateCookie = readCookie(request, STATE_COOKIE);
-    const redirectError = url.searchParams.get("error") || "";
-    const fail = (reason) => new Response(null, {
-      status: 302,
-      headers: { Location: "/?github=error&reason=" + encodeURIComponent(reason), "Set-Cookie": clearStateCookie(), "Cache-Control": "no-store" }
-    });
-    // GitHub may return an OAuth error without a code (for example access_denied).
-    // Validate state first, then classify the provider response.
+    const fail = (reason) => new Response(null, { status: 302, headers: { Location: "/?github=error&reason=" + encodeURIComponent(reason), "Set-Cookie": clearStateCookie(), "Cache-Control": "no-store" } });
     if (!state || !stateCookie || state !== stateCookie || state.length > 200) return fail("state_cookie");
     const now = Math.floor(Date.now() / 1000);
     const pending = await env.DB.prepare("SELECT user_id FROM github_oauth_states WHERE state_hash = ? AND expires_at > ?")
       .bind(await sha256Hex(state), now).first();
     if (!pending || pending.user_id !== user.id) return fail("state_expired_or_session");
     await env.DB.prepare("DELETE FROM github_oauth_states WHERE state_hash = ?").bind(await sha256Hex(state)).run();
-    if (redirectError) return new Response(null, {
-      status: 302,
-      headers: { Location: redirectError === "access_denied" ? "/?github=cancelled" : "/?github=error&reason=github_authorization", "Set-Cookie": clearStateCookie(), "Cache-Control": "no-store" }
-    });
+    // GitHub returns an error (for example access_denied) without an authorization code.
+    // Handle this before validating code so cancellations are not misreported as state failures.
+    if (url.searchParams.has("error")) {
+      const providerError = url.searchParams.get("error") || "";
+      return new Response(null, { status: 302, headers: { Location: providerError === "access_denied" ? "/?github=cancelled" : "/?github=error&reason=github_authorization", "Set-Cookie": clearStateCookie(), "Cache-Control": "no-store" } });
+    }
     if (!code || code.length > 500) return fail("missing_code");
     const tokenResponse = await fetch("https://github.com/login/oauth/access_token", {
       method: "POST",
