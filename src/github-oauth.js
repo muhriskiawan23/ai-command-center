@@ -26,17 +26,32 @@ function cookie(name, value, maxAge) {
 function configured(env) {
   return Boolean(env.DB && env.GITHUB_APP_CLIENT_ID && env.GITHUB_APP_CLIENT_SECRET && env.GITHUB_APP_REDIRECT_URI && env.GITHUB_TOKEN_ENCRYPTION_KEY);
 }
+function tokenEncryptionError(code) {
+  const error = new Error("GitHub token encryption failed.");
+  error.code = code;
+  return error;
+}
 async function encryptionKey(env) {
-  if (!env.GITHUB_TOKEN_ENCRYPTION_KEY) throw new Error("GitHub token encryption is not configured.");
-  const raw = fromBase64Url(env.GITHUB_TOKEN_ENCRYPTION_KEY);
-  if (raw.length !== 32) throw new Error("GitHub token encryption key must be 32 bytes.");
-  return crypto.subtle.importKey("raw", raw, "AES-GCM", false, ["encrypt", "decrypt"]);
+  if (!env.GITHUB_TOKEN_ENCRYPTION_KEY) throw tokenEncryptionError("key_missing");
+  let raw;
+  try { raw = fromBase64Url(env.GITHUB_TOKEN_ENCRYPTION_KEY); }
+  catch { throw tokenEncryptionError("key_encoding_invalid"); }
+  if (raw.length !== 32) throw tokenEncryptionError("key_length_invalid");
+  try {
+    return await crypto.subtle.importKey("raw", raw, "AES-GCM", false, ["encrypt", "decrypt"]);
+  } catch {
+    throw tokenEncryptionError("crypto_import_failed");
+  }
 }
 async function encryptToken(value, env) {
-  const iv = crypto.getRandomValues(new Uint8Array(12));
   const key = await encryptionKey(env);
-  const encrypted = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, new TextEncoder().encode(value));
-  return base64Url(iv) + "." + base64Url(new Uint8Array(encrypted));
+  try {
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const encrypted = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, new TextEncoder().encode(value));
+    return base64Url(iv) + "." + base64Url(new Uint8Array(encrypted));
+  } catch {
+    throw tokenEncryptionError("crypto_encrypt_failed");
+  }
 }
 async function decryptToken(value, env) {
   const [ivPart, dataPart, extra] = String(value || "").split(".");
@@ -223,11 +238,16 @@ export async function handleGitHubOAuthRoute(request, env, url, { getSession, sa
     return new Response(null, { status: 302, headers: { Location: "/?github=connected", "Set-Cookie": clearStateCookie(), "Cache-Control": "no-store" } });
     } catch (error) {
       // Log only the stage and error class; never log OAuth codes, state, tokens, or provider payloads.
+      const safeEncryptionCodes = new Set(["key_missing", "key_encoding_invalid", "key_length_invalid", "crypto_import_failed", "crypto_encrypt_failed"]);
+      const encryptionCode = callbackStage === "token_encrypt_access" || callbackStage === "token_encrypt_refresh"
+        ? (safeEncryptionCodes.has(error?.code) ? "_" + error.code : "")
+        : "";
       console.error("GitHub OAuth callback failed", {
         stage: callbackStage,
-        errorName: error instanceof Error ? error.name : "UnknownError"
+        errorName: error instanceof Error ? error.name : "UnknownError",
+        ...(encryptionCode ? { encryptionCode: encryptionCode.slice(1) } : {})
       });
-      return fail("callback_" + callbackStage);
+      return fail("callback_" + callbackStage + encryptionCode);
     }
   }
 
