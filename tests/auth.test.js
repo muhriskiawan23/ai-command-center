@@ -148,7 +148,8 @@ test("Google sign-in rejects a missing double-submit nonce before token verifica
     nonce: "client-nonce"
   }, { Origin: "https://example.test" }), {
     DB: db,
-    GOOGLE_CLIENT_ID: "public-client-id"
+    GOOGLE_CLIENT_ID: "public-client-id",
+    CHAT_LIMITER: { async limit() { return { success: true }; } }
   });
   assert.equal(res.status, 403);
   assert.match((await res.json()).error, /kedaluwarsa/i);
