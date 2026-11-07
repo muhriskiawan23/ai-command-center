@@ -301,7 +301,10 @@ export function summarizeModelTrace(trace = []) {
       provider: item.provider,
       modelId: item.modelId,
       policyVersion: item.policyVersion,
-      calls: item.calls
+      calls: item.calls,
+      durationMs: Number.isFinite(item.durationMs) ? item.durationMs : null,
+      retryCount: Number.isSafeInteger(item.retryCount) ? item.retryCount : 0,
+      outcome: item.outcome === "success" || item.outcome === "error" ? item.outcome : "unknown"
     }))
   };
 }

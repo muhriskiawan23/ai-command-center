@@ -521,6 +521,9 @@ async function runAgent(env, agentId, userMessage, context = "", history = [], p
 
   const taskProfile = taskProfileForAgent(agentId);
   const selection = selectModel({ task: taskProfile });
+  const requestId = Array.isArray(env.MODEL_TRACE)
+    ? (env.MODEL_TRACE.requestId ||= crypto.randomUUID())
+    : crypto.randomUUID();
   const traceEntry = {
     agentId,
     taskProfile,
@@ -529,54 +532,105 @@ async function runAgent(env, agentId, userMessage, context = "", history = [], p
     modelId: selection.model.id,
     policyVersion: selection.policyVersion,
     evidence: selection.evidence,
-    calls: 0
+    calls: 0,
+    attempts: [],
+    durationMs: 0,
+    retryCount: 0,
+    outcome: "pending"
   };
   if (Array.isArray(env.MODEL_TRACE)) env.MODEL_TRACE.push(traceEntry);
 
-  const generate = (extraInstruction = "") => {
+  const emitTelemetry = () => {
+    const durationMs = traceEntry.attempts.reduce((total, attempt) => total + attempt.durationMs, 0);
+    traceEntry.durationMs = durationMs;
+    traceEntry.retryCount = Math.max(0, traceEntry.attempts.length - 1);
+    // Structured operational metadata only. Never log prompts, responses, user IDs or provider payloads.
+    try {
+      console.log({
+        event: "BOR_AI_MODEL_TELEMETRY",
+        schemaVersion: 1,
+        requestId,
+        agentId: traceEntry.agentId,
+        taskProfile: traceEntry.taskProfile,
+        provider: traceEntry.provider,
+        adapter: traceEntry.adapter,
+        modelId: traceEntry.modelId,
+        policyVersion: traceEntry.policyVersion,
+        outcome: traceEntry.outcome,
+        durationMs: traceEntry.durationMs,
+        attempts: traceEntry.attempts.length,
+        retryCount: traceEntry.retryCount,
+        attemptOutcomes: traceEntry.attempts.map((attempt) => attempt.outcome),
+        failureType: traceEntry.failureType || null
+      });
+    } catch {
+      // Observability is best-effort and must never change the model result.
+    }
+  };
+
+  const generate = async (extraInstruction = "") => {
     if (selection.model.adapter !== "workers-ai") {
       throw new Error(`Unsupported model adapter: ${selection.model.adapter}`);
     }
     traceEntry.calls += 1;
-    return env.AI.run(selection.model.id, {
-      messages: extraInstruction
-        ? [...messages, { role: "user", content: extraInstruction }]
-        : messages,
-      max_tokens: tokenLimits[agentId] || 700,
-      temperature: 0.4,
-      repetition_penalty: 1.1
-    });
+    const startedAt = Date.now();
+    try {
+      const generated = await env.AI.run(selection.model.id, {
+        messages: extraInstruction
+          ? [...messages, { role: "user", content: extraInstruction }]
+          : messages,
+        max_tokens: tokenLimits[agentId] || 700,
+        temperature: 0.4,
+        repetition_penalty: 1.1
+      });
+      traceEntry.attempts.push({ outcome: "success", durationMs: Math.max(0, Date.now() - startedAt) });
+      return generated;
+    } catch (error) {
+      traceEntry.attempts.push({ outcome: "error", durationMs: Math.max(0, Date.now() - startedAt) });
+      throw error;
+    }
   };
 
-  let result = await generate();
-  let response = result?.response ?? result?.result?.response ?? "";
-  let cleaned = cleanOutput(response);
-  const countWords = (value) => value.replace(/[#*_\`>~-]/g, " ").match(/[\p{L}\p{N}]{2,}/gu) || [];
+  try {
+      let result = await generate();
+    let response = result?.response ?? result?.result?.response ?? "";
+    let cleaned = cleanOutput(response);
+    const countWords = (value) => value.replace(/[#*_\`>~-]/g, " ").match(/[\p{L}\p{N}]{2,}/gu) || [];
 
-  // Retry once when the model returns mostly empty Markdown markers.
-  if (typeof response !== "string" || countWords(cleaned).length < 8 || cleaned.length < 35) {
-    result = await generate(
-      "RETRY REQUIRED: Your previous answer contained empty Markdown headings or bullets and was unusable. Return substantive content in plain text or simple numbered points. Do not output empty headings, empty bullets, or Markdown-only lines. Include at least 3 concrete findings when appropriate. Every bullet must contain a complete sentence. Answer in the user's language."
-    );
-    response = result?.response ?? result?.result?.response ?? "";
-    cleaned = cleanOutput(response);
+    // Retry once when the model returns mostly empty Markdown markers.
+    if (typeof response !== "string" || countWords(cleaned).length < 8 || cleaned.length < 35) {
+      result = await generate(
+        "RETRY REQUIRED: Your previous answer contained empty Markdown headings or bullets and was unusable. Return substantive content in plain text or simple numbered points. Do not output empty headings, empty bullets, or Markdown-only lines. Include at least 3 concrete findings when appropriate. Every bullet must contain a complete sentence. Answer in the user's language."
+      );
+      response = result?.response ?? result?.result?.response ?? "";
+      cleaned = cleanOutput(response);
+    }
+
+    // Reject responses that contain lots of Markdown structure but little actual content.
+    const meaningfulLines = cleaned.split("\n").filter((line) => {
+      const text = line.trim().replace(/^#{1,6}\s*/, "").replace(/^[-*+>\d.)\s]+/, "").replace(/[\*_\x60]/g, "").trim();
+      return text.length >= 12 && countWords(text).length >= 3;
+    });
+
+    // Coordinator answers and translations may legitimately be very short ("Selamat pagi"); specialists must be substantial.
+    const shortAnswersAllowed = agentId === "coordinator" || agentId === "translator";
+    if (typeof response !== "string" || (shortAnswersAllowed && !cleaned) || (!shortAnswersAllowed && (countWords(cleaned).length < 20 || cleaned.length < 100 || meaningfulLines.length < 2))) {
+      // Do not mark a generic placeholder as a successful agent result.
+      // Let the request boundary return a sanitized error after the retry fails.
+      throw new Error(`Agent ${agentId} returned unusable output after retry`);
+    }
+
+    traceEntry.outcome = "success";
+    emitTelemetry();
+    return cleaned;
+  } catch (error) {
+    traceEntry.outcome = "error";
+    traceEntry.failureType = error instanceof AiTimeoutError ? "timeout"
+      : error instanceof AiCancelledError ? "cancelled"
+      : "generation_error";
+    emitTelemetry();
+    throw error;
   }
-
-  // Reject responses that contain lots of Markdown structure but little actual content.
-  const meaningfulLines = cleaned.split("\n").filter((line) => {
-    const text = line.trim().replace(/^#{1,6}\s*/, "").replace(/^[-*+>\d.)\s]+/, "").replace(/[\*_\x60]/g, "").trim();
-    return text.length >= 12 && countWords(text).length >= 3;
-  });
-
-  // Coordinator answers and translations may legitimately be very short ("Selamat pagi"); specialists must be substantial.
-  const shortAnswersAllowed = agentId === "coordinator" || agentId === "translator";
-  if (typeof response !== "string" || (shortAnswersAllowed && !cleaned) || (!shortAnswersAllowed && (countWords(cleaned).length < 20 || cleaned.length < 100 || meaningfulLines.length < 2))) {
-    // Do not mark a generic placeholder as a successful agent result.
-    // Let the request boundary return a sanitized error after the retry fails.
-    throw new Error(`Agent ${agentId} returned unusable output after retry`);
-  }
-
-  return cleaned;
 }
 
 // Use a single model call for straightforward requests; reserve orchestration for complex tasks.
