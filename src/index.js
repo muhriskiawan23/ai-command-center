@@ -160,9 +160,9 @@ async function enforceDailyLimits(env, request, user, units) {
   } catch (error) {
     await refundUsage(env, day, charges);
     if (/no such table/i.test(String(error?.message))) {
-      // Migration 0002 has not been applied yet. Keep chat working, but say so loudly in the logs.
-      console.error("daily_usage table missing: daily limits are DISABLED until D1 migrations are applied (run bor-ai-deploy).");
-      return { ok: true, day, charges: [] };
+      // Fail closed: a missing quota table must never silently disable cost controls.
+      console.error("Daily usage limits unavailable; verify and apply D1 migrations before serving chat traffic.");
+      return { ok: false, response: json({ error: "Layanan pembatasan pemakaian belum siap. Silakan coba lagi nanti." }, 503) };
     }
     console.error("Daily usage check failed:", error);
     return { ok: false, response: json({ error: "Layanan pembatasan pemakaian sedang bermasalah. Coba lagi nanti." }, 503) };
