@@ -164,12 +164,18 @@ export async function handlePublicChatRoute(request, env, deps) {
   try {
     const timeout = Number(env.AI_CALL_TIMEOUT_MS);
     const deadline = Date.now() + (Number.isFinite(timeout) && timeout > 0 ? timeout : 45000);
-    const aiEnv = deps.withAiDeadline(env, deadline, request.signal);
-    const result = await deps.runAgent(aiEnv, agentId, message);
+    const modelTrace = [];
+    const aiEnv = deps.withAiDeadline({ ...env, MODEL_TRACE: modelTrace }, deadline, request.signal);
+    const generated = await deps.runAgent(aiEnv, agentId, message);
+    const answer = typeof generated === "string" ? generated : generated?.response;
+    if (typeof answer !== "string" || !answer.trim()) throw new Error("AI returned an empty response");
+    const modelMetadata = typeof deps.summarizeModelTrace === "function"
+      ? deps.summarizeModelTrace(modelTrace)
+      : { model: deps.MODEL };
     return withCors(deps.json({
-      response: result.response,
+      response: answer,
       agent: deps.AGENTS[agentId].name,
-      model: deps.MODEL,
+      ...modelMetadata,
       usage: { used: Number(consumed.daily_used), limit: Number(consumed.daily_limit), remaining: Math.max(0, Number(consumed.daily_limit) - Number(consumed.daily_used)), resetsAt: "07:00 WIB" }
     }, 200, { "X-RateLimit-Limit": String(consumed.daily_limit), "X-RateLimit-Remaining": String(Math.max(0, Number(consumed.daily_limit) - Number(consumed.daily_used))) }), origin);
   } catch (error) {
