@@ -4,6 +4,7 @@
 
 - Explicit search/news intent detection in chat.
 - Optional Brave Search API adapter for web and news results.
+- Automatic bounded reading of up to three successful search-result pages through the existing SSRF-safe link reader, in addition to provider snippets.
 - First-party BOR AI knowledge retrieval from a small curated index based on the official project knowledge base.
 - Deterministic source IDs, source links, publication dates, trust labels, and citation validation.
 - Freshness guard: results with a parseable publication date older than 30 days are excluded from model context.
@@ -31,7 +32,9 @@ A missing key is an intentional disabled state, not a fallback to model guesses.
 
 ## Provenance and trust policy
 
-- Each source has a deterministic numeric ID used by inline citations.
+- Each search result and each fetched publisher page has a distinct deterministic numeric ID used by inline citations.
+- Search-result pages are limited to three per request and use the existing redirect validation, private-network/SSRF checks, 8-second fetch timeout, 1 MB download cap, and 16,000-character page cap.
+- If a publisher page cannot be fetched or is not readable, the original Brave snippet remains available and the page failure is disclosed separately.
 - Only successful source IDs are allowed by the server-side citation validator.
 - Markdown-linked numeric citations are validated too; invalid citation links are removed.
 - Inline and fenced code examples are protected from citation cleanup.
