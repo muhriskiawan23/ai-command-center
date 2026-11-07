@@ -299,3 +299,33 @@ body.drawer-open{overflow:hidden}
 .integration-note{margin:13px 2px 0;color:#999;font-size:11px;line-height:1.55}
 @media(max-width:1024px){.sidebar{width:min(310px,86vw);padding:14px 12px}}
 @media(max-width:560px){.integrations-inner{padding:16px}.integration-card{padding:13px}.auth-panel{padding-top:8px}}
+
+/* GitHub repository browser */
+.github-repos-dialog{width:min(900px,calc(100% - 24px));max-width:none;max-height:min(86dvh,820px);padding:0;border:1px solid #414141;border-radius:17px;background:#202020;color:var(--text);box-shadow:0 24px 80px #0008}
+.github-repos-dialog::backdrop{background:#0009;backdrop-filter:blur(3px)}
+.github-repos-inner{padding:20px}
+.github-repos-header{display:flex;align-items:flex-start;justify-content:space-between;gap:15px;margin-bottom:15px}
+.github-repos-header h2{margin:0;font-size:19px}.github-repos-header p{margin:5px 0 0;color:var(--muted);font-size:12px}
+.github-repos-close{width:34px;height:34px;border:1px solid #414141;border-radius:9px;background:#292929;color:#ddd;font-size:17px}
+.github-repos-toolbar{display:flex;gap:8px;margin-bottom:10px}
+.github-repos-toolbar input,.github-repos-toolbar select{min-width:0;min-height:40px;border:1px solid #414141;border-radius:9px;background:#292929;color:var(--text);padding:0 10px}
+.github-repos-toolbar input{flex:1}.github-repos-toolbar button{width:42px;border:1px solid #414141;border-radius:9px;background:#292929;color:var(--text)}
+.github-repos-status{min-height:18px;margin:8px 0 12px;color:#aaa;font-size:11px}
+.github-repos-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:12px;min-height:300px;max-height:52dvh}
+.github-repos-list{overflow:auto;min-width:0;border:1px solid #383838;border-radius:11px;padding:5px}
+.github-repo-item{display:block;width:100%;padding:10px;border:0;border-radius:8px;background:transparent;color:var(--text);text-align:left}
+.github-repo-item:hover,.github-repo-item.is-active{background:#303030}
+.github-repo-item strong,.github-repo-item small{display:block;overflow-wrap:anywhere}
+.github-repo-item strong{font-size:12px}.github-repo-item small{margin-top:4px;color:#999;font-size:10px}
+.github-repo-detail{min-width:0;overflow:auto;padding:15px;border:1px solid #383838;border-radius:11px;background:#242424}
+.github-repo-detail h3{margin:0 0 9px;font-size:16px;overflow-wrap:anywhere}
+.github-repo-detail>p{color:#aaa;font-size:12px;line-height:1.55}
+.github-repo-description{margin:0 0 15px}
+.github-repo-facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:0 0 16px}
+.github-repo-facts div{min-width:0;padding:9px;border:1px solid #383838;border-radius:8px}
+.github-repo-facts dt{color:#999;font-size:10px}.github-repo-facts dd{margin:4px 0 0;font-size:12px;overflow-wrap:anywhere}
+.github-repo-open{display:inline-flex;align-items:center;min-height:37px;padding:0 12px;border:1px solid #515151;border-radius:9px;background:#303030;color:#e5e5e5;text-decoration:none;font-size:11px}
+.github-repos-empty{padding:12px;color:#999;font-size:11px;line-height:1.5}
+.github-repos-note{margin:12px 2px 0;color:#888;font-size:10px;line-height:1.5}
+.github-repos-toolbar button:disabled{opacity:.5;cursor:wait}
+@media(max-width:640px){.github-repos-inner{padding:14px}.github-repos-layout{grid-template-columns:1fr;max-height:58dvh;gap:8px}.github-repos-list{max-height:28dvh;min-height:130px}.github-repo-detail{min-height:180px}.github-repos-toolbar{flex-wrap:wrap}.github-repos-toolbar input{flex-basis:100%}.github-repos-toolbar select{flex:1}}
