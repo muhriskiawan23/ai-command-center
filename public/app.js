@@ -96,9 +96,14 @@ function escapeHTML(s){return String(s).replace(/[&<>\"']/g,c=>({"&":"&amp;","<"
 function showTyping(){const row=document.createElement("article");row.className="message assistant";row.id="typing";row.innerHTML='<div class="avatar">✳</div><div class="message-body"><span class="typing"><span></span><span></span><span></span></span></div>' ;messagesEl.append(row);conversation.scrollTop=conversation.scrollHeight}
 function renderWorkflow(steps){const items=$("workflowItems");items.replaceChildren();if(!Array.isArray(steps)||!steps.length){$("workflow").hidden=true;return}$("workflow").hidden=false;for(const step of steps){const block=document.createElement("div");block.className="workflow-step";const label=document.createElement("strong");label.textContent=step.agent||"Langkah";const status=document.createElement("span");status.textContent=step.status||"completed";status.className="workflow-status";block.append(label,status);const output=document.createElement("pre");output.textContent=step.output||"";block.append(output);items.append(block)}}
 /* Textarea tumbuh mengikuti isi (scrollHeight) sampai max-height dari CSS, lalu berhenti dan scroll di dalam. */
-function resizePrompt(){
-  promptEl.style.height="auto";
+function syncAppViewportHeight(){
   const viewportHeight=Math.min(window.innerHeight,window.visualViewport?.height||window.innerHeight);
+  document.documentElement.style.setProperty("--app-viewport-height",viewportHeight+"px");
+}
+function resizePrompt(){
+  const viewportHeight=Math.min(window.innerHeight,window.visualViewport?.height||window.innerHeight);
+  syncAppViewportHeight();
+  promptEl.style.height="auto";
   const max=Math.min(220,viewportHeight*0.4);
   const needed=promptEl.scrollHeight;
   promptEl.style.height=Math.min(needed,max)+"px";
@@ -1040,6 +1045,7 @@ $("clearCsv").addEventListener("click",()=>{activeCsv=null;renderCsvAttachment()
 $("stopGeneration").addEventListener("click",()=>{if(busy)activeChatController?.abort()});
 promptEl.addEventListener("input",resizePrompt);
 /* Enter sengaja TIDAK mengirim: Enter = baris baru di semua perangkat. Satu-satunya cara kirim lewat UI adalah tombol panah. */
+syncAppViewportHeight();
 window.addEventListener("resize",resizePrompt);
 window.visualViewport?.addEventListener("resize",resizePrompt);
 $("newChat").addEventListener("click",newChat);
