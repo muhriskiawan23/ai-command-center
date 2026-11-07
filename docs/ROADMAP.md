@@ -2,7 +2,7 @@
 
 **Direction:** Hybrid + All Capabilities  
 **Repository:** `muhriskiawan23/ai-command-center`  
-**Baseline:** `main` at `c64b8fdfdf5c2079ccfd242a43dc2c735496532b`  
+**Baseline:** `main` at `a14e2482584f266da4206a796432e64725ee62d8`  
 **Last repository audit:** 2026-11-08  
 **Release rule:** No pull request is merged and no production deployment is initiated without explicit founder approval.
 
@@ -85,7 +85,7 @@ Acceptance:
 **Priority:** P0 · **Status:** partially implemented; live provider verification blocked by secret configuration
 
 Work:
-- Complete PR #91 review and keep it unmerged pending approval.
+- PR #91 is merged and deployed; keep live Brave verification blocked until a controlled request confirms key validity and provider quota.
 - Configure and verify Brave Search/News in a controlled environment after the founder supplies the secret through Cloudflare's secret manager.
 - Add provider-neutral interfaces for search and news, preserving the current Brave adapter as the first provider.
 - Evaluate a second provider only after checking official API availability, pricing, terms, regional coverage, data retention and credentials. Do not scrape consumer search pages or use undocumented endpoints as a production fallback.
@@ -110,7 +110,7 @@ Acceptance:
 Post-merge audit of `main` confirms that:
 - `src/model-gateway.js` contains validated task profiles, model metadata validation, hard eligibility gates and adaptive candidate scoring.
 - `runAgent()` routes specialist calls through the gateway; the current Workers AI model is the only eligible candidate.
-- Web chat, Public API and Telegram share the gateway path and expose actual model trace metadata.
+- Web chat returns actual model trace metadata; Public API returns it in its response; Telegram shares the gateway path and emits internal structured telemetry without exposing model metadata in the chat message.
 - The Public API response path was corrected to handle the string returned by `runAgent()` rather than reading a nonexistent `.response` property.
 - Existing timeout/cancellation, memory, locale, quota, output validation/retry and persistence paths remain in the execution flow.
 - PDF conversion still uses `env.AI.toMarkdown()` separately and is not part of chat model routing.
