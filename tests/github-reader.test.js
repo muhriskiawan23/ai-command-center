@@ -95,3 +95,11 @@ test("public repository reads use a namespaced rate-limit key", async () => {
   assert.equal(res.status, 429);
   assert.match(key, /^github:/);
 });
+
+test("refs are rejected on endpoints that do not accept them", async () => {
+  let called = false;
+  const path = "/api/github/branches?owner=octocat&repo=repo&ref=main";
+  const res = await handleGitHubReadRoute(request(path), {}, new URL("https://example.test" + path), { fetcher: async () => { called = true; }, json });
+  assert.equal(res.status, 400);
+  assert.equal(called, false);
+});
