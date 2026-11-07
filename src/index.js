@@ -109,7 +109,7 @@ function withResponseLanguage(env, language) {
   } } };
 }
 
-function localizedChatNotice(language, type, item = "") {
+export function localizedChatNotice(language, type, item = "") {
   const locales = ["en", "id", "es", "fr", "de", "pt", "ja", "ko", "zh", "ar"];
   const messages = {
     memoryDisabled: [
