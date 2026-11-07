@@ -49,6 +49,7 @@ function finiteNumber(value) {
 }
 
 function estimateCostUsd(model, inputTokens, outputTokens) {
+  if (!finiteNumber(inputTokens) || inputTokens < 0 || !finiteNumber(outputTokens) || outputTokens < 0) return null;
   if (!finiteNumber(model.inputCostPerMillionUsd) || !finiteNumber(model.outputCostPerMillionUsd)) return null;
   return (inputTokens * model.inputCostPerMillionUsd + outputTokens * model.outputCostPerMillionUsd) / 1_000_000;
 }
