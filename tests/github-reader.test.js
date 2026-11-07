@@ -85,3 +85,13 @@ test("pull request state is validated", async () => {
   assert.equal(res.status, 400);
   assert.equal(called, false);
 });
+
+test("public repository reads use a namespaced rate-limit key", async () => {
+  let key;
+  const path = "/api/github/repository?owner=octocat&repo=repo";
+  const res = await handleGitHubReadRoute(request(path), {
+    CHAT_LIMITER: { async limit(input) { key = input.key; return { success: false }; } }
+  }, new URL("https://example.test" + path), { fetcher: async () => { throw new Error("must not fetch"); }, json });
+  assert.equal(res.status, 429);
+  assert.match(key, /^github:/);
+});
