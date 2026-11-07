@@ -181,3 +181,8 @@ The workspace sidebar includes a **Penggunaan** panel backed by `GET /api/usage`
 - Answer feedback uses the additive `0007_answer_feedback.sql` migration. Signed-in users can rate a saved assistant answer as helpful/not helpful and optionally add a reason (maximum 500 characters). Feedback is attached to the exact assistant message, can be updated, and is protected by account/conversation ownership checks. Guest feedback is not persisted. The production workflow applies this migration only when the founder explicitly runs the deploy workflow; CI uses an isolated test database.
 - Integrations with other platforms: see `docs/INTEGRATIONS-PLAN.md` (proposal).
 
+
+## GitHub integration
+
+- Per-user GitHub App OAuth connection uses the existing Google-authenticated BOR AI session. Access and refresh tokens are encrypted before storage in D1. The additive migrations `0009_public_api_keys.sql` and `0010_github_connections.sql` are applied in production. Configure the GitHub App and Worker runtime secrets using [`docs/GITHUB-APP-SETUP.md`](docs/GITHUB-APP-SETUP.md). Do not store these credentials in the repository or browser code.
+- API: `GET /api/github/connect`, `GET /api/github/callback`, `GET /api/github/connection`, `POST /api/github/disconnect`, `GET /api/github/installations`, and `GET /api/github/repositories?installation_id=...`. Repository access is restricted to repositories available through the connected user's GitHub App installations.
