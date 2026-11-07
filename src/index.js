@@ -529,26 +529,60 @@ async function runAgent(env, agentId, userMessage, context = "", history = [], p
     modelId: selection.model.id,
     policyVersion: selection.policyVersion,
     evidence: selection.evidence,
-    calls: 0
+    calls: 0,
+    attempts: [],
+    durationMs: 0,
+    retryCount: 0,
+    outcome: "pending"
   };
   if (Array.isArray(env.MODEL_TRACE)) env.MODEL_TRACE.push(traceEntry);
 
-  const generate = (extraInstruction = "") => {
+  const emitTelemetry = () => {
+    const durationMs = traceEntry.attempts.reduce((total, attempt) => total + attempt.durationMs, 0);
+    traceEntry.durationMs = durationMs;
+    traceEntry.retryCount = Math.max(0, traceEntry.attempts.length - 1);
+    // Structured operational metadata only. Never log prompts, responses, user IDs or provider payloads.
+    console.log("BOR_AI_MODEL_TELEMETRY", JSON.stringify({
+      event: "model_agent_call",
+      agentId: traceEntry.agentId,
+      taskProfile: traceEntry.taskProfile,
+      provider: traceEntry.provider,
+      adapter: traceEntry.adapter,
+      modelId: traceEntry.modelId,
+      policyVersion: traceEntry.policyVersion,
+      outcome: traceEntry.outcome,
+      durationMs: traceEntry.durationMs,
+      attempts: traceEntry.attempts.length,
+      retryCount: traceEntry.retryCount,
+      failureType: traceEntry.failureType || null
+    }));
+  };
+
+  const generate = async (extraInstruction = "") => {
     if (selection.model.adapter !== "workers-ai") {
       throw new Error(`Unsupported model adapter: ${selection.model.adapter}`);
     }
     traceEntry.calls += 1;
-    return env.AI.run(selection.model.id, {
-      messages: extraInstruction
-        ? [...messages, { role: "user", content: extraInstruction }]
-        : messages,
-      max_tokens: tokenLimits[agentId] || 700,
-      temperature: 0.4,
-      repetition_penalty: 1.1
-    });
+    const startedAt = Date.now();
+    try {
+      const generated = await env.AI.run(selection.model.id, {
+        messages: extraInstruction
+          ? [...messages, { role: "user", content: extraInstruction }]
+          : messages,
+        max_tokens: tokenLimits[agentId] || 700,
+        temperature: 0.4,
+        repetition_penalty: 1.1
+      });
+      traceEntry.attempts.push({ outcome: "success", durationMs: Math.max(0, Date.now() - startedAt) });
+      return generated;
+    } catch (error) {
+      traceEntry.attempts.push({ outcome: "error", durationMs: Math.max(0, Date.now() - startedAt) });
+      throw error;
+    }
   };
 
-  let result = await generate();
+  try {
+    let result = await generate();
   let response = result?.response ?? result?.result?.response ?? "";
   let cleaned = cleanOutput(response);
   const countWords = (value) => value.replace(/[#*_\`>~-]/g, " ").match(/[\p{L}\p{N}]{2,}/gu) || [];
@@ -576,7 +610,17 @@ async function runAgent(env, agentId, userMessage, context = "", history = [], p
     throw new Error(`Agent ${agentId} returned unusable output after retry`);
   }
 
+  traceEntry.outcome = "success";
+  emitTelemetry();
   return cleaned;
+  } catch (error) {
+    traceEntry.outcome = "error";
+    traceEntry.failureType = error instanceof AiTimeoutError ? "timeout"
+      : error instanceof AiCancelledError ? "cancelled"
+      : "generation_error";
+    emitTelemetry();
+    throw error;
+  }
 }
 
 // Use a single model call for straightforward requests; reserve orchestration for complex tasks.
