@@ -398,7 +398,7 @@ body.drawer-open{overflow:hidden}
 
 /* Locale-aware direction: Arabic uses a real RTL layout, not mirrored text alone. */
 html[dir="rtl"] body { direction: rtl; }
-html[dir="rtl"] .app-shell { direction: rtl; }
+html[dir="rtl"] .app, html[dir="rtl"] .workspace { direction: rtl; }
 html[dir="rtl"] .sidebar { border-right: 0; border-left: 1px solid var(--border, #30343b); }
 html[dir="rtl"] .main, html[dir="rtl"] .topbar, html[dir="rtl"] .topbar-actions,
 html[dir="rtl"] .composer, html[dir="rtl"] .composer-bottom,
@@ -425,3 +425,9 @@ html[dir="rtl"] .message { direction: rtl; }
 html[dir="rtl"] .message-text { unicode-bidi: plaintext; }
 html[dir="rtl"] input, html[dir="rtl"] textarea, html[dir="rtl"] select { direction: rtl; }
 html[dir="rtl"] pre, html[dir="rtl"] code, html[dir="rtl"] .message-text pre { direction: ltr; text-align: left; }
+
+/* On narrow screens the RTL navigation drawer must enter from the right edge. */
+@media(max-width:1024px){
+  html[dir="rtl"] .sidebar { inset:0 0 0 auto; transform:translateX(105%); border-right:0; border-left:1px solid var(--line); }
+  html[dir="rtl"] .sidebar.open { transform:translateX(0); }
+}
