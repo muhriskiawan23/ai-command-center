@@ -100,25 +100,41 @@ Acceptance:
 - The UI distinguishes search snippet, successfully read page and unavailable page.
 - Cost, latency, provider, and failure metrics are observable without logging secrets or private message content.
 
-### Milestone 2 — Model Gateway and Intelligence Routing
+### Milestone 2 — Adaptive Multi-Model Gateway and Intelligence Routing
 
-**Priority:** P0/P1 · **Status:** not implemented as a multi-model gateway
+**Priority:** P0/P1 · **Status:** architecture specified; runtime gateway not implemented
+
+**Founder decision:** Adaptive Multi-Model is the default strategy. The existing Workers AI model remains the only eligible production candidate until a second provider, budget and data policy are explicitly approved.
+
+Audit of current `main` confirms that:
+- `src/index.js` has one global `MODEL` constant (`@cf/meta/llama-3.3-70b-instruct-fp8-fast`), and `runAgent()` sends every specialist call to that same model.
+- Multi-agent currently means multiple specialist roles, not multiple models/providers.
+- Web chat, public API and Telegram share `runAgent()` / `runMultiAgent()`; this is the preferred shared gateway insertion point.
+- Timeout/cancellation, memory and locale wrappers already decorate the `env.AI.run` path and must be preserved.
+- PDF conversion uses `env.AI.toMarkdown()` separately and is not part of chat model routing.
+- No model catalog, provider adapters, task capability registry, adaptive policy, provider health/fallback system or model-cost telemetry was found in the inspected runtime/configuration.
+
+Architecture specification: [Adaptive Multi-Model Gateway](ADAPTIVE-MULTI-MODEL-GATEWAY.md).
 
 Work:
-- Introduce a provider-neutral model gateway while keeping Workers AI as the default route.
-- Define capability metadata per model: text, structured output, tool calling, vision, audio, context window, latency, availability, region, price and data-handling constraints.
-- Implement explicit routing policies by task: fast chat, deep reasoning, coding, research synthesis, translation and multimodal tasks.
-- Add provider health checks, fallback behavior, retry budgets, model/version pinning and per-request trace IDs.
-- Record token/usage estimates and provider costs where available; expose safe per-user usage information.
-- Build a model evaluation harness using fixed tasks and human-reviewed reference criteria. Compare quality, latency, reliability and cost rather than model brand alone.
-- Never send private conversation or uploaded content to a new provider without disclosure, data-policy review and appropriate user consent.
+- Define a provider-neutral normalized gateway contract and versioned model catalog; Workers AI is the first adapter.
+- Route semantic task profiles (fast chat, deep reasoning, research synthesis, coding, translation, vision, audio and structured extraction) against verified model capabilities.
+- Apply hard eligibility first (capability, context, region, data policy, consent, deadline and spend ceiling), then rank by measured quality, reliability, latency and cost.
+- Keep Adaptive quality-aware and cost-conscious: use the least expensive/fastest eligible model that meets the task's evaluated quality floor; select stronger models when evidence justifies them.
+- Add bounded transient-only retries, eligible fallbacks, circuit breakers, model/version pinning and per-request trace IDs.
+- Return the actual provider/model per agent; do not report one global model when a multi-agent workflow can use several.
+- Preserve request deadlines, cancellation, quota accounting, memory, localization, idempotency, output validation and persistence.
+- Build Indonesian/English task evaluations and measure cost per successful task.
+- Add external providers one at a time only after founder approval of provider, budget, disclosure/consent and data-retention policy.
 
 Acceptance:
-- A model can be swapped through configuration without changing chat business logic.
-- Unsupported capabilities are rejected or routed safely, not guessed.
-- Every request records which model/provider actually served it.
-- Fallbacks do not duplicate writes or exceed request budgets.
-- Benchmarks are repeatable and include Indonesian-language tasks.
+- The current Workers AI-only path behaves equivalently before any second provider is enabled.
+- No model is selected if it fails capability, context, region, consent, deadline or budget requirements.
+- Every specialist result identifies the actual provider/model used.
+- Fallbacks are transient-only, bounded, and cannot cross privacy boundaries or duplicate external writes.
+- Tests cover web chat, public API and Telegram as well as existing quota, memory, locale and cancellation behavior.
+- Benchmarks are repeatable, human-reviewed and include Indonesian-language tasks.
+- No paid provider is activated and no production data is sent externally without explicit approval.
 
 ### Milestone 3 — Multimodal Understanding
 
