@@ -197,3 +197,54 @@ body.drawer-open{overflow:hidden}
 .print-chat{border-color:#596b4b;background:#293222;color:#e8f2df}
 .print-chat:hover:not(:disabled){background:#35432b;border-color:#71865d}
 @media(max-width:560px){.topbar-actions{gap:5px}.export-chat{padding:0 7px;font-size:10px}}
+
+
+/* Stage 32: polished navigation, account card, and GitHub connection controls. */
+:root{--sidebar-width:288px;--panel:#17191c;--panel2:#202328;--line:#30343a;--accent:#c7f28b}
+.app{grid-template-columns:var(--sidebar-width) minmax(0,1fr)}
+.sidebar{padding:18px 13px 14px;gap:13px;background:linear-gradient(180deg,#191b1f 0%,#151619 100%);border-right:1px solid #2d3035}
+.brand{min-height:42px;padding:5px 8px;font-size:16px;letter-spacing:-.45px}
+.brand-logo{width:30px;height:30px;flex-basis:30px}
+.auth-panel{padding:13px;border:1px solid #343941;border-radius:15px;background:linear-gradient(145deg,#22262b,#1b1e22);box-shadow:0 8px 24px #0002}
+.auth-panel-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.auth-title{font-size:13px;font-weight:700;letter-spacing:.1px}
+.auth-copy{margin:5px 0 10px;color:#9da4ad;font-size:11px;line-height:1.55}
+.account-indicator{width:8px;height:8px;flex:0 0 8px;margin-top:4px;border-radius:50%;background:#818891}
+.auth-user{padding:8px 0 10px}
+.auth-action{min-height:38px;border-radius:9px}
+.github-connect-panel{margin-top:12px;padding-top:12px;border-top:1px solid #353a41}
+.github-connect-heading{display:flex;align-items:center;gap:9px;min-width:0}
+.github-mark{width:29px;height:29px;display:grid;place-items:center;flex:0 0 29px;border:1px solid #454b54;border-radius:9px;background:#292e35;color:#f1f3f5;font-size:10px;font-weight:800;letter-spacing:-.5px}
+.github-connect-heading>div{min-width:0;flex:1}
+.github-connect-heading strong,.github-connect-heading small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.github-connect-heading strong{font-size:12px}
+.github-connect-heading small{margin-top:3px;color:#9da4ad;font-size:10px}
+.github-status-dot{width:8px;height:8px;flex:0 0 8px;border-radius:50%;background:#737b85}
+.github-status-dot.is-connected{background:#91d66f;box-shadow:0 0 0 3px #91d66f22}
+.github-status-dot.has-error{background:#e58b82}
+.github-connect-copy{margin:9px 0 10px;color:#9da4ad;font-size:11px;line-height:1.55}
+.github-connect-button,.github-disconnect-button{width:100%;min-height:40px;border:1px solid #9cc66b;border-radius:10px;background:#c7f28b;color:#18220a;font-size:12px;font-weight:750;transition:filter .15s,transform .15s}
+.github-connect-button:hover:not(:disabled){filter:brightness(1.05);transform:translateY(-1px)}
+.github-connect-button:disabled{opacity:.6;cursor:wait}
+.github-disconnect-button{margin-top:7px;border-color:#454b53;background:#272c32;color:#cbd0d6;font-weight:600}
+.github-disconnect-button:hover:not(:disabled){background:#343a42}
+.new-chat{min-height:44px;border-color:#3c424a;border-radius:11px;background:#24282d;font-weight:650}
+.new-chat>span{font-size:18px;color:var(--accent)}
+.side-label{padding:8px 10px 4px;color:#8d949d;font-size:10px;letter-spacing:1.15px}
+.history-search{margin:5px 8px 8px}
+.history-search input{min-height:38px;border-color:#343941;background:#202328;border-radius:10px}
+.history-search button{width:38px;flex-basis:38px;border-color:#343941;border-radius:10px;background:#252a30}
+.history{min-height:120px;padding:0 2px}
+.history-item{min-height:40px;border-radius:9px;padding:9px 10px;color:#c7cbd1;font-size:12px}
+.history-item.active{background:#2a3036;color:#fff;box-shadow:inset 2px 0 var(--accent)}
+.side-bottom{padding-top:11px;border-top:1px solid #30343a}
+.side-action{min-height:39px;padding:9px 11px;border-radius:9px;color:#b9c0c8;font-size:12px}
+.side-action:hover{background:#272c32;color:#f1f3f5}
+.usage-panel{border-color:#363c43;background:#1d2024}
+.topbar{height:62px;padding:0 26px;border-bottom-color:#2d3035}
+.model-label{font-size:14px;letter-spacing:.1px}
+.conversation{scrollbar-color:#4a5058 transparent;scrollbar-width:thin}
+.composer{border-color:#424951;background:#25292e;box-shadow:0 12px 38px #0003}
+.composer:focus-within{border-color:#657a50;box-shadow:0 0 0 2px #c7f28b18,0 12px 38px #0003}
+@media(max-width:1024px){.app{grid-template-columns:1fr}.sidebar{width:min(340px,88vw);padding-left:15px;padding-right:15px}}
+@media(max-width:560px){.topbar{height:56px;padding:0 10px}.model-label small{font-size:10px}.auth-panel{padding:12px}.github-connect-button,.github-disconnect-button{min-height:44px}}

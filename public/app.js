@@ -266,6 +266,50 @@ function renderAuth(){
     info.append(name,email);wrap.append(info);$("userProfile").append(wrap);
   }
   renderHistory();
+  if(logged) refreshGitHubConnection(); else resetGitHubConnection();
+}
+
+let githubConnection=null;
+let githubConnectionLoading=false;
+let githubConnectionRequest=0;
+function resetGitHubConnection(){
+  githubConnection=null;githubConnectionLoading=false;githubConnectionRequest++;
+  $("githubConnectionStatus").textContent="Perlu login Google";
+  $("githubConnectionMessage").textContent="Masuk ke BOR AI terlebih dahulu untuk menghubungkan akun GitHub.";
+  $("githubStatusDot").className="github-status-dot";
+  $("githubConnect").textContent="Masuk dengan Google";$("githubConnect").disabled=false;$("githubConnect").hidden=false;$("githubDisconnect").hidden=true;
+}
+async function refreshGitHubConnection(){
+  if(state!==AppState.AUTH||!currentUser)return;
+  const request=++githubConnectionRequest;githubConnectionLoading=true;
+  $("githubConnectionStatus").textContent="Memeriksa koneksi…";$("githubConnect").disabled=true;
+  try{
+    const data=await api("/api/github/connection");
+    if(request!==githubConnectionRequest||state!==AppState.AUTH)return;
+    githubConnection=Boolean(data.connected);
+    $("githubConnectionStatus").textContent=githubConnection?"Terhubung"+(data.account?.login?" · @"+data.account.login:""):"Belum terhubung";
+    $("githubConnectionMessage").textContent=githubConnection?"Akun GitHub siap digunakan. Akses repository tetap mengikuti izin GitHub App yang kamu berikan.":"Hubungkan akun GitHub untuk membaca repository dan mengelola perubahan setelah mendapat izinmu.";
+    $("githubStatusDot").className="github-status-dot "+(githubConnection?"is-connected":"");
+    $("githubConnect").textContent=githubConnection?"Hubungkan akun lain":"Hubungkan akun GitHub";
+    $("githubDisconnect").hidden=!githubConnection;
+  }catch(error){
+    if(request!==githubConnectionRequest)return;
+    $("githubConnectionStatus").textContent="Status belum dapat diperiksa";
+    $("githubConnectionMessage").textContent=error.message||"Gagal memeriksa koneksi GitHub.";
+    $("githubStatusDot").className="github-status-dot has-error";
+  }finally{if(request===githubConnectionRequest){githubConnectionLoading=false;$("githubConnect").disabled=false}}
+}
+function connectGitHub(){
+  if(state!==AppState.AUTH||!currentUser){toast("Masuk dengan Google terlebih dahulu.");return}
+  window.location.assign("/api/github/connect");
+}
+async function disconnectGitHub(){
+  if(state!==AppState.AUTH||!currentUser||githubConnectionLoading)return;
+  if(!window.confirm("Putuskan koneksi akun GitHub dari BOR AI?"))return;
+  githubConnectionLoading=true;$("githubDisconnect").disabled=true;
+  try{await api("/api/github/disconnect",{method:"POST"});toast("Koneksi GitHub diputuskan.");await refreshGitHubConnection()}
+  catch(error){toast(error.message||"Gagal memutuskan koneksi GitHub.")}
+  finally{githubConnectionLoading=false;$("githubDisconnect").disabled=false}
 }
 
 /* ---------- 3. Google Sign-In ---------- */
@@ -951,6 +995,8 @@ $("historySearch").addEventListener("keydown",e=>{
   }
 });
 $("signOut").addEventListener("click",signOut);
+$("githubConnect").addEventListener("click",connectGitHub);
+$("githubDisconnect").addEventListener("click",disconnectGitHub);
 const aboutDialog=$("aboutDialog");
 $("about").addEventListener("click",()=>{
   if(!aboutDialog.open)aboutDialog.showModal();

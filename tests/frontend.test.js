@@ -83,3 +83,21 @@ test("welcome screen keeps the four starter prompts and sidebar has no redundant
   assert.doesNotMatch(appJs, /PROMPT_TEMPLATES|renderPromptTemplates|openPromptTemplates/);
   assert.doesNotMatch(appCss, /templates-dialog|template-card/);
 });
+
+
+test("GitHub account connection controls are present and wired to authenticated endpoints", () => {
+  assert.match(page, /id="githubConnect"/);
+  assert.match(page, /id="githubDisconnect"/);
+  assert.match(page, /id="githubConnectionStatus"/);
+  assert.match(appJs, /api\("\/api\/github\/connection"\)/);
+  assert.match(appJs, /window\.location\.assign\("\/api\/github\/connect"\)/);
+  assert.match(appJs, /api\("\/api\/github\/disconnect"/);
+});
+
+test("sidebar includes responsive visual polish and accessible GitHub connection status", () => {
+  assert.match(page, /aria-label="Koneksi GitHub"/);
+  assert.match(page, /role="status">Periksa koneksi akun/);
+  assert.match(appCss, /--sidebar-width:288px/);
+  assert.match(appCss, /\.github-connect-panel/);
+  assert.match(appCss, /@media\(max-width:1024px\)/);
+});
