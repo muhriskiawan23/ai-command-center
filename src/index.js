@@ -1,7 +1,7 @@
 import { extractUrls, readLinks, buildPageContext, summarizeLinks } from "./links.js";
 import { PDF_MAX_BYTES, PDF_CONTEXT_MAX_CHARS, safePdfName, normalizePdfConversion, buildPdfContext, validatePdfPageCitations, SPREADSHEET_CONTEXT_MAX_CHARS, safeSpreadsheetName, buildSpreadsheetContext, PRESENTATION_CONTEXT_MAX_CHARS, safePresentationName, buildPresentationContext } from "./documents.js";
 import { validateCitationReferences } from "./citations.js";
-import { detectResearchMode, searchExternal, buildResearchContext, retrieveCuratedKnowledge } from "./research.js";
+import { detectResearchMode, searchExternal, buildResearchContext, retrieveCuratedKnowledge, readResearchPages } from "./research.js";
 import { MEMORY_MAX_ITEMS, MEMORY_MAX_CHARS, getMemoryState, setMemoryEnabled, addMemory, deleteMemory, deleteAllMemories, parseRememberCommand, buildMemoryBlock } from "./memory.js";
 import { handleDeveloperKeysRoute, handlePublicChatRoute } from "./widget-api.js";
 import { handleTelegramWebhook } from "./telegram.js";
@@ -1513,6 +1513,14 @@ export default {
         const research = buildResearchContext(search, links.length + 1);
         pages = [pages, research.context].filter(Boolean).join("\n\n");
         links.push(...research.sources);
+        // Read up to three successful publisher pages with the existing SSRF-safe link reader.
+        // Brave snippets remain in context if a page is blocked, unavailable, or not readable.
+        const researchPages = await readResearchPages(search, links.length + 1, {
+          fetcher: env.LINK_FETCHER || fetch,
+          ownHost: url.hostname
+        });
+        if (researchPages.context) pages = [pages, researchPages.context].filter(Boolean).join("\n\n");
+        links.push(...researchPages.sources);
       }
       if (pdfContext || spreadsheetContext || presentationContext) pages = [pages, pdfContext, spreadsheetContext, presentationContext].filter(Boolean).join("\n\n");
       try {
