@@ -295,6 +295,7 @@ async function refreshGitHubConnection(){
     $("githubStatusDot").className="github-status-dot "+(githubConnection?"is-connected":"");
     $("githubConnect").textContent=githubConnection?"Hubungkan akun lain":"Hubungkan akun GitHub";
     $("githubDisconnect").hidden=!githubConnection;
+    $("openGithubRepos").disabled=!githubConnection;
   }catch(error){
     if(request!==githubConnectionRequest)return;
     $("githubConnectionStatus").textContent="Status belum dapat diperiksa";
@@ -314,6 +315,77 @@ async function disconnectGitHub(){
   try{await api("/api/github/disconnect",{method:"POST"});toast("Koneksi GitHub diputuskan.");await refreshGitHubConnection()}
   catch(error){toast(error.message||"Gagal memutuskan koneksi GitHub.")}
   finally{githubConnectionLoading=false;$("githubDisconnect").disabled=false}
+}
+
+let githubRepositories=[];
+let githubRepositoriesLoading=false;
+let githubSelectedRepository=null;
+function renderGitHubRepositories(){
+  const list=$("githubReposList"),detail=$("githubRepoDetail");
+  const query=$("githubRepoSearch").value.trim().toLowerCase();
+  const visibility=$("githubRepoVisibility").value;
+  const filtered=githubRepositories.filter(repo=>{
+    const matchesQuery=[repo.fullName,repo.name,repo.description,repo.owner?.login].filter(Boolean).join(" ").toLowerCase().includes(query);
+    const matchesVisibility=visibility==="all"||(visibility==="private"?repo.private:!repo.private);
+    return matchesQuery&&matchesVisibility;
+  }).sort((a,b)=>a.fullName.localeCompare(b.fullName));
+  list.replaceChildren();
+  if(!filtered.length){
+    const empty=document.createElement("p");empty.className="github-repos-empty";empty.textContent=githubRepositories.length?"Tidak ada repository yang cocok dengan pencarian.":"Belum ada repository yang tersedia.";
+    list.append(empty);
+  }
+  for(const repo of filtered){
+    const button=document.createElement("button");button.type="button";button.className="github-repo-item"+(githubSelectedRepository?.id===repo.id?" is-active":"");
+    const name=document.createElement("strong");name.textContent=repo.fullName;
+    const meta=document.createElement("small");meta.textContent=(repo.private?"Private":"Public")+" · "+(repo.defaultBranch||"branch tidak diketahui");
+    button.append(name,meta);button.addEventListener("click",()=>selectGitHubRepository(repo));list.append(button);
+  }
+  $("githubReposSummary").textContent=githubRepositories.length+" repository tersedia";
+  if(githubSelectedRepository&&!filtered.some(repo=>repo.id===githubSelectedRepository.id))detail.replaceChildren(Object.assign(document.createElement("p"),{textContent:"Repository terpilih tidak cocok dengan filter."}));
+}
+function selectGitHubRepository(repo){
+  githubSelectedRepository=repo;renderGitHubRepositories();
+  const detail=$("githubRepoDetail");detail.replaceChildren();
+  const heading=document.createElement("h3");heading.textContent=repo.fullName;
+  const description=document.createElement("p");description.className="github-repo-description";description.textContent=repo.description||"Tidak ada deskripsi.";
+  const facts=document.createElement("dl");facts.className="github-repo-facts";
+  const addFact=(label,value)=>{const wrap=document.createElement("div");const dt=document.createElement("dt");dt.textContent=label;const dd=document.createElement("dd");dd.textContent=value;wrap.append(dt,dd);facts.append(wrap)};
+  addFact("Visibilitas",repo.private?"Private":"Public");
+  addFact("Default branch",repo.defaultBranch||"Tidak diketahui");
+  addFact("Pemilik",repo.owner?.login||repo.fullName.split("/")[0]);
+  addFact("Izin isi",repo.permissions?.contents||"Tidak tersedia");
+  addFact("Izin pull request",repo.permissions?.pullRequests||"Tidak tersedia");
+  const link=document.createElement("a");link.className="github-repo-open";link.href="https://github.com/"+repo.fullName;link.target="_blank";link.rel="noopener noreferrer";link.textContent="Buka di GitHub ↗";
+  detail.append(heading,description,facts,link);
+}
+async function loadGitHubRepositories(){
+  if(state!==AppState.AUTH||!currentUser||!githubConnection){toast("Hubungkan akun GitHub terlebih dahulu.");return}
+  if(githubRepositoriesLoading)return;
+  githubRepositoriesLoading=true;
+  $("githubReposStatus").textContent="Memuat daftar repository…";
+  $("githubReposRefresh").disabled=true;
+  try{
+    const installationData=await api("/api/github/installations");
+    const installations=Array.isArray(installationData.installations)?installationData.installations:[];
+    const results=await Promise.all(installations.map(item=>api("/api/github/repositories?installation_id="+encodeURIComponent(item.id))));
+    const byId=new Map();
+    for(const result of results)for(const repo of Array.isArray(result.repositories)?result.repositories:[])byId.set(repo.id,{...repo,owner:{login:repo.fullName.split("/")[0]},installationId:installations.find(item=>results.indexOf(result)>=0)?.id});
+    githubRepositories=[...byId.values()];
+    githubSelectedRepository=null;
+    $("githubReposStatus").textContent=githubRepositories.length? "Pilih repository untuk melihat detailnya.":"Belum ada repository disponível. Pastikan BOR AI sudah di-install pada akun atau organisasi GitHub yang benar.";
+    $("githubRepoDetail").replaceChildren(Object.assign(document.createElement("p"),{textContent:"Pilih repository untuk melihat detailnya."}));
+    renderGitHubRepositories();
+  }catch(error){
+    $("githubReposStatus").textContent=error.message||"Daftar repository gagal dimuat.";
+    $("githubReposList").replaceChildren();
+    $("githubRepoDetail").replaceChildren(Object.assign(document.createElement("p"),{textContent:"Coba muat ulang. Jika masih gagal, periksa izin instalasi GitHub App."}));
+  }finally{githubRepositoriesLoading=false;$("githubReposRefresh").disabled=false}
+}
+function openGitHubRepositories(){
+  if(state!==AppState.AUTH||!currentUser){toast("Masuk dengan akun Google terlebih dahulu.");return}
+  if(!githubConnection){toast("Hubungkan akun GitHub melalui menu Integrasi terlebih dahulu.");integrationsDialog.showModal();return}
+  if(!$("githubReposDialog").open)$("githubReposDialog").showModal();
+  loadGitHubRepositories();
 }
 
 /* ---------- 3. Google Sign-In ---------- */
@@ -1001,6 +1073,12 @@ $("historySearch").addEventListener("keydown",e=>{
 $("signOut").addEventListener("click",signOut);
 $("githubConnect").addEventListener("click",connectGitHub);
 $("githubDisconnect").addEventListener("click",disconnectGitHub);
+$("openGithubRepos").addEventListener("click",openGitHubRepositories);
+$("githubReposClose").addEventListener("click",()=>$("githubReposDialog").close());
+$("githubReposRefresh").addEventListener("click",loadGitHubRepositories);
+$("githubRepoSearch").addEventListener("input",renderGitHubRepositories);
+$("githubRepoVisibility").addEventListener("change",renderGitHubRepositories);
+$("githubReposDialog").addEventListener("click",event=>{const dialog=$("githubReposDialog");if(event.target!==dialog)return;const rect=dialog.getBoundingClientRect();if(event.clientX<rect.left||event.clientX>rect.right||event.clientY<rect.top||event.clientY>rect.bottom)dialog.close()});
 const integrationsDialog=$("integrationsDialog");
 $("openIntegrations").addEventListener("click",()=>{if(!integrationsDialog.open)integrationsDialog.showModal();if(state===AppState.AUTH)refreshGitHubConnection();$("integrationsClose").focus()});
 $("integrationsClose").addEventListener("click",()=>integrationsDialog.close());
