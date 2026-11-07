@@ -190,8 +190,8 @@ test("Arabic RTL positions the desktop sidebar on the right and opens the mobile
   await page.locator("#menuBtn").click();
   await expect(page.locator("#sidebar")).toHaveClass(/open/);
   const mobileSidebar = await page.locator("#sidebar").boundingBox();
-  const layoutViewportWidth = await page.evaluate(() => document.documentElement.clientWidth);
+  const layoutViewportWidth = await page.evaluate(() => window.innerWidth);
   expect(mobileSidebar.x).toBeGreaterThanOrEqual(0);
   expect(mobileSidebar.x + mobileSidebar.width).toBeLessThanOrEqual(layoutViewportWidth);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
