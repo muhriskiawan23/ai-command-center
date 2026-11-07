@@ -3,7 +3,10 @@
   const script = document.currentScript;
   const apiKey = script?.dataset.apiKey || "";
   const apiUrl = script?.dataset.apiUrl || new URL("/api/public/chat", script.src || location.href).href;
-  if (!apiKey || !/^https:\/\//i.test(apiUrl)) return;
+  let apiOrigin;
+  try { apiOrigin = new URL(apiUrl, location.href); } catch { return; }
+  const secureApi = apiOrigin.protocol === "https:" || (apiOrigin.protocol === "http:" && ["localhost", "127.0.0.1"].includes(apiOrigin.hostname));
+  if (!apiKey || !secureApi) return;
   const host = document.createElement("div");
   host.className = "bor-ai-widget";
   const shadow = host.attachShadow({ mode: "open" });
