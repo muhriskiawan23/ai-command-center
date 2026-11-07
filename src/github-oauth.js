@@ -51,6 +51,13 @@ function safeGitHubError(status) {
   if (status === 429) return "Batas permintaan GitHub tercapai. Coba lagi nanti.";
   return "GitHub sementara tidak dapat dihubungi.";
 }
+function safeGitHubDiagnosticMessage(value) {
+  if (typeof value !== "string") return "Unknown GitHub API error";
+  return value
+    .replace(/(?:gh[ousr]_[A-Za-z0-9_]+|github_pat_[A-Za-z0-9_]+)/g, "[REDACTED]")
+    .replace(/[\\r\\n\\t]+/g, " ")
+    .slice(0, 240);
+}
 async function githubJson(url, token, init = {}) {
   const response = await fetch(url, {
     ...init,
@@ -61,7 +68,26 @@ async function githubJson(url, token, init = {}) {
       ...(init.headers || {})
     }
   });
-  if (!response.ok) return { error: safeGitHubError(response.status), status: response.status === 429 ? 429 : response.status === 404 ? 404 : response.status === 401 || response.status === 403 ? 403 : 502 };
+  if (!response.ok) {
+    let providerMessage = "Unknown GitHub API error";
+    try {
+      const payload = await response.clone().json();
+      providerMessage = safeGitHubDiagnosticMessage(payload?.message);
+    } catch {}
+    const diagnostic = {
+      endpoint: new URL(url).pathname,
+      status: response.status,
+      message: providerMessage,
+      requestId: response.headers.get("x-github-request-id") || undefined,
+      rateLimitRemaining: response.headers.get("x-ratelimit-remaining") || undefined,
+      rateLimitReset: response.headers.get("x-ratelimit-reset") || undefined,
+      retryAfter: response.headers.get("retry-after") || undefined,
+      acceptedPermissions: response.headers.get("x-accepted-github-permissions") || undefined
+    };
+    console.warn("GitHub API request failed", diagnostic);
+    const status = [401, 403, 404, 429].includes(response.status) ? response.status : 502;
+    return { error: safeGitHubError(response.status), status };
+  }
   try { return { data: await response.json() }; }
   catch { return { error: "Respons GitHub tidak valid.", status: 502 }; }
 }
