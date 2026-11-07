@@ -193,7 +193,8 @@ A request budget must include every agent call, retry and fallback, not merely o
 - Add provider-specific token and monetary ceilings, per-user limits and global spend ceilings before enabling external billing.
 - Estimate cost before a call when token/pricing data is available; reconcile with actual usage after a call.
 - If usage or price is unavailable, apply a conservative configured ceiling or disable that route.
-- Measure quality using task-specific, human-reviewed evaluation sets, including Indonesian and English.
+- Measure quality using task-specific, human-reviewed evaluation sets, including Indonesian and English. The initial bilingual fixture is in evaluation/model-quality-cases.json; validate it with npm run eval:validate.
+- Keep fixture validation, mocked integration tests, human-reviewed model outputs and live provider results as separate evidence classes.
 - Compare cost per successful task, not only cost per token.
 - Keep separate results for mocked tests, provider integration tests and live production verification.
 
@@ -220,7 +221,9 @@ A request budget must include every agent call, retry and fallback, not merely o
 - Adaptive policy runs with the existing Workers AI model as the sole eligible candidate.
 - PR #94 was merged as `c64b8fdfdf5c2079ccfd242a43dc2c735496532b` and deployed as Worker version `02726d6c-1372-4e43-8f85-00e4a73eb43f`.
 - Post-deploy health, agents and Google sign-in configuration checks passed. Production D1 was verified read-only; no migrations were pending.
-- Model trace metadata exists, but durable operational telemetry and comparative quality evaluation remain follow-up work.
+- Each model-agent call emits a structured BOR_AI_MODEL_TELEMETRY log with provider/model, task profile, policy version, outcome, elapsed time and retry count. Logs exclude prompts, responses, user IDs and provider payloads; durable dashboards/retention are not configured.
+- Web chat and Public API trace metadata now include per-agent elapsed time, retry count and outcome. Telegram uses the same safe structured log path.
+- A bilingual offline benchmark fixture and human-scoring protocol are maintained in evaluation/model-quality-cases.json and docs/MODEL-QUALITY-EVALUATION.md; no live model quality score is claimed.
 
 ### Phase D — Second provider pilot
 - Select one official provider only after a founder-approved budget and data policy.
