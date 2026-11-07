@@ -88,7 +88,7 @@ test("callback reports GitHub profile API authorization failures precisely", asy
     });
     const response = await handleGitHubOAuthRoute(request, env(), new URL(request.url), deps);
     assert.equal(response.status, 302);
-    assert.match(response.headers.get("Location"), /^\\/\\?github=error&reason=profile_http_401&github_message=Bad\\+credentials$/);
+    assert.match(response.headers.get("Location"), /^\/\?github=error&reason=profile_http_401&github_message=Bad\+credentials$/);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -138,7 +138,7 @@ test("callback preserves GitHub 403 and logs safe diagnostic metadata only", asy
       headers: { Cookie: "__Host-borai_github_oauth_state=random-state-token" }
     });
     const response = await handleGitHubOAuthRoute(request, env(), new URL(request.url), deps);
-    assert.match(response.headers.get("Location"), /^\\/\\?github=error&reason=profile_http_403&github_message=Resource\\+not\\+accessible\\+by\\+integration&github_request=REQ-123&github_rate_remaining=0$/);
+    assert.match(response.headers.get("Location"), /^\/\?github=error&reason=profile_http_403&github_message=Resource\+not\+accessible\+by\+integration&github_request=REQ-123&github_rate_remaining=0$/);
     assert.equal(warnings.length, 1);
     assert.equal(warnings[0][0], "GitHub API request failed");
     const diagnostic = warnings[0][1];
