@@ -62,10 +62,22 @@ test("does not route to an external provider without explicit approval and conse
   assert.equal(denied.eligible.length, 0);
   assert.equal(denied.rejected[0].reason, "external_provider_not_approved");
 
-  const approved = selectModel({
+  const consentOnly = evaluateModelCandidates({
     task: "fast_chat",
     models: [external],
     constraints: { approvedProviders: ["external-test-provider"], userConsent: true }
+  });
+  assert.equal(consentOnly.eligible.length, 0);
+  assert.equal(consentOnly.rejected[0].reason, "external_provider_data_policy_required");
+
+  const approved = selectModel({
+    task: "fast_chat",
+    models: [external],
+    constraints: {
+      approvedProviders: ["external-test-provider"],
+      userConsent: true,
+      dataPolicy: "approved"
+    }
   });
   assert.equal(approved.model.id, external.id);
 });
