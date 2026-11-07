@@ -117,7 +117,8 @@ test("Google sign-in rejects a missing double-submit nonce before token verifica
     nonce: "client-nonce"
   }, { Origin: "https://example.test" }), {
     DB: db,
-    GOOGLE_CLIENT_ID: "public-client-id"
+    GOOGLE_CLIENT_ID: "public-client-id",
+    CHAT_LIMITER: { async limit() { return { success: true }; } }
   });
   assert.equal(res.status, 403);
   assert.match((await res.json()).error, /kedaluwarsa/i);
@@ -134,4 +135,58 @@ test("Google sign-in rejects cross-origin token submission", async () => {
   });
   assert.equal(res.status, 403);
   assert.equal((await res.json()).error, "Origin tidak valid.");
+});
+
+ 
+test("Google nonce endpoint rate-limits by its own IP-scoped bucket", async () => {
+  const keys = [];
+  const res = await worker.fetch(request("/api/auth/nonce"), {
+    DB: mockDB(),
+    GOOGLE_CLIENT_ID: "public-client-id",
+    CHAT_LIMITER: { async limit({ key }) { keys.push(key); return { success: false }; } }
+  });
+  assert.equal(res.status, 429);
+  assert.equal(res.headers.get("Retry-After"), "60");
+  assert.match((await res.json()).error, /percobaan login/i);
+  assert.equal(keys.length, 1);
+  assert.match(keys[0], /^auth:nonce:/);
+});
+
+test("Google credential endpoint rate-limits before parsing credentials or touching D1", async () => {
+  const db = mockDB();
+  const keys = [];
+  const res = await worker.fetch(jsonRequest("/api/auth/google", {
+    credential: "header.payload.signature",
+    nonce: "client-nonce"
+  }, { Origin: "https://example.test" }), {
+    DB: db,
+    GOOGLE_CLIENT_ID: "public-client-id",
+    CHAT_LIMITER: { async limit({ key }) { keys.push(key); return { success: false }; } }
+  });
+  assert.equal(res.status, 429);
+  assert.equal(res.headers.get("Retry-After"), "60");
+  assert.match((await res.json()).error, /percobaan login/i);
+  assert.equal(keys.length, 1);
+  assert.match(keys[0], /^auth:google:/);
+  assert.equal(db.calls.length, 0);
+});
+
+test("Google authentication fails closed when the rate limiter binding is missing", async () => {
+  for (const [path, init] of [
+    ["/api/auth/nonce", {}],
+    ["/api/auth/google", { method: "POST", headers: { "Content-Type": "application/json", Origin: "https://example.test" }, body: JSON.stringify({ credential: "x", nonce: "x" }) }]
+  ]) {
+    const res = await worker.fetch(request(path, init), { DB: mockDB(), GOOGLE_CLIENT_ID: "public-client-id" });
+    assert.equal(res.status, 503);
+  }
+});
+
+test("Google authentication fails closed when the rate limiter throws", async () => {
+  const res = await worker.fetch(request("/api/auth/nonce"), {
+    DB: mockDB(),
+    GOOGLE_CLIENT_ID: "public-client-id",
+    CHAT_LIMITER: { async limit() { throw new Error("limiter unavailable"); } }
+  });
+  assert.equal(res.status, 503);
+  assert.match((await res.json()).error, /pembatasan percobaan login/i);
 });

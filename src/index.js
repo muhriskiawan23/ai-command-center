@@ -956,14 +956,30 @@ async function handleAuthRoute(request, env, url) {
   if (url.pathname === "/api/config" && request.method === "GET") {
     return json({ googleClientId: env.GOOGLE_CLIENT_ID || null, googleSignInEnabled: Boolean(env.GOOGLE_CLIENT_ID && env.DB) });
   }
+  const authRateLimit = async (scope) => {
+    if (!env.CHAT_LIMITER?.limit) return json({ error: "Pembatasan percobaan login belum tersedia." }, 503);
+    try {
+      const ip = request.headers.get("CF-Connecting-IP") || "unknown-client";
+      const result = await env.CHAT_LIMITER.limit({ key: "auth:" + scope + ":" + ip });
+      if (!result?.success) return json({ error: "Terlalu banyak percobaan login. Coba lagi dalam satu menit." }, 429, { "Retry-After": "60" });
+    } catch (error) {
+      console.error("Authentication rate limiter failed:", error);
+      return json({ error: "Pembatasan percobaan login sedang bermasalah." }, 503);
+    }
+    return null;
+  };
   if (url.pathname === "/api/auth/nonce" && request.method === "GET") {
     if (!env.DB || !env.GOOGLE_CLIENT_ID) return json({ error: "Login Google belum dikonfigurasi." }, 503);
+    const limited = await authRateLimit("nonce");
+    if (limited) return limited;
     const nonce = randomToken();
     return json({ nonce }, 200, { "Set-Cookie": cookieHeader(OAUTH_NONCE_COOKIE, nonce, 300) });
   }
   if (url.pathname === "/api/auth/google" && request.method === "POST") {
     if (!sameOrigin(request)) return json({ error: "Origin tidak valid." }, 403);
     if (!env.DB || !env.GOOGLE_CLIENT_ID) return json({ error: "Login Google belum dikonfigurasi." }, 503);
+    const limited = await authRateLimit("google");
+    if (limited) return limited;
     const parsed = await readJsonRequest(request);
     if (parsed.error) return parsed.error;
     const nonceCookie = readCookie(request, OAUTH_NONCE_COOKIE);
