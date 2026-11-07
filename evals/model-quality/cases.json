@@ -1,0 +1,138 @@
+{
+  "version": "1.0.0",
+  "createdAt": "2026-11-08",
+  "cases": [
+    {
+      "id": "id-fast-001",
+      "taskProfile": "fast_chat",
+      "language": "id",
+      "prompt": "Jelaskan perbedaan omzet, laba kotor, dan laba bersih dalam bahasa Indonesia untuk pemilik usaha kecil. Berikan satu contoh angka sederhana dan hitungannya.",
+      "criteria": [
+        "Definitions are distinct and correct",
+        "Example arithmetic is correct",
+        "Uses natural Indonesian and stays concise"
+      ]
+    },
+    {
+      "id": "en-fast-001",
+      "taskProfile": "fast_chat",
+      "language": "en",
+      "prompt": "Explain the difference between revenue, gross profit, and net profit to a first-time small-business owner. Include one simple numerical example.",
+      "criteria": [
+        "Definitions are distinct and correct",
+        "Example arithmetic is correct",
+        "Clear and concise English"
+      ]
+    },
+    {
+      "id": "id-reason-001",
+      "taskProfile": "deep_reasoning",
+      "language": "id",
+      "prompt": "Sebuah usaha memiliki penjualan Rp40 juta per bulan, HPP Rp22 juta, biaya operasional Rp12 juta, dan cicilan pokok pinjaman Rp3 juta. Hitung laba operasional sederhana dan jelaskan mengapa arus kas tidak sama dengan laba.",
+      "criteria": [
+        "Calculates gross profit and operating profit correctly",
+        "Distinguishes principal repayment from operating expense",
+        "Explains cash-flow versus profit without inventing tax assumptions"
+      ]
+    },
+    {
+      "id": "en-reason-001",
+      "taskProfile": "deep_reasoning",
+      "language": "en",
+      "prompt": "A business has monthly revenue of $40,000, cost of goods sold of $22,000, operating expenses of $12,000, and $3,000 in loan principal repayments. Calculate simplified operating profit and explain why cash flow differs from profit.",
+      "criteria": [
+        "Calculates operating profit correctly",
+        "Distinguishes principal repayment from operating expense",
+        "Explains cash-flow versus profit without inventing tax assumptions"
+      ]
+    },
+    {
+      "id": "id-research-001",
+      "taskProfile": "research_synthesis",
+      "language": "id",
+      "prompt": "Saya ingin menilai apakah sebuah artikel yang menyatakan 'harga emas pasti naik minggu depan' layak dipercaya. Buat kerangka pemeriksaan sumber, data, waktu publikasi, dan ketidakpastian tanpa mengarang data pasar.",
+      "criteria": [
+        "Separates verifiable evidence from opinion",
+        "Checks source credibility and publication time",
+        "Explicitly rejects certainty about future prices"
+      ]
+    },
+    {
+      "id": "en-research-001",
+      "taskProfile": "research_synthesis",
+      "language": "en",
+      "prompt": "Assess how to verify an article claiming that gold prices will definitely rise next week. Provide a source, data, publication-time, and uncertainty checklist without inventing market data.",
+      "criteria": [
+        "Separates verifiable evidence from opinion",
+        "Checks source credibility and publication time",
+        "Explicitly rejects certainty about future prices"
+      ]
+    },
+    {
+      "id": "id-coding-001",
+      "taskProfile": "coding",
+      "language": "id",
+      "prompt": "Tulis fungsi JavaScript murni untuk menghitung rata-rata array angka. Fungsi harus menolak array kosong dan nilai non-number atau non-finite. Sertakan 4 test case menggunakan node:assert/strict.",
+      "criteria": [
+        "Correct handling of empty arrays and invalid values",
+        "Correct mean calculation",
+        "Tests cover normal, empty, NaN and Infinity cases"
+      ]
+    },
+    {
+      "id": "en-coding-001",
+      "taskProfile": "coding",
+      "language": "en",
+      "prompt": "Write a pure JavaScript function that calculates the mean of a numeric array. It must reject empty arrays and non-number or non-finite values. Include four node:assert/strict test cases.",
+      "criteria": [
+        "Correct handling of empty arrays and invalid values",
+        "Correct mean calculation",
+        "Tests cover normal, empty, NaN and Infinity cases"
+      ]
+    },
+    {
+      "id": "id-translation-001",
+      "taskProfile": "translation",
+      "language": "id",
+      "prompt": "Terjemahkan ke bahasa Inggris dengan nada profesional namun tetap ramah: 'Kami sudah menerima laporan Anda dan sedang memeriksa penyebab kendalanya. Kami akan mengabari Anda setelah pemeriksaan selesai.'",
+      "criteria": [
+        "Preserves the full meaning",
+        "Professional and friendly tone",
+        "No additions or omissions"
+      ]
+    },
+    {
+      "id": "en-translation-001",
+      "taskProfile": "translation",
+      "language": "en",
+      "prompt": "Translate into natural Indonesian while preserving a professional, friendly tone: 'We have received your report and are investigating the cause of the issue. We will update you once the review is complete.'",
+      "criteria": [
+        "Preserves the full meaning",
+        "Natural professional Indonesian",
+        "No additions or omissions"
+      ]
+    },
+    {
+      "id": "id-structured-001",
+      "taskProfile": "structured_extraction",
+      "language": "id",
+      "prompt": "Ekstrak data berikut menjadi JSON valid dengan kunci supplier, invoice_number, date, currency, subtotal, tax, total. Teks: Supplier: PT Sinar Pagi; Invoice: INV-204; Tanggal: 2026-10-02; Mata uang: IDR; Subtotal: 1.500.000; Pajak: 165.000; Total: 1.665.000. Jangan tambahkan field lain.",
+      "criteria": [
+        "Returns valid JSON only",
+        "All fields and values match the source",
+        "Numeric values are represented consistently and total reconciles"
+      ]
+    },
+    {
+      "id": "en-structured-001",
+      "taskProfile": "structured_extraction",
+      "language": "en",
+      "prompt": "Extract the following into valid JSON with keys supplier, invoice_number, date, currency, subtotal, tax, total. Text: Supplier: Northwind Ltd; Invoice: NW-88; Date: 2026-10-03; Currency: USD; Subtotal: 1200.00; Tax: 96.00; Total: 1296.00. Do not add other fields.",
+      "criteria": [
+        "Returns valid JSON only",
+        "All fields and values match the source",
+        "Numeric values are represented consistently and total reconciles"
+      ]
+    }
+  ]
+}
