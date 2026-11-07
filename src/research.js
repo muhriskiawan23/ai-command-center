@@ -47,9 +47,9 @@ export function detectResearchMode(message) {
 }
 
 export function retrieveCuratedKnowledge(query, startSourceId = 1, maxDocuments = 3) {
-  const queryText = String(query || "").replace(/https?:\\/\\/[^\\s<>]+|www\\.[^\\s<>]+/gi, " ");
+  const queryText = String(query || "").replace(/https?:\/\/[^\s<>]+|www\.[^\s<>]+/gi, " ");
   // The BOR AI knowledge base is only relevant when the user is asking about this project; never inject it into unrelated chats.
-  if (!/\\bbor\\s*ai\\b|\\bborai\\b/i.test(queryText)) return { context: "", sources: [] };
+  if (!/\bbor\s*ai\b|\bborai\b/i.test(queryText)) return { context: "", sources: [] };
   const queryTokens = [...new Set(tokens(queryText))];
   if (!queryTokens.length) return { context: "", sources: [] };
   const ranked = CURATED_DOCUMENTS.map((doc) => {
