@@ -8,6 +8,7 @@ import { handleTelegramWebhook } from "./telegram.js";
 import { handleGitHubReadRoute } from "./github-reader.js";
 import { handleGitHubOAuthRoute } from "./github-oauth.js";
 import { selectModel, taskProfileForAgent, summarizeModelTrace } from "./model-gateway.js";
+import { createModelCallTelemetry, emitModelCallTelemetry } from "./model-telemetry.js";
 
 const MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 const MAX_REQUEST_BYTES = 64 * 1024;
@@ -521,6 +522,9 @@ async function runAgent(env, agentId, userMessage, context = "", history = [], p
 
   const taskProfile = taskProfileForAgent(agentId);
   const selection = selectModel({ task: taskProfile });
+  const requestId = Array.isArray(env.MODEL_TRACE)
+    ? (env.MODEL_TRACE.requestId ||= crypto.randomUUID())
+    : crypto.randomUUID();
   const traceEntry = {
     agentId,
     taskProfile,
@@ -533,19 +537,37 @@ async function runAgent(env, agentId, userMessage, context = "", history = [], p
   };
   if (Array.isArray(env.MODEL_TRACE)) env.MODEL_TRACE.push(traceEntry);
 
-  const generate = (extraInstruction = "") => {
+  const generate = async (extraInstruction = "") => {
     if (selection.model.adapter !== "workers-ai") {
       throw new Error(`Unsupported model adapter: ${selection.model.adapter}`);
     }
-    traceEntry.calls += 1;
-    return env.AI.run(selection.model.id, {
-      messages: extraInstruction
-        ? [...messages, { role: "user", content: extraInstruction }]
-        : messages,
-      max_tokens: tokenLimits[agentId] || 700,
-      temperature: 0.4,
-      repetition_penalty: 1.1
-    });
+    const attempt = ++traceEntry.calls;
+    const startedAt = Date.now();
+    try {
+      const result = await env.AI.run(selection.model.id, {
+        messages: extraInstruction
+          ? [...messages, { role: "user", content: extraInstruction }]
+          : messages,
+        max_tokens: tokenLimits[agentId] || 700,
+        temperature: 0.4,
+        repetition_penalty: 1.1
+      });
+      emitModelCallTelemetry(createModelCallTelemetry({
+        requestId, agentId, taskProfile, provider: selection.model.provider,
+        adapter: selection.model.adapter, modelId: selection.model.id,
+        policyVersion: selection.policyVersion, attempt, startedAt,
+        finishedAt: Date.now(), outcome: "success", result
+      }), env.MODEL_TELEMETRY_LOGGER);
+      return result;
+    } catch (error) {
+      emitModelCallTelemetry(createModelCallTelemetry({
+        requestId, agentId, taskProfile, provider: selection.model.provider,
+        adapter: selection.model.adapter, modelId: selection.model.id,
+        policyVersion: selection.policyVersion, attempt, startedAt,
+        finishedAt: Date.now(), outcome: "error", error
+      }), env.MODEL_TELEMETRY_LOGGER);
+      throw error;
+    }
   };
 
   let result = await generate();
