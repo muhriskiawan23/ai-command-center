@@ -12,8 +12,7 @@ export const TASK_PROFILES = Object.freeze({
   structured_extraction: Object.freeze({ requiredCapabilities: Object.freeze(["text", "structured-output"]) })
 });
 
-// This is an audited baseline, not a claim that the model's unverified limits or
-// benchmark scores are known. Add candidates only with verified metadata.
+// Audited baseline only. Null/empty fields are deliberately unknown, not inferred.
 export const BASELINE_MODEL_CATALOG = Object.freeze([
   Object.freeze({
     id: DEFAULT_MODEL_ID,
@@ -48,25 +47,29 @@ function finiteNumber(value) {
   return typeof value === "number" && Number.isFinite(value);
 }
 
+function isExternalProvider(model) {
+  return model.external === true || model.provider !== "cloudflare-workers-ai";
+}
+
 function estimateCostUsd(model, inputTokens, outputTokens) {
   if (!finiteNumber(inputTokens) || inputTokens < 0 || !finiteNumber(outputTokens) || outputTokens < 0) return null;
-  if (!finiteNumber(model.inputCostPerMillionUsd) || model.inputCostPerMillionUsd < 0 || !finiteNumber(model.outputCostPerMillionUsd) || model.outputCostPerMillionUsd < 0) return null;
+  if (!finiteNumber(model.inputCostPerMillionUsd) || model.inputCostPerMillionUsd < 0 ||
+      !finiteNumber(model.outputCostPerMillionUsd) || model.outputCostPerMillionUsd < 0) return null;
   return (inputTokens * model.inputCostPerMillionUsd + outputTokens * model.outputCostPerMillionUsd) / 1_000_000;
 }
 
-function scoreCandidate(model, task, inputTokens = 1000, outputTokens = 1000) {
+function scoreCandidate(model, task, inputTokens, outputTokens) {
   const quality = model.qualityScores?.[task];
   const reliability = model.reliability;
   const latency = model.p95LatencyMs;
-  // Unknown measurements receive a neutral score, but are explicitly surfaced
-  // in evidence so an unbenchmarked model cannot be presented as proven.
   const qualityScore = finiteNumber(quality) ? Math.max(0, Math.min(1, quality)) : 0.5;
   const reliabilityScore = finiteNumber(reliability) ? Math.max(0, Math.min(1, reliability)) : 0.5;
   const latencyScore = finiteNumber(latency) && latency >= 0 ? 1 / (1 + latency / 1000) : 0.5;
   const estimatedCost = estimateCostUsd(model, inputTokens, outputTokens);
-  const costScore = estimatedCost !== null && estimatedCost >= 0 ? 1 / (1 + estimatedCost * 1000) : 0.5;
+  const costScore = estimatedCost !== null ? 1 / (1 + estimatedCost * 1000) : 0.5;
   return {
-    score: qualityScore * 0.6 + reliabilityScore * 0.2 + latencyScore * 0.1 + costScore * 0.1,
+    // Quality dominates; cost and latency decide among similarly capable models.
+    score: qualityScore * 0.75 + reliabilityScore * 0.15 + latencyScore * 0.05 + costScore * 0.05,
     evidence: {
       quality: finiteNumber(quality) ? "measured" : "unknown",
       reliability: finiteNumber(reliability) ? "measured" : "unknown",
@@ -104,40 +107,40 @@ export function evaluateModelCandidates({
     const missing = requiredCapabilities.filter((capability) => !capabilities.includes(capability));
     if (missing.length) { reject(`missing_capabilities:${missing.join(",")}`); continue; }
 
-    if (finiteNumber(requirements.inputTokens)) {
-      if (!finiteNumber(model.contextWindowTokens) || requirements.inputTokens > model.contextWindowTokens) {
-        reject("context_limit_unverified_or_exceeded"); continue;
-      }
+    if (finiteNumber(requirements.inputTokens) &&
+        (!finiteNumber(model.contextWindowTokens) || requirements.inputTokens > model.contextWindowTokens)) {
+      reject("context_limit_unverified_or_exceeded"); continue;
     }
-    if (finiteNumber(requirements.outputTokens)) {
-      if (!finiteNumber(model.maxOutputTokens) || requirements.outputTokens > model.maxOutputTokens) {
-        reject("output_limit_unverified_or_exceeded"); continue;
-      }
+    if (finiteNumber(requirements.outputTokens) &&
+        (!finiteNumber(model.maxOutputTokens) || requirements.outputTokens > model.maxOutputTokens)) {
+      reject("output_limit_unverified_or_exceeded"); continue;
     }
-    if (constraints.region) {
-      if (!Array.isArray(model.regions) || !(model.regions.includes(constraints.region) || model.regions.includes("global"))) {
-        reject("region_unverified_or_unsupported"); continue;
-      }
+    if (constraints.region &&
+        (!Array.isArray(model.regions) || !(model.regions.includes(constraints.region) || model.regions.includes("global")))) {
+      reject("region_unverified_or_unsupported"); continue;
     }
-    if (model.external && !(constraints.allowExternalProviders === true && constraints.userConsent === true)) {
+    if (isExternalProvider(model) &&
+        !(model.approved === true && Array.isArray(constraints.approvedProviders) &&
+          constraints.approvedProviders.includes(model.provider) && constraints.userConsent === true)) {
       reject("external_provider_not_approved"); continue;
     }
-    if (constraints.dataPolicy) {
-      if (!Array.isArray(model.dataPolicies) || !model.dataPolicies.includes(constraints.dataPolicy)) {
-        reject("data_policy_unverified_or_incompatible"); continue;
-      }
+    if (constraints.dataPolicy &&
+        (!Array.isArray(model.dataPolicies) || !model.dataPolicies.includes(constraints.dataPolicy))) {
+      reject("data_policy_unverified_or_incompatible"); continue;
     }
-    if (finiteNumber(constraints.deadlineMs) && finiteNumber(model.p95LatencyMs) && model.p95LatencyMs > constraints.deadlineMs) {
-      reject("deadline_not_feasible"); continue;
+    if (finiteNumber(constraints.deadlineMs) &&
+        (!finiteNumber(model.p95LatencyMs) || model.p95LatencyMs < 0 || model.p95LatencyMs > constraints.deadlineMs)) {
+      reject("deadline_unverified_or_not_feasible"); continue;
     }
     if (finiteNumber(constraints.maxCostUsd)) {
-      const cost = estimateCostUsd(model, requirements.inputTokens || 0, requirements.outputTokens || 0);
+      const cost = estimateCostUsd(model, requirements.inputTokens, requirements.outputTokens);
       if (cost === null || cost > constraints.maxCostUsd) {
         reject("cost_unverified_or_over_budget"); continue;
       }
     }
     const quality = model.qualityScores?.[task];
-    if (finiteNumber(requirements.minQualityScore) && (!finiteNumber(quality) || quality < requirements.minQualityScore)) {
+    if (finiteNumber(requirements.minQualityScore) &&
+        (!finiteNumber(quality) || quality < requirements.minQualityScore)) {
       reject("quality_floor_unverified_or_not_met"); continue;
     }
 
@@ -157,9 +160,7 @@ export function evaluateModelCandidates({
 
 export function selectModel(options = {}) {
   const evaluated = evaluateModelCandidates(options);
-  if (!evaluated.eligible.length) {
-    throw new NoEligibleModelError(options.task, evaluated.rejected);
-  }
+  if (!evaluated.eligible.length) throw new NoEligibleModelError(options.task, evaluated.rejected);
   const selected = evaluated.eligible[0];
   return {
     model: selected.model,
