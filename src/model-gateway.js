@@ -47,6 +47,52 @@ function finiteNumber(value) {
   return typeof value === "number" && Number.isFinite(value);
 }
 
+function validateRoutingOptions(requirements, constraints) {
+  if (!requirements || typeof requirements !== "object" || Array.isArray(requirements)) {
+    throw new TypeError("requirements must be an object");
+  }
+  if (!constraints || typeof constraints !== "object" || Array.isArray(constraints)) {
+    throw new TypeError("constraints must be an object");
+  }
+
+  if (requirements.capabilities !== undefined &&
+      (!Array.isArray(requirements.capabilities) ||
+       requirements.capabilities.some((value) => typeof value !== "string" || !value.trim()))) {
+    throw new TypeError("requirements.capabilities must be an array of non-empty strings");
+  }
+  for (const key of ["inputTokens", "outputTokens"]) {
+    if (requirements[key] !== undefined &&
+        (!finiteNumber(requirements[key]) || requirements[key] < 0)) {
+      throw new TypeError(`requirements.${key} must be a finite non-negative number`);
+    }
+  }
+  if (requirements.minQualityScore !== undefined &&
+      (!finiteNumber(requirements.minQualityScore) ||
+       requirements.minQualityScore < 0 || requirements.minQualityScore > 1)) {
+    throw new TypeError("requirements.minQualityScore must be between 0 and 1");
+  }
+  for (const key of ["deadlineMs", "maxCostUsd"]) {
+    if (constraints[key] !== undefined &&
+        (!finiteNumber(constraints[key]) || constraints[key] < 0)) {
+      throw new TypeError(`constraints.${key} must be a finite non-negative number`);
+    }
+  }
+  for (const key of ["region", "dataPolicy"]) {
+    if (constraints[key] !== undefined &&
+        (typeof constraints[key] !== "string" || !constraints[key].trim())) {
+      throw new TypeError(`constraints.${key} must be a non-empty string`);
+    }
+  }
+  if (constraints.approvedProviders !== undefined &&
+      (!Array.isArray(constraints.approvedProviders) ||
+       constraints.approvedProviders.some((value) => typeof value !== "string" || !value.trim()))) {
+    throw new TypeError("constraints.approvedProviders must be an array of non-empty strings");
+  }
+  if (constraints.userConsent !== undefined && typeof constraints.userConsent !== "boolean") {
+    throw new TypeError("constraints.userConsent must be a boolean");
+  }
+}
+
 function isExternalProvider(model) {
   return model.external === true || model.provider !== "cloudflare-workers-ai";
 }
@@ -89,6 +135,7 @@ export function evaluateModelCandidates({
   const profile = TASK_PROFILES[task];
   if (!profile) throw new TypeError(`Unknown task profile: ${task}`);
   if (!Array.isArray(models)) throw new TypeError("models must be an array");
+  validateRoutingOptions(requirements, constraints);
 
   const requiredCapabilities = [...new Set([
     ...profile.requiredCapabilities,
