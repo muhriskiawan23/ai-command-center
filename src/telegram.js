@@ -111,7 +111,8 @@ export async function handleTelegramWebhook(request, env, deps) {
 
   try {
     const timeout = useMultiAgent ? deps.multiAgentBudgetMs : deps.singleAgentBudgetMs;
-    const aiEnv = deps.withAiDeadline(env, Date.now() + timeout, request.signal);
+    const modelTrace = [];
+    const aiEnv = deps.withAiDeadline({ ...env, MODEL_TRACE: modelTrace }, Date.now() + timeout, request.signal);
     const result = useMultiAgent
       ? await deps.runMultiAgent(aiEnv, text, [], "")
       : { response: await deps.runAgent(aiEnv, "coordinator", text, "", [], "") };

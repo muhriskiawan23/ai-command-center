@@ -40,7 +40,7 @@ const validKey = { id: "key-1", allowed_origins: JSON.stringify(["https://shop.e
 const deps = {
   AGENTS: { coordinator: { name: "Coordinator" }, writer: { name: "Writer" } },
   MODEL: "test-model",
-  runAgent: async (_env, agent, message) => ({ response: "Jawaban BOR AI untuk: " + message }),
+  runAgent: async (_env, agent, message) => "Jawaban BOR AI untuk: " + message,
   withAiDeadline: env => env,
   json: (data, status = 200, headers = {}) => Response.json(data, { status, headers }),
   readJsonRequest: async request => ({ body: await request.json() })
@@ -147,4 +147,43 @@ test("developer key listing works for authenticated GET without an Origin header
   });
   assert.equal(response.status, 200);
   assert.deepEqual((await response.json()).keys, []);
+});
+
+
+test("public chat accepts the actual string return type from runAgent", async () => {
+  const DB = makeDb({ key: validKey, quota: { daily_used: 1, daily_limit: 100 } });
+  const request = new Request("https://api.example/api/public/chat", {
+    method: "POST",
+    headers: { Origin: "https://shop.example", Authorization: "Bearer " + secret, "Content-Type": "application/json" },
+    body: JSON.stringify({ message: "Tes return string" })
+  });
+  const response = await handlePublicChatRoute(request, { DB }, {
+    ...deps,
+    runAgent: async () => "Respons string dari runAgent",
+    summarizeModelTrace: () => ({
+      model: "actual/model",
+      modelsUsed: [{ provider: "test-provider", modelId: "actual/model" }],
+      agentModels: []
+    })
+  });
+  const data = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(data.response, "Respons string dari runAgent");
+  assert.equal(data.model, "actual/model");
+  assert.equal(data.modelsUsed[0].modelId, "actual/model");
+});
+
+test("public chat retains compatibility with object-shaped model adapters", async () => {
+  const DB = makeDb({ key: validKey, quota: { daily_used: 1, daily_limit: 100 } });
+  const request = new Request("https://api.example/api/public/chat", {
+    method: "POST",
+    headers: { Origin: "https://shop.example", Authorization: "Bearer " + secret, "Content-Type": "application/json" },
+    body: JSON.stringify({ message: "Tes adapter object" })
+  });
+  const response = await handlePublicChatRoute(request, { DB }, {
+    ...deps,
+    runAgent: async () => ({ response: "Respons object adapter" })
+  });
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).response, "Respons object adapter");
 });
