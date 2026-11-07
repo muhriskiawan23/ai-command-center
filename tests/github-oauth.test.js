@@ -88,7 +88,7 @@ test("callback reports GitHub profile API authorization failures precisely", asy
     });
     const response = await handleGitHubOAuthRoute(request, env(), new URL(request.url), deps);
     assert.equal(response.status, 302);
-    assert.equal(response.headers.get("Location"), "/?github=error&reason=profile_http_403");
+    assert.equal(response.headers.get("Location"), "/?github=error&reason=profile_http_401");
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -110,5 +110,46 @@ test("callback distinguishes an invalid GitHub profile payload", async () => {
     assert.equal(response.headers.get("Location"), "/?github=error&reason=profile_invalid");
   } finally {
     globalThis.fetch = originalFetch;
+  }
+});
+
+test("callback preserves GitHub 403 and logs safe diagnostic metadata only", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalWarn = console.warn;
+  const warnings = [];
+  console.warn = (...args) => warnings.push(args);
+  globalThis.fetch = async (url) => {
+    if (String(url).includes("/login/oauth/access_token")) return json({ access_token: "ghu_sensitive-user-token" });
+    if (String(url).endsWith("/user")) return json(
+      { message: "Resource not accessible by integration" },
+      403,
+      {
+        "x-github-request-id": "REQ-123",
+        "x-ratelimit-remaining": "0",
+        "x-ratelimit-reset": "1900000000",
+        "retry-after": "60",
+        "x-accepted-github-permissions": "profile=read"
+      }
+    );
+    throw new Error("Unexpected fetch URL");
+  };
+  try {
+    const request = new Request("https://example.test/api/github/callback?code=valid-code&state=random-state-token", {
+      headers: { Cookie: "__Host-borai_github_oauth_state=random-state-token" }
+    });
+    const response = await handleGitHubOAuthRoute(request, env(), new URL(request.url), deps);
+    assert.equal(response.headers.get("Location"), "/?github=error&reason=profile_http_403");
+    assert.equal(warnings.length, 1);
+    assert.equal(warnings[0][0], "GitHub API request failed");
+    const diagnostic = warnings[0][1];
+    assert.equal(diagnostic.status, 403);
+    assert.equal(diagnostic.requestId, "REQ-123");
+    assert.equal(diagnostic.rateLimitRemaining, "0");
+    assert.equal(diagnostic.retryAfter, "60");
+    assert.equal(diagnostic.acceptedPermissions, "profile=read");
+    assert.doesNotMatch(JSON.stringify(warnings), /ghu_sensitive-user-token|valid-code|client-secret/);
+  } finally {
+    globalThis.fetch = originalFetch;
+    console.warn = originalWarn;
   }
 });
