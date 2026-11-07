@@ -582,37 +582,37 @@ async function runAgent(env, agentId, userMessage, context = "", history = [], p
   };
 
   try {
-    let result = await generate();
-  let response = result?.response ?? result?.result?.response ?? "";
-  let cleaned = cleanOutput(response);
-  const countWords = (value) => value.replace(/[#*_\`>~-]/g, " ").match(/[\p{L}\p{N}]{2,}/gu) || [];
+      let result = await generate();
+    let response = result?.response ?? result?.result?.response ?? "";
+    let cleaned = cleanOutput(response);
+    const countWords = (value) => value.replace(/[#*_\`>~-]/g, " ").match(/[\p{L}\p{N}]{2,}/gu) || [];
 
-  // Retry once when the model returns mostly empty Markdown markers.
-  if (typeof response !== "string" || countWords(cleaned).length < 8 || cleaned.length < 35) {
-    result = await generate(
-      "RETRY REQUIRED: Your previous answer contained empty Markdown headings or bullets and was unusable. Return substantive content in plain text or simple numbered points. Do not output empty headings, empty bullets, or Markdown-only lines. Include at least 3 concrete findings when appropriate. Every bullet must contain a complete sentence. Answer in the user's language."
-    );
-    response = result?.response ?? result?.result?.response ?? "";
-    cleaned = cleanOutput(response);
-  }
+    // Retry once when the model returns mostly empty Markdown markers.
+    if (typeof response !== "string" || countWords(cleaned).length < 8 || cleaned.length < 35) {
+      result = await generate(
+        "RETRY REQUIRED: Your previous answer contained empty Markdown headings or bullets and was unusable. Return substantive content in plain text or simple numbered points. Do not output empty headings, empty bullets, or Markdown-only lines. Include at least 3 concrete findings when appropriate. Every bullet must contain a complete sentence. Answer in the user's language."
+      );
+      response = result?.response ?? result?.result?.response ?? "";
+      cleaned = cleanOutput(response);
+    }
 
-  // Reject responses that contain lots of Markdown structure but little actual content.
-  const meaningfulLines = cleaned.split("\n").filter((line) => {
-    const text = line.trim().replace(/^#{1,6}\s*/, "").replace(/^[-*+>\d.)\s]+/, "").replace(/[\*_\x60]/g, "").trim();
-    return text.length >= 12 && countWords(text).length >= 3;
-  });
+    // Reject responses that contain lots of Markdown structure but little actual content.
+    const meaningfulLines = cleaned.split("\n").filter((line) => {
+      const text = line.trim().replace(/^#{1,6}\s*/, "").replace(/^[-*+>\d.)\s]+/, "").replace(/[\*_\x60]/g, "").trim();
+      return text.length >= 12 && countWords(text).length >= 3;
+    });
 
-  // Coordinator answers and translations may legitimately be very short ("Selamat pagi"); specialists must be substantial.
-  const shortAnswersAllowed = agentId === "coordinator" || agentId === "translator";
-  if (typeof response !== "string" || (shortAnswersAllowed && !cleaned) || (!shortAnswersAllowed && (countWords(cleaned).length < 20 || cleaned.length < 100 || meaningfulLines.length < 2))) {
-    // Do not mark a generic placeholder as a successful agent result.
-    // Let the request boundary return a sanitized error after the retry fails.
-    throw new Error(`Agent ${agentId} returned unusable output after retry`);
-  }
+    // Coordinator answers and translations may legitimately be very short ("Selamat pagi"); specialists must be substantial.
+    const shortAnswersAllowed = agentId === "coordinator" || agentId === "translator";
+    if (typeof response !== "string" || (shortAnswersAllowed && !cleaned) || (!shortAnswersAllowed && (countWords(cleaned).length < 20 || cleaned.length < 100 || meaningfulLines.length < 2))) {
+      // Do not mark a generic placeholder as a successful agent result.
+      // Let the request boundary return a sanitized error after the retry fails.
+      throw new Error(`Agent ${agentId} returned unusable output after retry`);
+    }
 
-  traceEntry.outcome = "success";
-  emitTelemetry();
-  return cleaned;
+    traceEntry.outcome = "success";
+    emitTelemetry();
+    return cleaned;
   } catch (error) {
     traceEntry.outcome = "error";
     traceEntry.failureType = error instanceof AiTimeoutError ? "timeout"
