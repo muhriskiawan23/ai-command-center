@@ -2,14 +2,14 @@ export const MODEL_ROUTING_POLICY_VERSION = "adaptive-v1";
 export const DEFAULT_MODEL_ID = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 
 export const TASK_PROFILES = Object.freeze({
-  fast_chat: Object.freeze({ requiredCapabilities: ["text"] }),
+  fast_chat: Object.freeze({ requiredCapabilities: Object.freeze(["text"]) }),
   deep_reasoning: Object.freeze({ requiredCapabilities: ["text"] }),
   research_synthesis: Object.freeze({ requiredCapabilities: ["text"] }),
   coding: Object.freeze({ requiredCapabilities: ["text"] }),
   translation: Object.freeze({ requiredCapabilities: ["text"] }),
-  multimodal_vision: Object.freeze({ requiredCapabilities: ["text", "vision"] }),
-  audio: Object.freeze({ requiredCapabilities: ["audio"] }),
-  structured_extraction: Object.freeze({ requiredCapabilities: ["text", "structured-output"] })
+  multimodal_vision: Object.freeze({ requiredCapabilities: Object.freeze(["text", "vision"]) }),
+  audio: Object.freeze({ requiredCapabilities: Object.freeze(["audio"]) }),
+  structured_extraction: Object.freeze({ requiredCapabilities: Object.freeze(["text", "structured-output"]) })
 });
 
 // This is an audited baseline, not a claim that the model's unverified limits or
@@ -50,7 +50,7 @@ function finiteNumber(value) {
 
 function estimateCostUsd(model, inputTokens, outputTokens) {
   if (!finiteNumber(inputTokens) || inputTokens < 0 || !finiteNumber(outputTokens) || outputTokens < 0) return null;
-  if (!finiteNumber(model.inputCostPerMillionUsd) || !finiteNumber(model.outputCostPerMillionUsd)) return null;
+  if (!finiteNumber(model.inputCostPerMillionUsd) || model.inputCostPerMillionUsd < 0 || !finiteNumber(model.outputCostPerMillionUsd) || model.outputCostPerMillionUsd < 0) return null;
   return (inputTokens * model.inputCostPerMillionUsd + outputTokens * model.outputCostPerMillionUsd) / 1_000_000;
 }
 
