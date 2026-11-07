@@ -2,7 +2,7 @@
 
 **Direction:** Hybrid + All Capabilities  
 **Repository:** `muhriskiawan23/ai-command-center`  
-**Baseline:** `main` at `c64b8fdfdf5c2079ccfd242a43dc2c735496532b`  
+**Baseline:** `main` at `a14e2482584f266da4206a796432e64725ee62d8`  
 **Last repository audit:** 2026-11-08  
 **Release rule:** No pull request is merged and no production deployment is initiated without explicit founder approval.
 
@@ -65,11 +65,11 @@ A milestone is considered ready only when:
 
 ### Milestone 0 — Release integrity and repository truth
 
-**Priority:** P0 · **Status:** in progress
+**Priority:** P0 · **Status:** baseline reconciled; continuous release-integrity checks ongoing
 
 Work:
-- Finish independent review of PR #91, including SSRF/redirect behavior, source-ID integrity, prompt-injection boundaries, page-read status, persistence boundaries and test coverage.
-- Keep PR #91 isolated from unrelated changes. Do not merge it without approval.
+- Record PR #91 as merged and deployed; retain the live Brave credential/quota caveat until a controlled live request is verified.
+- Keep any follow-up live-provider verification isolated from unrelated runtime work; do not treat mocked tests as live-provider evidence.
 - Reconcile the historic audit with current code and test evidence. Reproduce open findings before labelling them open or fixed.
 - Verify the authoritative production deployment path and document the exact release gate.
 - Establish a single capability matrix that distinguishes implemented, tested with mocks, live-verified, blocked by credentials, and planned.
