@@ -5,7 +5,9 @@ import {
   DEFAULT_MODEL_ID,
   NoEligibleModelError,
   evaluateModelCandidates,
-  selectModel
+  selectModel,
+  summarizeModelTrace,
+  taskProfileForAgent
 } from "../src/model-gateway.js";
 
 function candidate(overrides = {}) {
@@ -271,4 +273,27 @@ test("accepts unknown nullable metadata but never treats it as measured", () => 
   assert.equal(result.eligible[0].evidence.reliability, "unknown");
   assert.equal(result.eligible[0].evidence.latency, "unknown");
   assert.equal(result.eligible[0].evidence.cost, "unknown");
+});
+
+
+test("maps specialist roles to semantic task profiles without claiming unsupported modalities", () => {
+  assert.equal(taskProfileForAgent("coordinator"), "fast_chat");
+  assert.equal(taskProfileForAgent("researcher"), "research_synthesis");
+  assert.equal(taskProfileForAgent("coder"), "coding");
+  assert.equal(taskProfileForAgent("translator"), "translation");
+  assert.equal(taskProfileForAgent("text_analyst"), "deep_reasoning");
+  assert.throws(() => taskProfileForAgent("unknown-agent"), /Unknown agent task profile/);
+});
+
+test("summarizes actual per-agent model selections without inventing a multi-model result", () => {
+  const single = summarizeModelTrace([
+    { agentId: "coordinator", taskProfile: "fast_chat", provider: "cloudflare-workers-ai", adapter: "workers-ai", modelId: DEFAULT_MODEL_ID, policyVersion: "adaptive-v1", calls: 2 }
+  ]);
+  assert.equal(single.model, DEFAULT_MODEL_ID);
+  assert.deepEqual(single.modelsUsed, [{ provider: "cloudflare-workers-ai", modelId: DEFAULT_MODEL_ID, adapter: "workers-ai" }]);
+  assert.equal(single.agentModels[0].calls, 2);
+
+  const empty = summarizeModelTrace([]);
+  assert.equal(empty.model, DEFAULT_MODEL_ID);
+  assert.deepEqual(empty.modelsUsed, []);
 });
