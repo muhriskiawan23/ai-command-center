@@ -763,7 +763,7 @@ function buildHistory(chat){
 function appendSources(links){
   const row=messagesEl.lastElementChild;const body=row&&row.querySelector(".message-body");if(!body||!links||!links.length)return;
   const box=document.createElement("div");box.className="sources";
-  const head=document.createElement("strong");head.textContent="Sumber yang digunakan:";box.append(head);
+  const head=document.createElement("strong");head.textContent="Sumber yang dibaca:";box.append(head);
   for(const l of links){
     const item=document.createElement("div");item.className="source "+(l.ok?"ok":"fail");
     if(l.ok){
