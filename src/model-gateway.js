@@ -109,6 +109,11 @@ export function evaluateModelCandidates({
         reject("context_limit_unverified_or_exceeded"); continue;
       }
     }
+    if (finiteNumber(requirements.outputTokens)) {
+      if (!finiteNumber(model.maxOutputTokens) || requirements.outputTokens > model.maxOutputTokens) {
+        reject("output_limit_unverified_or_exceeded"); continue;
+      }
+    }
     if (constraints.region) {
       if (!Array.isArray(model.regions) || !(model.regions.includes(constraints.region) || model.regions.includes("global"))) {
         reject("region_unverified_or_unsupported"); continue;
