@@ -133,3 +133,13 @@ test.describe("INPUT — Enter = baris baru, tombol panah = kirim", () => {
     expect(await page.locator("#chatForm").getAttribute("action")).toBeNull();   // tidak ada submit native ke server
   });
 });
+
+test("pemilihan bahasa Arab menerapkan locale dan arah RTL", async ({ page, app }) => {
+  await enterGuest(page, app);
+  const picker = page.locator("#languagePreference");
+  await expect(picker).toBeVisible();
+  await picker.selectOption("ar");
+  await expect(page.locator("html")).toHaveAttribute("lang", "ar");
+  await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
+  await expect(picker).toHaveValue("ar");
+});
