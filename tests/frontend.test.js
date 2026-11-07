@@ -97,7 +97,20 @@ test("GitHub account connection controls are present and wired to authenticated 
 test("sidebar includes responsive visual polish and accessible GitHub connection status", () => {
   assert.match(page, /aria-label="Koneksi GitHub"/);
   assert.match(page, /role="status">Periksa koneksi akun/);
-  assert.match(appCss, /--sidebar-width:288px/);
+  assert.match(appCss, /--sidebar-width:276px/);
   assert.match(appCss, /\.github-connect-panel/);
   assert.match(appCss, /@media\(max-width:1024px\)/);
+});
+
+
+test("sidebar uses a compact Claude-inspired layout with GitHub moved into Integrations", () => {
+  assert.match(page, /id="historySearchForm"/);
+  assert.match(page, /id="openIntegrations"/);
+  assert.match(page, /id="integrationsDialog"/);
+  assert.match(page, /id="githubConnect"/);
+  assert.match(page, /id="githubDisconnect"/);
+  assert.match(appJs, /integrationsDialog\.showModal\(\)/);
+  assert.match(appCss, /\.integration-card/);
+  assert.match(appCss, /--sidebar-width:276px/);
+  assert.doesNotMatch(page.match(/<aside class="sidebar"[\s\S]*?<\/aside>/)?.[0] || "", /github-connect-panel/);
 });
