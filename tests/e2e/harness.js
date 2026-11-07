@@ -48,13 +48,14 @@ export function seedConversation(db, { id, userId, title, updatedAt, messages = 
 export async function startHarness({ port = 0, googleClientId = "test-client.apps.googleusercontent.com", aiDelayMs = 0, chatLimit = Number.MAX_SAFE_INTEGER, extraEnv = {} } = {}) {
   const db = createD1();
   const aiCalls = [];
+  const aiModelCalls = [];
   const control = { aiFail: false, aiText: null, aiHang: false };
   const limiterHits = new Map();
   const env = {
     DB: db,
     ...extraEnv,
     GOOGLE_CLIENT_ID: googleClientId || undefined,
-    AI: { async run(_model, options) { if (control.aiFail) throw new Error("AI dimatikan oleh test"); if (control.aiHang) await new Promise(() => {}); aiCalls.push(options); if (aiDelayMs) await new Promise((r) => setTimeout(r, aiDelayMs)); const asked = options.messages.find((m) => m.role === "user")?.content ?? ""; if (control.aiText) return { response: control.aiText };
+    AI: { async run(model, options) { if (control.aiFail) throw new Error("AI dimatikan oleh test"); if (control.aiHang) await new Promise(() => {}); aiModelCalls.push(model); aiCalls.push(options); if (aiDelayMs) await new Promise((r) => setTimeout(r, aiDelayMs)); const asked = options.messages.find((m) => m.role === "user")?.content ?? ""; if (control.aiText) return { response: control.aiText };
       return { response: `Balasan uji untuk pesan Anda: "${String(asked).slice(0, 60)}". Ini jawaban deterministik dari stub AI untuk pengujian antarmuka.\nJawaban sengaja dibuat cukup panjang dan berisi kalimat lengkap agar lolos pemeriksaan kualitas agent pada alur multi-agent.` }; } },
     ...(chatLimit ? { CHAT_LIMITER: { async limit({ key }) { const n = (limiterHits.get(key) || 0) + 1; limiterHits.set(key, n); return { success: n <= chatLimit }; } } } : {}),
     ASSETS: {
@@ -97,5 +98,5 @@ export async function startHarness({ port = 0, googleClientId = "test-client.app
   await new Promise((r) => server.listen(port, r));
   server.unref();
   const url = `http://localhost:${server.address().port}`;
-  return { url, db, env, aiCalls, control, limiterHits, close: () => new Promise((r) => { server.close(r); server.closeAllConnections?.(); }) };
+  return { url, db, env, aiCalls, aiModelCalls, control, limiterHits, close: () => new Promise((r) => { server.close(r); server.closeAllConnections?.(); }) };
 }
