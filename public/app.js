@@ -275,6 +275,7 @@ let githubConnectionRequest=0;
 function resetGitHubConnection(){
   githubConnection=null;githubConnectionLoading=false;githubConnectionRequest++;
   $("githubConnectionStatus").textContent="Perlu login Google";
+  $("sidebarGithubIndicator").className="integration-indicator";
   $("githubConnectionMessage").textContent="Masuk ke BOR AI terlebih dahulu untuk menghubungkan akun GitHub.";
   $("githubStatusDot").className="github-status-dot";
   $("githubConnect").textContent="Masuk dengan Google";$("githubConnect").disabled=false;$("githubConnect").hidden=false;$("githubDisconnect").hidden=true;
@@ -288,6 +289,8 @@ async function refreshGitHubConnection(){
     if(request!==githubConnectionRequest||state!==AppState.AUTH)return;
     githubConnection=Boolean(data.connected);
     $("githubConnectionStatus").textContent=githubConnection?"Terhubung"+(data.account?.login?" · @"+data.account.login:""):"Belum terhubung";
+    $("sidebarGithubIndicator").className="integration-indicator "+(githubConnection?"is-connected":"");
+    $("sidebarGithubIndicator").setAttribute("aria-label",githubConnection?"GitHub terhubung":"GitHub belum terhubung");
     $("githubConnectionMessage").textContent=githubConnection?"Akun GitHub siap digunakan. Akses repository tetap mengikuti izin GitHub App yang kamu berikan.":"Hubungkan akun GitHub untuk membaca repository dan mengelola perubahan setelah mendapat izinmu.";
     $("githubStatusDot").className="github-status-dot "+(githubConnection?"is-connected":"");
     $("githubConnect").textContent=githubConnection?"Hubungkan akun lain":"Hubungkan akun GitHub";
@@ -295,6 +298,7 @@ async function refreshGitHubConnection(){
   }catch(error){
     if(request!==githubConnectionRequest)return;
     $("githubConnectionStatus").textContent="Status belum dapat diperiksa";
+    $("sidebarGithubIndicator").className="integration-indicator";
     $("githubConnectionMessage").textContent=error.message||"Gagal memeriksa koneksi GitHub.";
     $("githubStatusDot").className="github-status-dot has-error";
   }finally{if(request===githubConnectionRequest){githubConnectionLoading=false;$("githubConnect").disabled=false}}
@@ -997,6 +1001,10 @@ $("historySearch").addEventListener("keydown",e=>{
 $("signOut").addEventListener("click",signOut);
 $("githubConnect").addEventListener("click",connectGitHub);
 $("githubDisconnect").addEventListener("click",disconnectGitHub);
+const integrationsDialog=$("integrationsDialog");
+$("openIntegrations").addEventListener("click",()=>{if(!integrationsDialog.open)integrationsDialog.showModal();if(state===AppState.AUTH)refreshGitHubConnection();$("integrationsClose").focus()});
+$("integrationsClose").addEventListener("click",()=>integrationsDialog.close());
+integrationsDialog.addEventListener("click",event=>{if(event.target!==integrationsDialog)return;const rect=integrationsDialog.getBoundingClientRect();if(event.clientX<rect.left||event.clientX>rect.right||event.clientY<rect.top||event.clientY>rect.bottom)integrationsDialog.close()});
 const aboutDialog=$("aboutDialog");
 $("about").addEventListener("click",()=>{
   if(!aboutDialog.open)aboutDialog.showModal();
