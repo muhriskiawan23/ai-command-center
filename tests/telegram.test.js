@@ -74,9 +74,9 @@ test("answers /start without invoking the model", async () => {
 
 for (const [command, expected] of [
   ["/help", "/about"],
-  ["/about", /Your Intelligent AI Command Center/],
-  ["/status", /BOR AI Telegram: ONLINE/],
-  ["/agents", /Coordinator.*Researcher.*Analyst/s]
+  ["/about", "Your Intelligent AI Command Center"],
+  ["/status", "BOR AI Telegram: ONLINE"],
+  ["/agents", "Coordinator — mengarahkan permintaan dan menyusun jawaban"]
 ]) {
   test(`handles ${command} without invoking AI or consuming quota`, async () => {
     const { env, deps, sent } = setup();
