@@ -39,7 +39,9 @@ export function normalizePdfConversion(result, fileName) {
 export function buildPdfContext(document) {
   if (!document || typeof document.content !== "string" || !document.content.trim()) return "";
   const name = safePdfName(document.name).replace(/["&<>]/g, "_");
-  const content = document.content.slice(0, PDF_CONTEXT_MAX_CHARS);
+  // Escape delimiter characters so untrusted PDF text cannot forge the surrounding context tags.
+  const content = document.content.slice(0, PDF_CONTEXT_MAX_CHARS)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const pageNumbers = [...content.matchAll(/^#{1,4}\s*Page\s+(\d+)\s*$/gim)]
     .map((match) => Number(match[1]))
     .filter((value) => Number.isSafeInteger(value) && value > 0);
