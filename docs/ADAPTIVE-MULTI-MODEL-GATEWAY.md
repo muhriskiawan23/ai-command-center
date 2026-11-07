@@ -199,18 +199,24 @@ A request budget must include every agent call, retry and fallback, not merely o
 
 ## 10. Migration plan
 
-### Phase A — Contract and tests <badge>implemented</badge>
+### Phase A — Contract and tests
+
+**Status: implemented**
 - Task profiles, model catalog validation, normalized selection policy and hard eligibility checks are implemented in `src/model-gateway.js`.
 - Automated tests cover selection, malformed metadata/constraints, provider approval, deadline/budget gates and model output limits.
 
-### Phase B — Compatibility seam <badge>implemented</badge>
+### Phase B — Compatibility seam
+
+**Status: implemented**
 - The gateway is integrated behind the shared `runAgent()` path.
 - Existing agent prompts, output validation/retry, memory and locale wrappers remain in place.
 - Actual provider/model trace metadata is propagated through web chat, Public API and Telegram.
 - Public API string-response handling is covered by regression tests.
 - PDF `toMarkdown()` processing remains separate.
 
-### Phase C — Adaptive routing with one provider <badge>deployed</badge>
+### Phase C — Adaptive routing with one provider
+
+**Status: deployed**
 - Adaptive policy runs with the existing Workers AI model as the sole eligible candidate.
 - PR #94 was merged as `c64b8fdfdf5c2079ccfd242a43dc2c735496532b` and deployed as Worker version `02726d6c-1372-4e43-8f85-00e4a73eb43f`.
 - Post-deploy health, agents and Google sign-in configuration checks passed. Production D1 was verified read-only; no migrations were pending.
