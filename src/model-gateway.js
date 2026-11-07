@@ -47,6 +47,51 @@ function finiteNumber(value) {
   return typeof value === "number" && Number.isFinite(value);
 }
 
+function validateRoutingInputs(requirements, constraints) {
+  if (!requirements || typeof requirements !== "object" || Array.isArray(requirements)) {
+    throw new TypeError("requirements must be an object");
+  }
+  if (!constraints || typeof constraints !== "object" || Array.isArray(constraints)) {
+    throw new TypeError("constraints must be an object");
+  }
+  for (const key of ["inputTokens", "outputTokens"]) {
+    if (Object.hasOwn(requirements, key) &&
+        (!Number.isSafeInteger(requirements[key]) || requirements[key] < 0)) {
+      throw new TypeError(`requirements.${key} must be a non-negative safe integer`);
+    }
+  }
+  if (Object.hasOwn(requirements, "minQualityScore") &&
+      (!finiteNumber(requirements.minQualityScore) ||
+       requirements.minQualityScore < 0 || requirements.minQualityScore > 1)) {
+    throw new TypeError("requirements.minQualityScore must be between 0 and 1");
+  }
+  if (Object.hasOwn(requirements, "capabilities") &&
+      (!Array.isArray(requirements.capabilities) ||
+       requirements.capabilities.some((value) => typeof value !== "string" || !value.trim()))) {
+    throw new TypeError("requirements.capabilities must be an array of non-empty strings");
+  }
+  for (const key of ["deadlineMs", "maxCostUsd"]) {
+    if (Object.hasOwn(constraints, key) &&
+        (!finiteNumber(constraints[key]) || constraints[key] < 0)) {
+      throw new TypeError(`constraints.${key} must be a finite non-negative number`);
+    }
+  }
+  for (const key of ["region", "dataPolicy"]) {
+    if (Object.hasOwn(constraints, key) &&
+        (typeof constraints[key] !== "string" || !constraints[key].trim())) {
+      throw new TypeError(`constraints.${key} must be a non-empty string`);
+    }
+  }
+  if (Object.hasOwn(constraints, "approvedProviders") &&
+      (!Array.isArray(constraints.approvedProviders) ||
+       constraints.approvedProviders.some((value) => typeof value !== "string" || !value.trim()))) {
+    throw new TypeError("constraints.approvedProviders must be an array of non-empty strings");
+  }
+  if (Object.hasOwn(constraints, "userConsent") && typeof constraints.userConsent !== "boolean") {
+    throw new TypeError("constraints.userConsent must be a boolean");
+  }
+}
+
 function validateRoutingOptions(requirements, constraints) {
   if (!requirements || typeof requirements !== "object" || Array.isArray(requirements)) {
     throw new TypeError("requirements must be an object");
@@ -135,6 +180,7 @@ export function evaluateModelCandidates({
   const profile = TASK_PROFILES[task];
   if (!profile) throw new TypeError(`Unknown task profile: ${task}`);
   if (!Array.isArray(models)) throw new TypeError("models must be an array");
+  validateRoutingInputs(requirements, constraints);
   validateRoutingOptions(requirements, constraints);
 
   const requiredCapabilities = [...new Set([
@@ -154,11 +200,11 @@ export function evaluateModelCandidates({
     const missing = requiredCapabilities.filter((capability) => !capabilities.includes(capability));
     if (missing.length) { reject(`missing_capabilities:${missing.join(",")}`); continue; }
 
-    if (finiteNumber(requirements.inputTokens) &&
+    if (Object.hasOwn(requirements, "inputTokens") &&
         (!finiteNumber(model.contextWindowTokens) || requirements.inputTokens > model.contextWindowTokens)) {
       reject("context_limit_unverified_or_exceeded"); continue;
     }
-    if (finiteNumber(requirements.outputTokens) &&
+    if (Object.hasOwn(requirements, "outputTokens") &&
         (!finiteNumber(model.maxOutputTokens) || requirements.outputTokens > model.maxOutputTokens)) {
       reject("output_limit_unverified_or_exceeded"); continue;
     }
@@ -175,18 +221,18 @@ export function evaluateModelCandidates({
         (!Array.isArray(model.dataPolicies) || !model.dataPolicies.includes(constraints.dataPolicy))) {
       reject("data_policy_unverified_or_incompatible"); continue;
     }
-    if (finiteNumber(constraints.deadlineMs) &&
+    if (Object.hasOwn(constraints, "deadlineMs") &&
         (!finiteNumber(model.p95LatencyMs) || model.p95LatencyMs < 0 || model.p95LatencyMs > constraints.deadlineMs)) {
       reject("deadline_unverified_or_not_feasible"); continue;
     }
-    if (finiteNumber(constraints.maxCostUsd)) {
+    if (Object.hasOwn(constraints, "maxCostUsd")) {
       const cost = estimateCostUsd(model, requirements.inputTokens, requirements.outputTokens);
       if (cost === null || cost > constraints.maxCostUsd) {
         reject("cost_unverified_or_over_budget"); continue;
       }
     }
     const quality = model.qualityScores?.[task];
-    if (finiteNumber(requirements.minQualityScore) &&
+    if (Object.hasOwn(requirements, "minQualityScore") &&
         (!finiteNumber(quality) || quality < requirements.minQualityScore)) {
       reject("quality_floor_unverified_or_not_met"); continue;
     }
