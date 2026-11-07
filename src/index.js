@@ -141,6 +141,18 @@ function localizedChatNotice(language, type, item = "") {
       "✓ Enregistré dans la mémoire : \"{item}\"", "✓ Im Speicher gespeichert: \"{item}\"", "✓ Salvo na memória: \"{item}\"",
       "✓ メモリに保存しました: \"{item}\"", "✓ 메모리에 저장됨: \"{item}\"", "✓ 已保存到记忆：\"{item}\"", "✓ تم الحفظ في الذاكرة: \"{item}\""
     ],
+    memoryRejected: [
+      "ℹ️ Not saved because this may contain sensitive information. Rewrite it without sensitive data.",
+      "ℹ️ Tidak disimpan karena terlihat berisi data sensitif. Tulis ulang tanpa data sensitif.",
+      "ℹ️ No se guardó porque puede contener información sensible. Reescríbelo sin esos datos.",
+      "ℹ️ Non enregistré, car le contenu peut contenir des informations sensibles. Reformulez sans ces données.",
+      "ℹ️ Nicht gespeichert, da der Inhalt sensible Informationen enthalten könnte. Formuliere ihn ohne diese Daten neu.",
+      "ℹ️ Não foi salvo porque pode conter informações confidenciais. Reescreva sem esses dados.",
+      "ℹ️ 機密情報が含まれている可能性があるため保存されませんでした。該当情報を除いて書き直してください。",
+      "ℹ️ 민감한 정보가 포함되었을 수 있어 저장되지 않았습니다. 해당 정보를 제외하고 다시 작성하세요.",
+      "ℹ️ 由于内容可能包含敏感信息，未予保存。请删除相关信息后重写。",
+      "ℹ️ لم يتم الحفظ لاحتمال احتواء النص على معلومات حساسة. أعد صياغته دون تلك المعلومات."
+    ],
     memorySaveFailed: [
       "ℹ️ The answer was generated, but memory could not be saved. Try again from the Memory menu.",
       "ℹ️ Jawaban berhasil dibuat, tetapi memori gagal disimpan. Coba simpan lagi lewat menu Memori.",
@@ -1537,7 +1549,7 @@ export default {
         if (pendingRememberText !== null) {
           try {
             const saved = await addMemory(env, user.id, pendingRememberText);
-            memoryNote = saved.ok ? localizedChatNotice(language, "memorySaved", saved.item.content) : localizedChatNotice(language, "memorySaveFailed");
+            memoryNote = saved.ok ? localizedChatNotice(language, "memorySaved", saved.item.content) : localizedChatNotice(language, saved.code === "memory_rejected" ? "memoryRejected" : "memorySaveFailed");
           } catch (error) {
             console.error("Memory save failed:", error);
             memoryNote = localizedChatNotice(language, "memorySaveFailed");
