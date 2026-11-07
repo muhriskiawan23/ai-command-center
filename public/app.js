@@ -1041,6 +1041,7 @@ $("stopGeneration").addEventListener("click",()=>{if(busy)activeChatController?.
 promptEl.addEventListener("input",resizePrompt);
 /* Enter sengaja TIDAK mengirim: Enter = baris baru di semua perangkat. Satu-satunya cara kirim lewat UI adalah tombol panah. */
 window.addEventListener("resize",resizePrompt);
+window.visualViewport?.addEventListener("resize",resizePrompt);
 $("newChat").addEventListener("click",newChat);
 $("exportConversation").addEventListener("click",exportConversationFile);
 $("printConversation").addEventListener("click",printConversation);
