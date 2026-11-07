@@ -12,7 +12,7 @@ export function validateCitationReferences(response, sources = []) {
   function matchesSourceUrl(rawTarget, source) {
     if (!source?.url || typeof rawTarget !== "string") return false;
     const target = rawTarget.trim();
-    const parsedTarget = target.match(/^(?:<([^>]*)>|(\\S+?))(?:\\s+(?:"[^"]*"|'[^']*'|\\([^)]*\\)))?$/);
+    const parsedTarget = target.match(/^(?:<([^>]*)>|(\S+?))(?:\s+(?:"[^"]*"|'[^']*'|\([^)]*\)))?$/);
     const href = parsedTarget?.[1] || parsedTarget?.[2];
     if (!href) return false;
     try {
@@ -27,20 +27,20 @@ export function validateCitationReferences(response, sources = []) {
   }
 
   // Leave fenced and inline code untouched: numeric brackets there are often array indexes.
-  const parts = text.split(/(`{3}[\\s\\S]*?`{3}|~~~[\\s\\S]*?~~~|`[^`\\n]*`)/g);
+  const parts = text.split(/(\`{3}[\s\S]*?\`{3}|~~~[\s\S]*?~~~|\`[^\`\n]*\`)/g);
   const cleaned = parts.map((part, index) => {
     if (index % 2 === 1) return part;
     // A linked citation must match BOTH a successful source ID and that source's exact URL.
     // This also removes javascript:, data:, relative, malformed, and mismatched destinations.
-    let value = part.replace(/\\[(\\d+)\\]\\(([^)]*)\\)/g, (marker, rawId, rawTarget) => {
+    let value = part.replace(/\[(\d+)\]\(([^)]*)\)/g, (marker, rawId, rawTarget) => {
       const source = sourceById.get(Number(rawId));
       if (source && matchesSourceUrl(rawTarget, source)) return marker;
       removed++;
       return "";
     });
-    value = value.replace(/([ \\t]*)\\[(\\d+)\\](?!\\s*\\()/g, (marker, leadingSpace, rawId, offset, source) => {
+    value = value.replace(/([ \t]*)\[(\d+)\](?!\s*\()/g, (marker, leadingSpace, rawId, offset, source) => {
       const bracketOffset = offset + leadingSpace.length;
-      if (bracketOffset > 0 && /[\\w\\]]/.test(source[bracketOffset - 1])) return marker;
+      if (bracketOffset > 0 && /[\w\]]/.test(source[bracketOffset - 1])) return marker;
       if (sourceById.has(Number(rawId))) return marker;
       removed++;
       const after = source.slice(offset + marker.length);
@@ -56,5 +56,5 @@ export function validateCitationReferences(response, sources = []) {
   } else if (removed > 0) {
     notes.push("Catatan sumber: sitasi yang tidak cocok dengan sumber berhasil diambil telah dihapus.");
   }
-  return notes.length ? cleaned.trim() + "\\n\\n" + notes.join("\\n") : cleaned;
+  return notes.length ? cleaned.trim() + "\n\n" + notes.join("\n") : cleaned;
 }
