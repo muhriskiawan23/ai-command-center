@@ -198,7 +198,11 @@ A request budget must include every agent call, retry and fallback, not merely o
 - Compare cost per successful task, not only cost per token.
 - Keep separate results for mocked tests, provider integration tests and live production verification.
 
-## 10. Workers AI candidate inventory (audit only)\n\nThe current production catalog remains limited to the existing Llama 3.3 70B model. The official Workers AI catalog audit and candidate shortlist are documented in `docs/WORKERS-AI-MODEL-INVENTORY.md`. The shortlist includes Granite 4.0 H Micro, GLM-4.7-Flash, SEA-LION v4 27B and GPT-OSS-20B. Their documented capabilities, context, zero-data-retention labels and reference prices are not live BOR AI measurements. No candidate is enabled by this audit; account access, request compatibility, billing, latency and Indonesian/English quality must be verified before runtime eligibility.\n\n## 11. Migration plan
+## 10. Workers AI candidate inventory (audit only)
+
+The current production catalog remains limited to the existing Llama 3.3 70B model. The official Workers AI catalog audit and candidate shortlist are documented in `docs/WORKERS-AI-MODEL-INVENTORY.md`. The shortlist includes Granite 4.0 H Micro, GLM-4.7-Flash, SEA-LION v4 27B and GPT-OSS-20B. Their documented capabilities, context, zero-data-retention labels and reference prices are not live BOR AI measurements. No candidate is enabled by this audit; account access, request compatibility, billing, latency and Indonesian/English quality must be verified before runtime eligibility.
+
+## 11. Migration plan
 
 ### Phase A — Contract and tests
 
