@@ -92,6 +92,46 @@ function validateRoutingInputs(requirements, constraints) {
   }
 }
 
+function isNonEmptyString(value) {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function isStringArray(value) {
+  return Array.isArray(value) && value.every(isNonEmptyString);
+}
+
+function validNullableNonNegativeInteger(value) {
+  return value === null || (Number.isSafeInteger(value) && value >= 0);
+}
+
+function validNullableNonNegativeNumber(value) {
+  return value === null || (finiteNumber(value) && value >= 0);
+}
+
+function validModelMetadata(model) {
+  if (!model || typeof model !== "object" || Array.isArray(model)) return false;
+  if (!isNonEmptyString(model.id) || !isNonEmptyString(model.provider) ||
+      !isNonEmptyString(model.adapter)) return false;
+  if (!isStringArray(model.capabilities) || !isStringArray(model.regions) ||
+      !isStringArray(model.dataPolicies)) return false;
+  if (!validNullableNonNegativeInteger(model.contextWindowTokens) ||
+      !validNullableNonNegativeInteger(model.maxOutputTokens)) return false;
+  if (!validNullableNonNegativeNumber(model.inputCostPerMillionUsd) ||
+      !validNullableNonNegativeNumber(model.outputCostPerMillionUsd) ||
+      !validNullableNonNegativeNumber(model.p95LatencyMs)) return false;
+  if (model.reliability !== null &&
+      (!finiteNumber(model.reliability) || model.reliability < 0 || model.reliability > 1)) return false;
+  if (!model.qualityScores || typeof model.qualityScores !== "object" ||
+      Array.isArray(model.qualityScores)) return false;
+  if (Object.values(model.qualityScores).some((score) =>
+    !finiteNumber(score) || score < 0 || score > 1
+  )) return false;
+  if (model.external !== undefined && typeof model.external !== "boolean") return false;
+  if (model.approved !== undefined && typeof model.approved !== "boolean") return false;
+  if (model.status !== "enabled" && model.status !== "disabled") return false;
+  return true;
+}
+
 function isExternalProvider(model) {
   return model.external === true || model.provider !== "cloudflare-workers-ai";
 }
@@ -145,7 +185,7 @@ export function evaluateModelCandidates({
 
   for (const model of models) {
     const reject = (reason) => rejected.push({ modelId: model?.id || "unknown", reason });
-    if (!model || typeof model.id !== "string" || !model.id || typeof model.provider !== "string") {
+    if (!validModelMetadata(model)) {
       reject("invalid_model_metadata"); continue;
     }
     if (model.status !== "enabled") { reject("model_disabled"); continue; }
