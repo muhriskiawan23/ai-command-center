@@ -23,6 +23,7 @@ Public AI workspace with Google sign-in, temporary guest sessions, private per-a
 - An Email Draft Generator collects recipient, subject, purpose, key points, tone, and language, then prepares a structured prompt for Writer mode. It does not send email or connect to an email account; users review and send the result manually.\n- Answers and complete conversations can be printed or saved as PDF through the browser print dialog. The print view is generated locally from already-loaded chat content; no PDF service, external API, or additional server upload is used. Choose “Save as PDF” in the browser or system print destination.
 - An on-demand, accessible About BOR AI dialog describing the product, current capabilities, privacy controls, and official repository.
 - An embeddable BOR AI chat widget and public single-turn chat API with per-site API keys, exact origin allow-lists, per-key daily quotas, and immediate key revocation. API keys are hashed at rest and shown only once at creation. Requires additive migration `0009_public_api_keys.sql`; see `docs/PUBLIC-API.md`.
+- Optional Telegram bot webhook for private text chats. It reuses Workers AI, existing rate/daily limits, requires `TELEGRAM_BOT_TOKEN` and `TELEGRAM_WEBHOOK_SECRET` Worker secrets, and does not persist Telegram chat history. See `docs/TELEGRAM-BOT.md`.
 
 ## Architecture
 
@@ -43,7 +44,7 @@ Public AI workspace with Google sign-in, temporary guest sessions, private per-a
 | POST | `/api/feedback` | Save or update helpful/not-helpful feedback for an assistant answer owned by the signed-in user |
 | GET/POST | `/api/developer/keys` | List or create API keys for the signed-in account (secret shown only once) |
 | DELETE | `/api/developer/keys/:id` | Revoke an owned public API key |
-| POST | `/api/public/chat` | Public single-turn chat for allow-listed origins using a bearer API key |
+| POST | `/api/public/chat` | Public single-turn chat for allow-listed origins using a bearer API key |\n| POST | `/api/integrations/telegram/webhook` | Optional authenticated Telegram webhook (private text chats only) |
 | GET | `/api/config` | Public Google sign-in configuration |
 | GET | `/api/auth/nonce` | One-time sign-in nonce |
 | POST | `/api/auth/google` | Verify Google ID token and create a session |
