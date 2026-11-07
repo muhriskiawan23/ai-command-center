@@ -167,33 +167,44 @@ test("perintah ingat tidak menyimpan memori jika generasi AI gagal", async () =>
   const { alice } = users();
   await call(alice, "/api/memory/settings", { method: "PUT", body: { enabled: true } });
   app.control.aiFail = true;
-  const failed = await chat(alice, "Ingat bahwa aku suka kopi tanpa gula");
+  const failed = await chat(alice, "Ingat bahwa aku suka kopi tanpa gula", { language: "id" });
   assert.equal(failed.status, 502);
   assert.equal(app.db.sqlite.prepare("SELECT COUNT(*) n FROM user_memories").get().n, 0);
   assert.equal(app.db.sqlite.prepare("SELECT COUNT(*) n FROM messages").get().n, 0);
   app.control.aiFail = false;
-  const succeeded = await chat(alice, "Ingat bahwa aku suka kopi tanpa gula");
+  const succeeded = await chat(alice, "Ingat bahwa aku suka kopi tanpa gula", { language: "id" });
   assert.equal(succeeded.status, 200);
   assert.match((await succeeded.json()).response, /✓ Disimpan di memori/);
   assert.equal(app.db.sqlite.prepare("SELECT COUNT(*) n FROM user_memories").get().n, 1);
   await app.close();
 });
 
+test("notifikasi memori mengikuti bahasa chat yang dipilih", async () => {
+  const { app, call, chat, users } = await setup();
+  const { alice } = users();
+  let response = await chat(alice, "Ingat bahwa aku suka kopi", { language: "es" });
+  assert.match((await response.json()).response, /La memoria está desactivada/);
+  await call(alice, "/api/memory/settings", { method: "PUT", body: { enabled: true } });
+  response = await chat(alice, "Ingat bahwa aku suka kopi", { language: "ar" });
+  assert.match((await response.json()).response, /تم الحفظ في الذاكرة/);
+  await app.close();
+});
+
 test("perintah di chat: 'ingat bahwa ...' menyimpan + konfirmasi; mati/tamu/sensitif tidak menyimpan dan dijelaskan", async () => {
   const { app, call, chat, users } = await setup();
   const { alice } = users();
-  let body = await (await chat(alice, "Ingat bahwa aku suka kopi tanpa gula")).json();          // memori masih mati
+  let body = await (await chat(alice, "Ingat bahwa aku suka kopi tanpa gula", { language: "id" })).json();          // memori masih mati
   assert.match(body.response, /Memori sedang nonaktif/);
   assert.equal(app.db.sqlite.prepare("SELECT COUNT(*) n FROM user_memories").get().n, 0);
   await call(alice, "/api/memory/settings", { method: "PUT", body: { enabled: true } });
-  body = await (await chat(alice, "Ingat bahwa aku suka kopi tanpa gula")).json();
+  body = await (await chat(alice, "Ingat bahwa aku suka kopi tanpa gula", { language: "id" })).json();
   assert.match(body.response, /✓ Disimpan di memori: "aku suka kopi tanpa gula"$/);
   assert.deepEqual(app.db.sqlite.prepare("SELECT content FROM user_memories").all().map((r) => r.content), ["aku suka kopi tanpa gula"]);
   assert.equal(app.db.sqlite.prepare("SELECT COUNT(*) n FROM messages WHERE role = 'assistant' AND content LIKE '%Disimpan di memori%'").get().n, 1);
-  body = await (await chat(alice, "Ingat bahwa password bank saya abc123")).json();
+  body = await (await chat(alice, "Ingat bahwa password bank saya abc123", { language: "id" })).json();
   assert.match(body.response, /ℹ️ Tidak disimpan karena terlihat berisi data sensitif/);
   assert.equal(app.db.sqlite.prepare("SELECT COUNT(*) n FROM user_memories").get().n, 1);
-  body = await (await chat(null, "Ingat bahwa aku suka teh")).json();
+  body = await (await chat(null, "Ingat bahwa aku suka teh", { language: "id" })).json();
   assert.match(body.response, /hanya tersedia untuk akun Google/);
   assert.ok(!app.aiCalls.at(-1).messages.some((m) => m.role === "system" && m.content.includes("USER MEMORY")));
   await app.close();
@@ -221,7 +232,7 @@ test("tabel memori belum ada (migrasi 0003 belum jalan): chat tetap normal, API 
   const res = await call(alice, "/api/memory");
   assert.equal(res.status, 503); assert.equal((await res.json()).code, "memory_unavailable");
   assert.equal((await chat(alice, "Halo")).status, 200);
-  assert.equal((await (await chat(alice, "Ingat bahwa aku suka kopi")).json()).response.includes("nonaktif"), true);
+  assert.equal((await (await chat(alice, "Ingat bahwa aku suka kopi", { language: "id" })).json()).response.includes("nonaktif"), true);
   await app.close();
 });
 

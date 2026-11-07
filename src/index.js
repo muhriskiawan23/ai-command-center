@@ -109,6 +109,80 @@ function withResponseLanguage(env, language) {
   } } };
 }
 
+function localizedChatNotice(language, type, item = "") {
+  const locales = ["en", "id", "es", "fr", "de", "pt", "ja", "ko", "zh", "ar"];
+  const messages = {
+    memoryDisabled: [
+      "ℹ️ Memory is disabled, so this request was not saved. Enable it from the Memory menu.",
+      "ℹ️ Memori sedang nonaktif, jadi permintaan itu tidak disimpan. Aktifkan lewat menu Memori.",
+      "ℹ️ La memoria está desactivada, por lo que esta solicitud no se guardó. Actívala desde el menú Memoria.",
+      "ℹ️ La mémoire est désactivée ; cette demande n’a donc pas été enregistrée. Activez-la dans le menu Mémoire.",
+      "ℹ️ Der Speicher ist deaktiviert. Diese Anfrage wurde daher nicht gespeichert. Aktiviere ihn im Menü „Speicher“.",
+      "ℹ️ A memória está desativada, então esta solicitação não foi salva. Ative-a no menu Memória.",
+      "ℹ️ メモリが無効のため、このリクエストは保存されませんでした。メモリメニューから有効にしてください。",
+      "ℹ️ 메모리가 꺼져 있어 이 요청은 저장되지 않았습니다. 메모리 메뉴에서 활성화하세요.",
+      "ℹ️ 记忆功能已关闭，因此未保存此请求。请在“记忆”菜单中启用。",
+      "ℹ️ الذاكرة معطّلة، لذلك لم يتم حفظ هذا الطلب. فعّلها من قائمة الذاكرة."
+    ],
+    memoryGuest: [
+      "ℹ️ Memory is available only for Google accounts. Sign in, then enable it from the Memory menu.",
+      "ℹ️ Memori hanya tersedia untuk akun Google. Masuk dulu, lalu aktifkan lewat menu Memori.",
+      "ℹ️ La memoria solo está disponible para cuentas de Google. Inicia sesión y actívala desde el menú Memoria.",
+      "ℹ️ La mémoire est réservée aux comptes Google. Connectez-vous, puis activez-la dans le menu Mémoire.",
+      "ℹ️ Der Speicher ist nur für Google-Konten verfügbar. Melde dich an und aktiviere ihn im Menü „Speicher“.",
+      "ℹ️ A memória está disponível apenas para contas do Google. Entre e ative-a no menu Memória.",
+      "ℹ️ メモリはGoogleアカウントでのみ利用できます。ログインしてメモリメニューから有効にしてください。",
+      "ℹ️ 메모리는 Google 계정에서만 사용할 수 있습니다. 로그인한 다음 메모리 메뉴에서 활성화하세요.",
+      "ℹ️ 记忆功能仅适用于 Google 账户。请先登录，再从“记忆”菜单启用。",
+      "ℹ️ الذاكرة متاحة فقط لحسابات Google. سجّل الدخول ثم فعّلها من قائمة الذاكرة."
+    ],
+    memorySaved: [
+      "✓ Saved to memory: \"{item}\"", "✓ Disimpan di memori: \"{item}\"", "✓ Guardado en la memoria: \"{item}\"",
+      "✓ Enregistré dans la mémoire : \"{item}\"", "✓ Im Speicher gespeichert: \"{item}\"", "✓ Salvo na memória: \"{item}\"",
+      "✓ メモリに保存しました: \"{item}\"", "✓ 메모리에 저장됨: \"{item}\"", "✓ 已保存到记忆：\"{item}\"", "✓ تم الحفظ في الذاكرة: \"{item}\""
+    ],
+    memoryRejected: [
+      "ℹ️ Not saved because this may contain sensitive information. Rewrite it without sensitive data.",
+      "ℹ️ Tidak disimpan karena terlihat berisi data sensitif. Tulis ulang tanpa data sensitif.",
+      "ℹ️ No se guardó porque puede contener información sensible. Reescríbelo sin esos datos.",
+      "ℹ️ Non enregistré, car le contenu peut contenir des informations sensibles. Reformulez sans ces données.",
+      "ℹ️ Nicht gespeichert, da der Inhalt sensible Informationen enthalten könnte. Formuliere ihn ohne diese Daten neu.",
+      "ℹ️ Não foi salvo porque pode conter informações confidenciais. Reescreva sem esses dados.",
+      "ℹ️ 機密情報が含まれている可能性があるため保存されませんでした。該当情報を除いて書き直してください。",
+      "ℹ️ 민감한 정보가 포함되었을 수 있어 저장되지 않았습니다. 해당 정보를 제외하고 다시 작성하세요.",
+      "ℹ️ 由于内容可能包含敏感信息，未予保存。请删除相关信息后重写。",
+      "ℹ️ لم يتم الحفظ لاحتمال احتواء النص على معلومات حساسة. أعد صياغته دون تلك المعلومات."
+    ],
+    memorySaveFailed: [
+      "ℹ️ The answer was generated, but memory could not be saved. Try again from the Memory menu.",
+      "ℹ️ Jawaban berhasil dibuat, tetapi memori gagal disimpan. Coba simpan lagi lewat menu Memori.",
+      "ℹ️ La respuesta se generó, pero no se pudo guardar en la memoria. Inténtalo de nuevo desde el menú Memoria.",
+      "ℹ️ La réponse a été générée, mais l’enregistrement en mémoire a échoué. Réessayez depuis le menu Mémoire.",
+      "ℹ️ Die Antwort wurde erstellt, konnte aber nicht im Speicher abgelegt werden. Versuche es erneut über das Speichermenü.",
+      "ℹ️ A resposta foi gerada, mas não foi possível salvar na memória. Tente novamente pelo menu Memória.",
+      "ℹ️ 回答は生成されましたが、メモリに保存できませんでした。メモリメニューからもう一度お試しください。",
+      "ℹ️ 답변은 생성되었지만 메모리에 저장하지 못했습니다. 메모리 메뉴에서 다시 시도하세요.",
+      "ℹ️ 已生成回答，但无法保存到记忆。请在“记忆”菜单中重试。",
+      "ℹ️ تم إنشاء الإجابة، ولكن تعذّر حفظها في الذاكرة. حاول مرة أخرى من قائمة الذاكرة."
+    ],
+    saveWarning: [
+      "The answer was generated, but chat history could not be saved. Copy it before leaving the page.",
+      "Jawaban berhasil dibuat, tetapi riwayat gagal disimpan. Salin jawaban ini sebelum meninggalkan halaman.",
+      "La respuesta se generó, pero no se pudo guardar el historial del chat. Cópiala antes de salir de la página.",
+      "La réponse a été générée, mais l’historique n’a pas pu être enregistré. Copiez-la avant de quitter la page.",
+      "Die Antwort wurde erstellt, aber der Chatverlauf konnte nicht gespeichert werden. Kopiere sie, bevor du die Seite verlässt.",
+      "A resposta foi gerada, mas não foi possível salvar o histórico do chat. Copie-a antes de sair da página.",
+      "回答は生成されましたが、チャット履歴を保存できませんでした。ページを離れる前にコピーしてください。",
+      "답변은 생성되었지만 채팅 기록을 저장하지 못했습니다. 페이지를 떠나기 전에 복사하세요.",
+      "已生成回答，但无法保存聊天记录。离开页面前请复制回答。",
+      "تم إنشاء الإجابة، ولكن تعذّر حفظ سجل المحادثة. انسخ الإجابة قبل مغادرة الصفحة."
+    ]
+  };
+  const index = Math.max(0, locales.indexOf(language));
+  return (messages[type]?.[index] || messages[type]?.[0] || "").replace("{item}", item);
+}
+
+
 // ---- Daily usage limits (cost protection) -------------------------------------------------------------
 // Units per UTC day. A normal message costs 1; a multi-agent request (several model calls) costs MULTI_AGENT_UNITS.
 // Defaults can be overridden with the env vars DAILY_LIMIT_GUEST / DAILY_LIMIT_USER / DAILY_LIMIT_GLOBAL.
@@ -1400,6 +1474,7 @@ export default {
       const perCallMs = positiveMs(env.AI_CALL_TIMEOUT_MS, AI_CALL_TIMEOUT_DEFAULT_MS);
       const budgetMs = useMultiAgent ? positiveMs(env.AI_TOTAL_BUDGET_MS, AI_MULTI_AGENT_BUDGET_DEFAULT_MS) : perCallMs * 2;
       // Opt-in memory: only for signed-in users who switched it on. A failure here never blocks the chat.
+      const language = SUPPORTED_CHAT_LANGUAGES.has(body?.language) ? body.language : "en";
       let memoryNote = "";
       let memoryItems = [];
       let pendingRememberText = null;
@@ -1408,16 +1483,15 @@ export default {
         if (user && env.DB) {
           const memory = await getMemoryState(env, user.id);
           if (rememberText !== null) {
-            if (!memory.available || !memory.enabled) memoryNote = "ℹ️ Memori sedang nonaktif, jadi permintaan itu tidak disimpan. Aktifkan lewat menu Memori.";
+            if (!memory.available || !memory.enabled) memoryNote = localizedChatNotice(language, "memoryDisabled");
             else pendingRememberText = rememberText; // persist only after the AI has produced a successful answer
           }
           if (memory.available && memory.enabled) memoryItems = memory.items;
         } else if (!user && rememberText !== null) {
-          memoryNote = "ℹ️ Memori hanya tersedia untuk akun Google. Masuk dulu, lalu aktifkan lewat menu Memori.";
+          memoryNote = localizedChatNotice(language, "memoryGuest");
         }
       } catch (error) { console.error("Memory handling failed:", error); memoryNote = ""; memoryItems = []; }
       const memoryEnv = withSystemExtra(env, buildMemoryBlock(memoryItems));
-      const language = SUPPORTED_CHAT_LANGUAGES.has(body?.language) ? body.language : "en";
       const localizedEnv = withResponseLanguage(memoryEnv, language);
       const aiEnv = withAiDeadline(localizedEnv, Date.now() + budgetMs, request.signal);
       let pages = "";
@@ -1475,10 +1549,10 @@ export default {
         if (pendingRememberText !== null) {
           try {
             const saved = await addMemory(env, user.id, pendingRememberText);
-            memoryNote = saved.ok ? `✓ Disimpan di memori: "${saved.item.content}"` : `ℹ️ ${saved.error}`;
+            memoryNote = saved.ok ? localizedChatNotice(language, "memorySaved", saved.item.content) : localizedChatNotice(language, saved.code === "memory_rejected" ? "memoryRejected" : "memorySaveFailed");
           } catch (error) {
             console.error("Memory save failed:", error);
-            memoryNote = "ℹ️ Jawaban berhasil dibuat, tetapi memori gagal disimpan. Coba simpan lagi lewat menu Memori.";
+            memoryNote = localizedChatNotice(language, "memorySaveFailed");
           }
         }
         // Deterministic confirmation is appended only after the save outcome is known.
@@ -1501,7 +1575,7 @@ export default {
             }
             console.error("Chat persistence failed:", error);
             result.saved = false;
-            result.saveWarning = "Jawaban berhasil dibuat, tetapi riwayat gagal disimpan. Salin jawaban ini sebelum meninggalkan halaman.";
+            result.saveWarning = localizedChatNotice(language, "saveWarning");
           }
         } else result.saved = false;
         if (links.length) result.links = links;
