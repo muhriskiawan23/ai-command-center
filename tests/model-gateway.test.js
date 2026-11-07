@@ -168,45 +168,6 @@ test("cost and latency break ties when quality and reliability are equal", () =>
   assert.equal(selectModel({ task: "fast_chat", models: [slower, faster] }).model.id, "faster");
 });
 
-test("rejects malformed routing constraints instead of silently ignoring them", () => {
-  assert.throws(
-    () => evaluateModelCandidates({
-      task: "fast_chat", models: [candidate()], requirements: { inputTokens: "1000" }
-    }),
-    /requirements.inputTokens must be a finite non-negative number/
-  );
-  assert.throws(
-    () => evaluateModelCandidates({
-      task: "fast_chat", models: [candidate()], requirements: { capabilities: "vision" }
-    }),
-    /requirements.capabilities must be an array/
-  );
-  assert.throws(
-    () => evaluateModelCandidates({
-      task: "fast_chat", models: [candidate()], requirements: { minQualityScore: 1.5 }
-    }),
-    /minQualityScore must be between 0 and 1/
-  );
-  assert.throws(
-    () => evaluateModelCandidates({
-      task: "fast_chat", models: [candidate()], constraints: { deadlineMs: -1 }
-    }),
-    /constraints.deadlineMs must be a finite non-negative number/
-  );
-  assert.throws(
-    () => evaluateModelCandidates({
-      task: "fast_chat", models: [candidate()], constraints: { maxCostUsd: "0.01" }
-    }),
-    /constraints.maxCostUsd must be a finite non-negative number/
-  );
-  assert.throws(
-    () => evaluateModelCandidates({
-      task: "fast_chat", models: [candidate()], constraints: { approvedProviders: "provider" }
-    }),
-    /approvedProviders must be an array/
-  );
-});
-
 test("rejects disabled models and unknown task profiles", () => {
   const disabled = evaluateModelCandidates({
     task: "fast_chat", models: [candidate({ status: "disabled" })]
@@ -218,6 +179,12 @@ test("rejects disabled models and unknown task profiles", () => {
 
 
 test("rejects malformed routing limits instead of silently ignoring them", () => {
+  assert.throws(
+    () => evaluateModelCandidates({
+      task: "fast_chat", models: [candidate()], requirements: { inputTokens: "1000" }
+    }),
+    /requirements.inputTokens must be a non-negative safe integer/
+  );
   assert.throws(
     () => evaluateModelCandidates({
       task: "fast_chat", models: [candidate()], constraints: { deadlineMs: "1500" }
