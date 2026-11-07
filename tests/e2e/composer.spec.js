@@ -127,7 +127,9 @@ test.describe("INPUT — Enter = baris baru, tombol panah = kirim", () => {
   test("atribut keyboard mobile: enterkeyhint=enter dan petunjuk teks sesuai perilaku baru", async ({ page, app }) => {
     await enterGuest(page, app);
     await expect(page.locator("#prompt")).toHaveAttribute("enterkeyhint", "enter");
-    await expect(page.locator(".hint")).toContainText("Enter = baris baru");
+    const language = await page.locator("html").getAttribute("lang");
+    const expectedHint = language === "en" ? "Enter = new line" : "Enter = baris baru";
+    await expect(page.locator(".hint")).toContainText(expectedHint);
     expect(await page.locator("#chatForm").getAttribute("action")).toBeNull();   // tidak ada submit native ke server
   });
 });
