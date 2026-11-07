@@ -55,7 +55,7 @@ function safeGitHubDiagnosticMessage(value) {
   if (typeof value !== "string") return "Unknown GitHub API error";
   return value
     .replace(/(?:gh[ousr]_[A-Za-z0-9_]+|github_pat_[A-Za-z0-9_]+)/g, "[REDACTED]")
-    .replace(/[\\r\\n\\t]+/g, " ")
+    .replace(/[\r\n\t]+/g, " ")
     .slice(0, 240);
 }
 async function githubJson(url, token, init = {}) {
