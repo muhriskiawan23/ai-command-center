@@ -174,3 +174,22 @@ test("runtime localization covers action labels and attributes across all suppor
     expect(translated.direction).toBe(locale === "ar" ? "rtl" : "ltr");
   }
 });
+
+
+test("Arabic RTL positions the desktop sidebar on the right and opens the mobile drawer from the right", async ({ page, app }) => {
+  await enterGuest(page, app);
+  await page.evaluate(() => window.BORLocale.apply("ar"));
+  await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
+
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const desktopSidebar = await page.locator("#sidebar").boundingBox();
+  const desktopWorkspace = await page.locator("#workspace").boundingBox();
+  expect(desktopSidebar.x).toBeGreaterThan(desktopWorkspace.x);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.locator("#menuBtn").click();
+  await expect(page.locator("#sidebar")).toHaveClass(/open/);
+  const mobileSidebar = await page.locator("#sidebar").boundingBox();
+  expect(mobileSidebar.x).toBeGreaterThan(0);
+  expect(mobileSidebar.x + mobileSidebar.width).toBeLessThanOrEqual(390);
+});
