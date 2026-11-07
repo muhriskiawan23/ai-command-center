@@ -15,7 +15,7 @@ const $=id=>document.getElementById(id);
 
 /* ---------- 1. Helper (fungsi markdown/render pesan dipertahankan dari versi sebelumnya) ---------- */
 function id(){return Date.now().toString(36)+Math.random().toString(36).slice(2,8)}
-function toast(message){const el=$("toast");el.textContent=message;el.hidden=false;clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.hidden=true,2200)}
+function toast(message,duration=2200){const el=$("toast");el.textContent=message;el.hidden=false;clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.hidden=true,duration)}
 function escapeHTML(s){return String(s).replace(/[&<>\"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
   function markdown(input) {
     let src = String(input || "").replace(/\r\n?/g, "\n");
@@ -494,7 +494,7 @@ async function applyRoute(){
     if(conversations.some(c=>c.id===r.id))ok=await showChat(r.id);
     else if(state===AppState.AUTH)ok=await openRemoteChat(r.id);
     if(ok||ok===null)return;
-    toast("Chat tidak ditemukan");replaceRoute({name:"new"});
+    toast("Chat tidak ditemukan",8000);replaceRoute({name:"new"});
   }
   resetChatView();renderHistory();
 }
