@@ -86,7 +86,7 @@ for (const [command, expected] of [
     deps.enforceDailyLimits = async () => { quotaCalled = true; return { ok: true, day: "2026-11-07", charges: [] }; };
     const result = await handleTelegramWebhook(request(update({ text: command })), env, deps);
     assert.equal(result.status, 200);
-    assert.match(sent[0].text, expected);
+    assert.ok(sent[0].text.includes(expected));
     assert.equal(aiCalled, false);
     assert.equal(quotaCalled, false);
   });
