@@ -22,6 +22,10 @@ test("chat routes through the adaptive gateway and reports the actual selected m
     assert.equal(body.agentModels[0].agentId, "coordinator");
     assert.equal(body.agentModels[0].taskProfile, "fast_chat");
     assert.equal(body.agentModels[0].calls, 1);
+    assert.equal(body.agentModels[0].outcome, "success");
+    assert.equal(body.agentModels[0].retryCount, 0);
+    assert.equal(typeof body.agentModels[0].durationMs, "number");
+    assert.ok(body.agentModels[0].durationMs >= 0);
     assert.equal(app.aiCalls.length, 1);
     assert.deepEqual(app.aiModelCalls, ["@cf/meta/llama-3.3-70b-instruct-fp8-fast"]);
   } finally {
@@ -45,6 +49,9 @@ test("multi-agent chat records the selected model for every specialist call", as
     assert.ok(body.agentModels.some((item) => item.agentId === "writer" && item.taskProfile === "deep_reasoning"));
     assert.equal(body.modelsUsed.length, 1);
     assert.equal(body.model, "@cf/meta/llama-3.3-70b-instruct-fp8-fast");
+    assert.ok(body.agentModels.every((item) => item.outcome === "success"));
+    assert.ok(body.agentModels.every((item) => Number.isFinite(item.durationMs) && item.durationMs >= 0));
+    assert.ok(body.agentModels.every((item) => item.retryCount >= 0));
     assert.ok(app.aiModelCalls.length >= 3);
     assert.ok(app.aiModelCalls.every((model) => model === "@cf/meta/llama-3.3-70b-instruct-fp8-fast"));
   } finally {
