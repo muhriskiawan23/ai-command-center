@@ -158,7 +158,13 @@ test("runtime localization covers action labels and attributes across all suppor
       document.body.append(button);
       return new Promise((resolve) => {
         requestAnimationFrame(() => requestAnimationFrame(() => {
-          const result = { text: button.textContent, title: button.title, direction: document.documentElement.dir };
+          const result = {
+            text: button.textContent,
+            title: button.title,
+            direction: document.documentElement.dir,
+            service: window.BORLocale.translate("Layanan tidak aktif"),
+            github: window.BORLocale.translate("Hubungkan akun GitHub")
+          };
           button.remove();
           resolve(result);
         }));
@@ -172,6 +178,13 @@ test("runtime localization covers action labels and attributes across all suppor
       expect(translated.title).not.toBe("Ekspor chat");
     }
     expect(translated.direction).toBe(locale === "ar" ? "rtl" : "ltr");
+    if (locale === "id") {
+      expect(translated.service).toBe("Layanan tidak aktif");
+      expect(translated.github).toBe("Hubungkan akun GitHub");
+    } else {
+      expect(translated.service).not.toBe("Layanan tidak aktif");
+      expect(translated.github).not.toBe("Hubungkan akun GitHub");
+    }
   }
 });
 
