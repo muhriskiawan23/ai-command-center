@@ -53,7 +53,7 @@ function estimateCostUsd(model, inputTokens, outputTokens) {
   return (inputTokens * model.inputCostPerMillionUsd + outputTokens * model.outputCostPerMillionUsd) / 1_000_000;
 }
 
-function scoreCandidate(model, task) {
+function scoreCandidate(model, task, inputTokens = 1000, outputTokens = 1000) {
   const quality = model.qualityScores?.[task];
   const reliability = model.reliability;
   const latency = model.p95LatencyMs;
@@ -62,7 +62,7 @@ function scoreCandidate(model, task) {
   const qualityScore = finiteNumber(quality) ? Math.max(0, Math.min(1, quality)) : 0.5;
   const reliabilityScore = finiteNumber(reliability) ? Math.max(0, Math.min(1, reliability)) : 0.5;
   const latencyScore = finiteNumber(latency) && latency >= 0 ? 1 / (1 + latency / 1000) : 0.5;
-  const estimatedCost = estimateCostUsd(model, 1000, 1000);
+  const estimatedCost = estimateCostUsd(model, inputTokens, outputTokens);
   const costScore = estimatedCost !== null && estimatedCost >= 0 ? 1 / (1 + estimatedCost * 1000) : 0.5;
   return {
     score: qualityScore * 0.6 + reliabilityScore * 0.2 + latencyScore * 0.1 + costScore * 0.1,
@@ -135,7 +135,7 @@ export function evaluateModelCandidates({
       reject("quality_floor_unverified_or_not_met"); continue;
     }
 
-    const scored = scoreCandidate(model, task);
+    const scored = scoreCandidate(model, task, requirements.inputTokens, requirements.outputTokens);
     eligible.push({ model, ...scored });
   }
 
