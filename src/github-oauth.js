@@ -43,15 +43,32 @@ async function encryptionKey(env) {
     throw tokenEncryptionError("crypto_import_failed");
   }
 }
+function safeCryptoErrorSuffix(error) {
+  const names = {
+    InvalidAccessError: "invalid_access",
+    OperationError: "operation",
+    DataError: "data",
+    NotSupportedError: "not_supported",
+    QuotaExceededError: "quota_exceeded",
+    TypeError: "type"
+  };
+  return names[error?.name] || "unknown";
+}
 async function encryptToken(value, env) {
   const key = await encryptionKey(env);
+  let iv;
   try {
-    const iv = crypto.getRandomValues(new Uint8Array(12));
-    const encrypted = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, new TextEncoder().encode(value));
-    return base64Url(iv) + "." + base64Url(new Uint8Array(encrypted));
-  } catch {
-    throw tokenEncryptionError("crypto_encrypt_failed");
+    iv = crypto.getRandomValues(new Uint8Array(12));
+  } catch (error) {
+    throw tokenEncryptionError("crypto_random_failed_" + safeCryptoErrorSuffix(error));
   }
+  let encrypted;
+  try {
+    encrypted = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, new TextEncoder().encode(value));
+  } catch (error) {
+    throw tokenEncryptionError("crypto_encrypt_failed_" + safeCryptoErrorSuffix(error));
+  }
+  return base64Url(iv) + "." + base64Url(new Uint8Array(encrypted));
 }
 async function decryptToken(value, env) {
   const [ivPart, dataPart, extra] = String(value || "").split(".");
@@ -238,7 +255,13 @@ export async function handleGitHubOAuthRoute(request, env, url, { getSession, sa
     return new Response(null, { status: 302, headers: { Location: "/?github=connected", "Set-Cookie": clearStateCookie(), "Cache-Control": "no-store" } });
     } catch (error) {
       // Log only the stage and error class; never log OAuth codes, state, tokens, or provider payloads.
-      const safeEncryptionCodes = new Set(["key_missing", "key_encoding_invalid", "key_length_invalid", "crypto_import_failed", "crypto_encrypt_failed"]);
+      const safeEncryptionCodes = new Set([
+        "key_missing", "key_encoding_invalid", "key_length_invalid", "crypto_import_failed",
+        "crypto_random_failed_unknown", "crypto_random_failed_type", "crypto_random_failed_quota_exceeded",
+        "crypto_encrypt_failed_unknown", "crypto_encrypt_failed_invalid_access", "crypto_encrypt_failed_operation",
+        "crypto_encrypt_failed_data", "crypto_encrypt_failed_not_supported", "crypto_encrypt_failed_quota_exceeded",
+        "crypto_encrypt_failed_type"
+      ]);
       const encryptionCode = callbackStage === "token_encrypt_access" || callbackStage === "token_encrypt_refresh"
         ? (safeEncryptionCodes.has(error?.code) ? "_" + error.code : "")
         : "";
