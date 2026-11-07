@@ -164,7 +164,8 @@ export async function handleGitHubOAuthRoute(request, env, url, { getSession, sa
       return fail("token_" + providerError);
     }
     const profile = await githubJson(GITHUB_API + "/user", tokens.access_token);
-    if (profile.error || !Number.isSafeInteger(profile.data.id) || typeof profile.data.login !== "string") return fail("profile");
+    if (profile.error) return fail("profile_http_" + (profile.status || 502));
+    if (!Number.isSafeInteger(profile.data?.id) || typeof profile.data?.login !== "string") return fail("profile_invalid");
     const encryptedAccess = await encryptToken(tokens.access_token, env);
     const encryptedRefresh = typeof tokens.refresh_token === "string" ? await encryptToken(tokens.refresh_token, env) : null;
     const accessExpires = now + Math.max(60, Number(tokens.expires_in) || 28800);
