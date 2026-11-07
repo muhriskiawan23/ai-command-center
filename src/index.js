@@ -521,6 +521,9 @@ async function runAgent(env, agentId, userMessage, context = "", history = [], p
 
   const taskProfile = taskProfileForAgent(agentId);
   const selection = selectModel({ task: taskProfile });
+  const requestId = Array.isArray(env.MODEL_TRACE)
+    ? (env.MODEL_TRACE.requestId ||= crypto.randomUUID())
+    : crypto.randomUUID();
   const traceEntry = {
     agentId,
     taskProfile,
@@ -542,20 +545,27 @@ async function runAgent(env, agentId, userMessage, context = "", history = [], p
     traceEntry.durationMs = durationMs;
     traceEntry.retryCount = Math.max(0, traceEntry.attempts.length - 1);
     // Structured operational metadata only. Never log prompts, responses, user IDs or provider payloads.
-    console.log("BOR_AI_MODEL_TELEMETRY", JSON.stringify({
-      event: "model_agent_call",
-      agentId: traceEntry.agentId,
-      taskProfile: traceEntry.taskProfile,
-      provider: traceEntry.provider,
-      adapter: traceEntry.adapter,
-      modelId: traceEntry.modelId,
-      policyVersion: traceEntry.policyVersion,
-      outcome: traceEntry.outcome,
-      durationMs: traceEntry.durationMs,
-      attempts: traceEntry.attempts.length,
-      retryCount: traceEntry.retryCount,
-      failureType: traceEntry.failureType || null
-    }));
+    try {
+      console.log({
+        event: "BOR_AI_MODEL_TELEMETRY",
+        schemaVersion: 1,
+        requestId,
+        agentId: traceEntry.agentId,
+        taskProfile: traceEntry.taskProfile,
+        provider: traceEntry.provider,
+        adapter: traceEntry.adapter,
+        modelId: traceEntry.modelId,
+        policyVersion: traceEntry.policyVersion,
+        outcome: traceEntry.outcome,
+        durationMs: traceEntry.durationMs,
+        attempts: traceEntry.attempts.length,
+        retryCount: traceEntry.retryCount,
+        attemptOutcomes: traceEntry.attempts.map((attempt) => attempt.outcome),
+        failureType: traceEntry.failureType || null
+      });
+    } catch {
+      // Observability is best-effort and must never change the model result.
+    }
   };
 
   const generate = async (extraInstruction = "") => {
