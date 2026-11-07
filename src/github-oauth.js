@@ -63,6 +63,7 @@ async function githubJson(url, token, init = {}) {
     ...init,
     headers: {
       Accept: "application/vnd.github+json",
+      "User-Agent": "BOR-AI",
       Authorization: "Bearer " + token,
       "X-GitHub-Api-Version": "2022-11-28",
       ...(init.headers || {})
