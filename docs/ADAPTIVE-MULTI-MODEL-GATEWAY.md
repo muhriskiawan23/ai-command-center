@@ -2,7 +2,7 @@
 
 **Decision:** Adaptive Multi-Model is the default routing strategy.  
 **Status:** Architecture specification plus implemented runtime gateway (PR #94, deployed). Phase A/B and one-provider adaptive routing are active; no external provider adapter is enabled.  
-**Compatibility baseline:** `main` at `c64b8fdfdf5c2079ccfd242a43dc2c735496532b`.
+**Compatibility baseline:** `main` at `a14e2482584f266da4206a796432e64725ee62d8`.
 
 ## 1. Repository audit and current baseline
 
