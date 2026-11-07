@@ -2,7 +2,7 @@
 
 **Decision:** Adaptive Multi-Model is the default routing strategy.  
 **Status:** Architecture specification plus implemented runtime gateway (PR #94, deployed). Phase A/B and one-provider adaptive routing are active; no external provider adapter is enabled.  
-**Compatibility baseline:** `main` at `c64b8fdfdf5c2079ccfd242a43dc2c735496532b`.
+**Compatibility baseline:** `main` at `a14e2482584f266da4206a796432e64725ee62d8`.
 
 ## 1. Repository audit and current baseline
 
@@ -13,7 +13,7 @@ Verified in `main` at the baseline SHA above:
 - `src/model-gateway.js` defines versioned task profiles, validates model metadata and routing constraints, applies hard eligibility gates, and ranks eligible candidates.
 - The existing Workers AI model `@cf/meta/llama-3.3-70b-instruct-fp8-fast` is the only eligible production candidate. No external provider credentials or adapters are active.
 - `runAgent()` routes specialist calls through the gateway; task profiles are mapped by agent role.
-- Web chat, Public API and Telegram share the gateway path and expose actual model trace metadata.
+- Web chat returns actual model trace metadata; Public API returns it in its response; Telegram shares the gateway path and emits internal structured telemetry without exposing model metadata in the chat message.
 - Public API handling was corrected to preserve the string response returned by `runAgent()` and include model metadata.
 - Existing timeout/cancellation, memory, locale, quota, output validation/retry and persistence behavior remain part of the request path.
 - PDF conversion uses the separate `env.AI.toMarkdown()` binding and remains outside chat-model routing.
