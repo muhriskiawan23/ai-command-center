@@ -95,6 +95,17 @@ export async function handleGitHubReadRoute(request, env, url, { fetcher = fetch
   if (context.error) return json({ error: context.error }, 400);
 
   const { owner, repo, ref, path } = context;
+  const limiter = env.GITHUB_LIMITER || env.CHAT_LIMITER;
+  if (limiter?.limit) {
+    try {
+      const ip = request.headers.get("CF-Connecting-IP") || "unknown-client";
+      const rate = await limiter.limit({ key: `github:${ip}` });
+      if (!rate?.success) return json({ error: "Terlalu banyak permintaan GitHub. Coba lagi sebentar." }, 429, { "Retry-After": "60" });
+    } catch (error) {
+      console.error("GitHub Reader rate limiter failed:", error);
+      return json({ error: "Pembatasan permintaan GitHub sedang bermasalah." }, 503);
+    }
+  }
   const route = url.pathname;
   let endpoint;
   let transform;
