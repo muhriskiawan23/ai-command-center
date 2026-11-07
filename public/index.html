@@ -67,6 +67,7 @@
 <button class="side-action" id="openUsage" type="button" aria-expanded="false">◷ <span>Penggunaan</span></button>
 <section class="usage-panel" id="usagePanel" aria-label="Penggunaan harian" hidden><div class="usage-heading"><strong>Penggunaan hari ini</strong><button class="usage-refresh" id="refreshUsage" type="button" aria-label="Muat ulang penggunaan">↻</button></div><p class="usage-summary" id="usageSummary" role="status">Belum dimuat</p><div class="usage-track" aria-hidden="true"><span id="usageFill"></span></div><p class="usage-remaining" id="usageRemaining"></p><p class="usage-reset" id="usageReset"></p><p class="usage-error" id="usageError" role="alert" hidden></p><p class="usage-note">1 unit untuk pesan biasa; 3 unit untuk permintaan multi-agent. Ini bukan estimasi biaya tagihan.</p></section>
 <button class="side-action" id="openIntegrations" type="button">⌘ <span>Integrasi</span><span class="integration-indicator" id="sidebarGithubIndicator" aria-label="Status GitHub belum diperiksa"></span></button>
+<button class="side-action" id="openGithubRepos" type="button" disabled>⌘ <span>GitHub Repositories</span></button>
 <button class="side-action" id="openMemory" type="button">♧ <span>Memori</span></button>
 <button class="side-action" id="about" type="button">ⓘ <span>Tentang BOR AI</span></button>
 <button class="side-action" id="clearHistory" type="button">⌫ <span>Hapus semua riwayat</span></button>
@@ -90,6 +91,27 @@
 </main>
 </div>
 <dialog class="integrations-dialog" id="integrationsDialog" aria-labelledby="integrationsTitle"><div class="integrations-inner"><header class="integrations-header"><div><h2 id="integrationsTitle">Integrasi</h2><p>Kelola koneksi layanan eksternal BOR AI.</p></div><button class="integrations-close" id="integrationsClose" type="button" aria-label="Tutup integrasi">✕</button></header><section class="integration-card" aria-label="Koneksi GitHub"><div class="integration-card-heading"><span class="github-mark" aria-hidden="true">GH</span><div><strong>GitHub</strong><small>Repository, perubahan kode, commit, dan deployment</small></div><span class="github-status-dot" id="githubStatusDot" aria-hidden="true"></span></div><p class="github-connect-copy" id="githubConnectionMessage">Hubungkan GitHub untuk membaca repository dan mengelola perubahan dengan izinmu.</p><p class="integration-status" id="githubConnectionStatus" role="status">Periksa koneksi akun</p><button class="github-connect-button" id="githubConnect" type="button">Hubungkan akun GitHub</button><button class="github-disconnect-button" id="githubDisconnect" type="button" hidden>Putuskan koneksi</button></section><p class="integration-note">Akses repository mengikuti izin yang kamu berikan melalui GitHub. BOR AI tidak melakukan perubahan tanpa persetujuanmu.</p></div></dialog>
+<dialog class="github-repos-dialog" id="githubReposDialog" aria-labelledby="githubReposTitle">
+  <div class="github-repos-inner">
+    <header class="github-repos-header">
+      <div><h2 id="githubReposTitle">GitHub Repositories</h2><p id="githubReposSummary">Repository yang dapat diakses melalui instalasi BOR AI.</p></div>
+      <button class="github-repos-close" id="githubReposClose" type="button" aria-label="Tutup repository">✕</button>
+    </header>
+    <div class="github-repos-toolbar">
+      <label class="sr-only" for="githubRepoSearch">Cari repository</label>
+      <input id="githubRepoSearch" type="search" placeholder="Cari nama repository..." autocomplete="off">
+      <label class="sr-only" for="githubRepoVisibility">Filter visibilitas</label>
+      <select id="githubRepoVisibility"><option value="all">Semua</option><option value="public">Public</option><option value="private">Private</option></select>
+      <button id="githubReposRefresh" type="button">↻</button>
+    </div>
+    <p class="github-repos-status" id="githubReposStatus" role="status">Memuat repository…</p>
+    <div class="github-repos-layout">
+      <nav class="github-repos-list" id="githubReposList" aria-label="Daftar repository"></nav>
+      <section class="github-repo-detail" id="githubRepoDetail" aria-live="polite"><p>Pilih repository untuk melihat detailnya.</p></section>
+    </div>
+    <p class="github-repos-note">BOR AI hanya menampilkan repository yang dapat diakses melalui GitHub App. Membuka repository tidak mengubah kode.</p>
+  </div>
+</dialog>
 <!-- Tentang BOR AI: native dialog agar aksesibel dan tidak mengganggu sebelum diminta -->
 <dialog class="about-dialog" id="aboutDialog" aria-labelledby="aboutTitle" aria-describedby="aboutIntro">
   <div class="about-dialog-inner">
