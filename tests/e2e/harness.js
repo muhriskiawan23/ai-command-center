@@ -74,7 +74,7 @@ export async function startHarness({ port = 0, googleClientId = "test-client.app
       const chunks = [];
       for await (const c of req) chunks.push(c);
       const base = `http://${req.headers.host}`;
-      const loginMatch = /^\\/__test\\/login\\?token=([\\w-]+)$/.exec(req.url);
+      const loginMatch = /^\/__test\/login\?token=([\w-]+)$/.exec(req.url);
       if (loginMatch) { res.writeHead(204, { "set-cookie": `__Host-borai_session=${loginMatch[1]}; Path=/; HttpOnly; Secure; SameSite=Lax` }); res.end(); return; }
       const requestController = new AbortController();
       req.on("aborted", () => requestController.abort());
