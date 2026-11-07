@@ -7,10 +7,10 @@ import http from "node:http";
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { extname, join } from "node:path";
 import { createHash, randomBytes } from "node:crypto";
-import { DatabaseSync } from "node:sqlite";
 import worker from "../../src/index.js";
 
 const ROOT = new URL("../../", import.meta.url).pathname;
+const PUBLIC_ROOT = join(ROOT, "public");
 const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon", ".webmanifest": "application/manifest+json" };
 
 export function createD1() {
@@ -47,7 +47,7 @@ export function seedConversation(db, { id, userId, title, updatedAt, messages = 
 export async function startHarness({ port = 0, googleClientId = "test-client.apps.googleusercontent.com", aiDelayMs = 0, chatLimit = 0, extraEnv = {} } = {}) {
   const db = createD1();
   const aiCalls = [];
-  const control = { aiFail: false, aiText: null, aiHang: false };   // ubah dari test: control.aiFail = true membuat AI melempar error
+  const control = { aiFail: false, aiText: null, aiHang: false };
   const limiterHits = new Map();
   const env = {
     DB: db,
@@ -55,33 +55,46 @@ export async function startHarness({ port = 0, googleClientId = "test-client.app
     GOOGLE_CLIENT_ID: googleClientId || undefined,
     AI: { async run(_model, options) { if (control.aiFail) throw new Error("AI dimatikan oleh test"); if (control.aiHang) await new Promise(() => {}); aiCalls.push(options); if (aiDelayMs) await new Promise((r) => setTimeout(r, aiDelayMs)); const asked = options.messages.find((m) => m.role === "user")?.content ?? ""; if (control.aiText) return { response: control.aiText };
       return { response: `Balasan uji untuk pesan Anda: "${String(asked).slice(0, 60)}". Ini jawaban deterministik dari stub AI untuk pengujian antarmuka.\nJawaban sengaja dibuat cukup panjang dan berisi kalimat lengkap agar lolos pemeriksaan kualitas agent pada alur multi-agent.` }; } },
-    // Rate limiter tiruan: maksimal `chatLimit` permintaan per key (0 = tanpa pembatasan).
     ...(chatLimit ? { CHAT_LIMITER: { async limit({ key }) { const n = (limiterHits.get(key) || 0) + 1; limiterHits.set(key, n); return { success: n <= chatLimit }; } } } : {}),
     ASSETS: {
       async fetch(request) {
-        let path = new URL(request.url).pathname; if (path === "/") path = "/index.html";
-        const file = join(ROOT, "public", path);
-        if (!file.startsWith(join(ROOT, "public")) || !existsSync(file)) return new Response("not found", { status: 404 });
+        let path = new URL(request.url).pathname;
+        if (path === "/") path = "/index.html";
+        const file = join(PUBLIC_ROOT, path.replace(/^\/+/, ""));
+        if (!file.startsWith(PUBLIC_ROOT + "/") || !existsSync(file)) {
+          console.error("[E2E HARNESS] Asset not found:", path, "->", file);
+          return new Response("not found", { status: 404 });
+        }
         return new Response(readFileSync(file), { headers: { "Content-Type": MIME[extname(file)] || "application/octet-stream" } });
       }
     }
   };
   const server = http.createServer(async (req, res) => {
-    const chunks = []; for await (const c of req) chunks.push(c);
-    const base = `http://${req.headers.host}`;
-    const loginMatch = /^\/__test\/login\?token=([\w-]+)$/.exec(req.url); // khusus test: mensimulasikan hasil login sukses lewat respons Set-Cookie nyata
-    if (loginMatch) { res.writeHead(204, { "set-cookie": `__Host-borai_session=${loginMatch[1]}; Path=/; HttpOnly; Secure; SameSite=Lax` }); res.end(); return; }
-    const requestController = new AbortController();
-    req.on("aborted", () => requestController.abort());
-    res.on("close", () => { if (!res.writableEnded) requestController.abort(); });
-    const request = new Request(base + req.url, { method: req.method, headers: req.headers, body: ["GET", "HEAD"].includes(req.method) ? undefined : Buffer.concat(chunks), signal: requestController.signal });
-    const response = await worker.fetch(request, env);
-    const headers = {}; response.headers.forEach((v, k) => { headers[k] = v; });
-    const cookies = response.headers.getSetCookie?.() || []; if (cookies.length) headers["set-cookie"] = cookies;
-    res.writeHead(response.status, headers); res.end(Buffer.from(await response.arrayBuffer()));
+    try {
+      const chunks = [];
+      for await (const c of req) chunks.push(c);
+      const base = `http://${req.headers.host}`;
+      const loginMatch = /^\\/__test\\/login\\?token=([\\w-]+)$/.exec(req.url);
+      if (loginMatch) { res.writeHead(204, { "set-cookie": `__Host-borai_session=${loginMatch[1]}; Path=/; HttpOnly; Secure; SameSite=Lax` }); res.end(); return; }
+      const requestController = new AbortController();
+      req.on("aborted", () => requestController.abort());
+      res.on("close", () => { if (!res.writableEnded) requestController.abort(); });
+      const request = new Request(base + req.url, { method: req.method, headers: req.headers, body: ["GET", "HEAD"].includes(req.method) ? undefined : Buffer.concat(chunks), signal: requestController.signal });
+      const response = await worker.fetch(request, env);
+      const headers = {};
+      response.headers.forEach((v, k) => { headers[k] = v; });
+      const cookies = response.headers.getSetCookie?.() || [];
+      if (cookies.length) headers["set-cookie"] = cookies;
+      res.writeHead(response.status, headers);
+      res.end(Buffer.from(await response.arrayBuffer()));
+    } catch (error) {
+      console.error("[E2E HARNESS] Worker request failed:", req.method, req.url, error?.stack || error);
+      if (!res.headersSent) res.writeHead(500, { "content-type": "text/plain; charset=utf-8" });
+      if (!res.writableEnded) res.end("E2E harness request failed");
+    }
   });
   await new Promise((r) => server.listen(port, r));
-  server.unref(); // kegagalan assert di test tidak boleh menahan proses tetap hidup
-  const url = `http://localhost:${server.address().port}`; // cookie __Host- hanya diterima Chromium di localhost
+  server.unref();
+  const url = `http://localhost:${server.address().port}`;
   return { url, db, env, aiCalls, control, limiterHits, close: () => new Promise((r) => { server.close(r); server.closeAllConnections?.(); }) };
 }
