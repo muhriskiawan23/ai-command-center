@@ -202,6 +202,10 @@ test("Arabic RTL positions the desktop sidebar on the right and opens the mobile
   await page.setViewportSize({ width: 390, height: 844 });
   await page.locator("#menuBtn").click();
   await expect(page.locator("#sidebar")).toHaveClass(/open/);
+  // The drawer animates for 200ms; wait for the CSS transition before measuring its final geometry.
+  await page.locator("#sidebar").evaluate(async (element) => {
+    await Promise.all(element.getAnimations().map((animation) => animation.finished));
+  });
   const mobileSidebar = await page.locator("#sidebar").boundingBox();
   const layoutViewportWidth = await page.evaluate(() => window.innerWidth);
   expect(mobileSidebar.x).toBeGreaterThanOrEqual(0);
