@@ -7,6 +7,7 @@ import { handleDeveloperKeysRoute, handlePublicChatRoute } from "./widget-api.js
 import { handleTelegramWebhook } from "./telegram.js";
 import { handleGitHubReadRoute } from "./github-reader.js";
 import { handleGitHubOAuthRoute } from "./github-oauth.js";
+import { selectModel, taskProfileForAgent, summarizeModelTrace } from "./model-gateway.js";
 
 const MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 const MAX_REQUEST_BYTES = 64 * 1024;
@@ -518,14 +519,34 @@ async function runAgent(env, agentId, userMessage, context = "", history = [], p
     return true;
   }).join("\n").trim();
 
-  const generate = (extraInstruction = "") => env.AI.run(MODEL, {
-    messages: extraInstruction
-      ? [...messages, { role: "user", content: extraInstruction }]
-      : messages,
-    max_tokens: tokenLimits[agentId] || 700,
-    temperature: 0.4,
-    repetition_penalty: 1.1
-  });
+  const taskProfile = taskProfileForAgent(agentId);
+  const selection = selectModel({ task: taskProfile });
+  const traceEntry = {
+    agentId,
+    taskProfile,
+    provider: selection.model.provider,
+    adapter: selection.model.adapter,
+    modelId: selection.model.id,
+    policyVersion: selection.policyVersion,
+    evidence: selection.evidence,
+    calls: 0
+  };
+  if (Array.isArray(env.MODEL_TRACE)) env.MODEL_TRACE.push(traceEntry);
+
+  const generate = (extraInstruction = "") => {
+    if (selection.model.adapter !== "workers-ai") {
+      throw new Error(`Unsupported model adapter: ${selection.model.adapter}`);
+    }
+    traceEntry.calls += 1;
+    return env.AI.run(selection.model.id, {
+      messages: extraInstruction
+        ? [...messages, { role: "user", content: extraInstruction }]
+        : messages,
+      max_tokens: tokenLimits[agentId] || 700,
+      temperature: 0.4,
+      repetition_penalty: 1.1
+    });
+  };
 
   let result = await generate();
   let response = result?.response ?? result?.result?.response ?? "";
@@ -1359,7 +1380,7 @@ export default {
       catch (error) { console.error("Developer key request failed:", error); return json({ error: "Pengelolaan API key gagal diproses." }, 503); }
     }
     if (url.pathname === "/api/public/chat") {
-      try { return await handlePublicChatRoute(request, env, { AGENTS, MODEL, runAgent, withAiDeadline, json, readJsonRequest, CHAT_LIMITER: env.CHAT_LIMITER }); }
+      try { return await handlePublicChatRoute(request, env, { AGENTS, MODEL, runAgent, withAiDeadline, summarizeModelTrace, json, readJsonRequest, CHAT_LIMITER: env.CHAT_LIMITER }); }
       catch (error) { console.error("Public API request failed:", error); return json({ error: "Public API gagal diproses." }, 503); }
     }
     if (url.pathname === "/api/integrations/telegram/webhook") {
@@ -1507,7 +1528,9 @@ export default {
           memoryNote = localizedChatNotice(language, "memoryGuest");
         }
       } catch (error) { console.error("Memory handling failed:", error); memoryNote = ""; memoryItems = []; }
-      const memoryEnv = withSystemExtra(env, buildMemoryBlock(memoryItems));
+      const modelTrace = [];
+      const requestEnv = { ...env, MODEL_TRACE: modelTrace };
+      const memoryEnv = withSystemExtra(requestEnv, buildMemoryBlock(memoryItems));
       const localizedEnv = withResponseLanguage(memoryEnv, language);
       const aiEnv = withAiDeadline(localizedEnv, Date.now() + budgetMs, request.signal);
       let pages = "";
@@ -1533,14 +1556,15 @@ export default {
       if (pdfContext || spreadsheetContext || presentationContext) pages = [pages, pdfContext, spreadsheetContext, presentationContext].filter(Boolean).join("\n\n");
       try {
         let result;
-        if (useMultiAgent) result = { ...await runMultiAgent(aiEnv, message, history, pages), model: MODEL };
+        if (useMultiAgent) result = { ...await runMultiAgent(aiEnv, message, history, pages) };
         else if (agentId === "coordinator") {
           const response = await runAgent(aiEnv, "coordinator", message, "", history, pages);
-          result = { agent: AGENTS.coordinator.name, model: MODEL, workflow: "single-agent", agentsUsed: [AGENTS.coordinator.name], response };
+          result = { agent: AGENTS.coordinator.name, workflow: "single-agent", agentsUsed: [AGENTS.coordinator.name], response };
         } else {
           const response = await runAgent(aiEnv, agentId, message, "", history, pages);
-          result = { agent: AGENTS[agentId].name, model: MODEL, workflow: "single-agent", response };
+          result = { agent: AGENTS[agentId].name, workflow: "single-agent", response };
         }
+        Object.assign(result, summarizeModelTrace(modelTrace));
         throwIfCancelled(request.signal);
         // Enforce citation integrity against successful fetches; prompts alone are not a security boundary.
         if (links.length) {
