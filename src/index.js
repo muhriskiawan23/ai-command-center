@@ -1223,8 +1223,22 @@ export default {
         if (oauthResponse) return oauthResponse;
         return await handleGitHubReadRoute(request, env, url, { fetcher: env.GITHUB_FETCHER || fetch, json });
       } catch (error) {
-        console.error("GitHub integration request failed:", error);
-        return json({ error: "Integrasi GitHub gagal memproses permintaan." }, 503);
+        // Keep outer GitHub route failures diagnosable without logging provider payloads,
+        // OAuth codes, cookies, tokens, or raw exception messages.
+        console.error("GitHub integration request failed", {
+          path: url.pathname,
+          errorName: error instanceof Error ? error.name : "UnknownError"
+        });
+        if (url.pathname === "/api/github/callback") {
+          const destination = new URL("/", url.origin);
+          destination.searchParams.set("github", "error");
+          destination.searchParams.set("reason", "route_dispatch");
+          return new Response(null, {
+            status: 302,
+            headers: { Location: destination.pathname + destination.search, "Cache-Control": "no-store" }
+          });
+        }
+        return json({ error: "Integrasi GitHub gagal memproses permintaan.", code: "github_route_dispatch" }, 503);
       }
     }
     if (url.pathname === "/api/developer/keys" || url.pathname.startsWith("/api/developer/keys/")) {
