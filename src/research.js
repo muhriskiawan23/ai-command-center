@@ -1,5 +1,6 @@
 // Phase 2 research adapter: optional Brave Search/News + a small first-party curated knowledge index.
 // External content is always treated as untrusted evidence, never as instructions.
+import { MAX_LINKS, readLinks, buildPageContext, summarizeLinks } from "./links.js";
 const SEARCH_TIMEOUT_MS = 6500;
 const SEARCH_MAX_RESULTS = 5;
 const SEARCH_MAX_RESPONSE_BYTES = 256_000;
@@ -158,4 +159,19 @@ export function buildResearchContext(search, startSourceId = 1) {
     ...blocks
   ].join("\n");
   return { context, sources };
+}
+
+
+// Read a bounded number of successful Brave results through the existing SSRF-safe page reader.
+// Search snippets remain available as fallback evidence when a publisher page cannot be fetched.
+export async function readResearchPages(search, startSourceId = 1, options = {}) {
+  const urls = [...new Set((Array.isArray(search?.results) ? search.results : [])
+    .filter((item) => item?.ok === true && typeof item.url === "string")
+    .map((item) => item.url))].slice(0, MAX_LINKS);
+  if (!urls.length) return { context: "", sources: [] };
+  const fetched = await readLinks(urls, options);
+  return {
+    context: buildPageContext(fetched, startSourceId),
+    sources: summarizeLinks(fetched, startSourceId)
+  };
 }
