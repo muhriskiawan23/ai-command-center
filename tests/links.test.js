@@ -127,3 +127,10 @@ test("redirect sukses mempertahankan URL asli dan mencatat URL tujuan akhir", as
   assert.equal(source.url, "https://example.com/start");
   assert.equal(source.resolvedUrl, "https://example.com/artikel");
 });
+
+
+test("page context and link summaries support a non-default source ID offset", () => {
+  const pages = [{ ok: true, url: "https://publisher.example/a", requested: "https://publisher.example/a", title: "Article", text: "A sufficiently long article body.", chars: 34, truncated: false }];
+  assert.match(buildPageContext(pages, 6), /<web_page source_id="6"/);
+  assert.equal(summarizeLinks(pages, 6)[0].sourceId, 6);
+});
