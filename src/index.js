@@ -1549,6 +1549,36 @@ export default {
       if (curated.context) { pages = [pages, curated.context].filter(Boolean).join("\n\n"); links.push(...curated.sources); }
       if (researchMode) {
         const search = await searchExternal(message, researchMode, env);
+        // Read up to three eligible result pages through the same SSRF-safe link reader used for user URLs.
+        // Keep the Brave result as a citable source even when the destination page cannot be read.
+        const pageCandidates = search.results.filter((item) => item?.ok && typeof item.url === "string").slice(0, 3);
+        let pageResults = [];
+        if (pageCandidates.length) {
+          try {
+            pageResults = await readLinks(pageCandidates.map((item) => item.url), {
+              fetcher: env.LINK_FETCHER || fetch,
+              ownHost: url.hostname
+            });
+          } catch {
+            pageResults = [];
+          }
+        }
+        let pageIndex = 0;
+        for (const item of search.results) {
+          if (!item?.ok) continue;
+          if (pageIndex >= pageCandidates.length) {
+            item.pageRead = false;
+            item.pageReason = "Batas pembacaan otomatis: maksimal tiga halaman per pencarian.";
+            continue;
+          }
+          const page = pageResults[pageIndex++];
+          item.pageRead = Boolean(page?.ok);
+          item.pageTitle = page?.ok ? page.title : "";
+          item.pageText = page?.ok ? String(page.text || "").slice(0, 8000) : "";
+          item.pageResolvedUrl = page?.ok ? page.url : "";
+          item.pageTruncated = Boolean(page?.truncated || (page?.ok && String(page.text || "").length > 8000));
+          item.pageReason = page?.ok ? "" : (page?.reason || "Halaman sumber tidak berhasil dibaca.");
+        }
         const research = buildResearchContext(search, links.length + 1);
         pages = [pages, research.context].filter(Boolean).join("\n\n");
         links.push(...research.sources);

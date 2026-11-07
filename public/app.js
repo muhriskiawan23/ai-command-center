@@ -776,6 +776,10 @@ function appendSources(links){
       if(l.sourceType==="news")item.append(document.createTextNode(" · Berita"));
       else if(l.sourceType==="search")item.append(document.createTextNode(" · Pencarian web"));
       else if(l.sourceType==="curated")item.append(document.createTextNode(" · Basis pengetahuan resmi"));
+      if(l.sourceType==="news"||l.sourceType==="search"){
+        if(l.pageRead)item.append(document.createTextNode(" · Isi halaman berhasil dibaca"+(l.pageTruncated?" (cuplikan dipotong)":"")));
+        else if(l.pageRead===false)item.append(document.createTextNode(" · Hanya cuplikan pencarian"+(l.pageReason?": "+l.pageReason:"")));
+      }
       if(l.publishedAt){const date=new Date(l.publishedAt);if(!Number.isNaN(date.getTime()))item.append(document.createTextNode(" · Terbit "+date.toLocaleDateString()));}
       else if(l.sourceType==="news"||l.sourceType==="search")item.append(document.createTextNode(" · Tanggal publikasi tidak tersedia"));
       if(l.trust==="unverified-external")item.append(document.createTextNode(" · Sumber eksternal, belum diverifikasi"));
