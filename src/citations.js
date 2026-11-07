@@ -10,17 +10,25 @@ export function validateCitationReferences(response, sources = []) {
   let removed = 0;
 
   function matchesSourceUrl(rawTarget, source) {
-    if (!source?.url || typeof rawTarget !== "string") return false;
+    if (typeof rawTarget !== "string") return false;
     const target = rawTarget.trim();
     const parsedTarget = target.match(/^(?:<([^>]*)>|(\S+?))(?:\s+(?:"[^"]*"|'[^']*'|\([^)]*\)))?$/);
     const href = parsedTarget?.[1] || parsedTarget?.[2];
     if (!href) return false;
     try {
       const candidate = new URL(href);
-      const canonical = new URL(source.url);
-      return (candidate.protocol === "https:" || candidate.protocol === "http:") &&
-        (canonical.protocol === "https:" || canonical.protocol === "http:") &&
-        candidate.href === canonical.href;
+      if (candidate.protocol !== "https:" && candidate.protocol !== "http:") return false;
+      return [source?.url, source?.requestedUrl, source?.resolvedUrl]
+        .filter((value) => typeof value === "string" && value)
+        .some((value) => {
+          try {
+            const canonical = new URL(value);
+            return (canonical.protocol === "https:" || canonical.protocol === "http:") &&
+              candidate.href === canonical.href;
+          } catch {
+            return false;
+          }
+        });
     } catch {
       return false;
     }
@@ -30,7 +38,7 @@ export function validateCitationReferences(response, sources = []) {
   const parts = text.split(/(\`{3}[\s\S]*?\`{3}|~~~[\s\S]*?~~~|\`[^\`\n]*\`)/g);
   const cleaned = parts.map((part, index) => {
     if (index % 2 === 1) return part;
-    // A linked citation must match BOTH a successful source ID and that source's exact URL.
+    // A linked citation must match BOTH a successful source ID and one of that source's exact URLs.
     // This also removes javascript:, data:, relative, malformed, and mismatched destinations.
     let value = part.replace(/\[(\d+)\]\(([^)]*)\)/g, (marker, rawId, rawTarget) => {
       const source = sourceById.get(Number(rawId));
