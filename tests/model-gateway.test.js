@@ -287,11 +287,14 @@ test("maps specialist roles to semantic task profiles without claiming unsupport
 
 test("summarizes actual per-agent model selections without inventing a multi-model result", () => {
   const single = summarizeModelTrace([
-    { agentId: "coordinator", taskProfile: "fast_chat", provider: "cloudflare-workers-ai", adapter: "workers-ai", modelId: DEFAULT_MODEL_ID, policyVersion: "adaptive-v1", calls: 2 }
+    { agentId: "coordinator", taskProfile: "fast_chat", provider: "cloudflare-workers-ai", adapter: "workers-ai", modelId: DEFAULT_MODEL_ID, policyVersion: "adaptive-v1", calls: 2, durationMs: 123, retryCount: 1, outcome: "success" }
   ]);
   assert.equal(single.model, DEFAULT_MODEL_ID);
   assert.deepEqual(single.modelsUsed, [{ provider: "cloudflare-workers-ai", modelId: DEFAULT_MODEL_ID, adapter: "workers-ai" }]);
   assert.equal(single.agentModels[0].calls, 2);
+  assert.equal(single.agentModels[0].durationMs, 123);
+  assert.equal(single.agentModels[0].retryCount, 1);
+  assert.equal(single.agentModels[0].outcome, "success");
 
   const empty = summarizeModelTrace([]);
   assert.equal(empty.model, DEFAULT_MODEL_ID);
