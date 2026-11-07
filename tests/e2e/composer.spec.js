@@ -143,3 +143,34 @@ test("pemilihan bahasa Arab menerapkan locale dan arah RTL", async ({ page, app 
   await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
   await expect(picker).toHaveValue("ar");
 });
+
+
+test("runtime localization covers action labels and attributes across all supported locales", async ({ page, app }) => {
+  await enterGuest(page, app);
+  const locales = ["en", "id", "es", "fr", "de", "pt", "ja", "ko", "zh", "ar"];
+  for (const locale of locales) {
+    await page.evaluate((code) => window.BORLocale.apply(code), locale);
+    await expect(page.locator("html")).toHaveAttribute("lang", locale);
+    const translated = await page.evaluate(() => {
+      const button = document.createElement("button");
+      button.textContent = "Ekspor chat";
+      button.title = "Ekspor chat";
+      document.body.append(button);
+      return new Promise((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          const result = { text: button.textContent, title: button.title, direction: document.documentElement.dir };
+          button.remove();
+          resolve(result);
+        }));
+      });
+    });
+    if (locale === "id") {
+      expect(translated.text).toBe("Ekspor chat");
+      expect(translated.title).toBe("Ekspor chat");
+    } else {
+      expect(translated.text).not.toBe("Ekspor chat");
+      expect(translated.title).not.toBe("Ekspor chat");
+    }
+    expect(translated.direction).toBe(locale === "ar" ? "rtl" : "ltr");
+  }
+});
