@@ -860,7 +860,7 @@ async function handleAuthRoute(request, env, url) {
     return json({ googleClientId: env.GOOGLE_CLIENT_ID || null, googleSignInEnabled: Boolean(env.GOOGLE_CLIENT_ID && env.DB) });
   }
   const authRateLimit = async (scope) => {
-    if (!env.CHAT_LIMITER?.limit) return null;
+    if (!env.CHAT_LIMITER?.limit) return json({ error: "Pembatasan percobaan login belum tersedia." }, 503);
     try {
       const ip = request.headers.get("CF-Connecting-IP") || "unknown-client";
       const result = await env.CHAT_LIMITER.limit({ key: "auth:" + scope + ":" + ip });
