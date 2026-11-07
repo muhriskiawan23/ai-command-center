@@ -73,3 +73,42 @@ test("callback handles GitHub authorization denial before requiring an authoriza
   assert.equal(response.status, 302);
   assert.equal(response.headers.get("Location"), "/?github=cancelled");
 });
+
+
+test("callback reports GitHub profile API authorization failures precisely", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    if (String(url).includes("/login/oauth/access_token")) return json({ access_token: "user-token" });
+    if (String(url).endsWith("/user")) return json({ message: "Bad credentials" }, 401);
+    throw new Error("Unexpected fetch URL");
+  };
+  try {
+    const request = new Request("https://example.test/api/github/callback?code=valid-code&state=random-state-token", {
+      headers: { Cookie: "__Host-borai_github_oauth_state=random-state-token" }
+    });
+    const response = await handleGitHubOAuthRoute(request, env(), new URL(request.url), deps);
+    assert.equal(response.status, 302);
+    assert.equal(response.headers.get("Location"), "/?github=error&reason=profile_http_403");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("callback distinguishes an invalid GitHub profile payload", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    if (String(url).includes("/login/oauth/access_token")) return json({ access_token: "user-token" });
+    if (String(url).endsWith("/user")) return json({ id: "not-a-number", login: null });
+    throw new Error("Unexpected fetch URL");
+  };
+  try {
+    const request = new Request("https://example.test/api/github/callback?code=valid-code&state=random-state-token", {
+      headers: { Cookie: "__Host-borai_github_oauth_state=random-state-token" }
+    });
+    const response = await handleGitHubOAuthRoute(request, env(), new URL(request.url), deps);
+    assert.equal(response.status, 302);
+    assert.equal(response.headers.get("Location"), "/?github=error&reason=profile_invalid");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
