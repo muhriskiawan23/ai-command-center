@@ -253,8 +253,10 @@ test.describe("NAV — drawer, Back/Forward, rute", () => {
     await page.reload();
     await expect(page.locator(".message.user .message-body")).toContainText("pertanyaan alice");
     await page.goto(app.url + "/#/c/conv-bob-000001");
-    await page.reload();
     await expect(page.locator("#toast")).toContainText("tidak ditemukan");
+    await expect.poll(() => page.evaluate(() => location.hash)).toBe("#/");
+    await page.reload();
+    await expect(page.locator("#prompt")).toBeVisible();
     await expect(page.locator(".message")).toHaveCount(0);
     expect(await page.evaluate(() => location.hash)).toBe("#/");
     expect(await page.evaluate(() => document.body.innerText)).not.toContain("rahasia bob");
