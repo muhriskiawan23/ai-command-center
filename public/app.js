@@ -369,10 +369,10 @@ async function loadGitHubRepositories(){
     const installations=Array.isArray(installationData.installations)?installationData.installations:[];
     const results=await Promise.all(installations.map(item=>api("/api/github/repositories?installation_id="+encodeURIComponent(item.id))));
     const byId=new Map();
-    for(const result of results)for(const repo of Array.isArray(result.repositories)?result.repositories:[])byId.set(repo.id,{...repo,owner:{login:repo.fullName.split("/")[0]},installationId:installations.find(item=>results.indexOf(result)>=0)?.id});
+    for(const result of results)for(const repo of Array.isArray(result.repositories)?result.repositories:[])byId.set(repo.id,{...repo,owner:{login:repo.fullName.split("/")[0]}});
     githubRepositories=[...byId.values()];
     githubSelectedRepository=null;
-    $("githubReposStatus").textContent=githubRepositories.length? "Pilih repository untuk melihat detailnya.":"Belum ada repository disponível. Pastikan BOR AI sudah di-install pada akun atau organisasi GitHub yang benar.";
+    $("githubReposStatus").textContent=githubRepositories.length? "Pilih repository untuk melihat detailnya.":"Belum ada repository tersedia. Pastikan BOR AI sudah di-install pada akun atau organisasi GitHub yang benar.";
     $("githubRepoDetail").replaceChildren(Object.assign(document.createElement("p"),{textContent:"Pilih repository untuk melihat detailnya."}));
     renderGitHubRepositories();
   }catch(error){
