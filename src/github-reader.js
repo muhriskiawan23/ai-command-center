@@ -6,7 +6,7 @@ function validName(value) {
 }
 
 function validRef(value) {
-  return typeof value === "string" && value.length > 0 && value.length <= 200 && !/[\\u0000-\\u001f\\u007f]/.test(value);
+  return typeof value === "string" && value.length > 0 && value.length <= 200 && !/[\u0000-\u001f\u007f]/.test(value);
 }
 
 function apiPath(owner, repo, resource, path = "") {
@@ -40,7 +40,7 @@ async function githubRequest(url, fetcher) {
 
 function decodeContent(content) {
   try {
-    const binary = atob(content.replace(/\\s/g, ""));
+    const binary = atob(content.replace(/\s/g, ""));
     const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
     return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
   } catch {
@@ -55,7 +55,7 @@ function queryContext(url) {
   const ref = url.searchParams.get("ref");
   if (ref !== null && !validRef(ref)) return { error: "Referensi branch atau commit tidak valid." };
   const path = url.searchParams.get("path") || "";
-  if (path.length > 500 || path.startsWith("/") || path.split("/").some((part) => part === "." || part === ".." || /[\\u0000-\\u001f\\u007f]/.test(part))) {
+  if (path.length > 500 || path.startsWith("/") || path.split("/").some((part) => part === "." || part === ".." || /[\u0000-\u001f\u007f]/.test(part))) {
     return { error: "Path repository tidak valid." };
   }
   return { owner, repo, ref, path };
