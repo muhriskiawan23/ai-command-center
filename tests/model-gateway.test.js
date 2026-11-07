@@ -106,6 +106,15 @@ test("fails closed when a cost ceiling is set without token estimates", () => {
   assert.equal(result.rejected[0].reason, "cost_unverified_or_over_budget");
 });
 
+test("fails closed when the requested output exceeds an unverified or configured limit", () => {
+  const unknown = candidate({ maxOutputTokens: null });
+  const result = evaluateModelCandidates({
+    task: "fast_chat", models: [unknown], requirements: { outputTokens: 5000 }
+  });
+  assert.equal(result.eligible.length, 0);
+  assert.equal(result.rejected[0].reason, "output_limit_unverified_or_exceeded");
+});
+
 test("fails closed when requested region or data policy is unverified", () => {
   const model = candidate({ regions: [], dataPolicies: [] });
   const region = evaluateModelCandidates({
