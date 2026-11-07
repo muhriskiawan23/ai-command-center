@@ -56,6 +56,21 @@ test("Brave API key is sent only in a header and fresh results receive provenanc
   assert.equal(context.sources[0].sourceId, 2);
 });
 
+test("search results with credentials, custom ports, or private hosts are rejected before citation or page reading", async () => {
+  const result = await searchExternal("security test", "web", { BRAVE_SEARCH_API_KEY: "secret" }, {
+    now: Date.parse("2026-11-07T00:00:00Z"),
+    fetcher: async () => jsonResponse({ results: [
+      { title: "Credentials", url: "https://user:pass@publisher.example/article", description: "Unsafe URL", page_age: "2026-11-06T00:00:00Z" },
+      { title: "Custom port", url: "https://publisher.example:8443/article", description: "Unsafe port", page_age: "2026-11-06T00:00:00Z" },
+      { title: "Private host", url: "https://127.0.0.1/admin", description: "Private URL", page_age: "2026-11-06T00:00:00Z" }
+    ] })
+  });
+  assert.equal(result.results.length, 3);
+  assert.ok(result.results.every((item) => item.ok === false));
+  assert.ok(result.results.every((item) => item.url === undefined));
+  assert.ok(result.results.every((item) => item.reason));
+});
+
 test("stale and social/UGC results are excluded from model context", async () => {
   const result = await searchExternal("latest topic", "web", { BRAVE_SEARCH_API_KEY: "secret" }, {
     now: Date.parse("2026-11-07T00:00:00Z"),
