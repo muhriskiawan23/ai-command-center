@@ -44,7 +44,8 @@ Public AI workspace with Google sign-in, temporary guest sessions, private per-a
 | POST | `/api/feedback` | Save or update helpful/not-helpful feedback for an assistant answer owned by the signed-in user |
 | GET/POST | `/api/developer/keys` | List or create API keys for the signed-in account (secret shown only once) |
 | DELETE | `/api/developer/keys/:id` | Revoke an owned public API key |
-| POST | `/api/public/chat` | Public single-turn chat for allow-listed origins using a bearer API key |\n| POST | `/api/integrations/telegram/webhook` | Optional authenticated Telegram webhook (private text chats only) |
+| POST | `/api/public/chat` | Public single-turn chat for allow-listed origins using a bearer API key |
+| POST | `/api/integrations/telegram/webhook` | Optional authenticated Telegram webhook (private text chats only) |
 | GET | `/api/config` | Public Google sign-in configuration |
 | GET | `/api/auth/nonce` | One-time sign-in nonce |
 | POST | `/api/auth/google` | Verify Google ID token and create a session |
