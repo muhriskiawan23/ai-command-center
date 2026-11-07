@@ -13,8 +13,6 @@ test("chat routes through the adaptive gateway and reports the actual selected m
     const body = await response.json();
     assert.equal(response.status, 200);
     assert.equal(body.model, "@cf/meta/llama-3.3-70b-instruct-fp8-fast");
-    assert.ok(app.aiModelCalls.length >= 3);
-    assert.ok(app.aiModelCalls.every((model) => model === "@cf/meta/llama-3.3-70b-instruct-fp8-fast"));
     assert.deepEqual(body.modelsUsed, [{
       provider: "cloudflare-workers-ai",
       modelId: "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
@@ -47,6 +45,8 @@ test("multi-agent chat records the selected model for every specialist call", as
     assert.ok(body.agentModels.some((item) => item.agentId === "writer" && item.taskProfile === "deep_reasoning"));
     assert.equal(body.modelsUsed.length, 1);
     assert.equal(body.model, "@cf/meta/llama-3.3-70b-instruct-fp8-fast");
+    assert.ok(app.aiModelCalls.length >= 3);
+    assert.ok(app.aiModelCalls.every((model) => model === "@cf/meta/llama-3.3-70b-instruct-fp8-fast"));
   } finally {
     await app.close();
   }
