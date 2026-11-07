@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildResearchContext, detectResearchMode, retrieveCuratedKnowledge, searchExternal } from "../src/research.js";
+import { buildResearchContext, detectResearchMode, readResearchPages, retrieveCuratedKnowledge, searchExternal } from "../src/research.js";
 
 const jsonResponse = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
@@ -84,4 +84,42 @@ test("provider errors and timeouts fail closed with no invented result", async (
     fetcher: async (_url, { signal }) => new Promise((_, reject) => signal.addEventListener("abort", () => reject(new Error("aborted"))))
   });
   assert.equal(timeout.reason, "provider_timeout");
+});
+
+
+test("research pages use the SSRF-safe reader and stable source IDs after search results", async () => {
+  const requested = [];
+  const result = await readResearchPages({ results: [
+    { ok: true, url: "https://publisher.example/article" },
+    { ok: false, url: "https://reddit.com/r/example" },
+    { ok: true, url: "http://127.0.0.1/private" }
+  ] }, 8, {
+    fetcher: async (url) => {
+      requested.push(url);
+      return new Response("<html><head><title>Publisher report</title></head><body><p>This is a sufficiently long publisher article excerpt for research context.</p></body></html>", {
+        headers: { "content-type": "text/html; charset=utf-8" }
+      });
+    }
+  });
+  assert.deepEqual(requested, ["https://publisher.example/article"]);
+  assert.equal(result.sources.length, 2);
+  assert.equal(result.sources[0].sourceId, 8);
+  assert.equal(result.sources[0].ok, true);
+  assert.equal(result.sources[1].sourceId, 9);
+  assert.equal(result.sources[1].ok, false);
+  assert.match(result.context, /<web_page source_id="8"/);
+  assert.match(result.context, /Publisher report/);
+});
+
+test("research page retrieval is capped at the link reader limit", async () => {
+  const requested = [];
+  await readResearchPages({ results: [1, 2, 3, 4, 5].map((n) => ({ ok: true, url: "https://publisher.example/" + n })) }, 1, {
+    fetcher: async (url) => {
+      requested.push(url);
+      return new Response("<html><body><p>This is a sufficiently long article body for the reader limit test.</p></body></html>", {
+        headers: { "content-type": "text/html; charset=utf-8" }
+      });
+    }
+  });
+  assert.equal(requested.length, 3);
 });
