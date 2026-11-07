@@ -110,6 +110,37 @@ test("a signed-in chat is stored as one user/assistant pair and returns its conv
   assert.match(batch.statements[2].sql, /'assistant'/);
 });
 
+test("Google nonce endpoint applies an IP-scoped rate limit", async () => {
+  const keys = [];
+  const res = await worker.fetch(request("/api/auth/nonce"), {
+    DB: mockDB(),
+    GOOGLE_CLIENT_ID: "public-client-id",
+    CHAT_LIMITER: { async limit({ key }) { keys.push(key); return { success: false }; } }
+  });
+  assert.equal(res.status, 429);
+  assert.match((await res.json()).error, /percobaan login/i);
+  assert.equal(keys.length, 1);
+  assert.match(keys[0], /^auth:nonce:/);
+});
+
+test("Google credential endpoint applies a separate IP-scoped rate limit", async () => {
+  const db = mockDB();
+  const keys = [];
+  const res = await worker.fetch(jsonRequest("/api/auth/google", {
+    credential: "header.payload.signature",
+    nonce: "client-nonce"
+  }, { Origin: "https://example.test" }), {
+    DB: db,
+    GOOGLE_CLIENT_ID: "public-client-id",
+    CHAT_LIMITER: { async limit({ key }) { keys.push(key); return { success: false }; } }
+  });
+  assert.equal(res.status, 429);
+  assert.match((await res.json()).error, /percobaan login/i);
+  assert.equal(db.calls.length, 0);
+  assert.equal(keys.length, 1);
+  assert.match(keys[0], /^auth:google:/);
+});
+
 test("Google sign-in rejects a missing double-submit nonce before token verification", async () => {
   const db = mockDB();
   const res = await worker.fetch(jsonRequest("/api/auth/google", {
