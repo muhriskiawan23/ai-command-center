@@ -11,7 +11,7 @@ test("akun dapat mengirim feedback jawaban dan melihatnya kembali setelah reload
   await expect(feedback).toBeVisible();
   await feedback.getByRole("button", { name: "Jawaban tidak membantu" }).click();
   await feedback.getByLabel("Alasan feedback opsional").fill("Penjelasan masih kurang lengkap.");
-  await feedback.getByRole("button", { name: "Kirim feedback" }).click();
+  await feedback.locator(".feedback-submit").click();
   await expect(feedback.locator(".feedback-status")).toHaveText("Feedback tersimpan");
   expect({ ...app.db.sqlite.prepare("SELECT rating, reason FROM answer_feedback").get() }).toEqual({ rating: "not_helpful", reason: "Penjelasan masih kurang lengkap." });
   await page.reload();
