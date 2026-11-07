@@ -19,7 +19,7 @@ function validTelegramId(value) {
 }
 
 function commandName(text) {
-  const first = text.trim().split(/\\s+/, 1)[0].toLowerCase();
+  const first = text.trim().split(/\s+/, 1)[0].toLowerCase();
   return first.split("@", 1)[0];
 }
 
