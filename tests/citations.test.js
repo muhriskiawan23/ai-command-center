@@ -33,6 +33,12 @@ test("mempertahankan tautan sitasi hanya jika ID dan URL sama dengan sumber yang
   assert.match(result, /sitasi yang tidak cocok/);
 });
 
+test("menerima URL tujuan redirect yang tercatat pada metadata sumber", () => {
+  const source = [{ sourceId: 1, ok: true, url: "https://short.example/a", resolvedUrl: "https://publisher.example/article" }];
+  const result = validateCitationReferences("[1](https://publisher.example/article)", source);
+  assert.equal(result, "[1](https://publisher.example/article)");
+});
+
 test("menghapus URL berbahaya, URL relatif, dan tautan sitasi tanpa URL sumber", () => {
   const input = "A [1](javascript:alert(1)), B [1](/relative/path), C [1](https://source.example/one).";
   const result = validateCitationReferences(input, successful);
