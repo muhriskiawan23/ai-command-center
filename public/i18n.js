@@ -92,7 +92,7 @@
       select.innerHTML = '<option value="auto">🌐 Auto</option><option value="en">English</option><option value="id">Bahasa Indonesia</option>';
       select.addEventListener("change", () => {
         try { localStorage.setItem(STORAGE_KEY, select.value); } catch {}
-        apply(select.value);
+        location.reload();
       });
       wrap.append(select);
       topbar.prepend(wrap);
