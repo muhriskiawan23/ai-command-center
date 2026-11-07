@@ -4,6 +4,7 @@
 //  - ASSETS: menyajikan folder public/.
 // Hanya untuk pengujian; tidak dipakai di production.
 import http from "node:http";
+import { DatabaseSync } from "node:sqlite";
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { extname, join } from "node:path";
 import { createHash, randomBytes } from "node:crypto";
