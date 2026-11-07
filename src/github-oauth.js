@@ -86,7 +86,7 @@ async function githubJson(url, token, init = {}) {
     };
     console.warn("GitHub API request failed", diagnostic);
     const status = [401, 403, 404, 429].includes(response.status) ? response.status : 502;
-    return { error: safeGitHubError(response.status), status };
+    return { error: safeGitHubError(response.status), status, diagnostic };
   }
   try { return { data: await response.json() }; }
   catch { return { error: "Respons GitHub tidak valid.", status: 502 }; }
@@ -164,7 +164,16 @@ export async function handleGitHubOAuthRoute(request, env, url, { getSession, sa
     const state = url.searchParams.get("state") || "";
     const code = url.searchParams.get("code") || "";
     const stateCookie = readCookie(request, STATE_COOKIE);
-    const fail = (reason) => new Response(null, { status: 302, headers: { Location: "/?github=error&reason=" + encodeURIComponent(reason), "Set-Cookie": clearStateCookie(), "Cache-Control": "no-store" } });
+    const fail = (reason, diagnostic) => {
+      const destination = new URL("/", url.origin);
+      destination.searchParams.set("github", "error");
+      destination.searchParams.set("reason", reason);
+      // Surface only sanitized provider diagnostics; never include tokens, codes, or request headers.
+      if (diagnostic?.message) destination.searchParams.set("github_message", diagnostic.message);
+      if (diagnostic?.requestId && /^[A-Za-z0-9-]{1,80}$/.test(diagnostic.requestId)) destination.searchParams.set("github_request", diagnostic.requestId);
+      if (diagnostic?.rateLimitRemaining && /^\\d{1,12}$/.test(diagnostic.rateLimitRemaining)) destination.searchParams.set("github_rate_remaining", diagnostic.rateLimitRemaining);
+      return new Response(null, { status: 302, headers: { Location: destination.pathname + destination.search, "Set-Cookie": clearStateCookie(), "Cache-Control": "no-store" } });
+    };
     if (!state || !stateCookie || state !== stateCookie) return fail("state_cookie");
     if (state.length > 200) return fail("state_cookie");
     const now = Math.floor(Date.now() / 1000);
@@ -190,7 +199,7 @@ export async function handleGitHubOAuthRoute(request, env, url, { getSession, sa
       return fail("token_" + providerError);
     }
     const profile = await githubJson(GITHUB_API + "/user", tokens.access_token);
-    if (profile.error) return fail("profile_http_" + (profile.status || 502));
+    if (profile.error) return fail("profile_http_" + (profile.status || 502), profile.diagnostic);
     if (!Number.isSafeInteger(profile.data?.id) || typeof profile.data?.login !== "string") return fail("profile_invalid");
     const encryptedAccess = await encryptToken(tokens.access_token, env);
     const encryptedRefresh = typeof tokens.refresh_token === "string" ? await encryptToken(tokens.refresh_token, env) : null;
