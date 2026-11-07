@@ -1073,7 +1073,7 @@ $("historySearch").addEventListener("keydown",e=>{
 $("signOut").addEventListener("click",signOut);
 $("githubConnect").addEventListener("click",connectGitHub);
 $("githubDisconnect").addEventListener("click",disconnectGitHub);
-$("openGithubRepos").addEventListener("click",openGitHubRepositories);
+$("openGithubRepos")?.addEventListener("click",openGitHubRepositories);
 $("githubReposClose").addEventListener("click",()=>$("githubReposDialog").close());
 $("githubReposRefresh").addEventListener("click",loadGitHubRepositories);
 $("githubRepoSearch").addEventListener("input",renderGitHubRepositories);
