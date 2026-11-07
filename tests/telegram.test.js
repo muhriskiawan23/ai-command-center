@@ -69,6 +69,40 @@ test("answers /start without invoking the model", async () => {
   const result = await handleTelegramWebhook(request(update({ text: "/start" })), env, deps);
   assert.equal(result.status, 200);
   assert.match(sent[0].text, /Halo! Gw BOR AI/);
+  assert.equal(result.headers.get("Cache-Control"), "no-store");
+});
+
+for (const [command, expected] of [
+  ["/help", "/about"],
+  ["/about", "Your Intelligent AI Command Center"],
+  ["/status", "BOR AI Telegram: ONLINE"],
+  ["/agents", "Coordinator — mengarahkan permintaan dan menyusun jawaban"]
+]) {
+  test(`handles ${command} without invoking AI or consuming quota`, async () => {
+    const { env, deps, sent } = setup();
+    let aiCalled = false;
+    let quotaCalled = false;
+    deps.runAgent = async () => { aiCalled = true; return "unexpected"; };
+    deps.enforceDailyLimits = async () => { quotaCalled = true; return { ok: true, day: "2026-11-07", charges: [] }; };
+    const result = await handleTelegramWebhook(request(update({ text: command })), env, deps);
+    assert.equal(result.status, 200);
+    assert.ok(sent[0].text.includes(expected));
+    assert.equal(aiCalled, false);
+    assert.equal(quotaCalled, false);
+  });
+}
+
+test("supports commands addressed to the bot username", async () => {
+  const { env, deps, sent } = setup();
+  await handleTelegramWebhook(request(update({ text: "/about@BORAIOFFICIAL_bot" })), env, deps);
+  assert.match(sent[0].text, /Your Intelligent AI Command Center/);
+});
+
+test("responds helpfully to unknown slash commands without invoking AI", async () => {
+  const { env, deps, sent } = setup();
+  const result = await handleTelegramWebhook(request(update({ text: "/unknown" })), env, deps);
+  assert.deepEqual(await result.json(), { ok: true, unknownCommand: true });
+  assert.ok(sent[0].text.includes("Perintah tidak dikenal") && sent[0].text.includes("/help"));
 });
 
 test("routes a private text message through Coordinator and sends the answer", async () => {

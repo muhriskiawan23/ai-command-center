@@ -2,6 +2,14 @@ const MAX_UPDATE_BYTES = 64 * 1024;
 const MAX_MESSAGE_CHARS = 4000;
 const TELEGRAM_TEXT_LIMIT = 3900;
 
+const COMMANDS = {
+  "/start": "Halo! Gw BOR AI. Gw adalah AI assistant dengan kemampuan multi-agent untuk membantu menjawab pertanyaan, menganalisis informasi, menyusun tulisan, merencanakan pekerjaan, dan membantu coding.\n\nKirim pertanyaan atau instruksi untuk mulai. Gunakan /help untuk melihat perintah.\n\nCatatan: bot belum menyimpan riwayat percakapan Telegram. Jangan kirim password, API key, atau data sensitif.",
+  "/help": "Perintah BOR AI:\n/start — Mulai menggunakan BOR AI\n/help — Tampilkan panduan perintah\n/about — Tentang BOR AI\n/status — Status layanan bot\n/agents — Lihat daftar spesialis AI\n\nKirim pesan biasa untuk bertanya atau memberi instruksi kepada BOR AI.",
+  "/about": "BOR AI — Your Intelligent AI Command Center.\n\nBOR AI adalah AI assistant yang menggunakan Coordinator dan orkestrasi multi-agent untuk membantu menjawab pertanyaan, menganalisis informasi, menyusun konten, merencanakan pekerjaan, dan membantu coding.\n\nDibangun di atas Cloudflare Workers dan Workers AI.\n\nWebsite: https://ai-command-center.muhriskiawan23.workers.dev\nRepository: https://github.com/muhriskiawan23/ai-command-center\n\nTelegram saat ini tidak menyimpan riwayat percakapan.",
+  "/status": "BOR AI Telegram: ONLINE\nWebhook berhasil menerima pesan ini dan layanan bot sedang merespons.\n\nModel AI dipanggil saat kamu mengirim pesan biasa. Status ini bukan pemeriksaan menyeluruh terhadap seluruh layanan eksternal.",
+  "/agents": "Spesialis BOR AI:\n• Coordinator — mengarahkan permintaan dan menyusun jawaban\n• Researcher — menyusun brief konteks dan fakta\n• Analyst — menganalisis data dan masalah\n• Writer — menyusun tulisan dan konten\n• Fact Checker — memeriksa konsistensi klaim\n• Strategist — mengevaluasi strategi dan pilihan\n• Coder — membantu pemrograman\n• Planner — menyusun rencana dan langkah kerja\n• Critic — meninjau kelemahan dan risiko\n• Summarizer — merangkum informasi\n• Translator — membantu penerjemahan\n• Text Analyst — menganalisis teks"
+};
+
 function response(data, status = 200) {
   return Response.json(data, { status, headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" } });
 }
@@ -59,11 +67,19 @@ export async function handleTelegramWebhook(request, env, deps) {
   }
 
   const command = commandName(text);
-  if (command === "/start" || command === "/help") {
-    const greeting = "Halo! Gw BOR AI. Kirim pertanyaan atau instruksi dalam chat pribadi ini untuk mulai.\n\nCatatan: bot belum menyimpan riwayat percakapan Telegram. Jangan kirim password, API key, atau data sensitif.";
-    try { await sendTelegramMessage(token, chat.id, greeting, deps.fetcher); }
-    catch (error) { console.error("Telegram welcome failed:", error); return response({ error: "Pesan Telegram gagal dikirim." }, 502); }
-    return response({ ok: true });
+  if (Object.hasOwn(COMMANDS, command)) {
+    try {
+      await sendTelegramMessage(token, chat.id, COMMANDS[command], deps.fetcher);
+    } catch (error) {
+      console.error("Telegram command failed:", error);
+      return response({ error: "Pesan Telegram gagal dikirim." }, 502);
+    }
+    return response({ ok: true, command });
+  }
+  if (text.startsWith("/")) {
+    try { await sendTelegramMessage(token, chat.id, "Perintah tidak dikenal. Gunakan /help untuk melihat daftar perintah BOR AI.", deps.fetcher); }
+    catch (error) { console.error("Telegram unknown-command reply failed:", error); }
+    return response({ ok: true, unknownCommand: true });
   }
 
   if (env.CHAT_LIMITER?.limit) {

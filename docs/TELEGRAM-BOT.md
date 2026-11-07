@@ -2,6 +2,18 @@
 
 BOR AI can receive private Telegram text messages through a Cloudflare Worker webhook. The integration reuses the existing Workers AI model, Coordinator/multi-agent orchestration, daily usage counters, and chat rate limiter. It does not add a paid API or a new database table.
 
+## Commands
+
+The bot supports these commands directly without calling the AI model or consuming chat quota:
+
+- `/start` — welcome message and usage introduction.
+- `/help` — command list and usage guidance.
+- `/about` — product overview, website, and public repository.
+- `/status` — confirms that the Telegram webhook reached the Worker. This is not a full dependency or model-health diagnostic.
+- `/agents` — lists the Coordinator and specialist roles.
+
+Commands addressed to the bot username (for example, `/help@YourBot`) are supported. Unknown slash commands return a help hint. Ordinary text messages continue through the Coordinator/multi-agent flow.
+
 ## Security and behavior
 
 - Only private chats are processed. Group chats, channel posts, bot senders, media-only updates, and unsupported update types are ignored.
@@ -24,8 +36,8 @@ BOR AI can receive private Telegram text messages through a Cloudflare Worker we
 4. Register the webhook from a trusted terminal, replacing the placeholders. The webhook URL is:
    `https://ai-command-center.muhriskiawan23.workers.dev/api/integrations/telegram/webhook`
    ```sh
-   curl -X POST "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook" \
-     -H "Content-Type: application/json" \
+   curl -X POST "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook" \\
+     -H "Content-Type: application/json" \\
      -d '{"url":"https://ai-command-center.muhriskiawan23.workers.dev/api/integrations/telegram/webhook","secret_token":"<TELEGRAM_WEBHOOK_SECRET>","allowed_updates":["message"]}'
    ```
 5. Check the response from Telegram for `"ok": true`, then send `/start` to your bot in a private chat.
