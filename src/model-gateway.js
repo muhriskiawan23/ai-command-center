@@ -261,3 +261,47 @@ export function selectModel(options = {}) {
     rejectedCandidates: evaluated.rejected
   };
 }
+
+
+const AGENT_TASK_PROFILES = Object.freeze({
+  coordinator: "fast_chat",
+  researcher: "research_synthesis",
+  analyst: "deep_reasoning",
+  writer: "deep_reasoning",
+  fact_checker: "deep_reasoning",
+  strategist: "deep_reasoning",
+  coder: "coding",
+  planner: "deep_reasoning",
+  critic: "deep_reasoning",
+  summarizer: "fast_chat",
+  translator: "translation",
+  text_analyst: "deep_reasoning"
+});
+
+export function taskProfileForAgent(agentId) {
+  const task = AGENT_TASK_PROFILES[agentId];
+  if (!task) throw new TypeError(`Unknown agent task profile: ${agentId}`);
+  return task;
+}
+
+export function summarizeModelTrace(trace = []) {
+  const selections = Array.isArray(trace) ? trace.filter((item) =>
+    item && typeof item.modelId === "string" && typeof item.provider === "string"
+  ) : [];
+  const unique = [...new Map(selections.map((item) => [
+    `${item.provider}:${item.modelId}`,
+    { provider: item.provider, modelId: item.modelId, adapter: item.adapter }
+  ])).values()];
+  return {
+    model: unique.length === 1 ? unique[0].modelId : unique.length > 1 ? "multiple" : DEFAULT_MODEL_ID,
+    modelsUsed: unique,
+    agentModels: selections.map((item) => ({
+      agentId: item.agentId,
+      taskProfile: item.taskProfile,
+      provider: item.provider,
+      modelId: item.modelId,
+      policyVersion: item.policyVersion,
+      calls: item.calls
+    }))
+  };
+}
