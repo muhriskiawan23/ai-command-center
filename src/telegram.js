@@ -40,7 +40,7 @@ export async function handleTelegramWebhook(request, env, deps) {
   if (Number.isFinite(length) && length > MAX_UPDATE_BYTES) return response({ error: "Update terlalu besar." }, 413);
   let raw;
   try { raw = await request.text(); } catch { return response({ error: "Update tidak dapat dibaca." }, 400); }
-  if (raw.length > MAX_UPDATE_BYTES) return response({ error: "Update terlalu besar." }, 413);
+  if (new TextEncoder().encode(raw).byteLength > MAX_UPDATE_BYTES) return response({ error: "Update terlalu besar." }, 413);
   let update;
   try { update = JSON.parse(raw); } catch { return response({ error: "JSON update tidak valid." }, 400); }
 
