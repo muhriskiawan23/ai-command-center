@@ -87,6 +87,28 @@ function withSystemExtra(env, extra) {
   };
 }
 
+// Apply the selected response locale to every model call, including specialist agents.
+const SUPPORTED_CHAT_LANGUAGES = new Set(["en","id","es","fr","de","pt","ja","ko","zh","ar"]);
+function withResponseLanguage(env, language) {
+  if (!SUPPORTED_CHAT_LANGUAGES.has(language)) return env;
+  const localeNames = { en:"English", id:"Bahasa Indonesia", es:"Spanish", fr:"French", de:"German", pt:"Brazilian Portuguese", ja:"Japanese", ko:"Korean", zh:"Simplified Chinese", ar:"Arabic" };
+  return { ...env, AI: { run(model, payload, options) {
+    const instruction = [
+      "MANDATORY RESPONSE LANGUAGE:",
+      "Write every user-facing response entirely in " + localeNames[language] + ".",
+      "This applies to every agent, intermediate output, final answer, workflow step, headings, labels, and examples.",
+      "The user's selected BOR AI interface language takes precedence over the language of their message.",
+      "Preserve code, identifiers, URLs, proper names, and quoted source material when necessary.",
+      "Never mix languages unless the user explicitly requests multilingual output."
+    ].join("\n");
+    const messages = (payload.messages || []).map(message => ({ ...message }));
+    const systemIndex = messages.findIndex(message => message.role === "system");
+    if (systemIndex >= 0) messages[systemIndex] = { ...messages[systemIndex], content: messages[systemIndex].content + "\n\n" + instruction };
+    else messages.unshift({ role: "system", content: instruction });
+    return env.AI.run(model, { ...payload, messages }, options);
+  } } };
+}
+
 // ---- Daily usage limits (cost protection) -------------------------------------------------------------
 // Units per UTC day. A normal message costs 1; a multi-agent request (several model calls) costs MULTI_AGENT_UNITS.
 // Defaults can be overridden with the env vars DAILY_LIMIT_GUEST / DAILY_LIMIT_USER / DAILY_LIMIT_GLOBAL.
@@ -1395,7 +1417,9 @@ export default {
         }
       } catch (error) { console.error("Memory handling failed:", error); memoryNote = ""; memoryItems = []; }
       const memoryEnv = withSystemExtra(env, buildMemoryBlock(memoryItems));
-      const aiEnv = withAiDeadline(memoryEnv, Date.now() + budgetMs, request.signal);
+      const language = SUPPORTED_CHAT_LANGUAGES.has(body?.language) ? body.language : "en";
+      const localizedEnv = withResponseLanguage(memoryEnv, language);
+      const aiEnv = withAiDeadline(localizedEnv, Date.now() + budgetMs, request.signal);
       let pages = "";
       let links = [];
       const pdfContext = document ? buildPdfContext(document) : "";

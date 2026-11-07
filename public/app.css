@@ -394,3 +394,64 @@ body.drawer-open{overflow:hidden}
 
 /* Automatic / manual display language control */
 .language-picker{display:flex;align-items:center}.language-picker select{min-height:34px;max-width:118px;padding:0 8px;border:1px solid #444;border-radius:9px;background:#252525;color:#ddd;font:inherit;font-size:11px}.language-picker select:focus{outline:2px solid var(--accent);outline-offset:2px}@media(max-width:560px){.language-picker select{max-width:82px;padding:0 4px;font-size:10px}}
+
+
+/* Locale-aware direction: Arabic uses a real RTL layout, not mirrored text alone. */
+html[dir="rtl"] body { direction: rtl; }
+html[dir="rtl"] .app, html[dir="rtl"] .workspace { direction: rtl; }
+html[dir="rtl"] .sidebar { border-right: 0; border-left: 1px solid var(--border, #30343b); }
+html[dir="rtl"] .main, html[dir="rtl"] .topbar, html[dir="rtl"] .topbar-actions,
+html[dir="rtl"] .composer, html[dir="rtl"] .composer-bottom,
+html[dir="rtl"] .composer-tools, html[dir="rtl"] .sidebar,
+html[dir="rtl"] .side-action, html[dir="rtl"] .history-item,
+html[dir="rtl"] .suggestion, html[dir="rtl"] .integration-card-heading,
+html[dir="rtl"] .email-draft-grid, html[dir="rtl"] .memory-meta { direction: rtl; }
+html[dir="rtl"] .history-search input,
+html[dir="rtl"] .composer textarea,
+html[dir="rtl"] .email-draft-grid input,
+html[dir="rtl"] .email-draft-grid textarea,
+html[dir="rtl"] .memory-panel input { text-align: right; }
+html[dir="rtl"] .message.user .message-body,
+html[dir="rtl"] .message.assistant .message-body { text-align: right; }
+html[dir="rtl"] .message-actions,
+html[dir="rtl"] .composer-tools { justify-content: flex-start; }
+html[dir="rtl"] .language-picker select { text-align: right; }
+html[dir="rtl"] .suggestion strong,
+html[dir="rtl"] .suggestion span { text-align: right; }
+html[dir="rtl"] .footnote { text-align: right; }
+html[dir="rtl"] .topbar-actions { flex-direction: row-reverse; }
+html[dir="rtl"] .composer-bottom { flex-direction: row-reverse; }
+html[dir="rtl"] .message { direction: rtl; }
+html[dir="rtl"] .message-text { unicode-bidi: plaintext; }
+html[dir="rtl"] input, html[dir="rtl"] textarea, html[dir="rtl"] select { direction: rtl; }
+html[dir="rtl"] pre, html[dir="rtl"] code, html[dir="rtl"] .message-text pre { direction: ltr; text-align: left; }
+
+/* On narrow screens the RTL navigation drawer must enter from the right edge. */
+@media(max-width:1024px){
+  html[dir="rtl"] .sidebar { left:auto; right:0; inset-block:0; width:min(310px,86vw); transform:translateX(105%); border-right:0; border-left:1px solid var(--line); }
+  html[dir="rtl"] .sidebar.open { transform:translateX(0); }
+}
+
+
+/* Keep the mobile application grid constrained to the viewport in both LTR and RTL.
+   A min-content 1fr track can otherwise widen the fixed-position drawer's containing area. */
+@media (max-width:1024px) {
+  .app {
+    width:100%;
+    min-width:0;
+    grid-template-columns:minmax(0,1fr);
+  }
+  .workspace {
+    width:100%;
+    min-width:0;
+  }
+  .sidebar {
+    max-width:100vw;
+  }
+  html[dir="rtl"] .sidebar {
+    left:auto;
+    right:0;
+    width:min(310px,86vw);
+    max-width:100vw;
+  }
+}

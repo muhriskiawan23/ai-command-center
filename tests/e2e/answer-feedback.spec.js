@@ -2,6 +2,8 @@ import { test, expect, loginAs } from "./fixtures.js";
 const ALICE = { id: "feedback-e2e-alice", email: "feedback-e2e@example.com", name: "Feedback Tester" };
 test("akun dapat mengirim feedback jawaban dan melihatnya kembali setelah reload", async ({ page, app, context }) => {
   await loginAs(context, app, ALICE);
+  // The test asserts Indonesian accessible labels; do not depend on the CI browser locale.
+  await page.addInitScript(() => localStorage.setItem("borai-language-preference", "id"));
   await page.goto(app.url);
   await expect(page.locator("#prompt")).toBeVisible();
   await page.locator("#prompt").fill("Jelaskan manfaat validasi data.");
@@ -11,7 +13,7 @@ test("akun dapat mengirim feedback jawaban dan melihatnya kembali setelah reload
   await expect(feedback).toBeVisible();
   await feedback.getByRole("button", { name: "Jawaban tidak membantu" }).click();
   await feedback.getByLabel("Alasan feedback opsional").fill("Penjelasan masih kurang lengkap.");
-  await feedback.getByRole("button", { name: "Kirim feedback" }).click();
+  await feedback.locator(".feedback-submit").click();
   await expect(feedback.locator(".feedback-status")).toHaveText("Feedback tersimpan");
   expect({ ...app.db.sqlite.prepare("SELECT rating, reason FROM answer_feedback").get() }).toEqual({ rating: "not_helpful", reason: "Penjelasan masih kurang lengkap." });
   await page.reload();
