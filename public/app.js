@@ -768,9 +768,10 @@ function appendSources(links){
     const item=document.createElement("div");item.className="source "+(l.ok?"ok":"fail");
     if(l.ok){
       item.append(document.createTextNode("✓ ["+l.sourceId+"] "));
-      if(typeof l.url==="string"&&/^https:\/\//i.test(l.url)){
+      if(typeof l.url==="string"&&/^https?:\/\//i.test(l.url)){
         const link=document.createElement("a");link.href=l.url;link.target="_blank";link.rel="noopener noreferrer";
-        link.textContent=(l.title||l.url);item.append(link);
+        link.textContent=l.url+(l.title?" — "+l.title:"");item.append(link);
+        if(l.resolvedUrl&&l.resolvedUrl!==l.url){const redirect=document.createElement("small");redirect.textContent="Dialihkan ke "+l.resolvedUrl;item.append(redirect);}
       }else item.append(document.createTextNode(l.host+(l.title?" — "+l.title:"")));
       if(l.sourceType==="news")item.append(document.createTextNode(" · Berita"));
       else if(l.sourceType==="search")item.append(document.createTextNode(" · Pencarian web"));
