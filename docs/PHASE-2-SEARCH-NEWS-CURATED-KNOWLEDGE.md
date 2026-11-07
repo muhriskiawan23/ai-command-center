@@ -40,6 +40,9 @@ A missing key is an intentional disabled state, not a fallback to model guesses.
 - Results older than 30 days are excluded from the model context.
 - Social/community UGC hosts are excluded from model context in this initial policy.
 - Search results and user-provided pages are untrusted data. Instructions inside retrieved content must never be followed.
+- For each live search, BOR AI attempts to read up to three eligible result pages through the same SSRF-safe, redirect-validating link reader used for user-provided URLs. Each page excerpt is bounded to 8,000 characters.
+- A successfully read page is included as untrusted evidence under the same source ID as its search result; the final redirect URL is retained for citation validation. If page reading fails or the three-page cap is reached, the model receives only the search-result title/snippet and an explicit `snippet_only` status. The UI shows whether page content was actually read.
+- Retrieved page bodies are request-scoped and are not persisted in chat history; only source metadata and citations are retained.
 - Only metadata and citations are saved with signed-in chat history; fetched page/search body text is not persisted.
 
 ## Curated knowledge
