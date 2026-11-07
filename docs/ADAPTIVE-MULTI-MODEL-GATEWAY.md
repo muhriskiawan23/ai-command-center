@@ -1,27 +1,24 @@
 # BOR AI Adaptive Multi-Model Gateway
 
 **Decision:** Adaptive Multi-Model is the default routing strategy.  
-**Status:** Architecture specification only; no runtime gateway or provider integration is implemented by this document.  
-**Compatibility baseline audited:** `main` at the repository's current default branch during this audit.
+**Status:** Architecture specification plus implemented runtime gateway (PR #94, deployed). Phase A/B and one-provider adaptive routing are active; no external provider adapter is enabled.  
+**Compatibility baseline:** `main` at `c64b8fdfdf5c2079ccfd242a43dc2c735496532b`.
 
 ## 1. Repository audit and current baseline
 
-The current implementation is a single-model Workers AI application with multi-agent orchestration, not a multi-model application.
+The runtime is now a gateway-backed single-provider adaptive application. It supports adaptive policy evaluation and task-specific routing, but currently has only one eligible model candidate, so there is no live cross-provider choice yet.
 
-Verified in the current `main` source:
+Verified in `main` at the baseline SHA above:
 
-- `src/index.js` declares one global model constant: `@cf/meta/llama-3.3-70b-instruct-fp8-fast`.
-- `runAgent()` invokes `env.AI.run(MODEL, ...)`; every specialist role therefore uses the same model today.
-- The multi-agent workflow sequences specialist roles (Researcher, Analyst, Fact Checker, Writer and others), but role separation does not currently imply model/provider separation.
-- `withAiDeadline()` wraps the Workers AI binding with per-call timeout, request deadline and cancellation handling.
-- `withSystemExtra()` and `withResponseLanguage()` wrap the same AI binding to add memory context and response-language instructions. These are middleware-like request transformations, not provider routing.
-- Web chat, the public widget/API and Telegram ultimately reuse `runAgent()` and/or `runMultiAgent()`, so a gateway placed at this shared execution seam can cover all three entry points without duplicating routing logic.
-- The public API returns `MODEL` as metadata; the normal chat path also reports `MODEL`. Those fields would become misleading if different agents could use different models.
-- PDF conversion uses the separate `env.AI.toMarkdown()` binding. It is a document-conversion capability, not a chat-model call, and must remain separate unless a later audit explicitly justifies abstraction.
-- `wrangler.jsonc` currently configures one Workers AI binding named `AI`; no external model-provider bindings, model catalog, provider registry, capability registry, routing policy, health registry, or model fallback implementation was found in the inspected runtime configuration/source.
-- Existing safeguards include request cancellation, per-call and total multi-agent deadlines, daily usage accounting, public API quotas, and output validation/retry. A gateway must preserve and integrate with these safeguards rather than bypass them.
+- `src/model-gateway.js` defines versioned task profiles, validates model metadata and routing constraints, applies hard eligibility gates, and ranks eligible candidates.
+- The existing Workers AI model `@cf/meta/llama-3.3-70b-instruct-fp8-fast` is the only eligible production candidate. No external provider credentials or adapters are active.
+- `runAgent()` routes specialist calls through the gateway; task profiles are mapped by agent role.
+- Web chat, Public API and Telegram share the gateway path and expose actual model trace metadata.
+- Public API handling was corrected to preserve the string response returned by `runAgent()` and include model metadata.
+- Existing timeout/cancellation, memory, locale, quota, output validation/retry and persistence behavior remain part of the request path.
+- PDF conversion uses the separate `env.AI.toMarkdown()` binding and remains outside chat-model routing.
 
-**Conclusion:** the first gateway milestone is an abstraction and compatibility refactor around the existing Workers AI call path. It is not a simultaneous migration to several paid providers.
+**Conclusion:** gateway phases A/B and one-provider adaptive routing are implemented and deployed. Multi-provider adaptive selection is not yet live because only one candidate is eligible; expanding the catalog requires verified capability evidence and explicit approval of provider, budget, data policy and consent.
 
 ## 2. Product policy: Adaptive by default
 
@@ -128,7 +125,7 @@ The profile must be chosen from the operation and declared requirements, not fro
 
 ## 6. Normalized gateway interface
 
-Proposed conceptual interface (not implemented yet):
+Conceptual normalized interface (implementation is currently integrated through `runAgent()`):
 
 ```js
 const result = await modelGateway.run({
@@ -203,20 +200,27 @@ A request budget must include every agent call, retry and fallback, not merely o
 ## 10. Migration plan
 
 ### Phase A — Contract and tests
-- Define task profiles, catalog schema, normalized result/error contract and deterministic policy.
-- Add fixtures for current Workers AI behavior and preserve the current model as the only eligible production candidate.
-- Test selection, hard constraints, deadline/cancellation, quotas, metadata and compatibility.
+
+**Status: implemented**
+- Task profiles, model catalog validation, normalized selection policy and hard eligibility checks are implemented in `src/model-gateway.js`.
+- Automated tests cover selection, malformed metadata/constraints, provider approval, deadline/budget gates and model output limits.
 
 ### Phase B — Compatibility seam
-- Introduce the gateway behind the shared `runAgent()` path.
-- Preserve all existing agent prompts, token limits, output validation/retry, memory and locale middleware.
-- Propagate actual provider/model metadata through web chat, public API and Telegram.
-- Keep PDF `toMarkdown()` processing separate.
+
+**Status: implemented**
+- The gateway is integrated behind the shared `runAgent()` path.
+- Existing agent prompts, output validation/retry, memory and locale wrappers remain in place.
+- Actual provider/model trace metadata is propagated through web chat, Public API and Telegram.
+- Public API string-response handling is covered by regression tests.
+- PDF `toMarkdown()` processing remains separate.
 
 ### Phase C — Adaptive routing with one provider
-- Enable the policy with the current Workers AI model as the sole eligible candidate.
-- Verify that the gateway is behaviorally equivalent to the current path before adding another provider.
-- Add telemetry and evaluation reporting.
+
+**Status: deployed**
+- Adaptive policy runs with the existing Workers AI model as the sole eligible candidate.
+- PR #94 was merged as `c64b8fdfdf5c2079ccfd242a43dc2c735496532b` and deployed as Worker version `02726d6c-1372-4e43-8f85-00e4a73eb43f`.
+- Post-deploy health, agents and Google sign-in configuration checks passed. Production D1 was verified read-only; no migrations were pending.
+- Model trace metadata exists, but durable operational telemetry and comparative quality evaluation remain follow-up work.
 
 ### Phase D — Second provider pilot
 - Select one official provider only after a founder-approved budget and data policy.
