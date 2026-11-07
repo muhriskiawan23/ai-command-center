@@ -258,7 +258,15 @@ test("core UI translations cover forms, AI modes, privacy, and usage in every no
       if (locale === "en") {
         expect(results[index].trim().length).toBeGreaterThan(0);
       } else {
-        expect(results[index], `Untranslated key "${required[index]}" for locale ${locale}`).not.toBe(required[index]);
+        // Some labels are valid cognates and remain identical in the target language.
+        // Keep the fallback guard strict while allowing these verified translations.
+        const validIdenticalTranslations = {
+          es: ["Formal"],
+          pt: ["Formal"]
+        };
+        if (!validIdenticalTranslations[locale]?.includes(required[index])) {
+          expect(results[index], `Untranslated key "${required[index]}" for locale ${locale}`).not.toBe(required[index]);
+        }
       }
       expect(results[index].trim().length).toBeGreaterThan(0);
     }
