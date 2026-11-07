@@ -773,8 +773,15 @@ function appendSources(links){
         link.textContent=l.url+(l.title?" — "+l.title:"");item.append(link);
         if(l.resolvedUrl&&l.resolvedUrl!==l.url){const redirect=document.createElement("small");redirect.textContent="Dialihkan ke "+l.resolvedUrl;item.append(redirect);}
       }else item.append(document.createTextNode(l.host+(l.title?" — "+l.title:"")));
+      if(l.sourceType==="news")item.append(document.createTextNode(" · Berita"));
+      else if(l.sourceType==="search")item.append(document.createTextNode(" · Pencarian web"));
+      else if(l.sourceType==="curated")item.append(document.createTextNode(" · Basis pengetahuan resmi"));
+      if(l.publishedAt){const date=new Date(l.publishedAt);if(!Number.isNaN(date.getTime()))item.append(document.createTextNode(" · Terbit "+date.toLocaleDateString()));}
+      else if(l.sourceType==="news"||l.sourceType==="search")item.append(document.createTextNode(" · Tanggal publikasi tidak tersedia"));
+      if(l.trust==="unverified-external")item.append(document.createTextNode(" · Sumber eksternal, belum diverifikasi"));
+      if(l.trust==="official-curated")item.append(document.createTextNode(" · Dokumen resmi terkurasi"));
       if(l.truncated)item.append(document.createTextNode(" (dipotong)"));
-    }else item.textContent="✗ "+(l.host||"tautan")+" — "+l.reason;
+    }else item.textContent="✗ "+(l.host||"sumber")+" — "+(l.reason||"tidak tersedia");
     box.append(item);
   }
   body.append(box);

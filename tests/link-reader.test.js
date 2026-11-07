@@ -140,7 +140,7 @@ test("sitasi palsu dihapus secara deterministik ketika semua tautan gagal dibaca
   const body = await response.json();
   assert.equal(response.status, 200);
   assert.ok(!body.response.includes("[1]"), body.response);
-  assert.match(body.response, /tidak ada tautan yang berhasil dibaca/);
+  assert.match(body.response, /tidak ada sumber yang berhasil diambil/);
   assert.equal(body.links[0].ok, false);
   await app.close();
 });
