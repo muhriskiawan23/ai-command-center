@@ -69,23 +69,24 @@ test("emits structured privacy-safe telemetry with a shared request correlation 
     const response = await fetch(app.url + "/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json", Origin: app.url },
-      body: JSON.stringify({ message: "Pesan uji yang tidak boleh masuk ke log telemetry." })
+      body: JSON.stringify({ message: "Buat analisis risiko investasi secara menyeluruh. Jangan masukkan prompt ini ke telemetry." })
     });
     assert.equal(response.status, 200);
-    const event = captured.map(args => args[0]).find(value =>
+    const events = captured.map(args => args[0]).filter(value =>
       value && typeof value === "object" && value.event === "BOR_AI_MODEL_TELEMETRY"
     );
-    assert.ok(event, "structured model telemetry event should be emitted");
-    assert.equal(event.schemaVersion, 1);
-    assert.equal(event.agentId, "coordinator");
-    assert.equal(event.outcome, "success");
-    assert.equal(typeof event.requestId, "string");
-    assert.ok(event.requestId.length >= 16);
-    assert.ok(Number.isFinite(event.durationMs) && event.durationMs >= 0);
-    assert.equal(event.retryCount, 0);
-    assert.equal(JSON.stringify(event).includes("Pesan uji"), false);
-    assert.equal(Object.hasOwn(event, "prompt"), false);
-    assert.equal(Object.hasOwn(event, "response"), false);
+    assert.ok(events.length >= 3, "multi-agent calls should emit one event per specialist");
+    assert.ok(events.some(event => event.agentId === "researcher"));
+    assert.ok(events.every(event => event.schemaVersion === 1));
+    assert.ok(events.every(event => event.outcome === "success"));
+    assert.ok(events.every(event => typeof event.requestId === "string" && event.requestId.length >= 16));
+    assert.equal(new Set(events.map(event => event.requestId)).size, 1, "all specialist events must share one request ID");
+    assert.ok(events.every(event => Number.isFinite(event.durationMs) && event.durationMs >= 0));
+    assert.ok(events.every(event => event.retryCount >= 0));
+    const serialized = JSON.stringify(events);
+    assert.equal(serialized.includes("Jangan masukkan prompt ini"), false);
+    assert.equal(serialized.includes("prompt"), false);
+    assert.equal(serialized.includes("response"), false);
   } finally {
     console.log = originalLog;
     await app.close();
