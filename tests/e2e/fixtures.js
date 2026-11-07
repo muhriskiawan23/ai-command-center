@@ -28,6 +28,9 @@ export const test = base.extend({
   app: async ({ harnessOptions }, use) => { const h = await startHarness(harnessOptions); await use(h); await h.close(); },
   page: async ({ page }, use) => {
     await page.route("https://accounts.google.com/gsi/client", (r) => r.fulfill({ contentType: "text/javascript", body: GSI_STUB }));
+    page.on("pageerror", (error) => console.error("[E2E BROWSER PAGE ERROR]", error?.stack || error));
+    page.on("console", (message) => { if (message.type() === "error") console.error("[E2E BROWSER CONSOLE]", message.text()); });
+    page.on("requestfailed", (request) => console.error("[E2E BROWSER REQUEST FAILED]", request.method(), request.url(), request.failure()?.errorText || ""));
     await page.addInitScript(FLASH_RECORDER);
     await use(page);
   }

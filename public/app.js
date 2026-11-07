@@ -97,8 +97,9 @@ function showTyping(){const row=document.createElement("article");row.className=
 function renderWorkflow(steps){const items=$("workflowItems");items.replaceChildren();if(!Array.isArray(steps)||!steps.length){$("workflow").hidden=true;return}$("workflow").hidden=false;for(const step of steps){const block=document.createElement("div");block.className="workflow-step";const label=document.createElement("strong");label.textContent=step.agent||"Langkah";const status=document.createElement("span");status.textContent=step.status||"completed";status.className="workflow-status";block.append(label,status);const output=document.createElement("pre");output.textContent=step.output||"";block.append(output);items.append(block)}}
 /* Textarea tumbuh mengikuti isi (scrollHeight) sampai max-height dari CSS, lalu berhenti dan scroll di dalam. */
 function resizePrompt(){
+  const viewportHeight=Math.min(window.innerHeight,window.visualViewport?.height||window.innerHeight);
   promptEl.style.height="auto";
-  const max=parseFloat(getComputedStyle(promptEl).maxHeight)||220;
+  const max=Math.min(220,viewportHeight*0.4);
   const needed=promptEl.scrollHeight;
   promptEl.style.height=Math.min(needed,max)+"px";
   promptEl.style.overflowY=needed>max?"auto":"hidden";
@@ -1040,6 +1041,7 @@ $("stopGeneration").addEventListener("click",()=>{if(busy)activeChatController?.
 promptEl.addEventListener("input",resizePrompt);
 /* Enter sengaja TIDAK mengirim: Enter = baris baru di semua perangkat. Satu-satunya cara kirim lewat UI adalah tombol panah. */
 window.addEventListener("resize",resizePrompt);
+window.visualViewport?.addEventListener("resize",resizePrompt);
 $("newChat").addEventListener("click",newChat);
 $("exportConversation").addEventListener("click",exportConversationFile);
 $("printConversation").addEventListener("click",printConversation);
@@ -1073,7 +1075,7 @@ $("historySearch").addEventListener("keydown",e=>{
 $("signOut").addEventListener("click",signOut);
 $("githubConnect").addEventListener("click",connectGitHub);
 $("githubDisconnect").addEventListener("click",disconnectGitHub);
-$("openGithubRepos").addEventListener("click",openGitHubRepositories);
+$("openGithubRepos")?.addEventListener("click",openGitHubRepositories);
 $("githubReposClose").addEventListener("click",()=>$("githubReposDialog").close());
 $("githubReposRefresh").addEventListener("click",loadGitHubRepositories);
 $("githubRepoSearch").addEventListener("input",renderGitHubRepositories);

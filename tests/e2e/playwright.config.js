@@ -1,16 +1,24 @@
 import { defineConfig } from "@playwright/test";
 
-// Viewport wajib dari spesifikasi: 360x800, 375x812, 390x844, 412x915, tablet, desktop, portrait/landscape.
+// Jalankan seluruh matriks viewport setelah baseline stabil; di CI hentikan pada kegagalan
+// pertama agar akar masalah tidak tertutup ratusan timeout berulang.
 const phone = (name, width, height) => ({ name, use: { viewport: { width, height }, isMobile: true, hasTouch: true } });
+const isCI = Boolean(process.env.CI);
+
 export default defineConfig({
   testDir: ".",
   testMatch: "*.spec.js",
   timeout: 30_000,
   expect: { timeout: 5_000 },
   fullyParallel: true,
-  workers: 2,
-  reporter: [["list"]],
+  workers: isCI ? 2 : undefined,
+  maxFailures: isCI ? 1 : 0,
+  reporter: [["list"], ["html", { outputFolder: "playwright-report", open: "never" }]],
+  outputDir: "test-results",
   use: {
+    trace: "retain-on-failure",
+    screenshot: "only-on-failure",
+    video: "retain-on-failure",
     // Di CI: `npx playwright install chromium`. Secara lokal bisa diarahkan ke Chromium yang sudah ada.
     launchOptions: { executablePath: process.env.PLAYWRIGHT_CHROMIUM_PATH || undefined }
   },
