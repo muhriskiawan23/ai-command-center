@@ -103,6 +103,18 @@ test("sidebar includes responsive visual polish and accessible GitHub connection
 });
 
 
+test("GitHub repository browser is available only after connection and supports search and visibility filters", () => {
+  assert.match(page, /id="openGithubRepos"/);
+  assert.match(page, /id="githubReposDialog"/);
+  assert.match(page, /id="githubRepoSearch"/);
+  assert.match(page, /id="githubRepoVisibility"/);
+  assert.match(appJs, /api\("\/api\/github\/installations"\)/);
+  assert.match(appJs, /api\("\/api\/github\/repositories\?installation_id=/);
+  assert.match(appJs, /function renderGitHubRepositories\(\)/);
+  assert.match(appJs, /function selectGitHubRepository\(repo\)/);
+  assert.match(appJs, /openGithubRepos"\)\.disabled=!githubConnection/);
+});
+
 test("sidebar uses a compact Claude-inspired layout with GitHub moved into Integrations", () => {
   assert.match(page, /id="historySearchForm"/);
   assert.match(page, /id="openIntegrations"/);
