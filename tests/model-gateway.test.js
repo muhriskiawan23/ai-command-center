@@ -228,3 +228,47 @@ test("rejects malformed routing limits instead of silently ignoring them", () =>
     /requirements.minQualityScore must be between 0 and 1/
   );
 });
+
+
+test("rejects malformed model metadata instead of clamping or treating it as measured", () => {
+  const invalidModels = [
+    candidate({ reliability: 1.2 }),
+    candidate({ reliability: -0.1 }),
+    candidate({ qualityScores: { fast_chat: 1.1 } }),
+    candidate({ qualityScores: { fast_chat: -0.1 } }),
+    candidate({ p95LatencyMs: -1 }),
+    candidate({ contextWindowTokens: -1 }),
+    candidate({ maxOutputTokens: 1.5 }),
+    candidate({ inputCostPerMillionUsd: -0.01 }),
+    candidate({ outputCostPerMillionUsd: Number.NaN }),
+    candidate({ capabilities: "text" }),
+    candidate({ regions: ["" ] }),
+    candidate({ dataPolicies: null }),
+    candidate({ qualityScores: [] }),
+    candidate({ adapter: "" })
+  ];
+
+  for (const model of invalidModels) {
+    const result = evaluateModelCandidates({ task: "fast_chat", models: [model] });
+    assert.equal(result.eligible.length, 0, JSON.stringify(model));
+    assert.equal(result.rejected[0].reason, "invalid_model_metadata");
+  }
+});
+
+test("accepts unknown nullable metadata but never treats it as measured", () => {
+  const model = candidate({
+    contextWindowTokens: null,
+    maxOutputTokens: null,
+    inputCostPerMillionUsd: null,
+    outputCostPerMillionUsd: null,
+    p95LatencyMs: null,
+    reliability: null,
+    qualityScores: {}
+  });
+  const result = evaluateModelCandidates({ task: "fast_chat", models: [model] });
+  assert.equal(result.eligible.length, 1);
+  assert.equal(result.eligible[0].evidence.quality, "unknown");
+  assert.equal(result.eligible[0].evidence.reliability, "unknown");
+  assert.equal(result.eligible[0].evidence.latency, "unknown");
+  assert.equal(result.eligible[0].evidence.cost, "unknown");
+});
