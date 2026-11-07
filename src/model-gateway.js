@@ -3,10 +3,10 @@ export const DEFAULT_MODEL_ID = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 
 export const TASK_PROFILES = Object.freeze({
   fast_chat: Object.freeze({ requiredCapabilities: Object.freeze(["text"]) }),
-  deep_reasoning: Object.freeze({ requiredCapabilities: ["text"] }),
-  research_synthesis: Object.freeze({ requiredCapabilities: ["text"] }),
-  coding: Object.freeze({ requiredCapabilities: ["text"] }),
-  translation: Object.freeze({ requiredCapabilities: ["text"] }),
+  deep_reasoning: Object.freeze({ requiredCapabilities: Object.freeze(["text"]) }),
+  research_synthesis: Object.freeze({ requiredCapabilities: Object.freeze(["text"]) }),
+  coding: Object.freeze({ requiredCapabilities: Object.freeze(["text"]) }),
+  translation: Object.freeze({ requiredCapabilities: Object.freeze(["text"]) }),
   multimodal_vision: Object.freeze({ requiredCapabilities: Object.freeze(["text", "vision"]) }),
   audio: Object.freeze({ requiredCapabilities: Object.freeze(["audio"]) }),
   structured_extraction: Object.freeze({ requiredCapabilities: Object.freeze(["text", "structured-output"]) })
