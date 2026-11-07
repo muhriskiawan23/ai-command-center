@@ -3,6 +3,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { startHarness, seedSession } from "./e2e/harness.js";
 import { memoryRejectionReason, validateMemoryContent, parseRememberCommand, buildMemoryBlock, MEMORY_MAX_ITEMS } from "../src/memory.js";
+import { localizedChatNotice } from "../src/index.js";
 
 const ALICE = { id: "sub-alice", email: "alice@example.com" };
 const BOB = { id: "sub-bob", email: "bob@example.com" };
@@ -245,4 +246,26 @@ test("menghapus akun menghapus memori dan pengaturannya (cascade FK nyata)", asy
   assert.equal(app.db.sqlite.prepare("SELECT COUNT(*) n FROM user_memories").get().n, 0);
   assert.equal(app.db.sqlite.prepare("SELECT COUNT(*) n FROM user_settings").get().n, 0);
   await app.close();
+});
+
+
+test("seluruh 6 kategori notifikasi tersedia dan terlokalisasi untuk 10 bahasa", () => {
+  const locales = ["en", "id", "es", "fr", "de", "pt", "ja", "ko", "zh", "ar"];
+  const categories = ["memoryDisabled", "memoryGuest", "memorySaved", "memoryRejected", "memorySaveFailed", "saveWarning"];
+  const english = Object.fromEntries(categories.map((category) => [category, localizedChatNotice("en", category, "BOR AI test")]));
+
+  for (const locale of locales) {
+    for (const category of categories) {
+      const notice = localizedChatNotice(locale, category, "BOR AI test");
+      assert.equal(typeof notice, "string", `${locale}/${category}: harus berupa string`);
+      assert.ok(notice.trim().length > 0, `${locale}/${category}: notifikasi tidak boleh kosong`);
+      assert.ok(!notice.includes("{item}"), `${locale}/${category}: placeholder item harus diproses`);
+      if (locale !== "en") {
+        assert.notEqual(notice, english[category], `${locale}/${category}: tidak boleh diam-diam fallback ke bahasa Inggris`);
+      }
+      if (category === "memorySaved") {
+        assert.ok(notice.includes("BOR AI test"), `${locale}/${category}: isi memori harus disisipkan`);
+      }
+    }
+  }
 });
