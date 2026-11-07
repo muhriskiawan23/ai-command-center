@@ -763,18 +763,24 @@ function buildHistory(chat){
 function appendSources(links){
   const row=messagesEl.lastElementChild;const body=row&&row.querySelector(".message-body");if(!body||!links||!links.length)return;
   const box=document.createElement("div");box.className="sources";
-  const head=document.createElement("strong");head.textContent="Sumber yang dibaca:";box.append(head);
+  const head=document.createElement("strong");head.textContent="Sumber yang digunakan:";box.append(head);
   for(const l of links){
     const item=document.createElement("div");item.className="source "+(l.ok?"ok":"fail");
     if(l.ok){
       item.append(document.createTextNode("✓ ["+l.sourceId+"] "));
-      if(typeof l.url==="string"&&/^https?:\/\//i.test(l.url)){
+      if(typeof l.url==="string"&&/^https:\/\//i.test(l.url)){
         const link=document.createElement("a");link.href=l.url;link.target="_blank";link.rel="noopener noreferrer";
-        link.textContent=l.url+(l.title?" — "+l.title:"");item.append(link);
-        if(l.resolvedUrl&&l.resolvedUrl!==l.url){const redirect=document.createElement("small");redirect.textContent="Dialihkan ke "+l.resolvedUrl;item.append(redirect);}
+        link.textContent=(l.title||l.url);item.append(link);
       }else item.append(document.createTextNode(l.host+(l.title?" — "+l.title:"")));
+      if(l.sourceType==="news")item.append(document.createTextNode(" · Berita"));
+      else if(l.sourceType==="search")item.append(document.createTextNode(" · Pencarian web"));
+      else if(l.sourceType==="curated")item.append(document.createTextNode(" · Basis pengetahuan resmi"));
+      if(l.publishedAt){const date=new Date(l.publishedAt);if(!Number.isNaN(date.getTime()))item.append(document.createTextNode(" · Terbit "+date.toLocaleDateString()));}
+      else if(l.sourceType==="news"||l.sourceType==="search")item.append(document.createTextNode(" · Tanggal publikasi tidak tersedia"));
+      if(l.trust==="unverified-external")item.append(document.createTextNode(" · Sumber eksternal, belum diverifikasi"));
+      if(l.trust==="official-curated")item.append(document.createTextNode(" · Dokumen resmi terkurasi"));
       if(l.truncated)item.append(document.createTextNode(" (dipotong)"));
-    }else item.textContent="✗ "+(l.host||"tautan")+" — "+l.reason;
+    }else item.textContent="✗ "+(l.host||"sumber")+" — "+(l.reason||"tidak tersedia");
     box.append(item);
   }
   body.append(box);
