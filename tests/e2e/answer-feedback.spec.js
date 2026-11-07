@@ -2,6 +2,8 @@ import { test, expect, loginAs } from "./fixtures.js";
 const ALICE = { id: "feedback-e2e-alice", email: "feedback-e2e@example.com", name: "Feedback Tester" };
 test("akun dapat mengirim feedback jawaban dan melihatnya kembali setelah reload", async ({ page, app, context }) => {
   await loginAs(context, app, ALICE);
+  // The test asserts Indonesian accessible labels; do not depend on the CI browser locale.
+  await page.addInitScript(() => localStorage.setItem("borai-language-preference", "id"));
   await page.goto(app.url);
   await expect(page.locator("#prompt")).toBeVisible();
   await page.locator("#prompt").fill("Jelaskan manfaat validasi data.");
