@@ -138,30 +138,33 @@ export async function handleGitHubOAuthRoute(request, env, url, { getSession, sa
     const state = url.searchParams.get("state") || "";
     const code = url.searchParams.get("code") || "";
     const stateCookie = readCookie(request, STATE_COOKIE);
-    const fail = (reason) => new Response(null, { status: 302, headers: { Location: "/?github=error&github_reason=" + encodeURIComponent(reason), "Set-Cookie": clearStateCookie(), "Cache-Control": "no-store" } });
+    const fail = (reason) => new Response(null, { status: 302, headers: { Location: "/?github=error&reason=" + encodeURIComponent(reason), "Set-Cookie": clearStateCookie(), "Cache-Control": "no-store" } });
     if (!state || !stateCookie || state !== stateCookie) return fail("state_cookie");
-    if (state.length > 200) return fail("state_invalid");
+    if (state.length > 200) return fail("state_cookie");
     const now = Math.floor(Date.now() / 1000);
     const pending = await env.DB.prepare("SELECT user_id FROM github_oauth_states WHERE state_hash = ? AND expires_at > ?")
       .bind(await sha256Hex(state), now).first();
-    if (!pending || pending.user_id !== user.id) return fail("state_expired_or_user_mismatch");
+    if (!pending || pending.user_id !== user.id) return fail("state_expired_or_session");
     await env.DB.prepare("DELETE FROM github_oauth_states WHERE state_hash = ?").bind(await sha256Hex(state)).run();
     // GitHub returns an error (for example access_denied) without an authorization code.
     // Handle this before validating code so cancellations are not misreported as state failures.
     if (url.searchParams.has("error")) {
       return new Response(null, { status: 302, headers: { Location: "/?github=cancelled", "Set-Cookie": clearStateCookie(), "Cache-Control": "no-store" } });
     }
-    if (!code || code.length > 500) return fail("missing_or_invalid_code");
+    if (!code || code.length > 500) return fail("missing_code");
     const tokenResponse = await fetch("https://github.com/login/oauth/access_token", {
       method: "POST",
       headers: { Accept: "application/json", "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({ client_id: env.GITHUB_APP_CLIENT_ID, client_secret: env.GITHUB_APP_CLIENT_SECRET, code, redirect_uri: env.GITHUB_APP_REDIRECT_URI })
     });
-    if (!tokenResponse.ok) return fail("token_exchange_failed");
+    if (!tokenResponse.ok) return fail("token_http_" + tokenResponse.status);
     const tokens = await tokenResponse.json();
-    if (typeof tokens.access_token !== "string" || !tokens.access_token) return fail("token_missing");
+    if (typeof tokens.access_token !== "string" || !tokens.access_token) {
+      const providerError = typeof tokens.error === "string" && /^[a-z_]{1,40}$/.test(tokens.error) ? tokens.error : "unknown";
+      return fail("token_" + providerError);
+    }
     const profile = await githubJson(GITHUB_API + "/user", tokens.access_token);
-    if (profile.error || !Number.isSafeInteger(profile.data.id) || typeof profile.data.login !== "string") return fail("profile_verification_failed");
+    if (profile.error || !Number.isSafeInteger(profile.data.id) || typeof profile.data.login !== "string") return fail("profile");
     const encryptedAccess = await encryptToken(tokens.access_token, env);
     const encryptedRefresh = typeof tokens.refresh_token === "string" ? await encryptToken(tokens.refresh_token, env) : null;
     const accessExpires = now + Math.max(60, Number(tokens.expires_in) || 28800);

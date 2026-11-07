@@ -62,7 +62,7 @@ test("callback rejects a mismatched state before exchanging a code", async () =>
   const request = new Request("https://example.test/api/github/callback?code=code&state=attacker", { headers: { Cookie: "__Host-borai_github_oauth_state=valid" } });
   const response = await handleGitHubOAuthRoute(request, env(), new URL(request.url), deps);
   assert.equal(response.status, 302);
-  assert.equal(response.headers.get("Location"), "/?github=error&github_reason=state_cookie");
+  assert.equal(response.headers.get("Location"), "/?github=error&reason=state_cookie");
 });
 
 test("callback handles GitHub authorization denial before requiring an authorization code", async () => {
