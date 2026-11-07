@@ -20,7 +20,7 @@ function setup(options = {}) {
   const env = {
     TELEGRAM_BOT_TOKEN: token,
     TELEGRAM_WEBHOOK_SECRET: secret,
-    CHAT_LIMITER: options.limiter ? { limit: async value => { calls.push(value); return { success: options.limiter }; } } : undefined
+    ...(Object.prototype.hasOwnProperty.call(options, "limiter") ? { CHAT_LIMITER: { limit: async value => { calls.push(value); return { success: options.limiter }; } } } : {})
   };
   const deps = {
     fetcher: async (_url, init) => { sent.push(JSON.parse(init.body)); return Response.json({ ok: true }); },
