@@ -5,6 +5,7 @@ import { MEMORY_MAX_ITEMS, MEMORY_MAX_CHARS, getMemoryState, setMemoryEnabled, a
 import { handleDeveloperKeysRoute, handlePublicChatRoute } from "./widget-api.js";
 import { handleTelegramWebhook } from "./telegram.js";
 import { handleGitHubReadRoute } from "./github-reader.js";
+import { handleGitHubOAuthRoute } from "./github-oauth.js";
 
 const MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 const MAX_REQUEST_BYTES = 64 * 1024;
@@ -1217,8 +1218,14 @@ export default {
       if (response) return response;
     }
     if (url.pathname.startsWith("/api/github/")) {
-      try { return await handleGitHubReadRoute(request, env, url, { fetcher: env.GITHUB_FETCHER || fetch, json }); }
-      catch (error) { console.error("GitHub Reader request failed:", error); return json({ error: "GitHub Reader gagal memproses permintaan." }, 503); }
+      try {
+        const oauthResponse = await handleGitHubOAuthRoute(request, env, url, { getSession, sameOrigin, randomToken, sha256Hex, json });
+        if (oauthResponse) return oauthResponse;
+        return await handleGitHubReadRoute(request, env, url, { fetcher: env.GITHUB_FETCHER || fetch, json });
+      } catch (error) {
+        console.error("GitHub integration request failed:", error);
+        return json({ error: "Integrasi GitHub gagal memproses permintaan." }, 503);
+      }
     }
     if (url.pathname === "/api/developer/keys" || url.pathname.startsWith("/api/developer/keys/")) {
       try { return await handleDeveloperKeysRoute(request, env, url, { getSession, sameOrigin, randomToken, sha256Hex, json }); }
