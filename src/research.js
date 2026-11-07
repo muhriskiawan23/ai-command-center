@@ -39,7 +39,7 @@ function staleDate(value, now) {
 }
 
 export function detectResearchMode(message) {
-  const text = String(message || "");
+  const text = String(message || "").replace(/https?:\/\/[^\s<>]+|www\.[^\s<>]+/gi, " ");
   if (/\b(berita|news|headline|breaking|kabar terbaru)\b/i.test(text)) return "news";
   if (/\b(cari|telusuri|search|riset|terbaru|terkini|hari ini|saat ini|sekarang|latest|current|today|this week|recent|what happened)\b/i.test(text) ||
       /\b(harga|kurs|nilai tukar|saham|emas|bitcoin|crypto)\b.{0,35}\b(sekarang|hari ini|terbaru|terkini)\b/i.test(text)) return "web";
