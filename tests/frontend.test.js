@@ -75,9 +75,9 @@ test("About BOR AI opens an accessible, user-invoked dialog with a close control
 });
 
 test("welcome screen keeps the four starter prompts and sidebar has no redundant template entry", () => {
-  assert.match(page, /data-prompt="Bantu gw menyusun rencana kerja/);
+  assert.match(page, /data-prompt="Bantu saya menyusun rencana kerja/);
   assert.match(page, /data-prompt="Analisis masalah ini secara kritis/);
-  assert.match(page, /data-prompt="Bantu gw membuat ide konten/);
+  assert.match(page, /data-prompt="Bantu saya mengembangkan ide konten/);
   assert.match(page, /data-prompt="Tinjau kode atau arsitektur aplikasi/);
   assert.doesNotMatch(page, /id="openTemplates"|id="templatesDialog"|Prompt templates/);
   assert.doesNotMatch(appJs, /PROMPT_TEMPLATES|renderPromptTemplates|openPromptTemplates/);
@@ -103,8 +103,8 @@ test("sidebar includes responsive visual polish and accessible GitHub connection
 });
 
 
-test("GitHub repository browser is available only after connection and supports search and visibility filters", () => {
-  assert.match(page, /id="openGithubRepos"/);
+test("GitHub repository browser is temporarily hidden from navigation while its backend integration remains intact", () => {
+  assert.doesNotMatch(page.match(/<aside class="sidebar"[\s\S]*?<\/aside>/)?.[0] || "", /id="openGithubRepos"/);
   assert.match(page, /id="githubReposDialog"/);
   assert.match(page, /id="githubRepoSearch"/);
   assert.match(page, /id="githubRepoVisibility"/);
