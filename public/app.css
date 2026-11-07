@@ -431,3 +431,27 @@ html[dir="rtl"] pre, html[dir="rtl"] code, html[dir="rtl"] .message-text pre { d
   html[dir="rtl"] .sidebar { left:auto; right:0; inset-block:0; width:min(310px,86vw); transform:translateX(105%); border-right:0; border-left:1px solid var(--line); }
   html[dir="rtl"] .sidebar.open { transform:translateX(0); }
 }
+
+
+/* Keep the mobile application grid constrained to the viewport in both LTR and RTL.
+   A min-content 1fr track can otherwise widen the fixed-position drawer's containing area. */
+@media (max-width:1024px) {
+  .app {
+    width:100%;
+    min-width:0;
+    grid-template-columns:minmax(0,1fr);
+  }
+  .workspace {
+    width:100%;
+    min-width:0;
+  }
+  .sidebar {
+    max-width:100vw;
+  }
+  html[dir="rtl"] .sidebar {
+    left:auto;
+    right:0;
+    width:min(310px,86vw);
+    max-width:100vw;
+  }
+}
