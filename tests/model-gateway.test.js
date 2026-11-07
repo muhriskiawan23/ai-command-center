@@ -11,7 +11,7 @@ import {
 function candidate(overrides = {}) {
   return {
     id: "test/model",
-    provider: "test-provider",
+    provider: "cloudflare-workers-ai",
     adapter: "test",
     capabilities: ["text"],
     contextWindowTokens: 16000,
@@ -57,7 +57,7 @@ test("rejects audio task when model has no verified audio capability", () => {
 });
 
 test("does not route to an external provider without explicit approval and consent", () => {
-  const external = candidate({ external: true });
+  const external = candidate({ id: "external/model", provider: "external-test-provider", external: true, approved: true });
   const denied = evaluateModelCandidates({ task: "fast_chat", models: [external] });
   assert.equal(denied.eligible.length, 0);
   assert.equal(denied.rejected[0].reason, "external_provider_not_approved");
@@ -65,7 +65,7 @@ test("does not route to an external provider without explicit approval and conse
   const approved = selectModel({
     task: "fast_chat",
     models: [external],
-    constraints: { allowExternalProviders: true, userConsent: true }
+    constraints: { approvedProviders: ["external-test-provider"], userConsent: true }
   });
   assert.equal(approved.model.id, external.id);
 });
@@ -79,6 +79,31 @@ test("fails closed when required context size is not verified", () => {
   });
   assert.equal(result.eligible.length, 0);
   assert.equal(result.rejected[0].reason, "context_limit_unverified_or_exceeded");
+});
+
+test("fails closed when a deadline is set but latency is unknown or too high", () => {
+  const unknownLatency = candidate({ p95LatencyMs: null });
+  const tooSlow = candidate({ p95LatencyMs: 5000 });
+  const unknown = evaluateModelCandidates({
+    task: "fast_chat", models: [unknownLatency], constraints: { deadlineMs: 1500 }
+  });
+  const slow = evaluateModelCandidates({
+    task: "fast_chat", models: [tooSlow], constraints: { deadlineMs: 1500 }
+  });
+  assert.equal(unknown.eligible.length, 0);
+  assert.equal(unknown.rejected[0].reason, "deadline_unverified_or_not_feasible");
+  assert.equal(slow.eligible.length, 0);
+  assert.equal(slow.rejected[0].reason, "deadline_unverified_or_not_feasible");
+});
+
+test("fails closed when a cost ceiling is set without token estimates", () => {
+  const result = evaluateModelCandidates({
+    task: "fast_chat",
+    models: [candidate()],
+    constraints: { maxCostUsd: 0.01 }
+  });
+  assert.equal(result.eligible.length, 0);
+  assert.equal(result.rejected[0].reason, "cost_unverified_or_over_budget");
 });
 
 test("fails closed when requested region or data policy is unverified", () => {
