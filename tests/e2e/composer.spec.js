@@ -212,3 +212,50 @@ test("Arabic RTL positions the desktop sidebar on the right and opens the mobile
   expect(mobileSidebar.x + mobileSidebar.width).toBeLessThanOrEqual(layoutViewportWidth);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
+
+test("core UI translations cover forms, AI modes, privacy, and usage in every non-Indonesian locale", async ({ page, app }) => {
+  await enterGuest(page, app);
+  const locales = ["en", "es", "fr", "de", "pt", "ja", "ko", "zh", "ar"];
+  const required = [
+    "Today's usage",
+    "Set priorities and define execution steps",
+    "Evaluate options, risks, and trade-offs",
+    "Prepare draft in chat",
+    "Email draft generator",
+    "Recipient (optional)",
+    "Subject (optional)",
+    "Purpose / context *",
+    "Key points (optional)",
+    "Professional",
+    "Formal",
+    "Friendly",
+    "Persuasive",
+    "Brief and direct",
+    "Choose AI mode",
+    "Multi-agent (recommended)",
+    "Researcher · Research",
+    "Analyst · Analysis",
+    "Writer · Writing",
+    "Fact Checker · Audit",
+    "Strategist · Strategy",
+    "Coder · Coding",
+    "Planner · Planning",
+    "Critic · Critique",
+    "Summarizer · Summary",
+    "Translator · Translation",
+    "Text Analyst · Text analysis",
+    "Privacy and control",
+    "Enable memory",
+    "Do not store sensitive data"
+  ];
+  for (const locale of locales) {
+    await page.evaluate((code) => window.BORLocale.apply(code), locale);
+    const results = await page.evaluate((keys) => keys.map((key) => window.BORLocale.translate(key)), required);
+    expect(results, `Missing core translations for locale ${locale}`).toHaveLength(required.length);
+    for (let index = 0; index < required.length; index++) {
+      expect(results[index], `Untranslated key "${required[index]}" for locale ${locale}`).not.toBe(required[index]);
+      expect(results[index].trim().length).toBeGreaterThan(0);
+    }
+    expect(await page.locator("html").getAttribute("dir")).toBe(locale === "ar" ? "rtl" : "ltr");
+  }
+});
