@@ -94,12 +94,18 @@ test("rejects mixed provider or routing-policy metadata within candidate evidenc
   assert.equal(policyReport.candidates["candidate-v1"].status, "inconclusive");
 });
 
-test("requires a consistent verified baseline provider, model version, and routing policy", () => {
-  const plan = buildPlan();
-  plan.runs.find((run) => run.modelRole === "baseline" && run.status === "completed").provider = "other-provider";
-  const report = decideModelAdvancement(plan);
-  assert.equal(report.candidates["candidate-v1"].gates.baselineEvidencePass, false);
-  assert.equal(report.candidates["candidate-v1"].status, "inconclusive");
+test("requires consistent baseline model version, provider, and routing policy", () => {
+  for (const [field, value] of [
+    ["actualModelVersion", "different-version"],
+    ["provider", "other-provider"],
+    ["policyVersion", "different-policy"]
+  ]) {
+    const plan = buildPlan();
+    plan.runs.find((run) => run.modelRole === "baseline" && run.status === "completed")[field] = value;
+    const report = decideModelAdvancement(plan);
+    assert.equal(report.candidates["candidate-v1"].gates.baselineEvidencePass, false, field);
+    assert.equal(report.candidates["candidate-v1"].status, "inconclusive", field);
+  }
 });
 
 test("rejects unknown model roles", () => {
