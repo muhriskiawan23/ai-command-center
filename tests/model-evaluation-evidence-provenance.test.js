@@ -79,4 +79,8 @@ test("rejects pending or unknown-role evidence from a final signed record", () =
   const unknownRole = buildPlan();
   unknownRole.runs[0].modelRole = "control";
   assert.throws(() => createEvidenceEnvelope(unknownRole, pair.privateKey), /modelRole must be baseline or candidate/);
+
+  const mixedRole = buildPlan();
+  mixedRole.runs[0].modelRole = "candidate";
+  assert.throws(() => createEvidenceEnvelope(mixedRole, pair.privateKey), /inconsistent modelRole values/);
 });
