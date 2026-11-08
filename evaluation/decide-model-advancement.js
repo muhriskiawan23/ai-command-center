@@ -145,6 +145,9 @@ export function decideModelAdvancement(plan, policyOverrides = {}) {
       for (const field of ["actualModelId", "actualModelVersion", "provider", "policyVersion"]) {
         if (!nonEmpty(run[field])) throw new TypeError(`${label}.${field} is required for completed live evidence`);
       }
+      if (run.actualModelId !== run.modelId) {
+        throw new TypeError(`${label}.actualModelId must match planned modelId`);
+      }
       if (run.executionType !== "manual_live") throw new TypeError("only manual_live evidence can support an advancement decision");
       if (!Number.isFinite(run.latencyMs) || run.latencyMs < 0 ||
           (run.costUsd !== null && (!Number.isFinite(run.costUsd) || run.costUsd < 0))) {
