@@ -234,7 +234,9 @@ export function evaluateModelCandidates({
     const quality = model.qualityScores?.[task];
     // The production baseline may run without comparative quality evidence; every added candidate must
     // have a measured task score and an explicit, pre-approved quality floor before it can be routed.
-    if (model.baseline !== true && !Object.hasOwn(requirements, "minQualityScore")) {
+    const isAuditedBaseline = model.baseline === true && model.id === DEFAULT_MODEL_ID &&
+      model.provider === "cloudflare-workers-ai" && model.adapter === "workers-ai";
+    if (!isAuditedBaseline && !Object.hasOwn(requirements, "minQualityScore")) {
       reject("candidate_quality_floor_required"); continue;
     }
     if (Object.hasOwn(requirements, "minQualityScore") &&
