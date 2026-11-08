@@ -113,10 +113,11 @@ export function createEvidenceEnvelope(payload, privateKeyPem, { signedAt = new 
     signedAt,
     attestationType: "operator_signed_evaluation_record",
     payloadSha256: sha256(payloadJson),
-    payload
+    payload,
+    summary
   };
   const signature = sign(null, Buffer.from(DOMAIN + canonicalJson(unsigned)), privateKey).toString("base64");
-  return { ...unsigned, signature, summary };
+  return { ...unsigned, signature };
 }
 
 export function verifyEvidenceEnvelope(envelope, trustedPublicKeyPem) {
@@ -132,9 +133,12 @@ export function verifyEvidenceEnvelope(envelope, trustedPublicKeyPem) {
   const keyId = keyFingerprint(publicKey);
   if (envelope.keyId !== keyId) throw new Error("trusted public key fingerprint does not match envelope keyId");
   const summary = validateEvidencePayload(envelope.payload);
+  if (canonicalJson(envelope.summary) !== canonicalJson(summary)) {
+    throw new Error("evidence summary mismatch");
+  }
   const payloadHash = sha256(canonicalJson(envelope.payload));
   if (envelope.payloadSha256 !== payloadHash) throw new Error("evidence payload hash mismatch");
-  const { signature, summary: ignoredSummary, ...unsigned } = envelope;
+  const { signature, ...unsigned } = envelope;
   if (!verify(null, Buffer.from(DOMAIN + canonicalJson(unsigned)), publicKey, Buffer.from(signature, "base64"))) {
     throw new Error("evidence signature verification failed");
   }
