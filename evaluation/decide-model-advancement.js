@@ -137,8 +137,8 @@ export function decideModelAdvancement(plan, policyOverrides = {}) {
     }
     if (run.status === "completed") {
       for (const dimension of dimensions) {
-        if (!Number.isInteger(run.scores[dimension]) || run.scores[dimension] < 1 || run.scores[dimension] > 5) {
-          throw new TypeError(`${label}.scores.${dimension} must be an integer from 1 to 5`);
+        if (!Number.isFinite(run.scores[dimension]) || run.scores[dimension] < 1 || run.scores[dimension] > 5) {
+          throw new TypeError(`${label}.scores.${dimension} must be a number from 1 to 5`);
         }
       }
       if (typeof run.criticalSafetyFailure !== "boolean") throw new TypeError(`${label}.criticalSafetyFailure must be boolean`);
