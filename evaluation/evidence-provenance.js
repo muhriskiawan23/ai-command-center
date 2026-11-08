@@ -156,7 +156,8 @@ export function createEvidenceEnvelope(payload, privateKeyPem, { signedAt = new 
   const privateKey = privateKeyPem?.type === "private" ? privateKeyPem : createPrivateKey(privateKeyPem);
   if (privateKey.asymmetricKeyType !== "ed25519") throw new TypeError("signing key must be Ed25519");
   const publicKey = createPublicKey(privateKey);
-  const payloadJson = canonicalJson(payload);
+  const payloadSnapshot = JSON.parse(canonicalJson(payload));
+  const payloadJson = canonicalJson(payloadSnapshot);
   const unsigned = {
     schemaVersion: SCHEMA_VERSION,
     algorithm: "Ed25519",
@@ -164,7 +165,7 @@ export function createEvidenceEnvelope(payload, privateKeyPem, { signedAt = new 
     signedAt,
     attestationType: "operator_signed_evaluation_record",
     payloadSha256: sha256(payloadJson),
-    payload,
+    payload: payloadSnapshot,
     summary
   };
   const signature = sign(null, Buffer.from(DOMAIN + canonicalJson(unsigned)), privateKey).toString("base64");
