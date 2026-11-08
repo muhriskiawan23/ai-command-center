@@ -15,7 +15,8 @@
     "eval:validate": "node --test tests/model-quality-evaluation.test.js",
     "eval:plan": "node evaluation/prepare-model-evaluation.js",
     "eval:report": "node evaluation/summarize-model-evaluation.js",
-    "eval:blind": "node evaluation/create-blinded-review-packets.js"
+    "eval:blind": "node evaluation/create-blinded-review-packets.js",
+    "eval:consensus": "node evaluation/score-blinded-reviews.js"
   },
   "engines": {
     "node": ">=22"
