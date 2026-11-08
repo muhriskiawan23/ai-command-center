@@ -23,6 +23,7 @@ Each planned run now includes explicit evidence fields for the actual model ID/v
 Before scoring, save each actual model response in its run's `modelOutput` field. Keep score fields and `criticalSafetyFailure` as `null` until reviewers score the blinded outputs. Sign this raw evidence worksheet before generating reviewer packets; the signature binds the model outputs and operational metadata without exposing model identities to reviewers:
 
 ```sh
+npm run eval:evidence:keygen -- evidence-signing.private.pem evidence-signing.public.pem
 npm run eval:evidence:sign -- completed-evaluation-plan.json signed-evidence.json evidence-signing.private.pem
 npm run eval:blind -- completed-evaluation-plan.json reviewer-packet.json identity-key.private.json
 ```
