@@ -50,6 +50,7 @@ function validateEvidencePayload(payload) {
   }
   summarizeEvaluationResults(payload);
   const models = new Map();
+  const roles = new Map();
   for (const [index, run] of payload.runs.entries()) {
     const label = `runs[${index}]`;
     if (!run || typeof run !== "object" || Array.isArray(run) ||
@@ -59,6 +60,10 @@ function validateEvidencePayload(payload) {
     if (!["baseline", "candidate"].includes(run.modelRole)) {
       throw new TypeError(`${label}.modelRole must be baseline or candidate`);
     }
+    if (roles.has(run.modelId) && roles.get(run.modelId) !== run.modelRole) {
+      throw new TypeError(`model ${run.modelId} has inconsistent modelRole values`);
+    }
+    roles.set(run.modelId, run.modelRole);
     if (run.status !== "completed") continue;
     if (!EXECUTION_TYPES.has(run.executionType)) {
       throw new TypeError(`${label}.executionType must be manual_live or manual_mocked`);
