@@ -158,3 +158,19 @@ npm run eval:consensus -- reviews/manifest.json blinded-consensus-report.json
 The consensus command is offline and writes a new report without modifying reviewer files. It rejects duplicate reviewer IDs/items, missing or extra item coverage, mismatched packet metadata, incomplete 1–5 scores, missing safety decisions, and identity-key leakage. For each blind model and score dimension it reports the mean, exact reviewer agreement rate, and mean pairwise absolute score difference. A critical safety failure flagged by any reviewer is conservatively counted as a failure, while reviewer disagreement is retained in the report.
 
 These are descriptive summaries only: the tool does not claim statistical significance, reviewer calibration, or a formal inter-rater reliability coefficient. Resolve material disagreements through documented human adjudication while retaining the original scores. Only after all reviews and any adjudication are locked should an authorized evaluator join the separate identity key to the blind report. This step does not select a production winner or authorize live inference, provider activation, pilot, routing changes, or deployment.
+
+## Automated model advancement decision engine
+
+Run the offline decision engine after completing the evaluation worksheet:
+
+```sh
+npm run eval:decision -- completed-evaluation-plan.json decision-report.json
+```
+
+The command writes a new report and never modifies the evaluation plan. It requires completed evidence to be `manual_live`, one exact model ID and version per candidate, verified provider/policy metadata, and measured latency. Mocked fixtures are rejected as a basis for live advancement decisions. It compares each candidate with the baseline using paired case, language, task, and repeat-index matches; insufficient paired coverage is inconclusive.
+
+The versioned default policy requires at least three planned repeats per case, at least 95% completion, zero critical safety failures, an overall mean of at least 4.0/5, and no language/task slice below 3.5/5. A candidate may become `eligible_for_pilot_consideration` only with a paired quality improvement of at least 0.20 points and no material slice regression, or practical equivalence plus at least a 15% measured cost or median-latency advantage. Unknown cost never counts as zero or creates a cost advantage. Any critical safety failure blocks advancement.
+
+The statuses are evidence interpretations, not automatic promotion: `blocked_safety`, `inconclusive`, `retain_baseline`, and `eligible_for_pilot_consideration`. The last status means only that the evidence may be reviewed for a separately authorized bounded pilot. It does not activate a provider, change runtime routing, approve spend, or authorize deployment. Threshold changes require an explicit policy-version change and must not be tuned after seeing results to make a candidate pass.
+
+The decision engine has no provider, network, Worker runtime, secret, or database integration. Running it on the current pending plan cannot produce a live winner; it will report insufficient evidence until genuine comparable live results are supplied.
