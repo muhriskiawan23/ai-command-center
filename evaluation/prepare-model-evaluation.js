@@ -70,6 +70,18 @@ export function createEvaluationPlan({
           status: "pending",
           scores: Object.fromEntries(SCORE_DIMENSIONS.map((dimension) => [dimension, null])),
           criticalSafetyFailure: null,
+          actualModelId: null,
+          actualModelVersion: null,
+          provider: null,
+          policyVersion: null,
+          executionType: null,
+          startedAt: null,
+          completedAt: null,
+          latencyMs: null,
+          inputTokens: null,
+          outputTokens: null,
+          costUsd: null,
+          failureReason: "",
           reviewerNotes: ""
         });
       }
