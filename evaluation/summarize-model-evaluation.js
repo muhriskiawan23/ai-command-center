@@ -1,4 +1,6 @@
 import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 
 const EXECUTION_TYPES = new Set(["manual_live", "manual_mocked"]);
 const RUN_STATUSES = new Set(["pending", "completed", "failed", "skipped"]);
@@ -166,12 +168,12 @@ async function main(args) {
   }
   const plan = JSON.parse(await readFile(inputPath, "utf8"));
   const report = summarizeEvaluationResults(plan);
-  process.stdout.write(`${JSON.stringify(report, null, 2)}\\n`);
+  process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
 }
 
-if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href) {
+if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url) {
   main(process.argv.slice(2)).catch((error) => {
-    process.stderr.write(`Evaluation report failed: ${error.message}\\n`);
+    process.stderr.write(`Evaluation report failed: ${error.message}\n`);
     process.exitCode = 1;
   });
 }
