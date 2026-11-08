@@ -2,7 +2,7 @@
 
 **Direction:** Hybrid + All Capabilities  
 **Repository:** `muhriskiawan23/ai-command-center`  
-**Baseline:** `main` at `cee8b2799f51f868fd75770b9f52e85ace2a8329`  
+**Baseline:** `main` at `6aea5f9f8da5bb4d23df3f4fb6071819d618ddb8`  
 **Last repository audit:** 2026-11-09  
 **Release rule:** No pull request is merged and no production deployment is initiated without explicit founder approval.
 
@@ -33,7 +33,7 @@ The objective is not to claim that BOR AI is already better than ChatGPT, Claude
 | Integrations | Telegram webhook; embeddable widget and public API keys; GitHub repository/PR read-only capabilities and OAuth foundation | Each external integration needs live credential, permission, revocation and abuse testing. Gmail/Drive, Calendar, Slack, WhatsApp and general browser automation are not complete. |
 | Developer/product APIs | Public single-turn chat API, per-site keys, origin allow-list and quotas | No general-purpose safe code execution or autonomous software-building runtime exists. |
 | Security and cost controls | Request limits, daily usage accounting, timeouts, session ownership checks, CSP/security headers, input bounds and regression tests | Production observability, spend controls, anti-bot, disaster recovery and full external penetration testing remain incomplete. |
-| Deployment | Cloudflare Worker and static assets, D1 migrations, GitHub Actions tests/preview/deploy workflow | PR #117 merge commit `cee8b2799f51f868fd75770b9f52e85ace2a8329` is the latest main baseline and is deployed. Production deploy run `42518807471` and test run `42518807556` completed successfully; D1 migrations and optional live chat were skipped, while production endpoint verification passed. |
+| Deployment | Cloudflare Worker and static assets, D1 migrations, GitHub Actions tests/preview/deploy workflow | PR #117 baseline `cee8b27` was production-deployed successfully by run `42518807471`; PR #121 security hotfix is now the latest main code commit `6aea5f9`. The production workflow runs on push to `main`; post-PR #121 production run status is not verifiable through the current GitHub connector. The last verified run found no pending D1 migrations, skipped applying migrations and optional live chat, and passed health/agents/Google-config checks. Cloudflare Git-integration deployment settings remain unverified. |
 
 ### Current work and evidence status
 
@@ -48,6 +48,8 @@ The objective is not to claim that BOR AI is already better than ChatGPT, Claude
 - **Live Brave provider verification:** status remains unverified until a controlled request confirms `BRAVE_SEARCH_API_KEY`, active plan/quota and successful live results. Never place the key in chat, source code, GitHub issues, or browser code.
 - **Second model provider:** none is active. Provider selection, budget, data policy, consent, and rollback must be approved before a provider pilot.
 - **Historic audit document:** `docs/AUDIT-BOR-AI.md` is dated 2026-10-31. Treat its findings as historical leads, not as a fresh confirmation of current production behavior. Re-test each item before changing its status.
+- **PR #121 — PDF multipart resource-limit hotfix:** merged as `6aea5f9`. The PDF endpoint now caps actual streamed multipart bytes before `formData()`; `Content-Length` is only an early-rejection hint. Regression coverage uses a chunked upload without `Content-Length`. CI passed 335/335 unit tests, syntax, preview build, and E2E (564 passed, 12 skipped); Cloudflare preview deployment succeeded. This was a separate security hotfix, not a production change within Milestone 0. The push-to-main production workflow is triggered automatically, but its post-merge result is not verified here.
+- **PR #120 — Audit and capability documentation refresh:** open for review. It clarifies local versus server-side PDF data paths, refreshes the link-reader/security evidence, and updates D1/deployment findings. It is documentation-only and is being held to avoid an unnecessary production redeploy while Milestone 0 remains in progress.
 
 ## 3. Execution principles and release gates
 
