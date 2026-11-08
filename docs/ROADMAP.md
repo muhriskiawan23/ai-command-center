@@ -2,7 +2,7 @@
 
 **Direction:** Hybrid + All Capabilities  
 **Repository:** `muhriskiawan23/ai-command-center`  
-**Baseline:** `main` at `ec65e645296e0af02d65a8b56a802564b3fd68ff`  
+**Baseline:** `main` at `9abdb5f7fa0ed11f921c4721b54945de09323b5b`  
 **Last repository audit:** 2026-11-09  
 **Release rule:** No pull request is merged and no production deployment is initiated without explicit founder approval.
 
@@ -33,12 +33,12 @@ The objective is not to claim that BOR AI is already better than ChatGPT, Claude
 | Integrations | Telegram webhook; embeddable widget and public API keys; GitHub repository/PR read-only capabilities and OAuth foundation | Each external integration needs live credential, permission, revocation and abuse testing. Gmail/Drive, Calendar, Slack, WhatsApp and general browser automation are not complete. |
 | Developer/product APIs | Public single-turn chat API, per-site keys, origin allow-list and quotas | No general-purpose safe code execution or autonomous software-building runtime exists. |
 | Security and cost controls | Request limits, daily usage accounting, timeouts, session ownership checks, CSP/security headers, input bounds and regression tests | Production observability, spend controls, anti-bot, disaster recovery and full external penetration testing remain incomplete. |
-| Deployment | Cloudflare Worker and static assets, D1 migrations, GitHub Actions tests/preview/deploy workflow | PR #108 merge commit `ec65e645296e0af02d65a8b56a802564b3fd68ff` is deployed. Production deploy run `42509632338` and test run `42509632339` completed successfully; D1 migrations and optional live chat check were skipped, while production endpoint verification passed. |
+| Deployment | Cloudflare Worker and static assets, D1 migrations, GitHub Actions tests/preview/deploy workflow | PR #110 merge commit `9abdb5f7fa0ed11f921c4721b54945de09323b5b` is deployed. Production deploy run `42510408901` and test run `42510408984` completed successfully; D1 migrations and optional live chat check were skipped, while production endpoint verification passed. |
 
-### Current open work and evidence status
+### Current work and evidence status
 
 - **PR #108 — Evidence provenance consistency:** merged and deployed. Candidate and baseline evidence must each use one consistent model ID, model version, provider, and routing-policy version; unknown model roles are rejected. The evaluation planner now emits the normalized `baseline` / `candidate` roles and preserves candidate profiles separately.
-- **PR #110 — Signed evaluation evidence:** open. Adds operator-signed Ed25519 evidence envelopes, canonical payload hashing, signer key fingerprints, and offline verification. Required CI is still pending; do not treat the feature as merged or production capability.
+- **PR #110 — Signed evaluation evidence:** merged and deployed. Adds operator-signed Ed25519 evidence envelopes, canonical payload hashing, signer key fingerprints, and offline verification. The 325-test suite, preview build, Workers build, and E2E passed before merge; post-merge tests and deployment also succeeded. The signer attests to the record; this does not establish provider-origin authenticity.
 - **Live model evaluation:** not performed. The bilingual benchmark, offline planning/reporting, blinded reviewer protocol, consensus, decision engine, unblinding, and provenance gates exist, but no real manual-live comparison or independently reviewed live score set has been recorded. No candidate has been selected or activated.
 - **Live Brave provider verification:** status remains unverified until a controlled request confirms `BRAVE_SEARCH_API_KEY`, active plan/quota and successful live results. Never place the key in chat, source code, GitHub issues, or browser code.
 - **Second model provider:** none is active. Provider selection, budget, data policy, consent, and rollback must be approved before a provider pilot.
@@ -117,7 +117,7 @@ Post-merge audit of `main` confirms that:
 - PDF conversion still uses `env.AI.toMarkdown()` separately and is not part of chat model routing.
 - No external provider adapter is active. PRs #98–#108 added the model inventory, 20-case bilingual benchmark, 300-run offline planner, offline reports and cost aggregates, blinded reviewer packet/consensus flow, evidence-gated advancement decision, post-evaluation unblinding, and baseline/candidate provenance consistency. These are governance and offline-evaluation capabilities, not live benchmark results.
 - PR #108 is deployed; the production deploy verified the pinned D1 database read-only, skipped D1 migrations, skipped optional live chat, and passed endpoint checks.
-- PR #110 is a separate open PR for Ed25519 operator attestations. A valid signature will prove record integrity and signer possession only; it will not prove provider-origin authenticity.
+- PR #110 is merged and deployed with Ed25519 operator attestations. A valid signature proves record integrity and signer possession only; it does not prove provider-origin authenticity.
 
 Architecture specification: [Adaptive Multi-Model Gateway](ADAPTIVE-MULTI-MODEL-GATEWAY.md).
 
@@ -256,7 +256,7 @@ The next work should proceed in this order:
 
 1. **Post-merge regression audit:** verify the current main behavior in production; PR #108's production deploy and endpoint checks passed. Keep mocked CI evidence separate from live-provider evidence.
 2. **Live search readiness:** verify Brave Search/News with an approved Worker secret and active provider quota; never request or expose the key in chat.
-3. **Model evaluation readiness:** PRs #98–#108 now provide the model inventory, 20-case bilingual fixtures, 300-run offline plan, offline reporting/cost aggregation, blinded reviewer packet and consensus, evidence-gated advancement, post-evaluation unblinding, and baseline/candidate provenance checks. PR #110 adds signed evidence attestation but remains open pending CI. Next, prepare a controlled manual-live evaluation only after verifying account access, exact model versions, data handling, independent reviewers, and a bounded inference budget. Offline tools do not authorize provider calls; no candidate may be activated or routed in production without a separate approval.
+3. **Model evaluation readiness:** PRs #98–#108 provide the model inventory, 20-case bilingual fixtures, 300-run offline plan, offline reporting/cost aggregation, blinded reviewer packet and consensus, evidence-gated advancement, post-evaluation unblinding, and baseline/candidate provenance checks. PR #110 adds the Ed25519 operator-signed evidence envelope and is merged. Next, prepare a controlled manual-live evaluation only after verifying account access, exact model versions, data handling, independent reviewers, and a bounded inference budget. Offline tools do not authorize provider calls; no candidate may be activated or routed in production without a separate approval.
 4. **Model inventory:** official Workers AI candidate inventory is documented in `docs/WORKERS-AI-MODEL-INVENTORY.md`; next verify account access and run bounded bilingual/task benchmarks before adding any candidate to the runtime catalog.
 5. **Current audit refresh:** reproduce historic open findings and prioritize high-risk operational gaps.
 6. **Multimodal and sandbox prototypes:** run isolated technical spikes only after model/provider capability, privacy and cost are verified.
