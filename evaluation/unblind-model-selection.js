@@ -137,7 +137,10 @@ export function unblindAndSelectModels(plan, consensus, identityKey, evidenceEnv
     unblindingVersion: "1.0.0",
     packetId: consensus.packetId,
     reviewerCount: consensus.reviewerCount,
-    unblindedItemCount: unblindedRuns.length,
+    unblindedItemCount: unblindedRuns.filter((run) => run.status === "completed").length,
+    plannedRunCount: unblindedRuns.length,
+    failedRunCount: unblindedRuns.filter((run) => run.status === "failed").length,
+    skippedRunCount: unblindedRuns.filter((run) => run.status === "skipped").length,
     scoreDimensions: [...dimensions],
     evidenceAttestation: {
       keyId: evidenceVerification.keyId,
