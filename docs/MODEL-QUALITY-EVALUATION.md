@@ -115,6 +115,36 @@ For every comparison, publish:
 - input/output token totals with measurement counts;
 - paired candidate-minus-baseline deltas and any missing-data caveats.
 
+## Signed evidence provenance
+
+Evaluation worksheets can be wrapped in a detached, tamper-evident Ed25519 attestation. This binds the exact canonical JSON payload to a signer-controlled private key and records a SHA-256 payload digest, signer key fingerprint, signing timestamp, and evidence summary. The verifier requires the corresponding trusted public key supplied independently by the reviewer.
+
+Generate a key pair locally:
+
+```sh
+npm run eval:evidence:keygen -- evidence-signing.private.pem evidence-signing.public.pem
+```
+
+Keep the private key offline with restrictive file permissions. Never commit it, upload it to the repository, or share it with reviewers. Distribute the public key through a separate trusted channel and verify its fingerprint with the signer.
+
+Sign a completed evaluation worksheet:
+
+```sh
+npm run eval:evidence:sign -- completed-evaluation-plan.json signed-evidence.json evidence-signing.private.pem
+```
+
+Verify the signed evidence using the independently trusted public key:
+
+```sh
+npm run eval:evidence:verify -- signed-evidence.json trusted-evidence-signing.public.pem
+```
+
+The signer refuses pending runs, unknown model roles, invalid completed-run data, and mixed model ID/version/provider/routing-policy provenance within a model. Failed and skipped runs remain part of the signed payload so incomplete coverage is not silently hidden. The signature covers the canonical payload and its digest; changing the payload invalidates verification.
+
+**Trust boundary:** this proves that the holder of the corresponding private key signed this exact evaluation record and that the record has not changed since signing. It does not independently prove that a provider generated the recorded output, that the model/version metadata is truthful, that the signing key was uncompromised, or that the signer's clock is accurate. The signer is attesting to a manually collected record. Stronger provider-origin verification requires a controlled capture service or provider-signed request/response attestations and a separately managed trust root. A valid signature does not promote a model or authorize production routing changes.
+
+Keep signed evidence, reviewer packets, identity keys, and private signing keys out of Git unless the data has been explicitly reviewed and sanitized for publication. The commands are offline and make no model/provider calls.
+
 ## Current limitation
 
 The repository has a bilingual fixture, fixture validation, a manual evaluation-plan generator, and an offline result reporter. It still has no automated live model benchmark runner or human-scored live results. The active Workers AI model has not yet been assigned measured quality scores from this dataset. The decision framework above is a proposed, versioned gate; it does not authorize inference, provider activation, production routing changes, or deployment.
