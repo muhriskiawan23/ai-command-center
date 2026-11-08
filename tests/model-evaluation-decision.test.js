@@ -67,4 +67,9 @@ test("rejects duplicate runs, absent baseline, and invalid decision thresholds",
   noBaseline.runs.forEach((run) => { run.modelRole = "candidate"; });
   assert.throws(() => decideModelAdvancement(noBaseline), /exactly one baseline/);
   assert.throws(() => decideModelAdvancement(buildPlan(), { minimumCompletionRate: 1.5 }), /invalid thresholds/);
+  const mixedRole = buildPlan();
+  mixedRole.runs[0].modelRole = "candidate";
+  assert.throws(() => decideModelAdvancement(mixedRole), /inconsistent modelRole/);
+  const unsafeIncomplete = buildPlan({ safetyFailure: true, pendingCandidate: true });
+  assert.equal(decideModelAdvancement(unsafeIncomplete).candidates["candidate-v1"].status, "blocked_safety");
 });
