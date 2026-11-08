@@ -10,7 +10,7 @@ async function samplePlan() {
   const plan = createEvaluationPlan({ benchmark, models: [
     { id: "baseline-model", role: "baseline" }, { id: "candidate-model", role: "candidate" }
   ] });
-  plan.runs = plan.runs.map((run) => ({ ...run, modelOutput: `Answer for ${run.caseId} / ${run.modelId} / ${run.runIndex}` }));
+  plan.runs = plan.runs.map((run) => ({ ...run, modelOutput: `Sample response for ${run.caseId} / repeat ${run.runIndex}` }));
   return plan;
 }
 
