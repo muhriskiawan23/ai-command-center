@@ -233,7 +233,7 @@ export function decideModelAdvancement(plan, policyOverrides = {}) {
     candidates,
     governance: [
       "This report is a decision aid, not an automatic model promotion or production routing change.",
-      "Only manual_live evidence with one verified model version per candidate is eligible; mocked evidence is never promoted into a live quality decision.",
+      "Only manual_live evidence with one consistent model ID, model version, provider, and routing-policy version per baseline and candidate is eligible; mocked or mixed-provenance evidence is never promoted into a live quality decision.",
       "Candidate advancement means eligible for separate bounded-pilot consideration only; provider, budget, privacy, consent, rollback and founder approval remain mandatory.",
       "Paired comparisons use matching case, language, task and repeat index; unmatched runs do not contribute to paired quality deltas.",
       "Unknown cost is never treated as zero; an operational cost advantage requires complete known costs for all safety-clean completed runs.",
