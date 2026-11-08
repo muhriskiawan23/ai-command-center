@@ -18,7 +18,10 @@
     "eval:blind": "node evaluation/create-blinded-review-packets.js",
     "eval:consensus": "node evaluation/score-blinded-reviews.js",
     "eval:decision": "node evaluation/decide-model-advancement.js",
-    "eval:unblind": "node evaluation/unblind-model-selection.js"
+    "eval:unblind": "node evaluation/unblind-model-selection.js",
+    "eval:evidence:keygen": "node evaluation/evidence-provenance.js keygen",
+    "eval:evidence:sign": "node evaluation/evidence-provenance.js sign",
+    "eval:evidence:verify": "node evaluation/evidence-provenance.js verify"
   },
   "engines": {
     "node": ">=22"
