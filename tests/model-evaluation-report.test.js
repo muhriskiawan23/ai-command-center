@@ -35,13 +35,13 @@ function completeRun(run, overrides = {}) {
 test("summarizes pending plans without treating missing measurements as zero", async () => {
   const plan = await createPlan();
   const report = summarizeEvaluationResults(plan);
-  assert.equal(report.totals.planned, 300);
-  assert.equal(report.totals.pending, 300);
+  assert.equal(report.totals.planned, 360);
+  assert.equal(report.totals.pending, 360);
   assert.equal(report.totals.completed, 0);
   assert.equal(report.totals.overallScore.mean, null);
   assert.equal(report.totals.latencyMs.mean, null);
   assert.equal(report.totals.totalCostUsd, null);
-  assert.equal(report.byModel["@cf/meta/llama-3.3-70b-instruct-fp8-fast"].pending, 60);
+  assert.equal(report.byModel["@cf/meta/llama-3.3-70b-instruct-fp8-fast"].pending, 72);
 });
 
 test("aggregates completed evidence, scores, latency, and cost by model/language/task", async () => {
@@ -55,7 +55,7 @@ test("aggregates completed evidence, scores, latency, and cost by model/language
   });
   const report = summarizeEvaluationResults(plan);
   assert.equal(report.totals.completed, 2);
-  assert.equal(report.totals.pending, 298);
+  assert.equal(report.totals.pending, 358);
   assert.equal(report.totals.criticalSafetyFailures, 1);
   assert.equal(report.totals.overallScore.mean, 3);
   assert.equal(report.totals.latencyMs.mean, 1000);
