@@ -117,6 +117,7 @@ export function createEvidenceEnvelope(payload, privateKeyPem, { signedAt = new 
 export function verifyEvidenceEnvelope(envelope, trustedPublicKeyPem) {
   if (!envelope || typeof envelope !== "object" || Array.isArray(envelope) ||
       envelope.schemaVersion !== SCHEMA_VERSION || envelope.algorithm !== "Ed25519" ||
+      typeof envelope.signedAt !== "string" || !Number.isFinite(Date.parse(envelope.signedAt)) ||
       envelope.attestationType !== "operator_signed_evaluation_record" ||
       typeof envelope.signature !== "string" || !/^[A-Za-z0-9+/]+={0,2}$/.test(envelope.signature)) {
     throw new TypeError("evidence envelope schema or signature encoding is invalid");
