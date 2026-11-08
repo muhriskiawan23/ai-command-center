@@ -17,7 +17,8 @@
     "eval:report": "node evaluation/summarize-model-evaluation.js",
     "eval:blind": "node evaluation/create-blinded-review-packets.js",
     "eval:consensus": "node evaluation/score-blinded-reviews.js",
-    "eval:decision": "node evaluation/decide-model-advancement.js"
+    "eval:decision": "node evaluation/decide-model-advancement.js",
+    "eval:unblind": "node evaluation/unblind-model-selection.js"
   },
   "engines": {
     "node": ">=22"
