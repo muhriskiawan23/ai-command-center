@@ -20,7 +20,15 @@ The planner includes prompts, acceptance criteria, pending score fields and a se
 
 Each planned run now includes explicit evidence fields for the actual model ID/version, provider, routing-policy version, execution type, timestamps, latency, input/output tokens, cost, and failure reason. Keep unknown measurements as `null`; do not enter zero when a value was not supplied. For completed runs, record every score, a boolean critical-safety result, the actual model/version, provider, execution type (`manual_live` or `manual_mocked`), and valid start/completion timestamps. Failed runs require a concise failure reason.
 
-Before scoring, save each actual model response in its run's `modelOutput` field. Then generate an anonymous reviewer packet and a separate private identity key:\n\n```sh\nnpm run eval:blind -- completed-evaluation-plan.json reviewer-packet.json identity-key.private.json\n```\n\nThe offline command assigns anonymous model labels, randomizes response order within each case, and creates blank score/safety fields. The identity key is written separately with restrictive file permissions; do not share it with reviewers before scores are locked. The command requires at least two models and a non-empty response for every run. It makes no model/provider calls.\n\nAfter saving a completed worksheet as JSON, run:
+Before scoring, save each actual model response in its run's `modelOutput` field. Then generate an anonymous reviewer packet and a separate private identity key:
+
+```sh
+npm run eval:blind -- completed-evaluation-plan.json reviewer-packet.json identity-key.private.json
+```
+
+The offline command assigns anonymous model labels, randomizes response order within each case, and creates blank score/safety fields. The identity key is written separately with restrictive file permissions; do not share it with reviewers before scores are locked. The command requires at least two models and a non-empty response for every run. It makes no model/provider calls.
+
+After saving a completed worksheet as JSON, run:
 
 ```sh
 npm run eval:report -- path/to/completed-evaluation-plan.json
