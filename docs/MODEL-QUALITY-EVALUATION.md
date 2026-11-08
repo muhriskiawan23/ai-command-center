@@ -16,6 +16,18 @@ Run `npm run eval:plan` to emit a JSON worksheet covering the current Llama 3.3 
 
 The planner includes prompts, acceptance criteria, pending score fields and a separate critical-safety-failure flag. It is deliberately manual-only: it does not invoke Workers AI, external providers, or any inference endpoint, and it does not establish account access, billing, latency, or model quality. Use `npm run eval:plan -- --runs 4` to request more repeats; fewer than the fixture's minimum are rejected.
 
+## Record completed runs and generate a report
+
+Each planned run now includes explicit evidence fields for the actual model ID/version, provider, routing-policy version, execution type, timestamps, latency, input/output tokens, cost, and failure reason. Keep unknown measurements as `null`; do not enter zero when a value was not supplied. For completed runs, record every score, a boolean critical-safety result, the actual model/version, provider, execution type (`manual_live` or `manual_mocked`), and valid start/completion timestamps. Failed runs require a concise failure reason.
+
+After saving a completed worksheet as JSON, run:
+
+```sh
+npm run eval:report -- path/to/completed-evaluation-plan.json
+```
+
+The report command is offline: it reads the supplied JSON and makes no model/provider calls. It validates run identity, status, scores, timestamps, latency, token counts, and cost before producing totals plus per-model, per-language, and per-task aggregates. It reports pending/failed/skipped runs and critical safety failures separately. Missing latency or cost remains unknown; mocked and live evidence are labeled separately. The report does not update the production model catalog or change routing.
+
 ## Human scoring protocol
 
 For every case, run the exact prompt against the candidate model under the same system instructions, temperature, token limit, and context. Save the output separately from the prompt fixture. Reviewers should not see the model identity until scoring is complete when doing a comparison.
