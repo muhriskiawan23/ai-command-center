@@ -82,6 +82,7 @@ export function createEvaluationPlan({
           outputTokens: null,
           costUsd: null,
           failureReason: "",
+          modelOutput: null,
           reviewerNotes: ""
         });
       }
