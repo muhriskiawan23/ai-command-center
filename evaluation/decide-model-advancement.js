@@ -83,7 +83,9 @@ function summarizeModel(runs, dimensions, policy) {
     medianLatencyMs: allLatenciesKnown && completed.length ? median(latencies) : null,
     evidenceTypes: [...new Set(completed.map((run) => run.executionType))].sort(),
     modelIds: [...new Set(completed.map((run) => run.actualModelId))].sort(),
-    modelVersions: [...new Set(completed.map((run) => run.actualModelVersion))].sort()
+    modelVersions: [...new Set(completed.map((run) => run.actualModelVersion))].sort(),
+    providers: [...new Set(completed.map((run) => run.provider))].sort(),
+    policyVersions: [...new Set(completed.map((run) => run.policyVersion))].sort()
   };
 }
 
@@ -123,6 +125,9 @@ export function decideModelAdvancement(plan, policyOverrides = {}) {
     }
     for (const field of ["modelId", "modelRole", "caseId", "language", "task"]) {
       if (!nonEmpty(run[field])) throw new TypeError(`${label}.${field} must be a non-empty string`);
+    }
+    if (!["baseline", "candidate"].includes(run.modelRole)) {
+      throw new TypeError(`${label}.modelRole must be baseline or candidate`);
     }
     if (roleByModel.has(run.modelId) && roleByModel.get(run.modelId) !== run.modelRole) {
       throw new TypeError(`model ${run.modelId} has inconsistent modelRole values`);
@@ -172,7 +177,12 @@ export function decideModelAdvancement(plan, policyOverrides = {}) {
     const completionPass = summary.completionRate >= policy.minimumCompletionRate && summary.minimumRepeatsMet;
     const safetyPass = summary.criticalSafetyFailures === 0;
     const evidencePass = summary.evidenceTypes.length === 1 && summary.evidenceTypes[0] === policy.minimumEvidenceType &&
-      summary.modelIds.length === 1 && summary.modelVersions.length === 1;
+      summary.modelIds.length === 1 && summary.modelVersions.length === 1 &&
+      summary.providers.length === 1 && summary.policyVersions.length === 1;
+    const baselineEvidencePass = baseline.evidenceTypes.length === 1 &&
+      baseline.evidenceTypes[0] === policy.minimumEvidenceType &&
+      baseline.modelIds.length === 1 && baseline.modelVersions.length === 1 &&
+      baseline.providers.length === 1 && baseline.policyVersions.length === 1;
     const noMaterialSliceRegression = [...Object.values(paired.byLanguage), ...Object.values(paired.byTask)]
       .every((slice) => slice.meanDelta !== null && slice.meanDelta >= -policy.practicalQualityMargin);
     const qualityAdvantage = paired.meanScoreDelta !== null && paired.meanScoreDelta >= policy.practicalQualityMargin &&
@@ -187,10 +197,12 @@ export function decideModelAdvancement(plan, policyOverrides = {}) {
     const operationalAdvantage = costAdvantage || latencyAdvantage;
     const pairedCoveragePass = paired.pairedRuns >= summary.completed * policy.minimumCompletionRate &&
       paired.pairedRuns >= baseline.completed * policy.minimumCompletionRate;
-    const hardGatesPass = safetyPass && qualityPass && sliceFloorPass && completionPass && evidencePass && pairedCoveragePass;
+    const hardGatesPass = safetyPass && qualityPass && sliceFloorPass && completionPass &&
+      evidencePass && baselineEvidencePass && pairedCoveragePass;
     let status = "inconclusive";
     let reason;
-    if (!evidencePass) reason = "Evidence must be exclusively manual_live and use one verified model version.";
+    if (!baselineEvidencePass) reason = "Baseline evidence must be exclusively manual_live and use one model version, provider, and routing-policy version.";
+    else if (!evidencePass) reason = "Candidate evidence must be exclusively manual_live and use one model version, provider, and routing-policy version.";
     else if (!safetyPass) { status = "blocked_safety"; reason = "At least one critical safety failure blocks advancement."; }
     else if (!completionPass || !pairedCoveragePass) reason = "Evidence coverage or paired baseline coverage is insufficient.";
     else if (!qualityPass || !sliceFloorPass) { status = "retain_baseline"; reason = "Candidate did not meet the absolute quality floor."; }
@@ -206,7 +218,7 @@ export function decideModelAdvancement(plan, policyOverrides = {}) {
     }
     candidates[modelId] = {
       status, reason, gates: {
-        evidencePass, completionPass, safetyPass, qualityPass, sliceFloorPass,
+        evidencePass, baselineEvidencePass, completionPass, safetyPass, qualityPass, sliceFloorPass,
         pairedCoveragePass,
         qualityAdvantage, practicallyEquivalent, costAdvantage, latencyAdvantage
       }, summary, pairedComparison: paired
