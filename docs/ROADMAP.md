@@ -2,7 +2,7 @@
 
 **Direction:** Hybrid + All Capabilities  
 **Repository:** `muhriskiawan23/ai-command-center`  
-**Baseline:** `main` at `10a8592af2aa8777bda92636efd7790bb768339a`  
+**Baseline:** `main` at `d287fddcd87bd947ae4e0b77acfd0da051b8c0e8`  
 **Last repository audit:** 2026-11-09  
 **Release rule:** No pull request is merged and no production deployment is initiated without explicit founder approval.
 
@@ -33,13 +33,14 @@ The objective is not to claim that BOR AI is already better than ChatGPT, Claude
 | Integrations | Telegram webhook; embeddable widget and public API keys; GitHub repository/PR read-only capabilities and OAuth foundation | Each external integration needs live credential, permission, revocation and abuse testing. Gmail/Drive, Calendar, Slack, WhatsApp and general browser automation are not complete. |
 | Developer/product APIs | Public single-turn chat API, per-site keys, origin allow-list and quotas | No general-purpose safe code execution or autonomous software-building runtime exists. |
 | Security and cost controls | Request limits, daily usage accounting, timeouts, session ownership checks, CSP/security headers, input bounds and regression tests | Production observability, spend controls, anti-bot, disaster recovery and full external penetration testing remain incomplete. |
-| Deployment | Cloudflare Worker and static assets, D1 migrations, GitHub Actions tests/preview/deploy workflow | PR #112 merge commit `10a8592af2aa8777bda92636efd7790bb768339a` is deployed. Production deploy run `42511502256` and test run `42511502260` completed successfully; D1 migrations and optional live chat check were skipped, while production endpoint verification passed. |
+| Deployment | Cloudflare Worker and static assets, D1 migrations, GitHub Actions tests/preview/deploy workflow | PR #111 merge commit `d287fddcd87bd947ae4e0b77acfd0da051b8c0e8` is the latest main baseline and is deployed. Production deploy run `42512166126` and test run `42512166030` completed successfully; D1 migrations and optional live chat check were skipped, while production endpoint verification passed. |
 
 ### Current work and evidence status
 
 - **PR #108 — Evidence provenance consistency:** merged and deployed. Candidate and baseline evidence must each use one consistent model ID, model version, provider, and routing-policy version; unknown model roles are rejected. The evaluation planner now emits the normalized `baseline` / `candidate` roles and preserves candidate profiles separately.
 - **PR #110 — Signed evaluation evidence:** merged and deployed. Adds operator-signed Ed25519 evidence envelopes, canonical payload hashing, signer key fingerprints, and offline verification. The 325-test suite, preview build, Workers build, and E2E passed before merge; post-merge tests and deployment also succeeded. The signer attests to the record; this does not establish provider-origin authenticity.
 - **PR #112 — Signed-evidence enforcement:** merged and deployed. Unblinding now requires a valid Ed25519 signature from an independently trusted public key and an exact canonical match to the signed raw worksheet before joining the identity key. Raw evidence is signed before reviewer scoring; failed/skipped runs remain in completion gates and are not sent for review. Pre-merge CI passed 332 unit tests plus preview, Workers build, and E2E; post-merge tests and deployment succeeded. The signature remains an operator attestation, not provider-origin proof.
+- **PR #113 — Bounded search-provider response reads:** open. Adds incremental response-body reading with a 256 KB cap and cancels oversized chunked responses before buffering the full body. Awaiting CI; no provider calls or production changes.
 - **Live model evaluation:** not performed. The bilingual benchmark, offline planning/reporting, blinded reviewer protocol, consensus, decision engine, unblinding, and provenance gates exist, but no real manual-live comparison or independently reviewed live score set has been recorded. No candidate has been selected or activated.
 - **Live Brave provider verification:** status remains unverified until a controlled request confirms `BRAVE_SEARCH_API_KEY`, active plan/quota and successful live results. Never place the key in chat, source code, GitHub issues, or browser code.
 - **Second model provider:** none is active. Provider selection, budget, data policy, consent, and rollback must be approved before a provider pilot.
@@ -256,7 +257,7 @@ Acceptance:
 
 The next work should proceed in this order:
 
-1. **Post-merge regression audit:** verify the current main behavior in production; PR #108's production deploy and endpoint checks passed. Keep mocked CI evidence separate from live-provider evidence.
+1. **Post-merge regression audit:** verify the current main behavior in production; PR #111's production deploy and endpoint checks passed. Keep mocked CI evidence separate from live-provider evidence. PR #113 addresses a resource-bound gap found during the current code audit.
 2. **Live search readiness:** verify Brave Search/News with an approved Worker secret and active provider quota; never request or expose the key in chat.
 3. **Model evaluation readiness:** PRs #98–#108 provide the model inventory, 20-case bilingual fixtures, 300-run offline plan, offline reporting/cost aggregation, blinded reviewer packet and consensus, evidence-gated advancement, post-evaluation unblinding, and baseline/candidate provenance checks. PR #110 adds the Ed25519 operator-signed evidence envelope; PR #112 makes that signature mandatory before unblinding and preserves incomplete runs. Both are merged and deployed. Next, prepare a controlled manual-live evaluation only after verifying account access, exact model versions, data handling, independent reviewers, and a bounded inference budget. Offline tools do not authorize provider calls; no candidate may be activated or routed in production without a separate approval.
 4. **Model inventory:** official Workers AI candidate inventory is documented in `docs/WORKERS-AI-MODEL-INVENTORY.md`; next verify account access and run bounded bilingual/task benchmarks before adding any candidate to the runtime catalog.
