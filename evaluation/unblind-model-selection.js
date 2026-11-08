@@ -109,6 +109,10 @@ export function unblindAndSelectModels(plan, consensus, identityKey, evidenceEnv
   const unblindedRuns = [];
   const consumedConsensus = new Set();
   for (const run of plan.runs) {
+    if (run.status !== "completed") {
+      unblindedRuns.push({ ...run });
+      continue;
+    }
     const blindLabels = [...mappingByLabel.entries()]
       .filter(([, modelId]) => modelId === run.modelId)
       .map(([label]) => label);
