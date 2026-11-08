@@ -82,6 +82,7 @@ function summarizeModel(runs, dimensions, policy) {
       : null,
     medianLatencyMs: allLatenciesKnown && completed.length ? median(latencies) : null,
     evidenceTypes: [...new Set(completed.map((run) => run.executionType))].sort(),
+    modelIds: [...new Set(completed.map((run) => run.actualModelId))].sort(),
     modelVersions: [...new Set(completed.map((run) => run.actualModelVersion))].sort()
   };
 }
@@ -163,7 +164,7 @@ export function decideModelAdvancement(plan, policyOverrides = {}) {
     const completionPass = summary.completionRate >= policy.minimumCompletionRate && summary.minimumRepeatsMet;
     const safetyPass = summary.criticalSafetyFailures === 0;
     const evidencePass = summary.evidenceTypes.length === 1 && summary.evidenceTypes[0] === policy.minimumEvidenceType &&
-      summary.modelVersions.length === 1;
+      summary.modelIds.length === 1 && summary.modelVersions.length === 1;
     const noMaterialSliceRegression = [...Object.values(paired.byLanguage), ...Object.values(paired.byTask)]
       .every((slice) => slice.meanDelta !== null && slice.meanDelta >= -policy.practicalQualityMargin);
     const qualityAdvantage = paired.meanScoreDelta !== null && paired.meanScoreDelta >= policy.practicalQualityMargin &&
@@ -176,11 +177,13 @@ export function decideModelAdvancement(plan, policyOverrides = {}) {
     const latencyAdvantage = summary.medianLatencyMs !== null && baseline.medianLatencyMs !== null &&
       summary.medianLatencyMs <= baseline.medianLatencyMs * (1 - policy.operationalAdvantage);
     const operationalAdvantage = costAdvantage || latencyAdvantage;
-    const hardGatesPass = safetyPass && qualityPass && sliceFloorPass && completionPass && evidencePass;
+    const pairedCoveragePass = paired.pairedRuns >= summary.completed * policy.minimumCompletionRate &&
+      paired.pairedRuns >= baseline.completed * policy.minimumCompletionRate;
+    const hardGatesPass = safetyPass && qualityPass && sliceFloorPass && completionPass && evidencePass && pairedCoveragePass;
     let status = "inconclusive";
     let reason;
     if (!evidencePass) reason = "Evidence must be exclusively manual_live and use one verified model version.";
-    else if (!completionPass || paired.pairedRuns === 0) reason = "Evidence coverage or paired baseline coverage is insufficient.";
+    else if (!completionPass || !pairedCoveragePass) reason = "Evidence coverage or paired baseline coverage is insufficient.";
     else if (!safetyPass) { status = "blocked_safety"; reason = "At least one critical safety failure blocks advancement."; }
     else if (!qualityPass || !sliceFloorPass) { status = "retain_baseline"; reason = "Candidate did not meet the absolute quality floor."; }
     else if (!hardGatesPass) reason = "One or more mandatory evidence gates did not pass.";
@@ -196,7 +199,7 @@ export function decideModelAdvancement(plan, policyOverrides = {}) {
     candidates[modelId] = {
       status, reason, gates: {
         evidencePass, completionPass, safetyPass, qualityPass, sliceFloorPass,
-        pairedCoveragePass: paired.pairedRuns > 0,
+        pairedCoveragePass,
         qualityAdvantage, practicallyEquivalent, costAdvantage, latencyAdvantage
       }, summary, pairedComparison: paired
     };
@@ -229,12 +232,12 @@ async function main(args) {
   const plan = JSON.parse(await readFile(inputPath, "utf8"));
   const report = decideModelAdvancement(plan);
   const { writeFile } = await import("node:fs/promises");
-  await writeFile(outputPath, `${JSON.stringify(report, null, 2)}\\n`, { flag: "wx" });
-  process.stdout.write(`Created model advancement decision report for ${Object.keys(report.candidates).length} candidates.\\n`);
+  await writeFile(outputPath, `${JSON.stringify(report, null, 2)}\n`, { flag: "wx" });
+  process.stdout.write(`Created model advancement decision report for ${Object.keys(report.candidates).length} candidates.\n`);
 }
 if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url) {
   main(process.argv.slice(2)).catch((error) => {
-    process.stderr.write(`Model advancement decision failed: ${error.message}\\n`);
+    process.stderr.write(`Model advancement decision failed: ${error.message}\n`);
     process.exitCode = 1;
   });
 }
