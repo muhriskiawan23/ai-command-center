@@ -88,6 +88,27 @@ test("stale and social/UGC results are excluded from model context", async () =>
   assert.ok(context.sources.every((source) => source.ok === false));
 });
 
+test("oversized chunked search responses are cancelled before the full body is buffered", async () => {
+  let pulls = 0;
+  let cancelled = false;
+  const chunk = new Uint8Array(128_000).fill(97);
+  const body = new ReadableStream({
+    pull(controller) {
+      pulls += 1;
+      controller.enqueue(chunk);
+      if (pulls > 10) controller.close();
+    },
+    cancel() { cancelled = true; }
+  });
+  const result = await searchExternal("bounded response test", "web", { BRAVE_SEARCH_API_KEY: "secret" }, {
+    fetcher: async () => new Response(body, { headers: { "content-type": "application/json" } })
+  });
+  assert.equal(result.reason, "provider_response_too_large");
+  assert.equal(result.results.length, 0);
+  assert.equal(cancelled, true);
+  assert.ok(pulls <= 4, `stream pulled ${pulls} chunks before cancellation`);
+});
+
 test("provider errors and timeouts fail closed with no invented result", async () => {
   const limited = await searchExternal("news", "news", { BRAVE_SEARCH_API_KEY: "secret" }, {
     fetcher: async () => new Response("{}", { status: 429 })
