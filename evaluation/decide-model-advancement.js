@@ -114,6 +114,7 @@ export function decideModelAdvancement(plan, policyOverrides = {}) {
   }
   const policy = validatePolicy(policyOverrides);
   const seen = new Set();
+  const roleByModel = new Map();
   for (const [index, run] of plan.runs.entries()) {
     const label = `runs[${index}]`;
     if (!run || typeof run !== "object" || Array.isArray(run) ||
@@ -123,6 +124,10 @@ export function decideModelAdvancement(plan, policyOverrides = {}) {
     for (const field of ["modelId", "modelRole", "caseId", "language", "task"]) {
       if (!nonEmpty(run[field])) throw new TypeError(`${label}.${field} must be a non-empty string`);
     }
+    if (roleByModel.has(run.modelId) && roleByModel.get(run.modelId) !== run.modelRole) {
+      throw new TypeError(`model ${run.modelId} has inconsistent modelRole values`);
+    }
+    roleByModel.set(run.modelId, run.modelRole);
     if (!Number.isSafeInteger(run.runIndex) || run.runIndex < 1) throw new TypeError(`${label}.runIndex must be positive`);
     const key = JSON.stringify([run.modelId, run.caseId, run.runIndex]);
     if (seen.has(key)) throw new TypeError(`duplicate evaluation run: ${key}`);
@@ -183,8 +188,8 @@ export function decideModelAdvancement(plan, policyOverrides = {}) {
     let status = "inconclusive";
     let reason;
     if (!evidencePass) reason = "Evidence must be exclusively manual_live and use one verified model version.";
-    else if (!completionPass || !pairedCoveragePass) reason = "Evidence coverage or paired baseline coverage is insufficient.";
     else if (!safetyPass) { status = "blocked_safety"; reason = "At least one critical safety failure blocks advancement."; }
+    else if (!completionPass || !pairedCoveragePass) reason = "Evidence coverage or paired baseline coverage is insufficient.";
     else if (!qualityPass || !sliceFloorPass) { status = "retain_baseline"; reason = "Candidate did not meet the absolute quality floor."; }
     else if (!hardGatesPass) reason = "One or more mandatory evidence gates did not pass.";
     else if (qualityAdvantage || (practicallyEquivalent && operationalAdvantage)) {
