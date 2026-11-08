@@ -143,6 +143,8 @@ function validateEvidencePayload(payload) {
   return {
     runCount: payload.runs.length,
     completedRuns: payload.runs.filter((run) => run.status === "completed").length,
+    failedRuns: payload.runs.filter((run) => run.status === "failed").length,
+    skippedRuns: payload.runs.filter((run) => run.status === "skipped").length,
     modelCount: new Set(payload.runs.map((run) => run.modelId)).size,
     evidenceTypes: [...new Set(payload.runs.filter((run) => run.status === "completed").map((run) => run.executionType))].sort()
   };
