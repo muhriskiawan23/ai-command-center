@@ -6,9 +6,10 @@ const benchmarkUrl = new URL("../evaluation/model-quality-cases.json", import.me
 
 test("bilingual model-quality benchmark has stable, actionable coverage", async () => {
   const benchmark = JSON.parse(await readFile(benchmarkUrl, "utf8"));
-  assert.equal(benchmark.version, "1.0.0");
+  assert.equal(benchmark.version, "1.1.0");
+  assert.equal(benchmark.minimumRunsPerCase, 3);
   assert.ok(Array.isArray(benchmark.cases));
-  assert.ok(benchmark.cases.length >= 10);
+  assert.ok(benchmark.cases.length >= 20);
 
   const ids = new Set();
   const languages = new Set();
@@ -19,7 +20,10 @@ test("bilingual model-quality benchmark has stable, actionable coverage", async 
     ids.add(item.id);
     assert.ok(["id", "en"].includes(item.language));
     languages.add(item.language);
-    assert.ok(["fast_chat", "deep_reasoning", "research_synthesis", "coding", "translation"].includes(item.task));
+    assert.ok([
+      "fast_chat", "deep_reasoning", "research_synthesis", "coding", "translation",
+      "multi_turn_context", "structured_extraction", "tool_use", "prompt_injection"
+    ].includes(item.task));
     assert.ok(typeof item.prompt === "string" && item.prompt.trim().length >= 30);
     assert.ok(Array.isArray(item.criteria) && item.criteria.length >= 3);
     assert.ok(item.criteria.every((criterion) => typeof criterion === "string" && criterion.trim().length >= 10));
@@ -28,7 +32,12 @@ test("bilingual model-quality benchmark has stable, actionable coverage", async 
   }
 
   assert.deepEqual([...languages].sort(), ["en", "id"]);
+  const expectedTasks = [
+    "fast_chat", "deep_reasoning", "research_synthesis", "coding", "translation",
+    "multi_turn_context", "structured_extraction", "tool_use", "prompt_injection"
+  ];
   for (const language of languages) {
-    assert.ok(tasksByLanguage.get(language).size >= 5, `${language} benchmark task coverage is too narrow`);
+    assert.deepEqual([...tasksByLanguage.get(language)].sort(), [...expectedTasks].sort(),
+      `${language} benchmark must cover every required task`);
   }
 });
