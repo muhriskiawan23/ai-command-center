@@ -35,7 +35,7 @@ test("bilingual model-quality benchmark has stable, actionable coverage", async 
   assert.deepEqual(financeCases.map((item) => item.language).sort(), ["en", "id"]);
   assert.ok(financeCases.every((item) => item.criteria.some((criterion) => /40%/.test(criterion))));
   assert.ok(financeCases.every((item) => item.criteria.some((criterion) => /6%/.test(criterion))));
-  assert.ok(financeCases.every((item) => item.criteria.some((criterion) => /2\.5/.test(criterion))));
+  assert.ok(financeCases.every((item) => item.criteria.some((criterion) => /2[.,]5/.test(criterion))));
   const sourceCases = benchmark.cases.filter((item) => item.id.endsWith("source-discipline-001"));
   assert.deepEqual(sourceCases.map((item) => item.language).sort(), ["en", "id"]);
   assert.ok(sourceCases.every((item) => /do not guess|jangan menebak/i.test(item.prompt)));
