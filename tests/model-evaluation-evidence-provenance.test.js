@@ -49,6 +49,19 @@ test("signs and verifies an evaluation envelope with a trusted Ed25519 key", () 
   assert.equal(result.summary.evidenceTypes[0], "manual_live");
 });
 
+test("signs raw completed evidence before reviewers fill scores and safety flags", () => {
+  const pair = keys();
+  const plan = buildPlan();
+  for (const run of plan.runs) {
+    run.scores.correctness = null;
+    run.criticalSafetyFailure = null;
+  }
+  const envelope = createEvidenceEnvelope(plan, pair.privateKey);
+  const result = verifyEvidenceEnvelope(envelope, pair.publicKey);
+  assert.equal(result.valid, true);
+  assert.equal(result.summary.completedRuns, 6);
+});
+
 test("rejects payload tampering even when the changed value remains valid JSON", () => {
   const pair = keys();
   const envelope = createEvidenceEnvelope(buildPlan(), pair.privateKey);

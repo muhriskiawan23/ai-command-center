@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { decideModelAdvancement } from "./decide-model-advancement.js";
+import { canonicalJson, verifyEvidenceEnvelope } from "./evidence-provenance.js";
 
 function nonEmpty(value) {
   return typeof value === "string" && value.trim().length > 0;
@@ -10,7 +11,14 @@ function itemKey(item) {
   return JSON.stringify([item.caseId, item.language, item.task, item.runIndex, item.blindLabel]);
 }
 
-export function unblindAndSelectModels(plan, consensus, identityKey) {
+export function unblindAndSelectModels(plan, consensus, identityKey, evidenceEnvelope, trustedPublicKey) {
+  if (!evidenceEnvelope || !trustedPublicKey) {
+    throw new TypeError("a signed evidence envelope and independently trusted public key are required before unblinding");
+  }
+  const evidenceVerification = verifyEvidenceEnvelope(evidenceEnvelope, trustedPublicKey);
+  if (canonicalJson(plan) !== canonicalJson(evidenceEnvelope.payload)) {
+    throw new Error("evaluation plan does not match the signed evidence payload");
+  }
   if (!plan || typeof plan !== "object" || !Array.isArray(plan.runs) ||
       !Array.isArray(plan.scoreDimensions) || !plan.scoreDimensions.length) {
     throw new TypeError("evaluation plan must contain runs and scoreDimensions");
@@ -101,6 +109,10 @@ export function unblindAndSelectModels(plan, consensus, identityKey) {
   const unblindedRuns = [];
   const consumedConsensus = new Set();
   for (const run of plan.runs) {
+    if (run.status !== "completed") {
+      unblindedRuns.push({ ...run });
+      continue;
+    }
     const blindLabels = [...mappingByLabel.entries()]
       .filter(([, modelId]) => modelId === run.modelId)
       .map(([label]) => label);
@@ -125,8 +137,17 @@ export function unblindAndSelectModels(plan, consensus, identityKey) {
     unblindingVersion: "1.0.0",
     packetId: consensus.packetId,
     reviewerCount: consensus.reviewerCount,
-    unblindedItemCount: unblindedRuns.length,
+    unblindedItemCount: unblindedRuns.filter((run) => run.status === "completed").length,
+    plannedRunCount: unblindedRuns.length,
+    failedRunCount: unblindedRuns.filter((run) => run.status === "failed").length,
+    skippedRunCount: unblindedRuns.filter((run) => run.status === "skipped").length,
     scoreDimensions: [...dimensions],
+    evidenceAttestation: {
+      keyId: evidenceVerification.keyId,
+      signedAt: evidenceVerification.signedAt,
+      payloadSha256: evidenceVerification.payloadSha256,
+      evidenceTypes: evidenceVerification.summary.evidenceTypes
+    },
     modelMappings: [...mappingByLabel.entries()]
       .map(([blindLabel, modelId]) => ({ blindLabel, modelId }))
       .sort((a, b) => a.modelId.localeCompare(b.modelId)),
@@ -147,13 +168,15 @@ async function main(args) {
     if (!args.includes("--help")) process.exitCode = 1;
     return;
   }
-  const [planPath, consensusPath, identityPath, outputPath] = args;
-  const [plan, consensus, identityKey] = await Promise.all([
+  const [planPath, consensusPath, identityPath, outputPath, evidencePath, publicKeyPath] = args;
+  const [plan, consensus, identityKey, evidenceEnvelope, trustedPublicKey] = await Promise.all([
     readFile(planPath, "utf8").then(JSON.parse),
     readFile(consensusPath, "utf8").then(JSON.parse),
-    readFile(identityPath, "utf8").then(JSON.parse)
+    readFile(identityPath, "utf8").then(JSON.parse),
+    readFile(evidencePath, "utf8").then(JSON.parse),
+    readFile(publicKeyPath, "utf8")
   ]);
-  const report = unblindAndSelectModels(plan, consensus, identityKey);
+  const report = unblindAndSelectModels(plan, consensus, identityKey, evidenceEnvelope, trustedPublicKey);
   const { writeFile } = await import("node:fs/promises");
   await writeFile(outputPath, `${JSON.stringify(report, null, 2)}\n`, { flag: "wx", mode: 0o600 });
   process.stdout.write(`Created post-unblinding decision report for ${Object.keys(report.decision.candidates).length} candidates. Keep this report access-controlled.\n`);

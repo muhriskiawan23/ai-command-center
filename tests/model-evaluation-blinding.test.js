@@ -10,7 +10,7 @@ async function samplePlan() {
   const plan = createEvaluationPlan({ benchmark, models: [
     { id: "baseline-model", role: "baseline" }, { id: "candidate-model", role: "candidate" }
   ] });
-  plan.runs = plan.runs.map((run) => ({ ...run, modelOutput: `Sample response for ${run.caseId} / repeat ${run.runIndex}` }));
+  plan.runs = plan.runs.map((run) => ({ ...run, status: "completed", modelOutput: `Sample response for ${run.caseId} / repeat ${run.runIndex}` }));
   return plan;
 }
 
@@ -36,6 +36,19 @@ test("preserves every model/case/repeat exactly once", async () => {
   const keys = reviewerPacket.items.map((x) => `${reverse.get(x.blindLabel)}|${x.caseId}|${x.runIndex}`);
   assert.equal(new Set(keys).size, keys.length);
   assert.equal(new Set(reviewerPacket.items.map((x) => x.blindLabel)).size, 2);
+});
+
+test("keeps failed and skipped runs out of reviewer packets and rejects pending runs", async () => {
+  const plan = await samplePlan();
+  plan.runs[0] = { ...plan.runs[0], status: "failed", failureReason: "provider timeout", modelOutput: null };
+  plan.runs[1] = { ...plan.runs[1], status: "skipped", modelOutput: null };
+  const { reviewerPacket } = createBlindedReviewPackets(plan, { random: () => 0.41 });
+  assert.equal(reviewerPacket.items.length, plan.runs.length - 2);
+  assert.ok(reviewerPacket.items.every((item) => item.modelOutput));
+
+  const pending = await samplePlan();
+  pending.runs[0].status = "pending";
+  assert.throws(() => createBlindedReviewPackets(pending), /status must be completed, failed, or skipped/);
 });
 
 test("rejects missing output, duplicate runs, and single-model comparisons", async () => {

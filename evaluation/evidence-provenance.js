@@ -9,7 +9,6 @@ import {
 import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { summarizeEvaluationResults } from "./summarize-model-evaluation.js";
 
 const SCHEMA_VERSION = "1.0.0";
 const DOMAIN = "BOR-AI-EVALUATION-EVIDENCE-V1\n";
@@ -42,20 +41,33 @@ function keyFingerprint(publicKey) {
   return sha256(key.export({ type: "spki", format: "der" })).slice(0, 32);
 }
 
+function nonEmpty(value) {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function validTimestamp(value) {
+  return typeof value === "string" && Number.isFinite(Date.parse(value));
+}
+
 function validateEvidencePayload(payload) {
   if (!payload || typeof payload !== "object" || Array.isArray(payload) ||
       !Array.isArray(payload.runs) || !Array.isArray(payload.scoreDimensions) ||
-      payload.scoreDimensions.length === 0) {
-    throw new TypeError("evidence payload must be an evaluation plan with runs and scoreDimensions");
+      payload.scoreDimensions.length === 0 ||
+      payload.scoreDimensions.some((dimension) => !nonEmpty(dimension)) ||
+      new Set(payload.scoreDimensions).size !== payload.scoreDimensions.length) {
+    throw new TypeError("evidence payload must be an evaluation plan with unique scoreDimensions and runs");
   }
-  summarizeEvaluationResults(payload);
   const models = new Map();
   const roles = new Map();
+  const seen = new Set();
   for (const [index, run] of payload.runs.entries()) {
     const label = `runs[${index}]`;
     if (!run || typeof run !== "object" || Array.isArray(run) ||
         !RUN_STATUSES.has(run.status)) {
       throw new TypeError(`${label}.status must be completed, failed, or skipped before signing`);
+    }
+    for (const field of ["modelId", "modelRole", "caseId", "language", "task"]) {
+      if (!nonEmpty(run[field])) throw new TypeError(`${label}.${field} must be a non-empty string`);
     }
     if (!["baseline", "candidate"].includes(run.modelRole)) {
       throw new TypeError(`${label}.modelRole must be baseline or candidate`);
@@ -64,6 +76,37 @@ function validateEvidencePayload(payload) {
       throw new TypeError(`model ${run.modelId} has inconsistent modelRole values`);
     }
     roles.set(run.modelId, run.modelRole);
+    if (!Number.isSafeInteger(run.runIndex) || run.runIndex < 1) {
+      throw new TypeError(`${label}.runIndex must be a positive safe integer`);
+    }
+    const runKey = JSON.stringify([run.modelId, run.caseId, run.runIndex]);
+    if (seen.has(runKey)) throw new TypeError(`${label} duplicates an evaluation run`);
+    seen.add(runKey);
+    if (!run.scores || typeof run.scores !== "object" || Array.isArray(run.scores)) {
+      throw new TypeError(`${label}.scores must be an object`);
+    }
+    for (const dimension of payload.scoreDimensions) {
+      const score = run.scores[dimension];
+      if (score !== null && (!Number.isInteger(score) || score < 1 || score > 5)) {
+        throw new TypeError(`${label}.scores.${dimension} must be null or an integer from 1 to 5`);
+      }
+    }
+    if (run.criticalSafetyFailure !== null && typeof run.criticalSafetyFailure !== "boolean") {
+      throw new TypeError(`${label}.criticalSafetyFailure must be boolean or null`);
+    }
+    for (const field of ["latencyMs", "costUsd"]) {
+      if (run[field] !== null && (!Number.isFinite(run[field]) || run[field] < 0)) {
+        throw new TypeError(`${label}.${field} must be null or a non-negative finite number`);
+      }
+    }
+    for (const field of ["inputTokens", "outputTokens"]) {
+      if (run[field] !== null && (!Number.isSafeInteger(run[field]) || run[field] < 0)) {
+        throw new TypeError(`${label}.${field} must be null or a non-negative safe integer`);
+      }
+    }
+    if (run.status === "failed" && !nonEmpty(run.failureReason)) {
+      throw new TypeError(`${label}.failureReason is required for failed runs`);
+    }
     if (run.status !== "completed") continue;
     if (!EXECUTION_TYPES.has(run.executionType)) {
       throw new TypeError(`${label}.executionType must be manual_live or manual_mocked`);
@@ -72,9 +115,17 @@ function validateEvidencePayload(payload) {
       throw new TypeError(`${label}.actualModelId must match modelId`);
     }
     for (const field of ["actualModelId", "actualModelVersion", "provider", "policyVersion"]) {
-      if (typeof run[field] !== "string" || !run[field].trim()) {
-        throw new TypeError(`${label}.${field} is required for completed evidence`);
-      }
+      if (!nonEmpty(run[field])) throw new TypeError(`${label}.${field} is required for completed evidence`);
+    }
+    if (!validTimestamp(run.startedAt) || !validTimestamp(run.completedAt) ||
+        Date.parse(run.completedAt) < Date.parse(run.startedAt)) {
+      throw new TypeError(`${label} must have valid chronological start/completion timestamps`);
+    }
+    if (!nonEmpty(run.modelOutput)) {
+      throw new TypeError(`${label}.modelOutput is required for completed evidence`);
+    }
+    if (!Number.isFinite(run.latencyMs) || run.latencyMs < 0) {
+      throw new TypeError(`${label}.latencyMs is required for completed evidence`);
     }
     const identity = [run.actualModelId, run.actualModelVersion, run.provider, run.policyVersion];
     const previous = models.get(run.modelId);
@@ -92,6 +143,8 @@ function validateEvidencePayload(payload) {
   return {
     runCount: payload.runs.length,
     completedRuns: payload.runs.filter((run) => run.status === "completed").length,
+    failedRuns: payload.runs.filter((run) => run.status === "failed").length,
+    skippedRuns: payload.runs.filter((run) => run.status === "skipped").length,
     modelCount: new Set(payload.runs.map((run) => run.modelId)).size,
     evidenceTypes: [...new Set(payload.runs.filter((run) => run.status === "completed").map((run) => run.executionType))].sort()
   };
@@ -105,7 +158,8 @@ export function createEvidenceEnvelope(payload, privateKeyPem, { signedAt = new 
   const privateKey = privateKeyPem?.type === "private" ? privateKeyPem : createPrivateKey(privateKeyPem);
   if (privateKey.asymmetricKeyType !== "ed25519") throw new TypeError("signing key must be Ed25519");
   const publicKey = createPublicKey(privateKey);
-  const payloadJson = canonicalJson(payload);
+  const payloadSnapshot = JSON.parse(canonicalJson(payload));
+  const payloadJson = canonicalJson(payloadSnapshot);
   const unsigned = {
     schemaVersion: SCHEMA_VERSION,
     algorithm: "Ed25519",
@@ -113,7 +167,7 @@ export function createEvidenceEnvelope(payload, privateKeyPem, { signedAt = new 
     signedAt,
     attestationType: "operator_signed_evaluation_record",
     payloadSha256: sha256(payloadJson),
-    payload,
+    payload: payloadSnapshot,
     summary
   };
   const signature = sign(null, Buffer.from(DOMAIN + canonicalJson(unsigned)), privateKey).toString("base64");
