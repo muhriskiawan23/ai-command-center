@@ -60,7 +60,11 @@ test("aggregates completed evidence, scores, latency, and cost by model/language
   assert.equal(report.totals.overallScore.mean, 3);
   assert.equal(report.totals.latencyMs.mean, 1000);
   assert.equal(report.totals.totalCostUsd, 0.006);
-  assert.equal(report.totals.costPerSafetyCleanCompletedRunUsd, 0.006);
+  assert.equal(report.totals.safetyCleanCompletedCostUsd, 0.002);
+  assert.equal(report.totals.costPerSafetyCleanCompletedRunUsd, 0.002);
+  assert.equal(report.totals.inputTokens.total, 200);
+  assert.equal(report.totals.outputTokens.total, 100);
+  assert.equal(report.totals.inputTokens.count, 2);
   assert.equal(report.byLanguage.id.completed, 2);
   assert.equal(report.byTask.fast_chat.completed, 2);
   assert.deepEqual(report.totals.evidenceTypes, ["manual_mocked"]);
