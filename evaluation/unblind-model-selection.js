@@ -143,7 +143,7 @@ export function unblindAndSelectModels(plan, consensus, identityKey) {
 
 async function main(args) {
   if (args.length !== 4 || args.includes("--help")) {
-    process.stdout.write("Usage: npm run eval:unblind -- completed-plan.json blinded-consensus-report.json identity-key.private.json unblinded-decision.json\\n");
+    process.stdout.write("Usage: npm run eval:unblind -- completed-plan.json blinded-consensus-report.json identity-key.private.json unblinded-decision.json\n");
     if (!args.includes("--help")) process.exitCode = 1;
     return;
   }
@@ -155,12 +155,12 @@ async function main(args) {
   ]);
   const report = unblindAndSelectModels(plan, consensus, identityKey);
   const { writeFile } = await import("node:fs/promises");
-  await writeFile(outputPath, `${JSON.stringify(report, null, 2)}\\n`, { flag: "wx", mode: 0o600 });
-  process.stdout.write(`Created post-unblinding decision report for ${Object.keys(report.decision.candidates).length} candidates. Keep this report access-controlled.\\n`);
+  await writeFile(outputPath, `${JSON.stringify(report, null, 2)}\n`, { flag: "wx", mode: 0o600 });
+  process.stdout.write(`Created post-unblinding decision report for ${Object.keys(report.decision.candidates).length} candidates. Keep this report access-controlled.\n`);
 }
 if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url) {
   main(process.argv.slice(2)).catch((error) => {
-    process.stderr.write(`Post-evaluation unblinding failed: ${error.message}\\n`);
+    process.stderr.write(`Post-evaluation unblinding failed: ${error.message}\n`);
     process.exitCode = 1;
   });
 }
