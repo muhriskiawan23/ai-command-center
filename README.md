@@ -128,7 +128,7 @@ The repository is prepared for a controlled deployment after the checks above. N
 
 - Opening a conversation returns at most the newest 500 messages (`truncated: true` when older ones exist). The model still only sees the last 12 turns.
 - The browser aborts a chat request after 150 seconds and shows a retry button. If the server finished after the browser gave up, the exchange may already be stored, so retrying can create a duplicate (no idempotency key yet).
-- Every agent receives a fixed "platform capabilities" notice (`CAPABILITY_NOTICE` in `src/index.js`): BOR AI can read user-supplied links under restrictions and uploaded PDFs through the PDF conversion flow, but cannot browse/search autonomously, read arbitrary files or images, run code, or use other apps. Update that notice whenever a real capability is added.
+- Every agent receives a fixed "platform capabilities" notice (`CAPABILITY_NOTICE` in `src/index.js`): BOR AI can read user-supplied links under restrictions and bounded PDF content (the current composer extracts locally; a separate server conversion endpoint sends raw PDF bytes to Workers AI), but cannot browse/search autonomously, read arbitrary files or images, run code, or use other apps. Update that notice whenever a real capability is added.
 
 See `docs/AUDIT-BOR-AI.md` for the full technical audit, severity ratings and what could not be tested.
 
