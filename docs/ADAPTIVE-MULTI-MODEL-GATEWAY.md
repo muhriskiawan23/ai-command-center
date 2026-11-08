@@ -2,7 +2,7 @@
 
 **Decision:** Adaptive Multi-Model is the default routing strategy.  
 **Status:** Architecture specification plus implemented runtime gateway (PR #94, deployed). Phase A/B and one-provider adaptive routing are active; no external provider adapter is enabled.  
-**Compatibility baseline:** `main` at `a14e2482584f266da4206a796432e64725ee62d8`.
+**Compatibility baseline:** `main` at `7a95c7e210c1693bf956d2665501dec0d80d9ce5` (PR #96 merged; model telemetry and bilingual evaluation fixture deployed).
 
 ## 1. Repository audit and current baseline
 
@@ -198,7 +198,11 @@ A request budget must include every agent call, retry and fallback, not merely o
 - Compare cost per successful task, not only cost per token.
 - Keep separate results for mocked tests, provider integration tests and live production verification.
 
-## 10. Migration plan
+## 10. Workers AI candidate inventory (audit only)
+
+The current production catalog remains limited to the existing Llama 3.3 70B model. The official Workers AI catalog audit and candidate shortlist are documented in `docs/WORKERS-AI-MODEL-INVENTORY.md`. The shortlist includes Granite 4.0 H Micro, GLM-4.7-Flash, SEA-LION v4 27B and GPT-OSS-20B. Their documented capabilities, context, zero-data-retention labels and reference prices are not live BOR AI measurements. No candidate is enabled by this audit; account access, request compatibility, billing, latency and Indonesian/English quality must be verified before runtime eligibility.
+
+## 11. Migration plan
 
 ### Phase A — Contract and tests
 
@@ -236,7 +240,7 @@ A request budget must include every agent call, retry and fallback, not merely o
 - Re-evaluate weights and thresholds from measured outcomes.
 - Keep provider selection observable and allow a safe global disable switch.
 
-## 11. Acceptance and regression gates
+## 12. Acceptance and regression gates
 
 Required automated tests:
 
@@ -262,7 +266,7 @@ Release gates:
 - A live provider test requires approved credentials and budget.
 - No merge, production deployment, production secret change or paid-provider activation without explicit founder approval.
 
-## 12. Decisions still requiring founder approval
+## 13. Decisions still requiring founder approval
 
 The Adaptive strategy is selected, but the following remain deliberately undecided:
 

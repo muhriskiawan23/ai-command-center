@@ -253,8 +253,8 @@ The next work should proceed in this order:
 
 1. **Post-merge regression audit:** verify PR #91 and PR #94 behavior in production; keep mocked CI evidence separate from live-provider evidence.
 2. **Live search readiness:** verify Brave Search/News with an approved Worker secret and active provider quota; never request or expose the key in chat.
-3. **Gateway hardening:** initial per-agent structured telemetry and bilingual evaluation fixtures are implemented on the feature branch; next add measured usage/cost reconciliation and durable dashboards only after observability retention/cost settings are approved.
-4. **Model inventory:** verify candidate Workers AI models and documented capability limits before adding any additional candidate.
+3. **Gateway hardening:** per-agent structured telemetry and bilingual evaluation fixtures are implemented and deployed (PR #96); next add measured usage/cost reconciliation and durable dashboards only after observability retention/cost settings are approved.
+4. **Model inventory:** official Workers AI candidate inventory is documented in `docs/WORKERS-AI-MODEL-INVENTORY.md`; next verify account access and run bounded bilingual/task benchmarks before adding any candidate to the runtime catalog.
 5. **Current audit refresh:** reproduce historic open findings and prioritize high-risk operational gaps.
 6. **Multimodal and sandbox prototypes:** run isolated technical spikes only after model/provider capability, privacy and cost are verified.
 
