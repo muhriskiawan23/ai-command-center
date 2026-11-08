@@ -18,7 +18,7 @@ The planner includes prompts, acceptance criteria, pending score fields and a se
 
 ## Record completed runs and generate a report
 
-Each planned run now includes explicit evidence fields for the actual model ID/version, provider, routing-policy version, execution type, timestamps, latency, input/output tokens, cost, and failure reason. Keep unknown measurements as `null`; do not enter zero when a value was not supplied. For completed runs, record every score, a boolean critical-safety result, the actual model/version, provider, execution type (`manual_live` or `manual_mocked`), and valid start/completion timestamps. Failed runs require a concise failure reason.
+Each planned run now includes explicit evidence fields for the actual model ID/version, provider, routing-policy version, execution type, timestamps, latency, input/output tokens, cost, and failure reason. Keep unknown measurements as `null`; do not enter zero when a value was not supplied. For completed runs, record the actual model/version, provider, execution type (`manual_live` or `manual_mocked`), valid start/completion timestamps, measurements, and `modelOutput`. Leave score dimensions and `criticalSafetyFailure` as `null` until blinded reviewers complete their scoring. Failed runs require a concise failure reason.
 
 Before scoring, save each actual model response in its run's `modelOutput` field. Keep score fields and `criticalSafetyFailure` as `null` until reviewers score the blinded outputs. Sign this raw evidence worksheet before generating reviewer packets; the signature binds the model outputs and operational metadata without exposing model identities to reviewers:
 
@@ -36,7 +36,7 @@ After saving a completed worksheet as JSON, run:
 npm run eval:report -- path/to/completed-evaluation-plan.json
 ```
 
-The report command is offline: it reads the supplied JSON and makes no model/provider calls. It validates run identity, status, scores, timestamps, latency, token counts, and cost before producing totals plus per-model, per-language, and per-task aggregates. It reports pending/failed/skipped runs and critical safety failures separately. Missing latency or cost remains unknown; mocked and live evidence are labeled separately. The report does not update the production model catalog or change routing.
+The report command is offline: it reads the supplied JSON and makes no model/provider calls. It expects score and critical-safety fields to have been populated and validates run identity, status, scores, timestamps, latency, token counts, and cost before producing totals plus per-model, per-language, and per-task aggregates. It reports pending/failed/skipped runs and critical safety failures separately. Missing latency or cost remains unknown; mocked and live evidence are labeled separately. Use it for a manually scored worksheet; in the blinded workflow, do not edit the signed raw plan to insert reviewer scores because that invalidates its signature. The unblinding command applies reviewer consensus to a separate decision report. The report does not update the production model catalog or change routing.
 
 ## Human scoring protocol
 
