@@ -79,3 +79,31 @@ test("rejects duplicate runs, absent baseline, and invalid decision thresholds",
   const unsafeIncomplete = buildPlan({ safetyFailure: true, pendingCandidate: true });
   assert.equal(decideModelAdvancement(unsafeIncomplete).candidates["candidate-v1"].status, "blocked_safety");
 });
+
+test("rejects mixed provider or routing-policy metadata within candidate evidence", () => {
+  const mixedProvider = buildPlan();
+  mixedProvider.runs.find((run) => run.modelRole === "candidate" && run.status === "completed").provider = "other-provider";
+  const providerReport = decideModelAdvancement(mixedProvider);
+  assert.equal(providerReport.candidates["candidate-v1"].gates.evidencePass, false);
+  assert.equal(providerReport.candidates["candidate-v1"].status, "inconclusive");
+
+  const mixedPolicy = buildPlan();
+  mixedPolicy.runs.find((run) => run.modelRole === "candidate" && run.status === "completed").policyVersion = "different-policy";
+  const policyReport = decideModelAdvancement(mixedPolicy);
+  assert.equal(policyReport.candidates["candidate-v1"].gates.evidencePass, false);
+  assert.equal(policyReport.candidates["candidate-v1"].status, "inconclusive");
+});
+
+test("requires a consistent verified baseline provider, model version, and routing policy", () => {
+  const plan = buildPlan();
+  plan.runs.find((run) => run.modelRole === "baseline" && run.status === "completed").provider = "other-provider";
+  const report = decideModelAdvancement(plan);
+  assert.equal(report.candidates["candidate-v1"].gates.baselineEvidencePass, false);
+  assert.equal(report.candidates["candidate-v1"].status, "inconclusive");
+});
+
+test("rejects unknown model roles", () => {
+  const plan = buildPlan();
+  plan.runs[0].modelRole = "control";
+  assert.throws(() => decideModelAdvancement(plan), /modelRole must be baseline or candidate/);
+});
