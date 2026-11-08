@@ -20,9 +20,10 @@ The planner includes prompts, acceptance criteria, pending score fields and a se
 
 Each planned run now includes explicit evidence fields for the actual model ID/version, provider, routing-policy version, execution type, timestamps, latency, input/output tokens, cost, and failure reason. Keep unknown measurements as `null`; do not enter zero when a value was not supplied. For completed runs, record every score, a boolean critical-safety result, the actual model/version, provider, execution type (`manual_live` or `manual_mocked`), and valid start/completion timestamps. Failed runs require a concise failure reason.
 
-Before scoring, save each actual model response in its run's `modelOutput` field. Then generate an anonymous reviewer packet and a separate private identity key:
+Before scoring, save each actual model response in its run's `modelOutput` field. Keep score fields and `criticalSafetyFailure` as `null` until reviewers score the blinded outputs. Sign this raw evidence worksheet before generating reviewer packets; the signature binds the model outputs and operational metadata without exposing model identities to reviewers:
 
 ```sh
+npm run eval:evidence:sign -- completed-evaluation-plan.json signed-evidence.json evidence-signing.private.pem
 npm run eval:blind -- completed-evaluation-plan.json reviewer-packet.json identity-key.private.json
 ```
 
@@ -127,11 +128,7 @@ npm run eval:evidence:keygen -- evidence-signing.private.pem evidence-signing.pu
 
 Keep the private key offline with restrictive file permissions. Never commit it, upload it to the repository, or share it with reviewers. Distribute the public key through a separate trusted channel and verify its fingerprint with the signer.
 
-Sign a completed evaluation worksheet:
-
-```sh
-npm run eval:evidence:sign -- completed-evaluation-plan.json signed-evidence.json evidence-signing.private.pem
-```
+Sign the completed raw evidence worksheet **before** generating blinded reviewer packets. At this stage, score dimensions and `criticalSafetyFailure` may remain `null`; the signer validates the model outputs, timestamps, measurements, model/provider/version/policy consistency, and run identities. The signed payload must remain unchanged for unblinding.
 
 Verify the signed evidence using the independently trusted public key:
 
@@ -211,10 +208,10 @@ The decision engine has no provider, network, Worker runtime, secret, or databas
 Only after every independent reviewer has submitted a complete packet and the consensus report has been generated should an authorized evaluator join the private identity key:
 
 ```sh
-npm run eval:unblind -- completed-evaluation-plan.json blinded-consensus-report.json identity-key.private.json unblinded-decision.json
+npm run eval:unblind -- completed-evaluation-plan.json blinded-consensus-report.json identity-key.private.json unblinded-decision.json signed-evidence.json trusted-evidence-signing.public.pem
 ```
 
-The command validates the consensus version and packet ID against the identity key, exact score-dimension agreement, unique one-to-one blind-label/model mappings, and complete one-to-one coverage of every planned model/case/language/task/repeat item. Missing, duplicate, extra, or mismatched items are rejected. The private identity key and output decision report should remain access-controlled; the reviewer packet and original reviewer submissions are not modified.
+Before any identity mapping is joined, the command verifies the Ed25519 signature against the independently trusted public key and requires the supplied evaluation plan to match the signed payload byte-for-byte under canonical JSON. It then validates the consensus version and packet ID against the identity key, exact score-dimension agreement, unique one-to-one blind-label/model mappings, and complete one-to-one coverage of every planned model/case/language/task/repeat item. Missing, duplicate, extra, or mismatched items are rejected. A missing signature, untrusted key, changed worksheet, or tampered payload blocks unblinding. The private identity key, signing private key, and output decision report should remain access-controlled; the reviewer packet and original reviewer submissions are not modified.
 
 Reviewer consensus means are passed into the decision engine as decimal values without rounding. Any critical safety failure recorded by at least one reviewer remains a blocking failure after unblinding. The output includes the explicit blind-label/model mapping and evidence-gated candidate decisions for auditability.
 
