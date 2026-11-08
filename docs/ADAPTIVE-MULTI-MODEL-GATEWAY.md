@@ -2,7 +2,7 @@
 
 **Decision:** Adaptive Multi-Model is the default routing strategy.  
 **Status:** Architecture specification plus implemented runtime gateway (PR #94, deployed). Phase A/B and one-provider adaptive routing are active; no external provider adapter is enabled.  
-**Compatibility baseline:** `main` at `dcfa8c027e60b2fff262d8de8cdfc8225ffa6d7c` (PR #100 merged; manual bilingual evaluation planner added).
+**Compatibility baseline:** `main` at `9a6a6787e53e95e903e53f9a9f37ccaaa3711e60` (PR #102 merged; manual evaluation planning, offline reporting, and corrected cost/token aggregates are present).
 
 ## 1. Repository audit and current baseline
 
@@ -227,7 +227,7 @@ The current production catalog remains limited to the existing Llama 3.3 70B mod
 - Post-deploy health, agents and Google sign-in configuration checks passed. Production D1 was verified read-only; no migrations were pending.
 - Each model-agent call emits a structured BOR_AI_MODEL_TELEMETRY log with provider/model, task profile, policy version, outcome, elapsed time and retry count. Logs exclude prompts, responses, user IDs and provider payloads; durable dashboards/retention are not configured.
 - Web chat and Public API trace metadata now include per-agent elapsed time, retry count and outcome. Telegram uses the same safe structured log path.
-- A bilingual offline benchmark fixture and human-scoring protocol are maintained in evaluation/model-quality-cases.json and docs/MODEL-QUALITY-EVALUATION.md; no live model quality score is claimed.
+- A bilingual offline benchmark fixture, manual evaluation planner, offline result reporter, and provisional blinded-scoring/decision gates are maintained in `evaluation/` and `docs/MODEL-QUALITY-EVALUATION.md`; no live model quality score is claimed.
 
 ### Phase D — Second provider pilot
 - Select one official provider only after a founder-approved budget and data policy.
