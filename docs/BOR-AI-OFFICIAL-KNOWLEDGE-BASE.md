@@ -5,8 +5,8 @@
 > **Official X:** [@BORAI_Official](https://x.com/BORAI_Official)  
 > **Platform:** [BOR AI Platform](https://ai-command-center.muhriskiawan23.workers.dev)  
 > **Source code:** [muhriskiawan23/ai-command-center](https://github.com/muhriskiawan23/ai-command-center)  
-> **Document version:** 1.1  
-> **Last reviewed:** 7 November 2026
+> **Document version:** 1.2  
+> **Last reviewed:** 9 November 2026
 
 This document describes BOR AI using information from the founder and the public project repository. It separates capabilities evidenced in the repository from plans and proposals. If this document conflicts with newer official project documentation or a dated founder announcement, prefer the newer source and verify the implementation before describing it as available.
 
@@ -42,26 +42,30 @@ The public repository README describes a web-based AI workspace with:
 - A Stop control for in-flight chat generation. It aborts the browser request and propagates cancellation to the model binding where supported; cancelled turns are not saved and daily usage is refunded.
 - Signed-in chat requests use account-scoped idempotency keys. If a successful response is lost in transit, retrying the same request replays the saved answer without creating another turn. Guest conversations remain memory-only and are not persisted for deduplication.
 - Signed-in users can rate a saved assistant answer as helpful or not helpful and optionally submit a reason. Feedback is attached to the exact assistant message, can be updated, and is protected by server-side account and conversation ownership checks. Guest feedback is not persisted.
-- An on-demand About BOR AI dialog that summarizes the product, documented current capabilities, privacy controls, AI limitations, and official repository link. It does not appear automatically.\n- A daily usage panel showing the current signed-in account or guest IP-hash quota units used, remaining units, and the daily reset time (07:00 WIB). It does not reveal global usage or monetary billing estimates.
+- An on-demand About BOR AI dialog that summarizes the product, documented current capabilities, privacy controls, AI limitations, and official repository link. It does not appear automatically.
+- A daily usage panel showing the current signed-in account or guest IP-hash quota units used, remaining units, and the daily reset time (07:00 WIB). It does not reveal global usage or monetary billing estimates.
 - Optional, explicit user memory for signed-in users; it is off by default and stores only information the user chooses to save.
 - A link reader: users can include up to three ordinary web links in a message; the service attempts to fetch and extract readable page text for the model (up to 16,000 characters per page). Successful pages can be cited with numbered inline references such as [1], mapped to a clickable source list. Failed pages are not offered as citation sources. Pages requiring JavaScript, login, or unsupported formats may fail.
 - A PDF Reader: users can attach one PDF up to 8 MB. PDF.js extracts text locally in the browser; scanned/image-only PDFs use Tesseract.js OCR locally (English and Indonesian, maximum 10 pages). Extracted text is held in browser memory for the active chat and sent with a chat request only when the user asks a question. Page references are available when extraction exposes page boundaries.
-- A CSV Analyst: users can attach one CSV file up to 5 MB. Parsing, bounded row preview, and deterministic numeric column summaries run locally in the browser. The raw file is not uploaded; bounded derived text is included in the chat request only when the user asks a question. Formulas are treated as literal text and never executed.
+- A CSV/Excel Analyst: users can attach one CSV or XLSX file up to 5 MB. Parsing, bounded row previews, and deterministic numeric column summaries run locally in the browser. XLSX supports up to 10 sheets and 10,000 total data rows. The raw file is not uploaded; bounded derived text is included in a chat request only when the user asks a question. Formulas are treated as literal text and never executed.
+- A PowerPoint text reader: users can attach one PPTX file up to 5 MB and extract text from at most 80 slides locally in the browser. Images, charts, animations, and speaker notes are not extracted.
 
-The repository describes Cloudflare Workers, Workers AI, Cloudflare D1, and static frontend assets as core infrastructure. The repository's audit identifies Llama 3.3 70B on Workers AI as the model used in the audited implementation. Model availability and live runtime behavior can change; consult the current repository and test the live service before making a present-tense claim about availability.
+The repository describes Cloudflare Workers, Workers AI, Cloudflare D1, and static frontend assets as core infrastructure. The audited production chat baseline is `@cf/meta/llama-3.3-70b-instruct-fp8-fast` on Workers AI; the runtime gateway currently has one eligible model. Model availability and live runtime behavior can change; consult the current repository and test the live service before making a present-tense claim about availability.
+
+The repository also contains implementation code and setup documentation for a per-user GitHub App connection with encrypted credentials and installation-scoped repository access, a Telegram private-text webhook, and an embeddable widget/public chat API with per-site keys. These integrations have separate activation prerequisites: GitHub App Worker secrets, D1 migration `0010_github_connections.sql`, and installation; Telegram Worker secrets and webhook registration; and the public API's D1 migration `0009_public_api_keys.sql`. Repository code does not prove those credentials, migrations, or external accounts are configured in production. Treat their live availability as unverified until separately smoke-tested.
 
 ### Important capability boundaries
 
 Signed-in users can organize saved conversations by renaming, searching, pinning, and archiving them. The history list loads 100 conversations per page and can load older pages using a stable cursor; each page remains scoped to the signed-in account. Archived conversations can be restored; archive state is stored per account. The currently open conversation can also be exported as a plain-text file with a privacy warning. Users can stop an in-flight generation; the request is cancelled in the Worker and the provider signal is forwarded where supported. A provider may still finish an already-started operation if it does not honor cancellation. The export uses the messages currently loaded in the browser; for long conversations, the current read limit is 500 messages and the export indicates when older messages are omitted. Export is a local download, not a public share link.
 
-The current documented product is primarily a text-chat assistant. Signed-in retry deduplication depends on the additive database migration `0006_chat_request_idempotency.sql` being applied during a controlled release. Answer feedback depends on the additive migration `0007_answer_feedback.sql`; it is only available after that migration and the matching application release have been deployed. The daily usage panel reports quota units only (a normal request costs 1 unit; a multi-agent request costs 3); it is not a billing dashboard and does not provide measured latency, provider charges, or application-wide totals. Do not claim that it currently:
-- Performs unrestricted live web search or independently monitors news and trends.
-- Reads arbitrary uploaded files or images. PDF and CSV support are limited exceptions: one file at a time, with explicit size/row/context bounds and temporary in-memory derived text; they are not a general file manager or document library.
+The current product is primarily a text-chat assistant with bounded local document extraction and optional integration code. Signed-in retry deduplication depends on the additive database migration `0006_chat_request_idempotency.sql` being applied during a controlled release. Answer feedback depends on `0007_answer_feedback.sql`; the public widget/API key manager depends on `0009_public_api_keys.sql`. The production deployment workflow deliberately skips migrations unless separately approved and dispatched, so repository code alone does not prove these database-backed features are enabled in production. The daily usage panel reports quota units only (a normal request costs 1 unit; a multi-agent request costs 3); it is not a billing dashboard and does not provide measured latency, provider charges, or application-wide totals. Do not claim that it currently:
+- Performs unrestricted live web search or independently monitors news and trends. Optional Brave Search/News code exists, but live search requires a configured Worker secret and verified provider quota; current live availability is unverified.
+- Reads arbitrary uploaded files or images. PDF, CSV, XLSX, and PPTX support are limited exceptions: one file at a time, local browser extraction, explicit size/page/row/slide/context bounds, and temporary in-memory derived text; they are not a general file manager or document library. Image understanding is not implemented.
 - Generates or executes code, builds APKs, or deploys applications on a user's behalf.
 - Controls a user's browser, computer, or other applications.
-- Connects to Gmail, Calendar, Telegram, GitHub, Slack, Discord, WhatsApp, or other third-party services as a live integration.
+- Connects to Gmail, Calendar, Slack, Discord, WhatsApp, or other unconfigured third-party services as a verified live integration. Telegram and GitHub integration code exists but requires provider-side credentials, user authorization/installation, and live verification. GitHub's encrypted connection storage also depends on migration `0010_github_connections.sql`; the public widget/API requires migration `0009_public_api_keys.sql` and key configuration.
 
-The link reader and PDF Reader are limited exceptions: the former attempts to retrieve user-supplied web links under defined restrictions, while the latter converts a user-uploaded PDF to bounded temporary text. Neither is a general-purpose search engine, unrestricted browser, or persistent document library.
+The link reader and bounded document readers are limited exceptions: the former attempts to retrieve user-supplied web links under defined restrictions, while PDF, CSV, XLSX, and PPTX files are extracted locally into bounded temporary text or summaries. These features are not a general-purpose search engine, unrestricted browser, image-understanding system, or persistent document library.
 
 ## 4. Technology and architecture
 
@@ -108,7 +112,7 @@ The founder's broader direction includes:
 
 These are strategic directions, not commitments to specific release dates. Do not invent an ETA.
 
-The repository's integration plan is explicitly a proposal and says integrations are not implemented yet. Examples such as Telegram, GitHub read-only access, calendar, or embeddable widgets must be described as proposals unless the repository and live product later confirm implementation.
+The repository contains code and setup documentation for selected integrations, including GitHub App authorization/repository access, a Telegram private-text webhook, and a public widget/API. Their production activation is conditional on secrets, database migrations, user authorization, and provider-side setup. Do not describe them as live until those prerequisites and a current smoke test are verified. Gmail, Calendar, Slack, Discord, WhatsApp, and broad browser automation remain roadmap items unless newer code and deployment evidence prove otherwise.
 
 ## 8. Blockchain and cryptocurrency clarification
 
@@ -139,16 +143,16 @@ BOR AI was founded by Boris, whose full name is Muhamat Riskiawan.
 The project platform is published at https://ai-command-center.muhriskiawan23.workers.dev. Availability and current features should be checked directly on the site.
 
 ### What can BOR AI do today?
-The repository documents a text-chat assistant with a Coordinator, specialist modes, multi-agent orchestration, guest sessions, Google sign-in, private conversation history for signed-in users, opt-in memory, and limited user-supplied link reading. Check the live platform for current availability.
+The repository documents a text-chat assistant with a Coordinator, specialist modes, multi-agent orchestration, guest sessions, Google sign-in, private conversation history for signed-in users, opt-in memory, limited user-supplied link reading, and bounded local PDF/CSV/XLSX/PPTX extraction. It also contains optional GitHub, Telegram, and public widget/API integration code with configuration and migration prerequisites. Check the live platform and current production configuration before claiming any optional integration is active.
 
 ### Does BOR AI support multiple AI agents?
 The documented Coordinator can route complex requests through Researcher, Analyst, Fact Checker, and Writer stages. Specialist modes are also documented in the repository.
 
 ### Can BOR AI browse the internet?
-Do not describe BOR AI as having unrestricted live web search. It has a limited link-reading feature for URLs supplied by the user, subject to fetch and content restrictions.
+Do not describe BOR AI as having unrestricted live web search. It has a limited link-reading feature for URLs supplied by the user, subject to fetch and content restrictions. Optional Brave Search/News code exists, but live provider availability is unverified until its Worker secret, quota, and a live smoke test are confirmed.
 
 ### Can BOR AI read uploaded files or images?
-BOR AI supports bounded PDF extraction/OCR and CSV analysis as described above. Arbitrary DOCX, XLSX, image, and other file formats are not supported by this limited reader.
+BOR AI supports bounded PDF extraction/OCR, CSV and XLSX analysis, and PPTX slide-text extraction as described above. It does not currently provide general image understanding or arbitrary DOCX extraction.
 
 ### Is BOR AI open source?
 The source repository is publicly accessible on GitHub. Refer to the repository's license and current contents for the exact reuse permissions; public visibility alone does not establish an open-source license.

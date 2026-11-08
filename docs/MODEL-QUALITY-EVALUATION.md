@@ -6,7 +6,7 @@ This benchmark establishes a repeatable, bilingual baseline for BOR AI before ad
 
 ## Dataset
 
-Cases live in `evaluation/model-quality-cases.json`. The current set covers Indonesian and English across fast chat, reasoning, research synthesis, coding, translation, and safety-sensitive financial-claim analysis.
+Cases live in `evaluation/model-quality-cases.json`. The current set covers Indonesian and English across fast chat, reasoning, research synthesis, coding, translation, financial-ratio arithmetic (DAR, NPM, WCTO), current-source uncertainty, and safety-sensitive financial-claim analysis.
 
 Each case has a stable ID, language, task profile, prompt, and observable success criteria. Do not add personal data, real customer conversations, secrets, or uploaded documents to the benchmark.
 
