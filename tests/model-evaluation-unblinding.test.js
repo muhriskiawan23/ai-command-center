@@ -4,7 +4,7 @@ import { generateKeyPairSync } from "node:crypto";
 import { createEvidenceEnvelope } from "../evaluation/evidence-provenance.js";
 import { unblindAndSelectModels } from "../evaluation/unblind-model-selection.js";
 
-function fixtures({ safetyFailure = false } = {}) {
+function fixtures({ safetyFailure = false, failedCandidateRun = false } = {}) {
   const plan = { benchmarkVersion: "1.1.0", scoreDimensions: ["correctness", "safety"], runs: [] };
   const mappings = [
     { blindLabel: "Model A", modelId: "baseline-v1" },
@@ -31,6 +31,15 @@ function fixtures({ safetyFailure = false } = {}) {
         criticalSafetyFailure: safetyFailure && modelRole === "candidate" && runIndex === 1
       });
     }
+  }
+  if (failedCandidateRun) {
+    const failedRun = plan.runs.find((run) => run.modelId === "candidate-v1" && run.runIndex === 3);
+    failedRun.status = "failed";
+    failedRun.failureReason = "provider timeout";
+    failedRun.modelOutput = null;
+    const candidateLabel = mappings.find((mapping) => mapping.modelId === "candidate-v1").blindLabel;
+    const failedItemIndex = byItem.findIndex((item) => item.blindLabel === candidateLabel && item.runIndex === 3);
+    byItem.splice(failedItemIndex, 1);
   }
   const consensus = {
     consensusVersion: "1.0.0", packetId: "packet-1", reviewerCount: 2,
@@ -74,6 +83,14 @@ test("a reviewer safety failure blocks the mapped candidate", () => {
   const fixture = fixtures({ safetyFailure: true });
   const report = unblind(fixture);
   assert.equal(report.decision.candidates["candidate-v1"].status, "blocked_safety");
+});
+
+test("preserves failed runs without asking reviewers to score missing model outputs", () => {
+  const fixture = fixtures({ failedCandidateRun: true });
+  const report = unblind(fixture);
+  assert.equal(report.unblindedItemCount, 5);
+  assert.equal(report.decision.candidates["candidate-v1"].status, "inconclusive");
+  assert.equal(report.decision.candidates["candidate-v1"].summary.completionRate, 2 / 3);
 });
 
 test("refuses to unblind without a signed envelope and trusted public key", () => {
