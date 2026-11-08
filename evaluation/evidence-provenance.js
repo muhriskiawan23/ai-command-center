@@ -12,7 +12,7 @@ import { pathToFileURL } from "node:url";
 import { summarizeEvaluationResults } from "./summarize-model-evaluation.js";
 
 const SCHEMA_VERSION = "1.0.0";
-const DOMAIN = "BOR-AI-EVALUATION-EVIDENCE-V1\\n";
+const DOMAIN = "BOR-AI-EVALUATION-EVIDENCE-V1\n";
 const EXECUTION_TYPES = new Set(["manual_live", "manual_mocked"]);
 const RUN_STATUSES = new Set(["completed", "failed", "skipped"]);
 
@@ -158,7 +158,7 @@ async function main(args) {
       await rm(publicPath, { force: true });
       throw error;
     }
-    process.stdout.write(`Created Ed25519 key pair. Key ID: ${keyFingerprint(pair.publicKey)}\\nKeep the private key offline and never commit it.\\n`);
+    process.stdout.write(`Created Ed25519 key pair. Key ID: ${keyFingerprint(pair.publicKey)}\nKeep the private key offline and never commit it.\n`);
     return;
   }
   if (command === "sign" && values.length === 3) {
@@ -166,8 +166,8 @@ async function main(args) {
     const payload = JSON.parse(await readFile(planPath, "utf8"));
     const privatePem = await readFile(privatePath, "utf8");
     const envelope = createEvidenceEnvelope(payload, privatePem);
-    await writeFile(envelopePath, `${JSON.stringify(envelope, null, 2)}\\n`, { flag: "wx", mode: 0o600 });
-    process.stdout.write(`Signed ${envelope.summary.completedRuns}/${envelope.summary.runCount} evaluation runs. Envelope: ${envelopePath}\\n`);
+    await writeFile(envelopePath, `${JSON.stringify(envelope, null, 2)}\n`, { flag: "wx", mode: 0o600 });
+    process.stdout.write(`Signed ${envelope.summary.completedRuns}/${envelope.summary.runCount} evaluation runs. Envelope: ${envelopePath}\n`);
     return;
   }
   if (command === "verify" && values.length === 2) {
@@ -175,16 +175,16 @@ async function main(args) {
     const envelope = JSON.parse(await readFile(envelopePath, "utf8"));
     const publicPem = await readFile(publicPath, "utf8");
     const result = verifyEvidenceEnvelope(envelope, publicPem);
-    process.stdout.write(`${JSON.stringify(result, null, 2)}\\n`);
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     return;
   }
-  process.stdout.write("Usage:\\n  node evaluation/evidence-provenance.js keygen private-key.pem public-key.pem\\n  node evaluation/evidence-provenance.js sign completed-plan.json signed-evidence.json private-key.pem\\n  node evaluation/evidence-provenance.js verify signed-evidence.json trusted-public-key.pem\\n");
+  process.stdout.write("Usage:\n  node evaluation/evidence-provenance.js keygen private-key.pem public-key.pem\n  node evaluation/evidence-provenance.js sign completed-plan.json signed-evidence.json private-key.pem\n  node evaluation/evidence-provenance.js verify signed-evidence.json trusted-public-key.pem\n");
   process.exitCode = 1;
 }
 
 if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url) {
   main(process.argv.slice(2)).catch((error) => {
-    process.stderr.write(`Evidence provenance failed: ${error.message}\\n`);
+    process.stderr.write(`Evidence provenance failed: ${error.message}\n`);
     process.exitCode = 1;
   });
 }
