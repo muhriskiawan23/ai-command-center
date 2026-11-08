@@ -277,3 +277,8 @@ The Adaptive strategy is selected, but the following remain deliberately undecid
 - which quality/latency/cost trade-off thresholds should be used after benchmark evidence exists.
 
 Until these decisions are approved, the safe default is one-provider adaptive routing (the existing Workers AI model remains the only eligible model), not speculative multi-provider activation.
+
+
+## Candidate quality-floor enforcement
+
+The audited production baseline is explicitly marked `baseline: true` and remains eligible while comparative quality evidence is unknown. Every additional model candidate must be marked as non-baseline (or omit the baseline flag), carry a measured score for the requested task, and be evaluated with an explicit `requirements.minQualityScore` before it can become eligible. Missing scores, missing floors, or scores below the floor fail closed. Provider approval, user consent, region, data policy, context, deadline, and cost gates remain independent requirements. This code gate does not itself authenticate benchmark evidence; candidate scores must still be sourced from the signed, reviewed evaluation process before catalog approval.
