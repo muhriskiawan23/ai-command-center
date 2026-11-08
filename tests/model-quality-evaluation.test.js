@@ -6,7 +6,7 @@ const benchmarkUrl = new URL("../evaluation/model-quality-cases.json", import.me
 
 test("bilingual model-quality benchmark has stable, actionable coverage", async () => {
   const benchmark = JSON.parse(await readFile(benchmarkUrl, "utf8"));
-  assert.equal(benchmark.version, "1.1.0");
+  assert.equal(benchmark.version, "1.2.0");
   assert.equal(benchmark.minimumRunsPerCase, 3);
   assert.ok(Array.isArray(benchmark.cases));
   assert.ok(benchmark.cases.length >= 20);
