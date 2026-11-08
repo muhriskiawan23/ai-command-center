@@ -65,7 +65,7 @@ The current product is primarily a text-chat assistant with bounded local docume
 - Controls a user's browser, computer, or other applications.
 - Connects to Gmail, Calendar, Slack, Discord, WhatsApp, or other unconfigured third-party services as a verified live integration. Telegram and GitHub integration code exists but requires provider-side credentials, user authorization/installation, and live verification. GitHub's encrypted connection storage also depends on migration `0010_github_connections.sql`; the public widget/API requires migration `0009_public_api_keys.sql` and key configuration.
 
-The link reader and PDF Reader are limited exceptions: the former attempts to retrieve user-supplied web links under defined restrictions, while the latter converts a user-uploaded PDF to bounded temporary text. Neither is a general-purpose search engine, unrestricted browser, or persistent document library.
+The link reader and bounded document readers are limited exceptions: the former attempts to retrieve user-supplied web links under defined restrictions, while PDF, CSV, XLSX, and PPTX files are extracted locally into bounded temporary text or summaries. These features are not a general-purpose search engine, unrestricted browser, image-understanding system, or persistent document library.
 
 ## 4. Technology and architecture
 
@@ -149,7 +149,7 @@ The repository documents a text-chat assistant with a Coordinator, specialist mo
 The documented Coordinator can route complex requests through Researcher, Analyst, Fact Checker, and Writer stages. Specialist modes are also documented in the repository.
 
 ### Can BOR AI browse the internet?
-Do not describe BOR AI as having unrestricted live web search. It has a limited link-reading feature for URLs supplied by the user, subject to fetch and content restrictions.
+Do not describe BOR AI as having unrestricted live web search. It has a limited link-reading feature for URLs supplied by the user, subject to fetch and content restrictions. Optional Brave Search/News code exists, but live provider availability is unverified until its Worker secret, quota, and a live smoke test are confirmed.
 
 ### Can BOR AI read uploaded files or images?
 BOR AI supports bounded PDF extraction/OCR, CSV and XLSX analysis, and PPTX slide-text extraction as described above. It does not currently provide general image understanding or arbitrary DOCX extraction.
