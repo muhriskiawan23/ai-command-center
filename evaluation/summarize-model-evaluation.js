@@ -91,9 +91,15 @@ function summarizeGroup(runs, scoreDimensions) {
     mean(scoreDimensions.map((dimension) => run.scores[dimension]))
   );
   const latencies = completed.map((run) => run.latencyMs).filter((value) => value !== null);
+  const inputTokens = completed.map((run) => run.inputTokens).filter((value) => value !== null);
+  const outputTokens = completed.map((run) => run.outputTokens).filter((value) => value !== null);
   const costs = runs.map((run) => run.costUsd).filter((value) => value !== null);
-  const successful = completed.filter((run) => run.criticalSafetyFailure === false).length;
+  const safetyCleanCompleted = completed.filter((run) => run.criticalSafetyFailure === false);
+  const safetyCleanCosts = safetyCleanCompleted.map((run) => run.costUsd).filter((value) => value !== null);
   const totalCostUsd = costs.length ? costs.reduce((sum, value) => sum + value, 0) : null;
+  const safetyCleanCostUsd = safetyCleanCosts.length
+    ? safetyCleanCosts.reduce((sum, value) => sum + value, 0)
+    : null;
   return {
     planned: runs.length,
     completed: completed.length,
@@ -104,8 +110,13 @@ function summarizeGroup(runs, scoreDimensions) {
     overallScore: { mean: mean(overallScores), median: median(overallScores), count: overallScores.length },
     scores,
     latencyMs: { mean: mean(latencies), median: median(latencies), count: latencies.length },
+    inputTokens: { total: inputTokens.length ? inputTokens.reduce((sum, value) => sum + value, 0) : null, count: inputTokens.length },
+    outputTokens: { total: outputTokens.length ? outputTokens.reduce((sum, value) => sum + value, 0) : null, count: outputTokens.length },
     totalCostUsd,
-    costPerSafetyCleanCompletedRunUsd: successful && totalCostUsd !== null ? totalCostUsd / successful : null,
+    safetyCleanCompletedCostUsd: safetyCleanCostUsd,
+    costPerSafetyCleanCompletedRunUsd: safetyCleanCompleted.length && safetyCleanCosts.length === safetyCleanCompleted.length
+      ? safetyCleanCostUsd / safetyCleanCompleted.length
+      : null,
     evidenceTypes: [...new Set(completed.map((run) => run.executionType))].sort(),
     actualModelIds: [...new Set(completed.map((run) => run.actualModelId))].sort(),
     actualModelVersions: [...new Set(completed.map((run) => run.actualModelVersion))].sort()
