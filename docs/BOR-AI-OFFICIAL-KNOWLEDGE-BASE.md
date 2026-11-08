@@ -143,7 +143,7 @@ BOR AI was founded by Boris, whose full name is Muhamat Riskiawan.
 The project platform is published at https://ai-command-center.muhriskiawan23.workers.dev. Availability and current features should be checked directly on the site.
 
 ### What can BOR AI do today?
-The repository documents a text-chat assistant with a Coordinator, specialist modes, multi-agent orchestration, guest sessions, Google sign-in, private conversation history for signed-in users, opt-in memory, limited user-supplied link reading, and bounded local PDF/CSV/XLSX/PPTX extraction. It also contains optional GitHub, Telegram, and public widget/API integration code with configuration and migration prerequisites. Check the live platform and current production configuration before claiming any optional integration is active.
+The repository documents a text-chat assistant with a Coordinator, specialist modes, multi-agent orchestration, guest sessions, Google sign-in, private conversation history for signed-in users, opt-in memory, limited user-supplied link reading, and bounded PDF/CSV/XLSX/PPTX extraction (local browser readers plus a separate server-side PDF conversion endpoint). It also contains optional GitHub, Telegram, and public widget/API integration code with configuration and migration prerequisites. Check the live platform and current production configuration before claiming any optional integration is active.
 
 ### Does BOR AI support multiple AI agents?
 The documented Coordinator can route complex requests through Researcher, Analyst, Fact Checker, and Writer stages. Specialist modes are also documented in the repository.
