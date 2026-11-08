@@ -89,6 +89,9 @@ test("preserves failed runs without asking reviewers to score missing model outp
   const fixture = fixtures({ failedCandidateRun: true });
   const report = unblind(fixture);
   assert.equal(report.unblindedItemCount, 5);
+  assert.equal(report.plannedRunCount, 6);
+  assert.equal(report.failedRunCount, 1);
+  assert.equal(report.skippedRunCount, 0);
   assert.equal(report.decision.candidates["candidate-v1"].status, "inconclusive");
   assert.equal(report.decision.candidates["candidate-v1"].summary.completionRate, 2 / 3);
 });
