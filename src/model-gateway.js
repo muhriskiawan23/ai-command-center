@@ -16,6 +16,7 @@ export const TASK_PROFILES = Object.freeze({
 export const BASELINE_MODEL_CATALOG = Object.freeze([
   Object.freeze({
     id: DEFAULT_MODEL_ID,
+    baseline: true,
     provider: "cloudflare-workers-ai",
     adapter: "workers-ai",
     capabilities: Object.freeze(["text"]),
@@ -128,6 +129,7 @@ function validModelMetadata(model) {
   )) return false;
   if (model.external !== undefined && typeof model.external !== "boolean") return false;
   if (model.approved !== undefined && typeof model.approved !== "boolean") return false;
+  if (model.baseline !== undefined && typeof model.baseline !== "boolean") return false;
   if (model.status !== "enabled" && model.status !== "disabled") return false;
   return true;
 }
@@ -230,6 +232,13 @@ export function evaluateModelCandidates({
       }
     }
     const quality = model.qualityScores?.[task];
+    // The production baseline may run without comparative quality evidence; every added candidate must
+    // have a measured task score and an explicit, pre-approved quality floor before it can be routed.
+    const isAuditedBaseline = model.baseline === true && model.id === DEFAULT_MODEL_ID &&
+      model.provider === "cloudflare-workers-ai" && model.adapter === "workers-ai";
+    if (!isAuditedBaseline && !Object.hasOwn(requirements, "minQualityScore")) {
+      reject("candidate_quality_floor_required"); continue;
+    }
     if (Object.hasOwn(requirements, "minQualityScore") &&
         (!finiteNumber(quality) || quality < requirements.minQualityScore)) {
       reject("quality_floor_unverified_or_not_met"); continue;
