@@ -56,6 +56,13 @@ test("rejects payload tampering even when the changed value remains valid JSON",
   assert.throws(() => verifyEvidenceEnvelope(envelope, pair.publicKey), /payload hash mismatch/);
 });
 
+test("rejects changes to the unsigned display summary", () => {
+  const pair = keys();
+  const envelope = createEvidenceEnvelope(buildPlan(), pair.privateKey);
+  envelope.summary.completedRuns = 0;
+  assert.throws(() => verifyEvidenceEnvelope(envelope, pair.publicKey), /summary mismatch/);
+});
+
 test("rejects a public key that is not the trusted signer for the envelope", () => {
   const signer = keys();
   const other = keys();
