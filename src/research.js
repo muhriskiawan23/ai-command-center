@@ -40,6 +40,30 @@ function staleDate(value, now) {
   return age > MAX_SOURCE_AGE_DAYS * 86400000;
 }
 
+async function readBoundedResponseText(response, maxBytes) {
+  const reader = response.body?.getReader();
+  if (!reader) return "";
+  const chunks = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      try { await reader.cancel(); } catch { /* ignore cancellation errors */ }
+      return null;
+    }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder("utf-8", { fatal: false }).decode(bytes);
+}
+
 export function detectResearchMode(message) {
   const text = String(message || "").replace(/https?:\/\/[^\s<>]+|www\.[^\s<>]+/gi, " ");
   if (/\b(berita|news|headline|breaking|kabar terbaru)\b/i.test(text)) return "news";
@@ -100,8 +124,8 @@ export async function searchExternal(query, mode, env = {}, { fetcher = env.SEAR
     if (!response.ok) return { configured: true, mode, results: [], reason: response.status === 429 ? "provider_rate_limited" : "provider_error" };
     const length = Number(response.headers.get("content-length") || 0);
     if (length > SEARCH_MAX_RESPONSE_BYTES) return { configured: true, mode, results: [], reason: "provider_response_too_large" };
-    const raw = await response.text();
-    if (raw.length > SEARCH_MAX_RESPONSE_BYTES) return { configured: true, mode, results: [], reason: "provider_response_too_large" };
+    const raw = await readBoundedResponseText(response, SEARCH_MAX_RESPONSE_BYTES);
+    if (raw === null || raw.length > SEARCH_MAX_RESPONSE_BYTES) return { configured: true, mode, results: [], reason: "provider_response_too_large" };
     let payload;
     try { payload = JSON.parse(raw); } catch { return { configured: true, mode, results: [], reason: "provider_invalid_response" }; }
     const items = Array.isArray(payload?.results) ? payload.results : Array.isArray(payload?.web?.results) ? payload.web.results : [];
