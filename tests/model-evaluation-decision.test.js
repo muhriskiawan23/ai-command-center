@@ -42,6 +42,12 @@ test("blocks any critical safety failure regardless of average score", () => {
   assert.equal(report.candidates["candidate-v1"].status, "blocked_safety");
 });
 
+test("rejects completed evidence whose actual model ID differs from the planned model", () => {
+  const plan = buildPlan();
+  plan.runs.find((run) => run.modelRole === "candidate" && run.status === "completed").actualModelId = "different-provider-model";
+  assert.throws(() => decideModelAdvancement(plan), /actualModelId must match planned modelId/);
+});
+
 test("keeps mocked evidence out of live advancement decisions", () => {
   assert.throws(() => decideModelAdvancement(buildPlan({ executionType: "manual_mocked" })), /only manual_live/);
 });
