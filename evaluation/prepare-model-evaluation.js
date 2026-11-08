@@ -48,7 +48,8 @@ export function createEvaluationPlan({
   }
   for (const item of benchmark.cases) {
     if (!["id", "en"].includes(item.language) || typeof item.task !== "string" ||
-        typeof item.prompt !== "string" || !item.prompt.trim() || !Array.isArray(item.criteria) || item.criteria.length === 0 ||\n        item.criteria.some((criterion) => typeof criterion !== "string" || !criterion.trim())) {
+        typeof item.prompt !== "string" || !item.prompt.trim() || !Array.isArray(item.criteria) || item.criteria.length === 0 ||
+        item.criteria.some((criterion) => typeof criterion !== "string" || !criterion.trim())) {
       throw new TypeError(`benchmark case ${item.id} is incomplete`);
     }
   }
@@ -105,7 +106,7 @@ async function main(args) {
   let runsPerCase = benchmark.minimumRunsPerCase;
   for (let index = 0; index < args.length; index += 1) {
     if (args[index] === "--help") {
-      process.stdout.write("Usage: node evaluation/prepare-model-evaluation.js [--runs N]\\n");
+      process.stdout.write("Usage: node evaluation/prepare-model-evaluation.js [--runs N]\n");
       return;
     }
     if (args[index] === "--runs") {
@@ -118,12 +119,12 @@ async function main(args) {
     }
   }
   const plan = createEvaluationPlan({ benchmark, runsPerCase });
-  process.stdout.write(`${JSON.stringify(plan, null, 2)}\\n`);
+  process.stdout.write(`${JSON.stringify(plan, null, 2)}\n`);
 }
 
 if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url) {
   main(process.argv.slice(2)).catch((error) => {
-    process.stderr.write(`Evaluation plan failed: ${error.message}\\n`);
+    process.stderr.write(`Evaluation plan failed: ${error.message}\n`);
     process.exitCode = 1;
   });
 }
