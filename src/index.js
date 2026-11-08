@@ -421,8 +421,8 @@ async function serveAsset(request, env) {
   });
 }
 
-async function readBodyWithinLimit(request, maxBytes) {
-  if (!request.body) return { text: "", tooLarge: false };
+async function readRequestBytesWithinLimit(request, maxBytes) {
+  if (!request.body) return { bytes: new Uint8Array(0), tooLarge: false };
 
   const reader = request.body.getReader();
   const chunks = [];
@@ -432,13 +432,11 @@ async function readBodyWithinLimit(request, maxBytes) {
     while (true) {
       const { value, done } = await reader.read();
       if (done) break;
-      totalBytes += value.byteLength;
-
-      if (totalBytes > maxBytes) {
-        await reader.cancel();
+      if (totalBytes + value.byteLength > maxBytes) {
+        try { await reader.cancel(); } catch { /* ignore cancellation errors */ }
         return { tooLarge: true };
       }
-
+      totalBytes += value.byteLength;
       chunks.push(value);
     }
   } finally {
@@ -451,10 +449,15 @@ async function readBodyWithinLimit(request, maxBytes) {
     bytes.set(chunk, offset);
     offset += chunk.byteLength;
   }
+  return { bytes, tooLarge: false };
+}
 
+async function readBodyWithinLimit(request, maxBytes) {
+  const result = await readRequestBytesWithinLimit(request, maxBytes);
+  if (result.tooLarge) return { tooLarge: true };
   try {
     return {
-      text: new TextDecoder("utf-8", { fatal: true }).decode(bytes),
+      text: new TextDecoder("utf-8", { fatal: true }).decode(result.bytes),
       tooLarge: false
     };
   } catch {
@@ -989,9 +992,20 @@ async function handlePdfConversionRoute(request, env) {
     } catch (error) { console.error("PDF rate limiter failed:", error); return json({ error: "Layanan pembatasan permintaan sedang bermasalah." }, 503); }
   }
 
+  // Content-Length is only an early rejection hint; enforce the actual streamed body size
+  // before formData() can buffer an attacker-controlled multipart payload.
+  let boundedBody;
+  try { boundedBody = await readRequestBytesWithinLimit(request, PDF_MAX_BYTES + 64 * 1024); }
+  catch { return json({ error: "Formulir unggahan PDF tidak dapat dibaca." }, 400); }
+  if (boundedBody.tooLarge) return json({ error: "Ukuran PDF terlalu besar (maksimal 8 MB)." }, 413);
+
   let form;
-  try { form = await request.formData(); }
-  catch { return json({ error: "Formulir unggahan PDF tidak valid." }, 400); }
+  try {
+    const formHeaders = new Headers(request.headers);
+    formHeaders.delete("content-length");
+    const boundedRequest = new Request(request.url, { method: "POST", headers: formHeaders, body: boundedBody.bytes });
+    form = await boundedRequest.formData();
+  } catch { return json({ error: "Formulir unggahan PDF tidak valid." }, 400); }
   const file = form.get("file");
   if (!file || typeof file.arrayBuffer !== "function" || typeof file.size !== "number") return json({ error: "Pilih satu file PDF terlebih dahulu." }, 400);
   if (file.size < 8 || file.size > PDF_MAX_BYTES) return json({ error: "Ukuran PDF harus antara 8 byte dan 8 MB." }, 413);

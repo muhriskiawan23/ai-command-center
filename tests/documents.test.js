@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import worker from "../src/index.js";
 import {
   PDF_CONTEXT_MAX_CHARS,
+  PDF_MAX_BYTES,
   buildPdfContext,
   normalizePdfConversion,
   safePdfName,
@@ -108,6 +109,58 @@ test("PDF upload endpoint converts a valid PDF through the Workers AI binding", 
   assert.equal(body.document.name, "sample.pdf");
   assert.equal(body.document.pageCount, 1);
   assert.match(body.document.content, /Hello PDF/);
+});
+
+test("PDF upload caps the actual multipart stream before parsing when Content-Length is absent", async () => {
+  const boundary = "bor-ai-pdf-stream-cap";
+  const encoder = new TextEncoder();
+  const prefix = encoder.encode(
+    `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="large.pdf"\r\nContent-Type: application/pdf\r\n\r\n`
+  );
+  const suffix = encoder.encode(`\r\n--${boundary}--\r\n`);
+  const fileBytes = new Uint8Array(PDF_MAX_BYTES + 512 * 1024);
+  fileBytes.set(encoder.encode("%PDF-1.7\\n"));
+  const chunkSize = 64 * 1024;
+  let prefixSent = false;
+  let suffixSent = false;
+  let offset = 0;
+  let cancelled = false;
+  const body = new ReadableStream({
+    pull(controller) {
+      if (!prefixSent) {
+        prefixSent = true;
+        controller.enqueue(prefix);
+        return;
+      }
+      if (offset < fileBytes.length) {
+        const end = Math.min(fileBytes.length, offset + chunkSize);
+        controller.enqueue(fileBytes.subarray(offset, end));
+        offset = end;
+        return;
+      }
+      if (!suffixSent) {
+        suffixSent = true;
+        controller.enqueue(suffix);
+        controller.close();
+      }
+    },
+    cancel() { cancelled = true; }
+  });
+  const request = new Request("https://example.test/api/documents/pdf", {
+    method: "POST",
+    headers: {
+      Origin: "https://example.test",
+      "Content-Type": `multipart/form-data; boundary=${boundary}`
+    },
+    body,
+    duplex: "half"
+  });
+  assert.equal(request.headers.get("Content-Length"), null);
+
+  const response = await worker.fetch(request, {});
+  assert.equal(response.status, 413);
+  assert.equal(cancelled, true);
+  assert.ok(offset < fileBytes.length, "the oversized upload should be cancelled before the full file is read");
 });
 
 test("PDF upload rejects non-PDF bytes before calling the converter", async () => {
