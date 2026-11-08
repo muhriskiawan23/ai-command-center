@@ -174,3 +174,18 @@ The versioned default policy requires at least three planned repeats per case, a
 The statuses are evidence interpretations, not automatic promotion: `blocked_safety`, `inconclusive`, `retain_baseline`, and `eligible_for_pilot_consideration`. The last status means only that the evidence may be reviewed for a separately authorized bounded pilot. It does not activate a provider, change runtime routing, approve spend, or authorize deployment. Threshold changes require an explicit policy-version change and must not be tuned after seeing results to make a candidate pass.
 
 The decision engine has no provider, network, Worker runtime, secret, or database integration. Running it on the current pending plan cannot produce a live winner; it will report insufficient evidence until genuine comparable live results are supplied.
+
+
+## Post-review unblinding and model selection
+
+Only after every independent reviewer has submitted a complete packet and the consensus report has been generated should an authorized evaluator join the private identity key:
+
+```sh
+npm run eval:unblind -- completed-evaluation-plan.json blinded-consensus-report.json identity-key.private.json unblinded-decision.json
+```
+
+The command validates the consensus version and packet ID against the identity key, exact score-dimension agreement, unique one-to-one blind-label/model mappings, and complete one-to-one coverage of every planned model/case/language/task/repeat item. Missing, duplicate, extra, or mismatched items are rejected. The private identity key and output decision report should remain access-controlled; the reviewer packet and original reviewer submissions are not modified.
+
+Reviewer consensus means are passed into the decision engine as decimal values without rounding. Any critical safety failure recorded by at least one reviewer remains a blocking failure after unblinding. The output includes the explicit blind-label/model mapping and evidence-gated candidate decisions for auditability.
+
+A candidate can be marked eligible for pilot consideration only when the existing decision engine's independent manual-live evidence, model identity/version, repeat, completion, paired-coverage, quality, safety, and operational gates pass. Reviewer consensus does not create missing latency/cost/provider evidence and cannot independently make a candidate eligible. This command is offline and makes no provider calls, changes no production catalog or routing, and does not authorize a pilot or deployment.
