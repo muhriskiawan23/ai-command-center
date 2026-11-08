@@ -12,6 +12,8 @@ function shuffle(items, random) {
   return result;
 }
 
+const RUN_STATUSES = new Set(["completed", "failed", "skipped"]);
+
 export function createBlindedReviewPackets(plan, { random = Math.random, packetId = randomUUID() } = {}) {
   if (!plan || typeof plan !== "object" || !Array.isArray(plan.runs) ||
       !Array.isArray(plan.scoreDimensions) || plan.scoreDimensions.length === 0) {
@@ -33,8 +35,15 @@ export function createBlindedReviewPackets(plan, { random = Math.random, packetI
   for (const [index, run] of plan.runs.entries()) {
     const label = `runs[${index}]`;
     if (!run || typeof run !== "object" || Array.isArray(run)) throw new TypeError(`${label} must be an object`);
-    for (const key of ["caseId", "language", "task", "modelId", "prompt", "modelOutput"]) {
+    if (!RUN_STATUSES.has(run.status)) throw new TypeError(`${label}.status must be completed, failed, or skipped before review`);
+    for (const key of ["caseId", "language", "task", "modelId", "prompt"]) {
       if (typeof run[key] !== "string" || !run[key].trim()) throw new TypeError(`${label}.${key} must be a non-empty string`);
+    }
+    if (run.status === "completed" && (typeof run.modelOutput !== "string" || !run.modelOutput.trim())) {
+      throw new TypeError(`${label}.modelOutput must be a non-empty string for completed runs`);
+    }
+    if (run.status === "failed" && (typeof run.failureReason !== "string" || !run.failureReason.trim())) {
+      throw new TypeError(`${label}.failureReason must be a non-empty string for failed runs`);
     }
     if (!Number.isSafeInteger(run.runIndex) || run.runIndex < 1) throw new TypeError(`${label}.runIndex must be positive`);
     if (!Array.isArray(run.acceptanceCriteria) || !run.acceptanceCriteria.length ||
@@ -50,8 +59,10 @@ export function createBlindedReviewPackets(plan, { random = Math.random, packetI
     blindLabel: `Model ${String.fromCharCode(65 + index)}`, modelId
   }));
   const labels = new Map(mappings.map(({ modelId, blindLabel }) => [modelId, blindLabel]));
+  const completedRuns = plan.runs.filter((run) => run.status === "completed");
+  if (!completedRuns.length) throw new RangeError("blinded review requires at least one completed model output");
   const grouped = new Map();
-  for (const run of plan.runs) {
+  for (const run of completedRuns) {
     if (!grouped.has(run.caseId)) grouped.set(run.caseId, []);
     grouped.get(run.caseId).push(run);
   }
