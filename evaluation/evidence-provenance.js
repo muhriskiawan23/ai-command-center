@@ -38,7 +38,7 @@ function sha256(value) {
 }
 
 function keyFingerprint(publicKey) {
-  const key = createPublicKey(publicKey);
+  const key = publicKey?.type === "public" ? publicKey : createPublicKey(publicKey);
   return sha256(key.export({ type: "spki", format: "der" })).slice(0, 32);
 }
 
@@ -97,7 +97,7 @@ export function createEvidenceEnvelope(payload, privateKeyPem, { signedAt = new 
   if (typeof signedAt !== "string" || !Number.isFinite(Date.parse(signedAt))) {
     throw new TypeError("signedAt must be a valid timestamp");
   }
-  const privateKey = createPrivateKey(privateKeyPem);
+  const privateKey = privateKeyPem?.type === "private" ? privateKeyPem : createPrivateKey(privateKeyPem);
   if (privateKey.asymmetricKeyType !== "ed25519") throw new TypeError("signing key must be Ed25519");
   const publicKey = createPublicKey(privateKey);
   const payloadJson = canonicalJson(payload);
@@ -121,7 +121,7 @@ export function verifyEvidenceEnvelope(envelope, trustedPublicKeyPem) {
       typeof envelope.signature !== "string" || !/^[A-Za-z0-9+/]+={0,2}$/.test(envelope.signature)) {
     throw new TypeError("evidence envelope schema or signature encoding is invalid");
   }
-  const publicKey = createPublicKey(trustedPublicKeyPem);
+  const publicKey = trustedPublicKeyPem?.type === "public" ? trustedPublicKeyPem : createPublicKey(trustedPublicKeyPem);
   if (publicKey.asymmetricKeyType !== "ed25519") throw new TypeError("trusted public key must be Ed25519");
   const keyId = keyFingerprint(publicKey);
   if (envelope.keyId !== keyId) throw new Error("trusted public key fingerprint does not match envelope keyId");
