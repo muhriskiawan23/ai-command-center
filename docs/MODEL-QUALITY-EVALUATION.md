@@ -10,6 +10,12 @@ Cases live in `evaluation/model-quality-cases.json`. The current set covers Indo
 
 Each case has a stable ID, language, task profile, prompt, and observable success criteria. Do not add personal data, real customer conversations, secrets, or uploaded documents to the benchmark.
 
+## Prepare a repeatable evaluation plan
+
+Run `npm run eval:plan` to emit a JSON worksheet covering the current Llama 3.3 70B baseline and the four audited Workers AI candidates. The default plan expands all 20 bilingual cases into three independent manual runs per case/model (300 planned runs).
+
+The planner includes prompts, acceptance criteria, pending score fields and a separate critical-safety-failure flag. It is deliberately manual-only: it does not invoke Workers AI, external providers, or any inference endpoint, and it does not establish account access, billing, latency, or model quality. Use `npm run eval:plan -- --runs 4` to request more repeats; fewer than the fixture's minimum are rejected.
+
 ## Human scoring protocol
 
 For every case, run the exact prompt against the candidate model under the same system instructions, temperature, token limit, and context. Save the output separately from the prompt fixture. Reviewers should not see the model identity until scoring is complete when doing a comparison.
@@ -44,4 +50,4 @@ Use each case's `criteria` as the minimum acceptance checklist. A high average m
 
 ## Current limitation
 
-The repository currently has a fixture and validation coverage, not a live model benchmark runner or human-scored results. The active Workers AI model has not yet been assigned measured quality scores from this dataset.
+The repository has a bilingual fixture, fixture validation, and a manual evaluation-plan generator, but no automated live model benchmark runner or human-scored results. The active Workers AI model has not yet been assigned measured quality scores from this dataset.
