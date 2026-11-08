@@ -1486,7 +1486,20 @@ export default {
       try { return await handleMemoryRoute(request, env, url); }
       catch (error) { console.error("Memory request failed:", error); return json({ error: "Memori gagal diproses." }, 503); }
     }
-    if (request.method === "GET" && url.pathname === "/api/health") return json({ ok: true, service: "BOR AI" });
+    if (request.method === "GET" && url.pathname === "/api/health") {
+      if (url.searchParams.get("deep") !== "1") return json({ ok: true, service: "BOR AI" });
+      const checks = { database: false, aiBinding: Boolean(env.AI) };
+      try {
+        if (env.DB?.prepare) {
+          const row = await env.DB.prepare("SELECT 1 AS ok").first();
+          checks.database = Number(row?.ok) === 1;
+        }
+      } catch {
+        checks.database = false;
+      }
+      const ok = checks.database && checks.aiBinding;
+      return json({ ok, service: "BOR AI", checks }, ok ? 200 : 503);
+    }
     if (request.method === "GET" && url.pathname === "/api/agents") {
       return json({ agents: Object.entries(AGENTS).map(([id, agent]) => ({ id, name: agent.name })) });
     }
