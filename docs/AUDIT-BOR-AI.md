@@ -103,7 +103,9 @@ BOR AI tetap merupakan workspace chat AI yang berpusat pada Coordinator dan spec
 
 Kemampuan file yang terdokumentasi di repository bersifat terbatas dan sebagian besar diekstrak lokal di browser:
 
-- **PDF:** satu file hingga 8 MB; PDF.js untuk ekstraksi teks dan Tesseract.js OCR lokal untuk dokumen hasil scan (English/Indonesian, maksimal 10 halaman). Kualitas OCR dan semua layout tidak dijamin.
+- **PDF browser composer:** satu file hingga 8 MB; PDF.js mengekstrak teks secara lokal dan Tesseract.js melakukan OCR lokal untuk dokumen scan (English/Indonesian, maksimal 10 halaman). Hanya teks hasil ekstraksi yang dikirim ke `/api/chat`; raw PDF tidak diunggah oleh jalur UI ini.
+- **PDF server endpoint terpisah:** `POST /api/documents/pdf` menerima multipart same-origin hingga 8 MB dan mengirim raw PDF ke Cloudflare Workers AI `env.AI.toMarkdown` untuk konversi sementara. Endpoint ini tidak dipanggil oleh composer browser saat ini. Pemanggil endpoint harus mengetahui bahwa file PDF dikirim ke Cloudflare; endpoint ini mengonsumsi satu unit kuota harian.
+- Kedua jalur tidak menyimpan file PDF atau teks ekstraksi ke D1. Teks browser dibatasi 30.000 karakter; hasil konversi server dibatasi 32.000 karakter. Kualitas OCR/konversi dan semua layout tidak dijamin.
 - **CSV/XLSX:** satu file hingga 5 MB; parsing, preview baris terbatas, dan ringkasan numerik deterministik di browser. XLSX maksimal 10 sheet dan 10.000 baris data total. Formula diperlakukan sebagai teks, bukan dieksekusi.
 - **PPTX:** satu file hingga 5 MB; ekstraksi teks maksimal 80 slide di browser. Gambar, chart, animasi, dan speaker notes tidak diekstrak.
 - **Image understanding, audio input/output, dan video analysis:** belum tersedia di aplikasi. Inventaris model vision di `docs/MULTIMODAL-READINESS.md` hanya shortlist dokumentasi; tidak berarti model telah diuji atau diaktifkan.
