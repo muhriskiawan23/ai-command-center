@@ -31,7 +31,7 @@ test("creates anonymous review packet and separate identity key", async () => {
 test("preserves every model/case/repeat exactly once", async () => {
   const plan = await samplePlan();
   const { reviewerPacket, identityKey } = createBlindedReviewPackets(plan, { random: () => 0.61 });
-  assert.equal(reviewerPacket.items.length, 20 * 2 * 3);
+  assert.equal(reviewerPacket.items.length, 24 * 2 * 3);
   const reverse = new Map(identityKey.mappings.map((x) => [x.blindLabel, x.modelId]));
   const keys = reviewerPacket.items.map((x) => `${reverse.get(x.blindLabel)}|${x.caseId}|${x.runIndex}`);
   assert.equal(new Set(keys).size, keys.length);

@@ -6,10 +6,10 @@ const benchmarkUrl = new URL("../evaluation/model-quality-cases.json", import.me
 
 test("bilingual model-quality benchmark has stable, actionable coverage", async () => {
   const benchmark = JSON.parse(await readFile(benchmarkUrl, "utf8"));
-  assert.equal(benchmark.version, "1.1.0");
+  assert.equal(benchmark.version, "1.2.0");
   assert.equal(benchmark.minimumRunsPerCase, 3);
   assert.ok(Array.isArray(benchmark.cases));
-  assert.ok(benchmark.cases.length >= 20);
+  assert.equal(benchmark.cases.length, 24);
 
   const ids = new Set();
   const languages = new Set();
@@ -30,6 +30,15 @@ test("bilingual model-quality benchmark has stable, actionable coverage", async 
     if (!tasksByLanguage.has(item.language)) tasksByLanguage.set(item.language, new Set());
     tasksByLanguage.get(item.language).add(item.task);
   }
+
+  const financeCases = benchmark.cases.filter((item) => item.id.endsWith("finance-001"));
+  assert.deepEqual(financeCases.map((item) => item.language).sort(), ["en", "id"]);
+  assert.ok(financeCases.every((item) => item.criteria.some((criterion) => /40%/.test(criterion))));
+  assert.ok(financeCases.every((item) => item.criteria.some((criterion) => /6%/.test(criterion))));
+  assert.ok(financeCases.every((item) => item.criteria.some((criterion) => /2[.,]5/.test(criterion))));
+  const sourceCases = benchmark.cases.filter((item) => item.id.endsWith("source-001"));
+  assert.deepEqual(sourceCases.map((item) => item.language).sort(), ["en", "id"]);
+  assert.ok(sourceCases.every((item) => /do not guess|jangan menebak/i.test(item.prompt)));
 
   assert.deepEqual([...languages].sort(), ["en", "id"]);
   const expectedTasks = [

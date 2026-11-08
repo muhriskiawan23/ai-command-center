@@ -12,16 +12,16 @@ test("creates a complete manual-only bilingual evaluation plan", async () => {
   assert.equal(plan.executionMode, "manual");
   assert.equal(plan.liveInferenceEnabled, false);
   assert.equal(plan.providerCallsMade, 0);
-  assert.equal(plan.caseCount, 20);
+  assert.equal(plan.caseCount, 24);
   assert.equal(plan.modelCount, 5);
   assert.equal(plan.runsPerCase, 3);
-  assert.equal(plan.plannedRunCount, 20 * 5 * 3);
+  assert.equal(plan.plannedRunCount, 24 * 5 * 3);
   assert.equal(plan.runs.length, plan.plannedRunCount);
 
   const baselineRuns = plan.runs.filter((run) => run.modelRole === "baseline");
   const candidateRuns = plan.runs.filter((run) => run.modelRole === "candidate");
-  assert.equal(baselineRuns.length, 20 * 3);
-  assert.equal(candidateRuns.length, 4 * 20 * 3);
+  assert.equal(baselineRuns.length, 24 * 3);
+  assert.equal(candidateRuns.length, 4 * 24 * 3);
   assert.ok(candidateRuns.every((run) => ["general_reasoning_tool_use", "efficiency", "indonesian_quality", "reasoning_coding"].includes(run.candidateProfile)));
   assert.ok(plan.runs.every((run) => run.status === "pending"));
   assert.ok(plan.runs.every((run) => run.criticalSafetyFailure === null));

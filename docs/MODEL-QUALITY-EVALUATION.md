@@ -12,7 +12,7 @@ Each case has a stable ID, language, task profile, prompt, and observable succes
 
 ## Prepare a repeatable evaluation plan
 
-Run `npm run eval:plan` to emit a JSON worksheet covering the current Llama 3.3 70B baseline and the four audited Workers AI candidates. The default plan expands all 20 bilingual cases into three independent manual runs per case/model (300 planned runs).
+Run `npm run eval:plan` to emit a JSON worksheet covering the current Llama 3.3 70B baseline and the four audited Workers AI candidates. The default plan expands all 24 bilingual cases into three independent manual runs per case/model (360 planned runs).
 
 The planner includes prompts, acceptance criteria, pending score fields and a separate critical-safety-failure flag. It is deliberately manual-only: it does not invoke Workers AI, external providers, or any inference endpoint, and it does not establish account access, billing, latency, or model quality. Use `npm run eval:plan -- --runs 4` to request more repeats; fewer than the fixture's minimum are rejected.
 
