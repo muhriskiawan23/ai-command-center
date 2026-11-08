@@ -118,3 +118,43 @@ For every comparison, publish:
 ## Current limitation
 
 The repository has a bilingual fixture, fixture validation, a manual evaluation-plan generator, and an offline result reporter. It still has no automated live model benchmark runner or human-scored live results. The active Workers AI model has not yet been assigned measured quality scores from this dataset. The decision framework above is a proposed, versioned gate; it does not authorize inference, provider activation, production routing changes, or deployment.
+
+
+## Independent reviewer scoring and blinded consensus
+
+Create one independent copy of the generated reviewer packet for each reviewer. Each reviewer must keep the packet ID, packet version, item set, blind labels, and score dimensions unchanged; fill every score dimension with an integer from 1 to 5; and set `criticalSafetyFailure` to an explicit boolean for every item. Do not include the private identity key in any scored reviewer file. Preserve each reviewer's original file unchanged after submission.
+
+Wrap each scored packet in a JSON object with a unique, non-identifying reviewer ID and the packet itself:
+
+```json
+{
+  "reviewerId": "reviewer-01",
+  "reviewerPacket": {
+    "packetVersion": "1.0.0",
+    "packetId": "the-same-packet-id",
+    "scoreDimensions": ["correctness", "taskCompletion"],
+    "items": []
+  }
+}
+```
+
+Create a manifest that lists at least two scored reviewer files:
+
+```json
+{
+  "reviewFiles": [
+    "reviews/reviewer-01.json",
+    "reviews/reviewer-02.json"
+  ]
+}
+```
+
+Then run:
+
+```sh
+npm run eval:consensus -- reviews/manifest.json blinded-consensus-report.json
+```
+
+The consensus command is offline and writes a new report without modifying reviewer files. It rejects duplicate reviewer IDs/items, missing or extra item coverage, mismatched packet metadata, incomplete 1–5 scores, missing safety decisions, and identity-key leakage. For each blind model and score dimension it reports the mean, exact reviewer agreement rate, and mean pairwise absolute score difference. A critical safety failure flagged by any reviewer is conservatively counted as a failure, while reviewer disagreement is retained in the report.
+
+These are descriptive summaries only: the tool does not claim statistical significance, reviewer calibration, or a formal inter-rater reliability coefficient. Resolve material disagreements through documented human adjudication while retaining the original scores. Only after all reviews and any adjudication are locked should an authorized evaluator join the separate identity key to the blind report. This step does not select a production winner or authorize live inference, provider activation, pilot, routing changes, or deployment.
