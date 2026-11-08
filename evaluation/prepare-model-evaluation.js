@@ -4,10 +4,10 @@ import { resolve } from "node:path";
 
 export const EVALUATION_CANDIDATES = Object.freeze([
   Object.freeze({ id: "@cf/meta/llama-3.3-70b-instruct-fp8-fast", role: "baseline" }),
-  Object.freeze({ id: "@cf/zai-org/glm-4.7-flash", role: "general_reasoning_tool_use_candidate" }),
-  Object.freeze({ id: "@cf/ibm-granite/granite-4.0-h-micro", role: "efficiency_candidate" }),
-  Object.freeze({ id: "@cf/aisingapore/gemma-sea-lion-v4-27b-it", role: "indonesian_quality_candidate" }),
-  Object.freeze({ id: "@cf/openai/gpt-oss-20b", role: "reasoning_coding_candidate" })
+  Object.freeze({ id: "@cf/zai-org/glm-4.7-flash", role: "candidate", profile: "general_reasoning_tool_use" }),
+  Object.freeze({ id: "@cf/ibm-granite/granite-4.0-h-micro", role: "candidate", profile: "efficiency" }),
+  Object.freeze({ id: "@cf/aisingapore/gemma-sea-lion-v4-27b-it", role: "candidate", profile: "indonesian_quality" }),
+  Object.freeze({ id: "@cf/openai/gpt-oss-20b", role: "candidate", profile: "reasoning_coding" })
 ]);
 
 const SCORE_DIMENSIONS = Object.freeze([
@@ -64,6 +64,7 @@ export function createEvaluationPlan({
           task: item.task,
           modelId: model.id,
           modelRole: model.role || "candidate",
+          candidateProfile: model.profile || null,
           runIndex,
           prompt: item.prompt,
           acceptanceCriteria: [...item.criteria],

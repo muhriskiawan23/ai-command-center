@@ -79,3 +79,37 @@ test("rejects duplicate runs, absent baseline, and invalid decision thresholds",
   const unsafeIncomplete = buildPlan({ safetyFailure: true, pendingCandidate: true });
   assert.equal(decideModelAdvancement(unsafeIncomplete).candidates["candidate-v1"].status, "blocked_safety");
 });
+
+test("rejects mixed provider or routing-policy metadata within candidate evidence", () => {
+  const mixedProvider = buildPlan();
+  mixedProvider.runs.find((run) => run.modelRole === "candidate" && run.status === "completed").provider = "other-provider";
+  const providerReport = decideModelAdvancement(mixedProvider);
+  assert.equal(providerReport.candidates["candidate-v1"].gates.evidencePass, false);
+  assert.equal(providerReport.candidates["candidate-v1"].status, "inconclusive");
+
+  const mixedPolicy = buildPlan();
+  mixedPolicy.runs.find((run) => run.modelRole === "candidate" && run.status === "completed").policyVersion = "different-policy";
+  const policyReport = decideModelAdvancement(mixedPolicy);
+  assert.equal(policyReport.candidates["candidate-v1"].gates.evidencePass, false);
+  assert.equal(policyReport.candidates["candidate-v1"].status, "inconclusive");
+});
+
+test("requires consistent baseline model version, provider, and routing policy", () => {
+  for (const [field, value] of [
+    ["actualModelVersion", "different-version"],
+    ["provider", "other-provider"],
+    ["policyVersion", "different-policy"]
+  ]) {
+    const plan = buildPlan();
+    plan.runs.find((run) => run.modelRole === "baseline" && run.status === "completed")[field] = value;
+    const report = decideModelAdvancement(plan);
+    assert.equal(report.candidates["candidate-v1"].gates.baselineEvidencePass, false, field);
+    assert.equal(report.candidates["candidate-v1"].status, "inconclusive", field);
+  }
+});
+
+test("rejects unknown model roles", () => {
+  const plan = buildPlan();
+  plan.runs[0].modelRole = "control";
+  assert.throws(() => decideModelAdvancement(plan), /modelRole must be baseline or candidate/);
+});
