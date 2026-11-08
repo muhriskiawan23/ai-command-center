@@ -58,7 +58,7 @@ The objective is not to claim that BOR AI is already better than ChatGPT, Claude
 5. **Fail closed and be transparent.** If a provider is unavailable, a model times out, or a source cannot be read, say so. Never silently replace missing evidence with model guesses.
 6. **Cost is a product constraint.** Meter provider calls, model tokens, retries, file processing and tool execution. Enforce per-user and global ceilings.
 7. **Test behavior, not just rendering.** Unit, integration, E2E, security, accessibility and live-provider checks are distinct evidence.
-8. **No unapproved release.** CI may build previews, but do not merge, deploy, apply production D1 migrations, change Worker secrets, or enable paid providers without explicit founder approval.
+8. **No unapproved release.** CI may build previews, but do not merge, deploy, apply production D1 migrations, change Worker secrets, or enable a new provider/model without explicit founder approval.
 
 A milestone is considered ready only when:
 - its acceptance criteria are met;
@@ -145,7 +145,7 @@ Acceptance:
 - Fallbacks are transient-only, bounded, and cannot cross privacy boundaries or duplicate external writes.
 - Tests cover web chat, public API and Telegram as well as existing quota, memory, locale and cancellation behavior.
 - Benchmarks are repeatable, human-reviewed and include Indonesian-language tasks.
-- No paid provider is activated and no production data is sent externally without explicit approval.
+- No second/external provider or candidate is activated, and no production data is sent to a new external provider, without explicit approval and user-facing disclosure/consent.
 
 ### Milestone 3 — Multimodal Understanding
 
