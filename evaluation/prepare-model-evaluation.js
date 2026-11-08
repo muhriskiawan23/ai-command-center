@@ -48,7 +48,7 @@ export function createEvaluationPlan({
   }
   for (const item of benchmark.cases) {
     if (!["id", "en"].includes(item.language) || typeof item.task !== "string" ||
-        typeof item.prompt !== "string" || !Array.isArray(item.criteria) || item.criteria.length === 0) {
+        typeof item.prompt !== "string" || !item.prompt.trim() || !Array.isArray(item.criteria) || item.criteria.length === 0 ||\n        item.criteria.some((criterion) => typeof criterion !== "string" || !criterion.trim())) {
       throw new TypeError(`benchmark case ${item.id} is incomplete`);
     }
   }
