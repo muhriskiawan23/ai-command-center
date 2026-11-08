@@ -13,7 +13,8 @@
     "db:migrate": "npx --yes wrangler@4 d1 migrations apply bor-ai-chat --remote --config wrangler.jsonc",
     "test:e2e": "playwright test --config tests/e2e/playwright.config.js",
     "eval:validate": "node --test tests/model-quality-evaluation.test.js",
-    "eval:plan": "node evaluation/prepare-model-evaluation.js"
+    "eval:plan": "node evaluation/prepare-model-evaluation.js",
+    "eval:report": "node evaluation/summarize-model-evaluation.js"
   },
   "engines": {
     "node": ">=22"
