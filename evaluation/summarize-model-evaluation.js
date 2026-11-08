@@ -62,7 +62,7 @@ function validateRun(run, scoreDimensions, index) {
     }
   }
   if (run.status === "completed") {
-    for (const key of ["actualModelId", "actualModelVersion", "provider"]) {
+    for (const key of ["actualModelId", "actualModelVersion", "provider", "policyVersion"]) {
       if (!isNonEmptyString(run[key])) throw new TypeError(`${label}.${key} is required for completed runs`);
     }
     if (!EXECUTION_TYPES.has(run.executionType)) {
@@ -107,6 +107,7 @@ function summarizeGroup(runs, scoreDimensions) {
     totalCostUsd,
     costPerSafetyCleanCompletedRunUsd: successful && totalCostUsd !== null ? totalCostUsd / successful : null,
     evidenceTypes: [...new Set(completed.map((run) => run.executionType))].sort(),
+    actualModelIds: [...new Set(completed.map((run) => run.actualModelId))].sort(),
     actualModelVersions: [...new Set(completed.map((run) => run.actualModelVersion))].sort()
   };
 }
