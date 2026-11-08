@@ -2,7 +2,7 @@
 
 **Direction:** Hybrid + All Capabilities  
 **Repository:** `muhriskiawan23/ai-command-center`  
-**Baseline:** `main` at `6aea5f9f8da5bb4d23df3f4fb6071819d618ddb8`  
+**Baseline:** `main` at `706004ae48cc06182cb74fcd0b6c70fff501dc81`  
 **Last repository audit:** 2026-11-09  
 **Release rule:** No pull request is merged and no production deployment is initiated without explicit founder approval.
 
@@ -33,7 +33,7 @@ The objective is not to claim that BOR AI is already better than ChatGPT, Claude
 | Integrations | Telegram webhook; embeddable widget and public API keys; GitHub repository/PR read-only capabilities and OAuth foundation | Each external integration needs live credential, permission, revocation and abuse testing. Gmail/Drive, Calendar, Slack, WhatsApp and general browser automation are not complete. |
 | Developer/product APIs | Public single-turn chat API, per-site keys, origin allow-list and quotas | No general-purpose safe code execution or autonomous software-building runtime exists. |
 | Security and cost controls | Request limits, daily usage accounting, timeouts, session ownership checks, CSP/security headers, input bounds and regression tests | Production observability, spend controls, anti-bot, disaster recovery and full external penetration testing remain incomplete. |
-| Deployment | Cloudflare Worker and static assets, D1 migrations, GitHub Actions tests/preview/deploy workflow | PR #117 baseline `cee8b27` was production-deployed successfully by run `42518807471`; PR #121 security hotfix is now the latest main code commit `6aea5f9`. The production workflow runs on push to `main`; post-PR #121 production run status is not verifiable through the current GitHub connector. The last verified run found no pending D1 migrations, skipped applying migrations and optional live chat, and passed health/agents/Google-config checks. Cloudflare Git-integration deployment settings remain unverified. |
+| Deployment | Cloudflare Worker and static assets, D1 migrations, GitHub Actions tests/preview/deploy workflow, plus Cloudflare Workers Builds Git integration | Main baseline `706004a` is deployed. Push commit `706004ae48cc06182cb74fcd0b6c70fff501dc81` triggered both GitHub Actions production deploy run `42522046920` and Cloudflare Workers Builds production build `10eaf962-e1aa-40fc-adc5-b3c77db8c8f3`; both succeeded within one second of each other. GitHub Actions deployed Worker version `a5ebf238-d863-4c83-951b-999e3180d9aa`, verified pinned D1, found no pending migrations, skipped migration application, re-applied existing `GOOGLE_CLIENT_ID`, and passed health/agents/Google-config checks. Cloudflare Workers Builds reported production version `9b118c1d-28e9-45a0-8264-c5907436503c`. This proves two active production deployment controllers; single-controller governance is a P0 blocker tracked in issue #122. Optional live chat was skipped. |
 
 ### Current work and evidence status
 
@@ -49,7 +49,7 @@ The objective is not to claim that BOR AI is already better than ChatGPT, Claude
 - **Second model provider:** none is active. Provider selection, budget, data policy, consent, and rollback must be approved before a provider pilot.
 - **Historic audit document:** `docs/AUDIT-BOR-AI.md` is dated 2026-10-31. Treat its findings as historical leads, not as a fresh confirmation of current production behavior. Re-test each item before changing its status.
 - **PR #121 — PDF multipart resource-limit hotfix:** merged as `6aea5f9`. The PDF endpoint now caps actual streamed multipart bytes before `formData()`; `Content-Length` is only an early-rejection hint. Regression coverage uses a chunked upload without `Content-Length`. CI passed 335/335 unit tests, syntax, preview build, and E2E (564 passed, 12 skipped); Cloudflare preview deployment succeeded. This was a separate security hotfix, not a production change within Milestone 0. The push-to-main production workflow is triggered automatically, but its post-merge result is not verified here.
-- **PR #120 — Audit and capability documentation refresh:** open for review. It clarifies local versus server-side PDF data paths, refreshes the link-reader/security evidence, and updates D1/deployment findings. It is documentation-only and is being held to avoid an unnecessary production redeploy while Milestone 0 remains in progress.
+- **PR #120 — Audit and capability documentation refresh:** merged as `706004ae48cc06182cb74fcd0b6c70fff501dc81`. Unit/syntax/preview validation, E2E, and Cloudflare preview build passed. The merge triggered both production deployment controllers; GitHub Actions production run `42522046920` and Cloudflare Workers Builds production version `9b118c1d-28e9-45a0-8264-c5907436503c` succeeded. GitHub Actions reported 335/335 unit tests, pinned D1 verified, no pending migrations, no migration applied, and health/agents/Google config passed; optional live chat skipped.
 
 ## 3. Execution principles and release gates
 
@@ -74,19 +74,20 @@ A milestone is considered ready only when:
 
 ### Milestone 0 — Release integrity and repository truth
 
-**Priority:** P0 · **Status:** in progress
+**Priority:** P0 · **Status:** blocked — deployment integrity requires a single production controller
 
 Work:
 - Re-audit merged source-page reading and its SSRF/redirect behavior, source-ID integrity, prompt-injection boundaries, page-read status, persistence boundaries and test coverage.
 - Reconcile the historic audit with current code and test evidence. Reproduce open findings before labelling them open or fixed.
+- Resolve the dual production deployment path documented in issue #122. Keep GitHub Actions as the proposed authoritative release gate; configure Cloudflare Workers Builds for preview-only/non-production or disconnect its production push deployment after dashboard review.
 - Verify the authoritative production deployment path and document the exact release gate.
 - Establish and maintain a single capability matrix that distinguishes implemented, tested with mocks, live-verified, blocked by credentials, and planned.
 
 Acceptance:
 - No duplicate or conflicting open PRs for the same feature.
 - Every claimed capability has a source file, test, and a clearly stated live-verification status.
-- The release path and production migration/secret ownership are documented.
-- No production change is made as part of this milestone.
+- Exactly one production deployment controller is active, with preview behavior and rollback ownership documented.
+- Production migration and secret ownership are documented; no unreviewed migration or provider activation occurs.
 
 ### Milestone 1 — Reliable Web Intelligence
 
