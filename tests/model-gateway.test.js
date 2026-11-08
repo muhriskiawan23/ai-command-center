@@ -12,10 +12,10 @@ import {
 
 function candidate(overrides = {}) {
   return {
-    id: "test/model",
+    id: DEFAULT_MODEL_ID,
     baseline: true,
     provider: "cloudflare-workers-ai",
-    adapter: "test",
+    adapter: "workers-ai",
     capabilities: ["text"],
     contextWindowTokens: 16000,
     maxOutputTokens: 4000,
@@ -163,6 +163,7 @@ test("does not accept unknown quality or price when hard floors are requested", 
 test("adaptive scoring prioritizes measured quality, then cost and latency", () => {
   const cheaper = candidate({
     id: "cheap",
+    baseline: false,
     qualityScores: { fast_chat: 0.8 },
     inputCostPerMillionUsd: 0.1,
     outputCostPerMillionUsd: 0.1,
@@ -170,22 +171,28 @@ test("adaptive scoring prioritizes measured quality, then cost and latency", () 
   });
   const stronger = candidate({
     id: "stronger",
+    baseline: false,
     qualityScores: { fast_chat: 0.95 },
     inputCostPerMillionUsd: 4,
     outputCostPerMillionUsd: 8,
     p95LatencyMs: 1200
   });
-  assert.equal(selectModel({ task: "fast_chat", models: [cheaper, stronger] }).model.id, "stronger");
+  assert.equal(selectModel({ task: "fast_chat", models: [cheaper, stronger], requirements: { minQualityScore: 0.7 } }).model.id, "stronger");
 });
 
 test("cost and latency break ties when quality and reliability are equal", () => {
-  const slower = candidate({ id: "slower", p95LatencyMs: 1800 });
-  const faster = candidate({ id: "faster", p95LatencyMs: 400 });
-  assert.equal(selectModel({ task: "fast_chat", models: [slower, faster] }).model.id, "faster");
+  const slower = candidate({ id: "slower", baseline: false, p95LatencyMs: 1800 });
+  const faster = candidate({ id: "faster", baseline: false, p95LatencyMs: 400 });
+  assert.equal(selectModel({ task: "fast_chat", models: [slower, faster], requirements: { minQualityScore: 0.7 } }).model.id, "faster");
 });
 
 test("requires an explicit measured quality floor before any non-baseline candidate can be routed", () => {
   const candidateModel = candidate({ baseline: false });
+  const forgedBaseline = candidate({ id: "unapproved/model", baseline: true });
+  const forged = evaluateModelCandidates({ task: "fast_chat", models: [forgedBaseline] });
+  assert.equal(forged.eligible.length, 0);
+  assert.equal(forged.rejected[0].reason, "candidate_quality_floor_required");
+
   const noFloor = evaluateModelCandidates({ task: "fast_chat", models: [candidateModel] });
   assert.equal(noFloor.eligible.length, 0);
   assert.equal(noFloor.rejected[0].reason, "candidate_quality_floor_required");
