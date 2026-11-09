@@ -412,6 +412,10 @@ export function createSearchCircuitBreaker({ failureThreshold = 3, cooldownMs = 
   function snapshot(provider) { return states.get(provider)?.status || "closed"; }
   return {
     state: snapshot,
+    cancelProbe(provider) {
+      const state = states.get(provider);
+      if (state?.status === "half_open") state.probeInFlight = false;
+    },
     allow(provider, now = Date.now()) {
       const state = states.get(provider);
       if (!state) return { allowed: true, state: "closed" };
@@ -469,17 +473,86 @@ export function isSearchProviderConfigured(env = {}) {
   return Boolean(adapter && adapter.isConfigured(env));
 }
 
+// D1-backed daily attempt ceiling shared by all Worker isolates. Reserve the maximum
+// retry count atomically before calling a provider, then refund unused attempts.
+const SEARCH_DAILY_ATTEMPT_DEFAULT = 30;
+const SEARCH_DAILY_ATTEMPT_MAX = 10_000;
+
+function searchDailyAttemptLimit(env, provider) {
+  const raw = Number(env[`SEARCH_DAILY_ATTEMPT_LIMIT_${provider.toUpperCase()}`]);
+  return Number.isInteger(raw) && raw >= 0 && raw <= SEARCH_DAILY_ATTEMPT_MAX
+    ? raw
+    : SEARCH_DAILY_ATTEMPT_DEFAULT;
+}
+
+async function reserveSearchProviderBudget(env, provider, now) {
+  if (!env.DB?.prepare) return { allowed: false, reason: "provider_budget_unavailable" };
+  const day = new Date(now).toISOString().slice(0, 10);
+  const limit = searchDailyAttemptLimit(env, provider);
+  try {
+    const row = await env.DB.prepare(
+      "INSERT INTO search_provider_usage (day, provider, requests, attempts, updated_at) VALUES (?, ?, 1, ?, ?) " +
+      "ON CONFLICT(day, provider) DO UPDATE SET requests = search_provider_usage.requests + 1, " +
+      "attempts = search_provider_usage.attempts + excluded.attempts, updated_at = excluded.updated_at " +
+      "WHERE search_provider_usage.attempts + excluded.attempts <= ? RETURNING requests, attempts"
+    ).bind(day, provider, SEARCH_MAX_ATTEMPTS, Math.floor(now / 1000), limit).first();
+    return row
+      ? { allowed: true, day, limit, reservedAttempts: SEARCH_MAX_ATTEMPTS, attempts: Number(row.attempts) }
+      : { allowed: false, reason: "provider_daily_budget_exhausted", day, limit };
+  } catch {
+    return { allowed: false, reason: "provider_budget_unavailable" };
+  }
+}
+
+async function settleSearchProviderBudget(env, provider, reservation, result, now) {
+  if (!reservation?.allowed) return;
+  const reported = result?.diagnostics?.attempts;
+  const attempts = Number.isInteger(reported)
+    ? Math.max(0, Math.min(SEARCH_MAX_ATTEMPTS, reported))
+    : (result?.reason ? 0 : 1);
+  const providerFailureReasons = new Set([
+    "provider_timeout", "provider_unavailable", "provider_error", "provider_rate_limited",
+    "provider_auth_error", "provider_permission_error", "provider_invalid_response",
+    "provider_response_too_large", "provider_redirect_rejected"
+  ]);
+  const failed = attempts > 0 && providerFailureReasons.has(result?.reason) ? 1 : 0;
+  const succeeded = attempts > 0 && !failed ? 1 : 0;
+  const rateLimited = result?.reason === "provider_rate_limited" ? 1 : 0;
+  try {
+    await env.DB.prepare(
+      "UPDATE search_provider_usage SET attempts = MAX(attempts - ? + ?, 0), " +
+      "successes = successes + ?, failures = failures + ?, rate_limited = rate_limited + ?, " +
+      "last_reason = ?, updated_at = ? WHERE day = ? AND provider = ?"
+    ).bind(
+      reservation.reservedAttempts, attempts, succeeded, failed, rateLimited,
+      result?.reason || null, Math.floor(now / 1000), reservation.day, provider
+    ).run();
+  } catch {
+    // Keep the full reservation if metrics settlement fails; this is conservative for cost control.
+  }
+}
+
 export async function searchExternal(query, mode, env = {}, options = {}) {
   const { provider, adapter } = selectedSearchAdapter(env);
   if (!adapter) return { configured: false, provider, mode, results: [], reason: "provider_unsupported" };
+  const now = Number.isFinite(options.now) ? options.now : Date.now();
+  // Explicitly injected fetchers are test transports. Production requests use D1 budget enforcement.
+  // Opt in only after the additive D1 migration is applied; an ordinary code release must not disable live search.
+  const useSharedBudget = env.SEARCH_SHARED_BUDGET_ENABLED === "true" && !options.fetcher && adapter.isConfigured(env);
   // Injected fetchers opt out by default; production uses the isolate-local breaker.
   const breaker = options.circuitBreaker || (options.fetcher ? null : DEFAULT_SEARCH_CIRCUIT_BREAKER);
-  const now = Number.isFinite(options.now) ? options.now : Date.now();
   if (breaker && adapter.isConfigured(env)) {
     const gate = breaker.allow(provider, now);
     if (!gate.allowed) return { configured: true, provider, mode, results: [], reason: "provider_circuit_open", diagnostics: { attempts: 0, circuitState: gate.state, retryAfterMs: gate.retryAfterMs } };
   }
+  const reservation = useSharedBudget ? await reserveSearchProviderBudget(env, provider, now) : null;
+  if (reservation && !reservation.allowed) {
+    // A half-open probe was not actually sent; release its slot so a later request can probe.
+    breaker?.cancelProbe?.(provider);
+    return { configured: true, provider, mode, results: [], reason: reservation.reason, diagnostics: { attempts: 0, budgetLimit: reservation.limit } };
+  }
   const result = await adapter.search(query, mode, env, options);
+  if (reservation?.allowed) await settleSearchProviderBudget(env, provider, reservation, result, now);
   if (breaker && result.configured) {
     const circuitState = breaker.record(provider, result, Date.now());
     return { ...result, provider, diagnostics: { ...(result.diagnostics || {}), circuitState } };

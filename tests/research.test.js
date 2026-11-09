@@ -16,6 +16,14 @@ test("search circuit breaker opens after transient failures and admits one half-
   assert.deepEqual(breaker.allow("tavily", 106), { allowed: true, state: "closed" });
 });
 
+test("search circuit breaker releases a half-open probe when no provider request was sent", () => {
+  const breaker = createSearchCircuitBreaker({ failureThreshold: 1, cooldownMs: 10 });
+  assert.equal(breaker.record("tavily", { reason: "provider_unavailable" }, 1), "open");
+  assert.deepEqual(breaker.allow("tavily", 11), { allowed: true, state: "half_open" });
+  breaker.cancelProbe("tavily");
+  assert.deepEqual(breaker.allow("tavily", 12), { allowed: true, state: "half_open" });
+});
+
 test("search circuit breaker reopens after a failed probe and isolates provider states", () => {
   const breaker = createSearchCircuitBreaker({ failureThreshold: 1, cooldownMs: 10 });
   assert.equal(breaker.record("brave", { reason: "provider_rate_limited" }, 5), "open");
