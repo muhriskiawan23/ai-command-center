@@ -317,3 +317,12 @@ For each milestone, track:
 - whether production verification has actually occurred.
 
 A passing mocked test proves code behavior under the test fixture. It does not prove a live provider, real model, production secret, real user account or production deployment is working.
+
+## 9. Tavily live verification update — 2026-11-09
+
+- PR #144 is merged and its safe transport-cause diagnostics are deployed to production at commit `3a9fe172ade966825fae91110318690bad58f99e`.
+- Production deployment run #42581584459 completed successfully; the Worker deployment job and its validation steps completed successfully.
+- The one-time Tavily smoke workflow run #42581654493 was **skipped**, not passed. Its release-marker condition was not met by the deployment commit message.
+- The previous live smoke run #42579125229 failed during the first Web search with `provider_unavailable`; the News search was not reached.
+- Next action: trigger exactly one bounded post-deployment Tavily smoke with the required release marker, then inspect only allowlisted diagnostics. Do not retry automatically or infer provider health from deployment success.
+- Live Tavily status remains **unverified** until a Web search passes; News remains unverified until its sequential test is reached.
