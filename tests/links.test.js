@@ -59,6 +59,18 @@ test("sumber link memiliki ID stabil dan URL hanya diberikan untuk halaman yang 
   assert.equal("url" in sources[1], false);
 });
 
+test("fail closed: tanpa transport egress eksplisit, URL tidak pernah dikirim ke global fetch", async () => {
+  const originalFetch = globalThis.fetch;
+  let called = false;
+  globalThis.fetch = async () => { called = true; throw new Error("must not be called"); };
+  try {
+    const result = await readLink("https://example.com/private-test");
+    assert.equal(result.ok, false);
+    assert.match(result.reason, /DNS pinning belum dikonfigurasi/);
+    assert.equal(called, false);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
 test("membaca halaman: sukses, dipotong, dan teks tersimpan apa adanya hingga batas 16.000 karakter", async () => {
   const result = await readLink("https://example.com/a", { fetcher: async () => respond(html(`<p>${LONG}</p><p>${"x".repeat(MAX_PAGE_CHARS * 2)}</p>`)) });
   assert.equal(result.ok, true);

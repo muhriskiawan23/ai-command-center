@@ -4,11 +4,9 @@
 //  - SSRF: only http(s) on ports 80/443, no credentials in the URL, no private/loopback/link-local/reserved addresses
 //    (IPv4 and IPv6 literals), no single-label or internal-looking host names, never this Worker's own host.
 //    Redirects are followed manually (max 3) and EVERY hop is validated again.
-//    Limitation: this validator checks IP literals and hostname syntax; it does NOT resolve DNS or pin the resolved address.
-//    Cloudflare Workers can reach private networks through explicitly configured Workers VPC bindings. This app's
-//    wrangler.jsonc currently declares no VPC binding, but that alone is not proof of account-wide egress policy.
-//    Do not claim DNS-rebinding protection or rely on an assumed platform block without verifying the deployed
-//    account/network configuration. A DNS-pinning transport or controlled egress proxy would be needed to enforce it here.
+//    IMPORTANT: the production path is fail-closed until a separately audited DNS-pinning egress transport exists.
+//    A plain fetch() is NOT an acceptable fallback: hostname validation and DNS preflight cannot pin the peer IP.
+//    Tests may inject a fetcher; production must not expose a generic URL fetch transport.
 //  - Resource limits: 8 s per request, 1 MB download cap, 16,000 characters kept per page, at most 3 links per message.
 //  - Prompt injection: page text is untrusted DATA. It is wrapped in <web_page> blocks with every '<' and '>' neutralised,
 //    and the system prompt tells the model never to follow instructions found there.
@@ -187,7 +185,10 @@ function decode(bytes, contentType) {
   catch { return new TextDecoder("utf-8", { fatal: false }).decode(bytes); }
 }
 
-export async function readLink(rawUrl, { fetcher = fetch, ownHost = "", timeoutMs = FETCH_TIMEOUT_MS } = {}) {
+export async function readLink(rawUrl, { fetcher = null, ownHost = "", timeoutMs = FETCH_TIMEOUT_MS } = {}) {
+  if (typeof fetcher !== "function") {
+    return failure(rawUrl, "pembacaan link dinonaktifkan: transport egress dengan DNS pinning belum dikonfigurasi");
+  }
   let current = rawUrl;
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
     const check = validateUrl(current, ownHost);
