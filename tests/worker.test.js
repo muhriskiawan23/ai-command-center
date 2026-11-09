@@ -27,9 +27,12 @@ test("deep health verifies D1 connectivity and AI binding without running infere
   let aiCalls = 0;
   const deepEnv = {
     AI: { async run() { aiCalls += 1; throw new Error("health must not invoke inference"); } },
-    DB: { prepare(statement) { sql = statement; return { async first() { return { ok: 1 }; } }; } }
+    DB: { prepare(statement) { sql = statement; return { async first() { return { ok: 1 }; } }; } },
+    CHAT_LIMITER: { async limit({ key }) { assert.equal(key, "health:deep:203.0.113.1"); return { success: true }; } }
   };
-  const res = await worker.fetch(new Request("https://example.test/api/health?deep=1"), deepEnv);
+  const res = await worker.fetch(new Request("https://example.test/api/health?deep=1", {
+    headers: { "CF-Connecting-IP": "203.0.113.1" }
+  }), deepEnv);
   const body = await res.json();
   assert.equal(res.status, 200);
   assert.equal(body.ok, true);
@@ -39,17 +42,40 @@ test("deep health verifies D1 connectivity and AI binding without running infere
 });
 
 test("deep health fails closed when D1 or the AI binding is unavailable", async () => {
+  const limiter = { async limit() { return { success: true }; } };
   const noDatabase = await worker.fetch(new Request("https://example.test/api/health?deep=1"), {
-    AI: {}, DB: { prepare() { throw new Error("D1 unavailable"); } }
+    AI: {}, DB: { prepare() { throw new Error("D1 unavailable"); } }, CHAT_LIMITER: limiter
   });
   assert.equal(noDatabase.status, 503);
   assert.deepEqual((await noDatabase.json()).checks, { database: false, aiBinding: true });
 
   const noAi = await worker.fetch(new Request("https://example.test/api/health?deep=1"), {
-    DB: { prepare() { return { async first() { return { ok: 1 }; } }; } }
+    DB: { prepare() { return { async first() { return { ok: 1 }; } }; } }, CHAT_LIMITER: limiter
   });
   assert.equal(noAi.status, 503);
   assert.deepEqual((await noAi.json()).checks, { database: true, aiBinding: false });
+});
+
+test("deep health rate-limits public probes before touching D1", async () => {
+  let dbCalls = 0;
+  const env = {
+    AI: {},
+    DB: { prepare() { dbCalls++; return { async first() { return { ok: 1 }; } }; } },
+    CHAT_LIMITER: { async limit({ key }) { assert.match(key, /^health:deep:/); return { success: false }; } }
+  };
+  const response = await worker.fetch(new Request("https://example.test/api/health?deep=1"), env);
+  assert.equal(response.status, 429);
+  assert.equal(response.headers.get("Retry-After"), "60");
+  assert.equal(dbCalls, 0);
+});
+
+test("deep health fails closed when its rate limiter binding is missing", async () => {
+  let dbCalls = 0;
+  const response = await worker.fetch(new Request("https://example.test/api/health?deep=1"), {
+    AI: {}, DB: { prepare() { dbCalls++; return { async first() { return { ok: 1 }; } }; } }
+  });
+  assert.equal(response.status, 503);
+  assert.equal(dbCalls, 0);
 });
 
 test("agents endpoint lists configured agents", async () => {
