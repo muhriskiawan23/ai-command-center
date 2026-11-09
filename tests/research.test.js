@@ -46,6 +46,7 @@ test("Brave API key is sent only in a header and fresh results receive provenanc
     }
   });
   assert.equal(result.configured, true);
+  assert.equal(result.provider, "brave");
   assert.equal(result.results[0].ok, true);
   assert.equal(result.results[0].publishedAt, "2026-11-06T10:00:00.000Z");
   assert.match(requested.url, /\/news\/search/);
@@ -140,4 +141,32 @@ test("provider error responses are cancelled without buffering their bodies", as
   });
   assert.equal(result.reason, "provider_rate_limited");
   assert.equal(cancelled, true);
+});
+
+
+test("provider-neutral search adapter rejects unknown providers without making network requests", async () => {
+  let called = false;
+  const result = await searchExternal("latest news", "news", { SEARCH_PROVIDER: "unknown" }, {
+    fetcher: async () => { called = true; return jsonResponse({ results: [] }); }
+  });
+  assert.equal(result.configured, false);
+  assert.equal(result.provider, "unknown");
+  assert.equal(result.reason, "provider_unsupported");
+  assert.deepEqual(result.results, []);
+  assert.equal(called, false);
+});
+
+test("provider-neutral search adapter defaults to Brave and returns the normalized provider identifier", async () => {
+  const result = await searchExternal("current technology", "web", { BRAVE_SEARCH_API_KEY: "secret" }, {
+    fetcher: async () => jsonResponse({ results: [{
+      title: "Current technology",
+      url: "https://publisher.example/current",
+      description: "A current report",
+      page_age: "2026-11-08T10:00:00Z"
+    }] })
+  });
+  assert.equal(result.provider, "brave");
+  assert.equal(result.configured, true);
+  assert.equal(result.results[0].ok, true);
+  assert.match(buildResearchContext(result).context, /Brave Search API/);
 });
