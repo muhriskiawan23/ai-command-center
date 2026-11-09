@@ -326,7 +326,7 @@ test("Word context explicitly discloses client-side truncation", () => {
 test("Word document context safely normalizes names and truncates long text", () => {
   assert.equal(safeWordDocumentName("../../private/report.docx"), ".._.._private_report.docx");
   const context = buildWordDocumentContext({ name: "report.docx", content: "x".repeat(WORD_CONTEXT_MAX_CHARS + 100) });
-  assert.ok(context.length < WORD_CONTEXT_MAX_CHARS + 500);
+  assert.match(context, new RegExp("x{" + WORD_CONTEXT_MAX_CHARS + "}"));\n  assert.doesNotMatch(context, new RegExp("x{" + (WORD_CONTEXT_MAX_CHARS + 1) + "}"));
 });
 
 test("chat rejects oversized Word document context before model execution", async () => {
