@@ -58,8 +58,8 @@ The current tests use local loopback fixtures only; no public target or user con
 - Live DNS rebinding race tests against an external authoritative DNS service and production-like resolver behavior; current deterministic test proves a private answer on the next hop is rejected after a public first hop.
 - Broader IPv4/IPv6 edge-case coverage, including IPv6 socket integration where loopback IPv6 is available in CI.
 - Expired, untrusted, and missing-SNI TLS cases.
-- Slow headers/body, caller cancellation, connection reset, malformed response, and proxy-down behavior; runtime response-size and total-timeout aborts now have local socket tests.
-- Authenticated handler tests for authorization, request-body limits/timeouts, and response minimization.
+- Slow headers/body, connection reset, malformed response, and proxy-down behavior; caller cancellation is covered at the real socket primitive and handler wiring levels, while runtime response-size and total-timeout aborts have local socket tests.
+- Authenticated handler tests for authorization, request-body limits/timeouts, response minimization, and client-disconnect cancellation without writing to a closed response.
 - Independent verification that no URL, query, request body, or response body is persisted and that logs contain only approved metadata.
 - End-to-end proof that the Worker has no direct-fetch fallback when a proxy binding is absent or errors.
 
