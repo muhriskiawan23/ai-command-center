@@ -84,12 +84,8 @@ export function extractDocxParagraphs(documentXml, maxParagraphs = DOCX_MAX_PARA
       index = end + 2;
       continue;
     }
-    if (xml.slice(index, index + 9).toUpperCase() === "<!DOCTYPE" || xml.startsWith("<!", index)) {
-      const end = findXmlMarkupEnd(xml, index + 2, true);
-      if (end < 0) throw new Error("Struktur XML Word tidak valid.");
-      index = end + 1;
-      continue;
-    }
+    // DOCX document.xml does not need a DTD; reject declarations rather than risk entity/markup ambiguity.
+    if (xml.startsWith("<!", index)) throw new Error("Deklarasi XML tidak didukung dalam dokumen Word.");
 
     if (xml.startsWith("</", index)) {
       const match = xml.slice(index).match(/^<\/\s*([^\s>]+)\s*>/);
