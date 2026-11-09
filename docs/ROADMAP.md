@@ -95,12 +95,12 @@ Acceptance:
 
 ### Milestone 1 — Reliable Web Intelligence
 
-**Priority:** P0 · **Status:** partially implemented; provider-neutral adapter foundation in PR #129; live provider verification blocked by secret configuration
+**Priority:** P0 · **Status:** partially implemented; provider-neutral adapter foundation implemented in PR #129 with Brave as the only registered provider; live provider verification blocked by secret configuration
 
 Work:
 - PR #91 is merged and deployed; keep live Brave verification blocked until a controlled request confirms key validity and provider quota.
 - Configure and verify Brave Search/News in a controlled environment after the founder supplies the secret through Cloudflare's secret manager.
-- Add provider-neutral interfaces for search and news, preserving the current Brave adapter as the first provider. (Implementation proposed in PR #129; remains pending until merged and deployed.)
+- Provider-neutral interfaces for search and news are implemented in PR #129; Brave remains the only registered adapter. Add another provider only after reviewing official API terms, regional coverage, retention, pricing, and credentials.
 - Evaluate a second provider only after checking official API availability, pricing, terms, regional coverage, data retention and credentials. Do not scrape consumer search pages or use undocumented endpoints as a production fallback.
 - Add deterministic provider selection, bounded retries, timeouts, circuit breaking, per-provider budgets and a safe fallback policy.
 - Add query classification, freshness controls, source diversity, duplicate detection, canonical URL handling and source-quality signals.
