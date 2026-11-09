@@ -20,9 +20,9 @@ test("ekstraksi URL: tanda baca, markdown, www, duplikat, dan batas 3 link", () 
 test("SSRF: alamat internal, metadata cloud, IPv6, bentuk IP terselubung, kredensial, port, dan skema ditolak", () => {
   const blocked = [
     "http://localhost/", "http://127.0.0.1/", "http://127.1/", "http://0.0.0.0/", "http://10.1.2.3/", "http://172.16.0.1/", "http://172.31.255.255/",
-    "http://192.168.1.1/", "http://169.254.169.254/latest/meta-data/", "http://100.64.0.1/", "http://224.0.0.1/", "http://255.255.255.255/",
+    "http://192.168.1.1/", "http://169.254.169.254/latest/meta-data/", "http://192.88.99.2/", "http://100.64.0.1/", "http://224.0.0.1/", "http://255.255.255.255/",
     "http://2130706433/", "http://0x7f000001/", "http://0177.0.0.1/", "http://[::1]/", "http://[::]/", "http://[fd00::1]/", "http://[fe80::1]/",
-    "http://[::ffff:127.0.0.1]/", "http://[::ffff:7f00:1]/", "http://[2002:7f00:1::]/", "http://[2001:db8::1]/",
+    "http://[::ffff:127.0.0.1]/", "http://[::ffff:7f00:1]/", "http://[2002:7f00:1::]/", "http://[2001:db8::1]/", "http://[2001:2::1]/", "http://[2001:5::1]/", "http://[3fff::1]/",
     "http://intranet/", "http://metadata/", "http://printer.local/", "http://api.internal/", "http://x.localhost/", "http://router.lan/",
     "http://user:pass@example.com/", "https://example.com:8443/", "http://example.com:8080/", "ftp://example.com/", "file:///etc/passwd", "javascript:alert(1)", "data:text/html,hi", "http://"
   ];
@@ -126,4 +126,22 @@ test("redirect sukses mempertahankan URL asli dan mencatat URL tujuan akhir", as
   const [source] = summarizeLinks([result]);
   assert.equal(source.url, "https://example.com/start");
   assert.equal(source.resolvedUrl, "https://example.com/artikel");
+});
+
+
+test("non-ok and unsupported responses are cancelled without buffering their bodies", async () => {
+  for (const options of [
+    { status: 404, type: "text/plain" },
+    { status: 200, type: "application/pdf" }
+  ]) {
+    let cancelled = false;
+    const body = new ReadableStream({
+      start(controller) { controller.enqueue(new TextEncoder().encode("unused response body")); },
+      cancel() { cancelled = true; }
+    });
+    const response = new Response(body, { status: options.status, headers: { "content-type": options.type } });
+    const result = await readLink("https://example.com/unused", { fetcher: async () => response });
+    assert.equal(result.ok, false);
+    assert.equal(cancelled, true);
+  }
 });
