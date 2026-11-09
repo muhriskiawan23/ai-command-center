@@ -326,3 +326,63 @@ test("search limits usable results to two per hostname while continuing to diver
   assert.equal(result.results.find((item) => item.title === "B1").ok, true);
   assert.equal(buildResearchContext(result).sources.filter((source) => source.ok).length, 3);
 });
+
+
+test("Tavily exposes safe HTTP diagnostics without including provider response bodies", async () => {
+  const result = await searchExternal("query", "web", { TAVILY_API_KEY: "secret" }, {
+    fetcher: async () => new Response("private provider payload", { status: 400 })
+  });
+  assert.equal(result.reason, "provider_request_rejected");
+  assert.deepEqual(result.diagnostics, { httpStatus: 400, candidateCount: 0, usableCount: 0 });
+  const context = buildResearchContext({ ...result, provider: "tavily" });
+  assert.match(context.sources[0].reason, /HTTP 400/);
+  assert.doesNotMatch(context.sources[0].reason, /private provider payload|secret/);
+});
+
+test("Tavily distinguishes empty responses from candidates rejected by source validation", async () => {
+  const empty = await searchExternal("query", "web", { TAVILY_API_KEY: "secret" }, {
+    fetcher: async () => jsonResponse({ results: [] })
+  });
+  assert.equal(empty.reason, "provider_empty_results");
+  assert.equal(empty.diagnostics.candidateCount, 0);
+
+  const rejected = await searchExternal("query", "web", { TAVILY_API_KEY: "secret" }, {
+    now: Date.parse("2026-11-08T00:00:00Z"),
+    fetcher: async () => jsonResponse({ results: [
+      { title: "Old result", url: "https://publisher.example/old", content: "Old", published_date: "2026-09-01T00:00:00Z" },
+      { title: "Unsafe result", url: "http://publisher.example/insecure", content: "Unsafe", published_date: "2026-11-07T00:00:00Z" }
+    ] })
+  });
+  assert.equal(rejected.reason, "provider_no_usable_results");
+  assert.equal(rejected.diagnostics.candidateCount, 2);
+  assert.equal(rejected.diagnostics.usableCount, 0);
+  assert.deepEqual(rejected.diagnostics.exclusionCounts, { stale: 1, invalid_or_low_trust: 1 });
+  const context = buildResearchContext({ ...rejected, provider: "tavily" });
+  assert.match(context.sources[0].reason, /stale=1/);
+  assert.match(context.sources[0].reason, /invalid_or_low_trust=1/);
+});
+
+test("search diagnostics identify the selected provider instead of hard-coding Tavily", () => {
+  const context = buildResearchContext({
+    configured: true,
+    provider: "brave",
+    mode: "web",
+    results: [],
+    reason: "provider_rate_limited"
+  });
+  assert.match(context.sources[0].reason, /Brave Search API/);
+  assert.doesNotMatch(context.sources[0].reason, /Tavily/);
+});
+
+test("Tavily rejects a successful HTTP response with an invalid result schema", async () => {
+  const result = await searchExternal("query", "web", { TAVILY_API_KEY: "secret" }, {
+    fetcher: async () => jsonResponse({ unexpected: [] })
+  });
+  assert.equal(result.reason, "provider_invalid_response");
+  assert.deepEqual(result.diagnostics, {
+    httpStatus: 200, candidateCount: 0, usableCount: 0, failureStage: "payload_schema"
+  });
+  const context = buildResearchContext(result);
+  assert.match(context.sources[0].reason, /invalid_response/);
+  assert.doesNotMatch(context.sources[0].reason, /empty results/);
+});
