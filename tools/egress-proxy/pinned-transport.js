@@ -90,7 +90,7 @@ export { resolveChain };
 
 function normalizePeer(value) {
   if (!value) return "";
-  const mapped = /^::ffff:(\\d+\\.\\d+\\.\\d+\\.\\d+)$/i.exec(value);
+  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(value);
   if (mapped) return normalizePeer(mapped[1]);
   const family = net.isIP(value);
   if (family === 4) return `4:${value.split(".").map(Number).join(".")}`;
