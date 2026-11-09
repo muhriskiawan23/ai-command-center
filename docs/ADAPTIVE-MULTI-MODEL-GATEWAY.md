@@ -162,7 +162,7 @@ Do not expose secrets, raw provider errors, private prompts or internal routing 
 
 Fallback is allowed only when the next candidate satisfies the same hard requirements and data policy.
 
-- Retry only transient network failures and explicitly eligible HTTP statuses (408, 500, 502, 503, 504) within the shared request deadline and retry budget. Do not retry provider rate limits (429/432/433), auth/permission failures, aborts or programming errors.
+- Retry transient network failures, provider 429 responses and eligible 5xx/timeouts within the shared request deadline and retry budget.
 - Do not retry invalid requests, authentication/permission failures, policy denials, unsupported capability errors or malformed user input with another provider.
 - Do not fall back to a model that lacks required vision/audio/tool/structured-output capability.
 - Never cross a data-handling or consent boundary during fallback.
