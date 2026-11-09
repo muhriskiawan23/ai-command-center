@@ -67,8 +67,23 @@ async function cancelResponseBody(response) {
 
 async function waitForProviderRetry(signal) {
   if (signal?.aborted) return false;
-  await new Promise((resolve) => setTimeout(resolve, SEARCH_RETRY_DELAY_MS));
-  return !signal?.aborted;
+  return new Promise((resolve) => {
+    let timer;
+    const cleanup = () => {
+      if (timer) clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+    };
+    const onAbort = () => {
+      cleanup();
+      resolve(false);
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+    timer = setTimeout(() => {
+      cleanup();
+      resolve(!signal?.aborted);
+    }, SEARCH_RETRY_DELAY_MS);
+    if (signal?.aborted) onAbort();
+  });
 }
 
 function retryBudgetAbortError() {
