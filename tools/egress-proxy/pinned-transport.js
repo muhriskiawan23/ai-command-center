@@ -3,6 +3,7 @@ import https from "node:https";
 import dns from "node:dns/promises";
 import net from "node:net";
 import tls from "node:tls";
+import { timingSafeEqual } from "node:crypto";
 
 export const MAX_RESPONSE_BYTES = 1_000_000;
 export const MAX_REQUEST_BYTES = 16_384;
@@ -196,7 +197,7 @@ export function createEgressProxyHandler({ token, resolver = dns, timeoutMs = 80
     const auth = req.headers.authorization || "";
     const expected = Buffer.from("Bearer " + token);
     const supplied = Buffer.from(auth);
-    if (expected.length !== supplied.length || !require("node:crypto").timingSafeEqual(expected, supplied)) {
+    if (expected.length !== supplied.length || !timingSafeEqual(expected, supplied)) {
       res.writeHead(401).end();
       return;
     }
