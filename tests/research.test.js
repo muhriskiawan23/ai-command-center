@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildResearchContext, detectResearchMode, retrieveCuratedKnowledge, searchExternal } from "../src/research.js";
+import { buildResearchContext, detectResearchMode, isSearchProviderConfigured, retrieveCuratedKnowledge, searchExternal } from "../src/research.js";
 
 const jsonResponse = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
@@ -46,6 +46,7 @@ test("Brave API key is sent only in a header and fresh results receive provenanc
     }
   });
   assert.equal(result.configured, true);
+  assert.equal(result.provider, "brave");
   assert.equal(result.results[0].ok, true);
   assert.equal(result.results[0].publishedAt, "2026-11-06T10:00:00.000Z");
   assert.match(requested.url, /\/news\/search/);
@@ -140,4 +141,53 @@ test("provider error responses are cancelled without buffering their bodies", as
   });
   assert.equal(result.reason, "provider_rate_limited");
   assert.equal(cancelled, true);
+});
+
+
+test("provider-neutral search adapter rejects unknown and prototype-like providers without network requests", async () => {
+  for (const provider of ["unknown", "__proto__", "constructor", "toString", "hasOwnProperty"]) {
+    let called = false;
+    const result = await searchExternal("latest news", "news", { SEARCH_PROVIDER: provider }, {
+      fetcher: async () => { called = true; return jsonResponse({ results: [] }); }
+    });
+    assert.equal(result.configured, false);
+    assert.equal(result.provider, provider.toLowerCase());
+    assert.equal(result.reason, "provider_unsupported");
+    assert.deepEqual(result.results, []);
+    assert.equal(called, false);
+    const context = buildResearchContext(result, 1);
+    assert.match(context.sources[0].reason, /belum didukung/);
+  }
+});
+
+test("provider-neutral search adapter defaults to Brave and returns the normalized provider identifier", async () => {
+  const result = await searchExternal("current technology", "web", { BRAVE_SEARCH_API_KEY: "secret" }, {
+    fetcher: async () => jsonResponse({ results: [{
+      title: "Current technology",
+      url: "https://publisher.example/current",
+      description: "A current report",
+      page_age: "2026-11-08T10:00:00Z"
+    }] })
+  });
+  assert.equal(result.provider, "brave");
+  assert.equal(result.configured, true);
+  assert.equal(result.results[0].ok, true);
+  assert.match(buildResearchContext(result).context, /Brave Search API/);
+});
+
+
+test("unsupported provider reports an accurate fail-closed status without implying the Brave key is missing", async () => {
+  const result = await searchExternal("latest news", "news", { SEARCH_PROVIDER: "other" });
+  const context = buildResearchContext(result, 9);
+  assert.match(context.context, /provider_unsupported/);
+  assert.match(context.sources[0].reason, /belum didukung/);
+  assert.doesNotMatch(context.sources[0].reason, /BRAVE_SEARCH_API_KEY/);
+});
+
+
+test("provider readiness is resolved by the selected adapter instead of a Brave-specific quota check", () => {
+  assert.equal(isSearchProviderConfigured({}), false);
+  assert.equal(isSearchProviderConfigured({ BRAVE_SEARCH_API_KEY: "secret" }), true);
+  assert.equal(isSearchProviderConfigured({ SEARCH_PROVIDER: "unknown", BRAVE_SEARCH_API_KEY: "secret" }), false);
+  assert.equal(isSearchProviderConfigured({ SEARCH_PROVIDER: "__proto__", BRAVE_SEARCH_API_KEY: "secret" }), false);
 });
