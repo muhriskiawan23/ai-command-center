@@ -141,23 +141,18 @@ test("total request timeout aborts a slow response", async (t) => {
 
 
 test("HTTP protocol upgrades are rejected immediately and the upgraded socket is closed", async (t) => {
-  let upgradedSocket;
-  let upgradedSocketClosed = false;
-  const server = http.createServer();
-  server.on("upgrade", (_req, socket) => {
-    upgradedSocket = socket;
-    socket.on("close", () => { upgradedSocketClosed = true; });
-    socket.write("HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n");
+  let serverSocketClosed = false;
+  const server = http.createServer((_req, res) => {
+    res.socket.on("close", () => { serverSocketClosed = true; });
+    res.writeHead(101, { Connection: "Upgrade", Upgrade: "websocket" });
+    res.flushHeaders();
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  t.after(() => new Promise((resolve) => {
-    upgradedSocket?.destroy();
-    server.close(resolve);
-  }));
+  t.after(() => new Promise((resolve) => server.close(resolve)));
   await assert.rejects(
     requestOneHop(fixture("http", server.address().port)),
     /protocol_upgrade_rejected/
   );
   await new Promise((resolve) => setTimeout(resolve, 20));
-  assert.equal(upgradedSocketClosed, true);
+  assert.equal(serverSocketClosed, true);
 });
