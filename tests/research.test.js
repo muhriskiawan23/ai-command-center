@@ -432,7 +432,7 @@ test("Tavily network failures expose only a safe failure stage and error class",
 
 test("Tavily trims pasted secret whitespace before building the Authorization header", async () => {
   let authorization;
-  const result = await searchExternal("trim secret test", "web", { TAVILY_API_KEY: "  tvly-test-secret\\n" }, {
+  const result = await searchExternal("trim secret test", "web", { TAVILY_API_KEY: "  tvly-test-secret\n" }, {
     fetcher: async (_url, init) => {
       authorization = init.headers.Authorization;
       return jsonResponse({ results: [] });
