@@ -191,3 +191,41 @@ test("provider readiness is resolved by the selected adapter instead of a Brave-
   assert.equal(isSearchProviderConfigured({ SEARCH_PROVIDER: "unknown", BRAVE_SEARCH_API_KEY: "secret" }), false);
   assert.equal(isSearchProviderConfigured({ SEARCH_PROVIDER: "__proto__", BRAVE_SEARCH_API_KEY: "secret" }), false);
 });
+
+
+test("search canonicalizes tracking variants and removes duplicate URLs before assigning sources", async () => {
+  let requested;
+  const result = await searchExternal("research duplicate URLs", "web", { BRAVE_SEARCH_API_KEY: "secret" }, {
+    now: Date.parse("2026-11-07T00:00:00Z"),
+    fetcher: async (url) => {
+      requested = new URL(url);
+      return jsonResponse({ results: [
+        { title: "Primary", url: "https://publisher.example/story?utm_source=feed&id=7#top", page_age: "2026-11-06T00:00:00Z" },
+        { title: "Duplicate tracking variant", url: "https://publisher.example/story?id=7&utm_campaign=other", page_age: "2026-11-06T00:00:00Z" },
+        { title: "Second article", url: "https://publisher.example/second", page_age: "2026-11-06T00:00:00Z" }
+      ] });
+    }
+  });
+  assert.equal(requested.searchParams.get("count"), "10");
+  assert.equal(result.results.length, 2);
+  assert.equal(result.results[0].url, "https://publisher.example/story?id=7");
+  assert.equal(result.results[1].url, "https://publisher.example/second");
+  assert.ok(result.results.every((item) => item.ok));
+});
+
+test("search limits usable results to two per hostname while continuing to diversify candidates", async () => {
+  const result = await searchExternal("diverse search results", "web", { BRAVE_SEARCH_API_KEY: "secret" }, {
+    now: Date.parse("2026-11-07T00:00:00Z"),
+    fetcher: async () => jsonResponse({ results: [
+      { title: "A1", url: "https://publisher.example/a1", page_age: "2026-11-06T00:00:00Z" },
+      { title: "A2", url: "https://publisher.example/a2", page_age: "2026-11-06T00:00:00Z" },
+      { title: "A3", url: "https://publisher.example/a3", page_age: "2026-11-06T00:00:00Z" },
+      { title: "B1", url: "https://another.example/b1", page_age: "2026-11-06T00:00:00Z" }
+    ] })
+  });
+  assert.equal(result.results.length, 4);
+  assert.equal(result.results.filter((item) => item.ok && item.host === "publisher.example").length, 2);
+  assert.equal(result.results.find((item) => item.title === "A3").trust, "limited-source-diversity");
+  assert.equal(result.results.find((item) => item.title === "B1").ok, true);
+  assert.equal(buildResearchContext(result).sources.filter((source) => source.ok).length, 3);
+});

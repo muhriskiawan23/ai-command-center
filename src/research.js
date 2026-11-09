@@ -3,6 +3,8 @@ import { validateUrl } from "./links.js";
 // External content is always treated as untrusted evidence, never as instructions.
 const SEARCH_TIMEOUT_MS = 6500;
 const SEARCH_MAX_RESULTS = 5;
+const SEARCH_MAX_CANDIDATES = 10;
+const SEARCH_MAX_RESULTS_PER_HOST = 2;
 const SEARCH_MAX_RESPONSE_BYTES = 256_000;
 const SEARCH_MAX_CONTEXT_CHARS = 12_000;
 const MAX_SOURCE_AGE_DAYS = 30;
@@ -38,6 +40,20 @@ function staleDate(value, now) {
   if (!value) return false;
   const age = now - Date.parse(value);
   return age > MAX_SOURCE_AGE_DAYS * 86400000;
+}
+
+function canonicalSearchUrl(value) {
+  const checked = validateUrl(value);
+  if (!checked.ok) return null;
+  const url = new URL(checked.url.toString());
+  url.hash = "";
+  for (const key of [...url.searchParams.keys()]) {
+    const lower = key.toLowerCase();
+    if (lower.startsWith("utm_") || ["gclid", "fbclid", "mc_cid", "mc_eid", "igshid", "vero_id", "vero_conv", "ref_src"].includes(lower)) {
+      url.searchParams.delete(key);
+    }
+  }
+  return url.toString();
 }
 
 async function cancelResponseBody(response) {
@@ -113,7 +129,7 @@ async function searchWithBrave(query, mode, env = {}, { fetcher = env.SEARCH_FET
   if (!safeQuery) return { configured: true, mode, results: [], reason: "empty_query" };
   const endpoint = new URL("https://api.search.brave.com/res/v1/" + (mode === "news" ? "news" : "web") + "/search");
   endpoint.searchParams.set("q", safeQuery);
-  endpoint.searchParams.set("count", String(SEARCH_MAX_RESULTS));
+  endpoint.searchParams.set("count", String(SEARCH_MAX_CANDIDATES));
   endpoint.searchParams.set("country", String(env.BRAVE_SEARCH_COUNTRY || "ID").slice(0, 2).toUpperCase());
   endpoint.searchParams.set("search_lang", String(env.BRAVE_SEARCH_LANG || "id").slice(0, 5));
   if (/\b(hari ini|sekarang|today|breaking|terbaru|latest)\b/i.test(safeQuery)) endpoint.searchParams.set("freshness", "pd");
@@ -145,22 +161,31 @@ async function searchWithBrave(query, mode, env = {}, { fetcher = env.SEARCH_FET
     try { payload = JSON.parse(raw); } catch { return { configured: true, mode, results: [], reason: "provider_invalid_response" }; }
     const items = Array.isArray(payload?.results) ? payload.results : Array.isArray(payload?.web?.results) ? payload.web.results : [];
     const results = [];
-    for (const item of items.slice(0, SEARCH_MAX_RESULTS)) {
+    const seenUrls = new Set();
+    const usableResultsPerHost = new Map();
+    for (const item of items.slice(0, SEARCH_MAX_CANDIDATES)) {
+      if (results.length >= SEARCH_MAX_RESULTS) break;
       const url = typeof item?.url === "string" ? item.url : "";
       const checkedUrl = validateUrl(url);
       const host = checkedUrl.ok ? checkedUrl.url.hostname.toLowerCase().replace(/^www\./, "") : hostOf(url);
       const publishedAt = parsedDate(item?.page_age || item?.published || item?.date || item?.published_at);
+      const canonicalUrl = checkedUrl.ok ? canonicalSearchUrl(url) : null;
+      if (canonicalUrl && seenUrls.has(canonicalUrl)) continue;
+      if (canonicalUrl) seenUrls.add(canonicalUrl);
       const validUrl = /^https:\/\//i.test(url) && checkedUrl.ok && !isLowTrust(host);
-      const normalizedUrl = validUrl ? checkedUrl.url.toString() : undefined;
+      const normalizedUrl = validUrl ? canonicalUrl : undefined;
       const stale = staleDate(publishedAt, now);
-      const ok = validUrl && !stale;
+      const hostCount = usableResultsPerHost.get(host) || 0;
+      const hostLimited = validUrl && !stale && hostCount >= SEARCH_MAX_RESULTS_PER_HOST;
+      if (validUrl && !stale && !hostLimited) usableResultsPerHost.set(host, hostCount + 1);
+      const ok = validUrl && !stale && !hostLimited;
       results.push({
         ok, url: normalizedUrl, requestedUrl: normalizedUrl,
         host: host || "sumber eksternal", title: String(item?.title || "Tanpa judul").slice(0, 200),
         description: String(item?.description || item?.snippet || "").slice(0, 1800),
         publishedAt, sourceType: mode === "news" ? "news" : "search",
-        trust: validUrl ? "unverified-external" : "blocked-low-trust-or-invalid",
-        reason: !validUrl ? "Sumber eksternal tidak lolos pemeriksaan URL atau termasuk platform UGC/sosial." : stale ? "Sumber lebih lama dari 30 hari dan dikecualikan dari konteks AI." : undefined,
+        trust: hostLimited ? "limited-source-diversity" : validUrl ? "unverified-external" : "blocked-low-trust-or-invalid",
+        reason: !validUrl ? "Sumber eksternal tidak lolos pemeriksaan URL atau termasuk platform UGC/sosial." : stale ? "Sumber lebih lama dari 30 hari dan dikecualikan dari konteks AI." : hostLimited ? "Sumber dari host yang sama dibatasi untuk menjaga keragaman hasil." : undefined,
         stale
       });
     }
