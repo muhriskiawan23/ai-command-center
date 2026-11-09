@@ -116,7 +116,7 @@ jobs:
             );
 
             await readCollection(
-              "Magic Cloud WAN on-ramps",
+              "Magic Cloud Networking on-ramps",
               "/magic/cloud/onramps",
               (items) => {
                 const states = {};
@@ -125,7 +125,7 @@ jobs:
                   states[state] = (states[state] || 0) + 1;
                 }
                 record(
-                  "Magic Cloud WAN on-ramps",
+                  "Magic Cloud Networking on-ramps",
                   "AUTHORIZED",
                   `visible=${items.length}; lifecycle_states=${Object.entries(states).map(([key, value]) => key + ":" + value).join(",") || "none"}.`
                 );
