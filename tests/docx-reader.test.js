@@ -13,7 +13,7 @@ function streamEntry(value) {
     on(event, callback) { this.handlers ||= {}; this.handlers[event] = callback; return this; },
     resume() {
       const bytes = new TextEncoder().encode(value);
-      for (let offset = 0; offset < bytes.length; offset += 7) this.handlers.data?.(bytes.slice(offset, offset + 7));
+      for (let offset = 0; offset < bytes.length; offset += 65536) this.handlers.data?.(bytes.slice(offset, offset + 65536));
       this.handlers.end?.();
     },
     pause() { this.paused = true; }
