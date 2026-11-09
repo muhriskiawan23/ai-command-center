@@ -142,3 +142,71 @@ test("private handler rejects oversized request bodies", async () => {
   assert.equal(status, 413);
   assert.equal(ended, true);
 });
+
+
+test("private handler bounds a stalled request body and returns 408", async () => {
+  const handler = createEgressProxyHandler({ token: "t".repeat(40), timeoutMs: 1000 });
+  let status;
+  let ended = false;
+  const req = {
+    method: "POST", url: "/fetch", aborted: false,
+    headers: { authorization: "Bearer " + "t".repeat(40) },
+    async *[Symbol.asyncIterator]() { await new Promise(() => {}); }
+  };
+  const headers = {};
+  const res = {
+    destroyed: false,
+    writeHead(code, value = {}) { status = code; Object.assign(headers, value); return this; },
+    end() { ended = true; return this; }
+  };
+  await handler(req, res);
+  assert.equal(status, 408);
+  assert.equal(headers["cache-control"], "no-store");
+  assert.equal(ended, true);
+});
+
+test("private handler rejects malformed JSON and invalid target without upstream access", async () => {
+  const handler = createEgressProxyHandler({
+    token: "t".repeat(40),
+    resolver: {
+      resolveCname: async () => { throw noData(); },
+      resolve4: async () => { throw noData(); },
+      resolve6: async () => { throw noData(); }
+    }
+  });
+  const invoke = async (body) => {
+    let status;
+    let headers = {};
+    const req = {
+      method: "POST", url: "/fetch",
+      headers: { authorization: "Bearer " + "t".repeat(40) },
+      async *[Symbol.asyncIterator]() { yield Buffer.from(body); }
+    };
+    const res = {
+      writeHead(code, value = {}) { status = code; headers = value; return this; },
+      end() { return this; }
+    };
+    await handler(req, res);
+    return { status, headers };
+  };
+  const malformed = await invoke("{");
+  assert.equal(malformed.status, 400);
+  assert.equal(malformed.headers["cache-control"], "no-store");
+  const invalid = await invoke(JSON.stringify({ url: "file:///etc/passwd" }));
+  assert.equal(invalid.status, 502);
+  assert.equal(invalid.headers["cache-control"], "no-store");
+});
+
+test("private handler rejects wrong route and method", async () => {
+  const handler = createEgressProxyHandler({ token: "t".repeat(40) });
+  for (const [method, url] of [["GET", "/fetch"], ["POST", "/other"]]) {
+    let status;
+    let ended = false;
+    await handler(
+      { method, url, headers: {} },
+      { writeHead(code) { status = code; return this; }, end() { ended = true; return this; } }
+    );
+    assert.equal(status, 404);
+    assert.equal(ended, true);
+  }
+});
