@@ -287,7 +287,11 @@ async function searchWithTavily(query, mode, env = {}, { fetcher = env.SEARCH_FE
 // Provider adapter contract: each adapter returns the same normalized result shape
 // ({ configured, mode, results, reason? }). Add new providers here only after
 // reviewing official API terms, regional coverage, retention, pricing, and credentials.
-const SEARCH_ADAPTERS = new Map([["tavily", {\n  label: "Tavily Search API",\n  isConfigured: (env) => Boolean(env.TAVILY_API_KEY),\n  search: searchWithTavily\n}], ["brave", {
+const SEARCH_ADAPTERS = new Map([["tavily", {
+  label: "Tavily Search API",
+  isConfigured: (env) => Boolean(env.TAVILY_API_KEY),
+  search: searchWithTavily
+}], ["brave", {
   label: "Brave Search API",
   isConfigured: (env) => Boolean(env.BRAVE_SEARCH_API_KEY),
   search: searchWithBrave
