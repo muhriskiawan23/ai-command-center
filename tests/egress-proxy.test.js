@@ -93,3 +93,20 @@ test("redirect response is returned as one hop and is not followed by the transp
 test("response byte limit is bounded by a fixed conservative default", () => {
   assert.equal(MAX_RESPONSE_BYTES, 1_000_000);
 });
+
+
+test("DNS resolver failures other than no-data fail closed", async () => {
+  const cnameFailure = {
+    resolveCname: async () => { throw Object.assign(new Error("servfail"), { code: "ESERVFAIL" }); },
+    resolve4: async () => ["8.8.8.8"],
+    resolve6: async () => []
+  };
+  await assert.rejects(resolveChain("unstable.example", cnameFailure), /dns_cname_error/);
+
+  const addressFailure = {
+    resolveCname: async () => { throw noData(); },
+    resolve4: async () => { throw Object.assign(new Error("not found"), { code: "ENOTFOUND" }); },
+    resolve6: async () => []
+  };
+  await assert.rejects(resolveChain("missing.example", addressFailure), /dns_a_error/);
+});
