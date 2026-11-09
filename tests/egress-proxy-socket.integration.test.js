@@ -14,6 +14,7 @@ const fixture = (protocol, port) => ({
   host: "fixture.example",
   family: 0,
   peerIp: "127.0.0.1",
+  port,
   timeoutMs: 3000,
   maxBytes: 128
 });
