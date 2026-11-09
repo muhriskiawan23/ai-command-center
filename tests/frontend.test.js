@@ -128,8 +128,8 @@ test("sidebar uses a compact Claude-inspired layout with GitHub moved into Integ
 });
 
 test("Word DOCX upload is locally extracted and sent as an untrusted word document context", () => {
-  assert.match(page, /\\.docx,application\\/vnd\\.openxmlformats-officedocument\\.wordprocessingml\\.document/);
+  assert.match(page, /\.docx,application\/vnd\.openxmlformats-officedocument\.wordprocessingml\.document/);
   assert.match(appJs, /parseDocxLocally/);
-  assert.match(appJs, /payload\\.wordDocument=/);
+  assert.match(appJs, /payload\.wordDocument=/);
   assert.match(appJs, /kind="word-document"/);
 });
