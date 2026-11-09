@@ -230,3 +230,33 @@ Official Cloudflare references:
 ### Batas implementasi DNS pinning di Workers
 
 Cloudflare [TCP Sockets documentation](https://developers.cloudflare.com/workers/runtime-apis/tcp-sockets/) menyatakan gunakan fetch() untuk HTTP pada port 80/443; API connect() tidak menyediakan opsi TLS server-name/SNI kustom pada SocketOptions yang terdokumentasi. Karena itu, mengganti fetch dengan TCP socket ke IP tervalidasi belum terbukti dapat mempertahankan HTTP Host, TLS SNI, dan verifikasi hostname. Jalur aman tetap memerlukan egress proxy terkontrol atau mekanisme resmi yang membuktikan IP peer dipin dan TLS hostname diverifikasi. Jangan mengklaim DNS preflight saja sebagai mitigasi.
+
+
+## 0.6. PR #160–#164 — release verification and current egress research (9 November 2026)
+
+- PR #160 merged as `22a7ecf7304c315104d777591dcbe84031f11707`; production deployment run `42620423986`, tests `42620424091`, and traffic audit `42620544328` succeeded. The link reader remains intentionally fail-closed until a safe egress transport is verified.
+- PR #161 merged as `ecbd1302ce0689b685ac82b218bc793c39dce7ef`; provider-specific transient-failure circuit breakers are active.
+- PR #162 merged as `2aa5d62c278fb50d0301bd8b24b7ef835c542627`; production D1 migration `0011_search_provider_usage.sql` was applied successfully in run `42618732287`.
+- PR #163 merged as `8ec5cd090164422fd5066d0f3ff14930456b3c00`; `SEARCH_SHARED_BUDGET_ENABLED=true` is active. Tavily remains the production search provider; Brave is intentionally not configured.
+- PR #164 merged as `4931052546665df57924cef1ae1b5998ef9c0033`. Production deployment run `42622340850` and tests run `42622340875` succeeded. The deployment verified the pinned production D1 database, found no pending migrations (so the migration-apply step was skipped), deployed the Worker/assets, and passed production health, agents, and Google Sign-In endpoint checks.
+- Production traffic audit run `42622463795` confirmed deployment `92264564-81f7-4ab9-96c7-2213c436d12a`, active Worker version `040cae1a-0f5e-48f6-b8ba-4dbfd4c69f28), exactly 100% active traffic, and release annotation `github-sha:4931052546665df57924cef1ae1b5998ef9c0033`.
+- Exact-release live smoke run `42622463910` verified `TAVILY_API_KEY` presence without exposing its value. Tavily Web returned 3 usable sources and News returned 5 usable sources. The prompt-injection URL-reader test was explicitly **NOT RUN** because production URL reading remains fail-closed; workflow success is not a pass for that security test.
+- The production deployment's names-only secret audit confirmed `TAVILY_API_KEY` present and `BRAVE_SEARCH_API_KEY` absent. No Brave request or paid Brave service was used.
+
+### Additional first-party egress candidate: Workers VPC Network + Gateway
+
+Cloudflare's current documentation (reviewed 9 Nov 2026) describes a first-party path where a Worker binds a VPC Network using `network_id: "cf1:network"` and performs HTTP requests through the binding (for example, `env.EGRESS.fetch(url)`). Public Internet traffic from this path is routed through Cloudflare Gateway; existing DNS, HTTP, Network and egress policies apply, and DNS/HTTP/Network logs are available. Workers VPC is documented as beta and free on all Workers plans at the time of review.
+
+Official references:
+- https://developers.cloudflare.com/workers-vpc/configuration/vpc-networks/
+- https://developers.cloudflare.com/workers-vpc/
+- https://developers.cloudflare.com/changelog/post/2026-06-05-gateway-egress/
+- https://developers.cloudflare.com/cloudflare-one/traffic-controls/network-policies/
+
+This candidate may avoid a third-party proxy, but it is **not yet an approved or verified DNS-pinning fix**:
+- The account must have an active Cloudflare Tunnel, Mesh node, or WAN on-ramp; availability and configuration for this account have not been established.
+- The active production Worker has no direct VPC binding. No production binding or account network policy has been changed.
+- Cloudflare documents that existing Gateway policies apply to Workers VPC traffic. The current Network policy selector documentation does not explicitly enumerate a `workers_vpc` value for the Traffic Source selector; policy scoping, precedence, and impact on existing Zero Trust traffic must be verified before any account-wide rule is changed.
+- Cloudflare warns that Gateway Forward policies can drop HTTP traffic from Workers VPC; any proof of concept must inspect existing Forward policies and exclude Workers VPC traffic where required.
+- Gateway policy enforcement and logs are promising network-level controls, but do not by themselves prove the exact peer IP used for each HTTP request, DNS answer handling for mixed A/AAAA/CNAME sets, or redirect-hop behavior. A controlled DNS-rebinding test and evidence of actual destination/peer behavior remain mandatory.
+- Keep the production URL reader fail-closed until all acceptance criteria in issue #156 are demonstrated. Do not substitute DNS preflight, direct `fetch()`, or plaintext TCP for the required transport guarantees.
