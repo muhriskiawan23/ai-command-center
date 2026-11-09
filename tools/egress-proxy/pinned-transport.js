@@ -131,7 +131,11 @@ export function requestOneHop({ url, host, family, peerIp, timeoutMs, maxBytes, 
         Accept: "text/html,application/xhtml+xml,text/plain,application/json"
       },
       ...(family ? {} : {
-        lookup: (_hostname, _options, callback) => callback(null, peerIp, net.isIP(peerIp))
+        lookup: (_hostname, options, callback) => {
+          const family = net.isIP(peerIp);
+          if (options?.all) callback(null, [{ address: peerIp, family }]);
+          else callback(null, peerIp, family);
+        }
       }),
       ...(secure && !family ? { servername: host, rejectUnauthorized: true } : {}),
       ...(secure && tlsCa ? { ca: tlsCa } : {})
