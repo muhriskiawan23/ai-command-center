@@ -42,16 +42,28 @@ Node's custom \`lookup\` hook is a way to direct the socket connection to a sele
 
 ## Prototype test matrix
 
-The prototype tests run only against local loopback fixtures; no public target or user content is contacted. Current coverage:
+The current tests use local loopback fixtures only; no public target or user content is contacted.
 
-- Unit tests for canonical URL parsing, IP range classification, CNAME chain traversal, loops, depth limits, mixed public/private records, empty answers, and DNS failures.
-- A deterministic resolver fixture for rebinding: the selected address changes between lookups; prove that the connection still uses only the vetted address for that hop and that a new redirect hop is re-resolved.
-- Local TCP test server instrumentation records the accepted socket's remote peer; assert it equals the selected vetted numeric IP.
-- Local HTTPS server with certificates for the controlled test hostname; assert correct SNI and hostname validation. Wrong-host, expired, untrusted, and missing-SNI cases must fail.
-- Redirect-to-private, redirect-to-metadata, cross-host redirect, oversized response, slow headers/body, cancellation, connection reset, malformed response, and proxy-down tests.
-- Assert that the proxy does not persist URLs, query strings, request bodies, or response bodies and that logs contain only the approved minimal metadata.
-- Assert no direct Worker \`fetch()\` fallback exists when the proxy binding is absent or errors.
+**Implemented and covered by tests:**
+- Representative IPv4/IPv6 public-address classification and rejection of common special-use/private ranges.
+- CNAME traversal and loop rejection; rejection of mixed public/private DNS answers.
+- Fail-closed handling for DNS resolver errors other than an explicit no-data response.
+- URL rejection for credentials, non-default ports, unsupported schemes, and private IP literals.
+- Selection of one numeric DNS answer, single-hop redirect return without following, and the configured response-size default.
+- Actual HTTP loopback socket peer verification and preservation of the original Host authority.
+- Actual HTTPS loopback socket peer verification, original SNI, trusted test-certificate hostname validation, and wrong-host certificate rejection.
 
+**Still outstanding:**
+- CNAME depth-limit and empty-answer test cases; live DNS rebinding race tests and re-resolution proof across separate redirect hops.
+- IPv6 socket integration and broader IPv4/IPv6 edge-case coverage.
+- Expired, untrusted, and missing-SNI TLS cases.
+- Runtime oversized-body enforcement, slow headers/body, cancellation, connection reset, malformed response, and proxy-down behavior.
+- Authenticated handler tests for authorization, request-body limits/timeouts, and response minimization.
+- Independent verification that no URL, query, request body, or response body is persisted and that logs contain only approved metadata.
+- End-to-end proof that the Worker has no direct-fetch fallback when a proxy binding is absent or errors.
+
+The loopback integration tests deliberately call the internal low-level socket seam with a loopback peer; they prove the actual socket and TLS behavior in a controlled fixture, not that a private address can pass production URL/DNS validation. The production entry point `fetchPinned` retains the public-address and URL checks.
+ 
 ## Explicit non-goals
 
 - Do not create a Cloudflare Tunnel, VPC Service, VPC Network binding, Gateway policy, proxy host, secret, or production deployment in this PR.
