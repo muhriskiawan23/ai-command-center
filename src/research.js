@@ -143,7 +143,7 @@ async function searchWithBrave(query, mode, env = {}, { fetcher = env.SEARCH_FET
     });
     if (!response.ok) {
       await cancelResponseBody(response);
-      return { configured: true, mode, results: [], reason: response.status === 429 ? "provider_rate_limited" : response.status >= 300 && response.status < 400 ? "provider_redirect_rejected" : "provider_error" };
+      return { configured: true, mode, results: [], reason: response.status === 429 ? "provider_rate_limited" : response.status >= 300 && response.status < 400 ? "provider_redirect_rejected" : "provider_error", diagnostics: { httpStatus: response.status, candidateCount: 0, usableCount: 0 } };
     }
     const contentType = response.headers.get("content-type") || "";
     if (!/^application\/json(?:\s*;|$)/i.test(contentType)) {
