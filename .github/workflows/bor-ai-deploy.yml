@@ -1,0 +1,233 @@
+name: BOR AI production deploy
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      run_chat_smoke:
+        description: "Run one low-cost live AI chat check after deployment"
+        required: true
+        type: boolean
+        default: false
+      run_tavily_smoke:
+        description: "Run one bounded live Tavily web search and one news search after deployment (uses 2 Tavily credits and 2 AI calls)"
+        required: true
+        type: boolean
+        default: false
+      apply_db_migrations:
+        description: "Apply pending production D1 migrations (only after reviewing pending changes and confirming the current Time Travel bookmark)"
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bor-ai-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Provision, migrate, and deploy BOR AI
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    steps:
+      - name: Reject dispatches outside main
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "::error::Production deployment must be dispatched from the main branch. Selected ref: $GITHUB_REF"
+            exit 1
+          fi
+
+      - name: Check out the exact triggering commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Validate required credentials
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo "::error::Missing CLOUDFLARE_API_TOKEN repository secret"; exit 1; }
+          test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo "::error::Missing CLOUDFLARE_ACCOUNT_ID repository secret"; exit 1; }
+          test -n "$GOOGLE_CLIENT_ID" || { echo "::error::Missing GOOGLE_CLIENT_ID repository secret"; exit 1; }
+
+      - name: Test and validate Worker
+        run: |
+          npm test
+          npm run check
+          npm run preview
+
+      - name: Verify the pinned production D1 database (read-only)
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          DB_ID="$(node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          const config = JSON.parse(fs.readFileSync("wrangler.jsonc", "utf8"));
+          const binding = config.d1_databases?.find(item => item.binding === "DB");
+          if (!binding?.database_id) throw new Error("Production D1 database_id must be pinned in wrangler.jsonc.");
+          if (binding.database_name !== "bor-ai-chat") throw new Error("Unexpected production D1 database name.");
+          process.stdout.write(binding.database_id);
+          NODE
+          )"
+          export DB_ID
+          RESULT="$(curl --fail --silent --show-error \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/d1/database/$DB_ID")"
+          printf '%s' "$RESULT" | node --input-type=module -e '
+            let s=""; for await (const c of process.stdin) s+=c;
+            const d=JSON.parse(s);
+            const db=d.result;
+            if(d.success!==true || db?.uuid!==process.env.DB_ID || db?.name!=="bor-ai-chat") {
+              throw new Error("Pinned D1 database verification failed; refusing production changes.");
+            }
+            console.log("Verified existing production D1 database:", db.name, db.uuid);
+          '
+
+      - name: List pending production D1 migrations
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx --yes wrangler@4 d1 migrations list bor-ai-chat --remote --config wrangler.jsonc
+
+      - name: Apply D1 migrations
+        if: ${{ inputs.apply_db_migrations }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx --yes wrangler@4 d1 migrations apply bor-ai-chat --remote --config wrangler.jsonc
+
+      - name: Explain skipped production migrations
+        if: ${{ !inputs.apply_db_migrations }}
+        run: echo "Production D1 migrations were not applied. Review the migration list and explicitly enable apply_db_migrations on a later dispatch if needed."
+
+      # GOOGLE_CLIENT_ID is managed as a persistent Worker secret outside routine releases.
+      # Do not run wrangler secret put here: it immediately deploys an intermediate Worker version.
+      # The credential presence check above remains fail-closed; production secret rotation is a
+      # separate, explicitly coordinated operation followed by a single reviewed release.
+      - name: Deploy Worker and assets
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npm run deploy -- --message "github-sha:$GITHUB_SHA"
+
+      # Read-only audit: Wrangler returns secret names/types, never secret values.
+      # Keep this non-blocking so an optional search provider cannot break core releases.
+      - name: Audit Brave Search Worker secret presence (names only)
+        id: brave_secret_audit
+        continue-on-error: true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          SECRET_LIST="$(npx --yes wrangler@4 secret list --config wrangler.jsonc --format json)"
+          PRESENT="$(printf '%s' "$SECRET_LIST" | node --input-type=module -e '
+            let s=""; for await (const c of process.stdin) s+=c;
+            const entries=JSON.parse(s);
+            if (!Array.isArray(entries)) throw new Error("Unexpected Wrangler secret-list response.");
+            process.stdout.write(String(entries.some((entry) => entry?.name === "BRAVE_SEARCH_API_KEY")));
+          ')"
+          echo "BRAVE_SEARCH_API_KEY Worker secret: $PRESENT"
+          echo "configured=$PRESENT" >> "$GITHUB_OUTPUT"
+          if [[ "$PRESENT" != "true" ]]; then
+            echo "::warning::Live Brave Search remains disabled until the founder configures the Worker secret."
+          fi
+
+      # Read-only audit: inspect secret names only; never print secret values.
+      - name: Audit Tavily Search Worker secret presence (names only)
+        id: tavily_secret_audit
+        continue-on-error: true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          SECRET_LIST="$(npx --yes wrangler@4 secret list --config wrangler.jsonc --format json)"
+          PRESENT="$(printf '%s' "$SECRET_LIST" | node --input-type=module -e '
+            let s=""; for await (const c of process.stdin) s+=c;
+            const entries=JSON.parse(s);
+            if (!Array.isArray(entries)) throw new Error("Unexpected Wrangler secret-list response.");
+            process.stdout.write(String(entries.some((entry) => entry?.name === "TAVILY_API_KEY")));
+          ')"
+          echo "TAVILY_API_KEY Worker secret: $PRESENT"
+          echo "configured=$PRESENT" >> "$GITHUB_OUTPUT"
+          if [[ "$PRESENT" != "true" ]]; then
+            echo "::warning::Live Tavily Search remains disabled until the Worker secret is configured."
+          fi
+
+      - name: Verify production endpoints
+        run: |
+          set -euo pipefail
+          BASE_URL="https://ai-command-center.muhriskiawan23.workers.dev"
+          curl --fail --silent --show-error "$BASE_URL/api/health?deep=1" | node --input-type=module -e 'let s="";for await(const c of process.stdin)s+=c;const d=JSON.parse(s);if(d.ok!==true||d.checks?.database!==true||d.checks?.aiBinding!==true)throw Error("Health check failed")'
+          curl --fail --silent --show-error "$BASE_URL/api/agents" | node --input-type=module -e 'let s="";for await(const c of process.stdin)s+=c;const d=JSON.parse(s);if(!Array.isArray(d.agents)||d.agents.length<10)throw Error("Agents check failed")'
+          CONFIG_READY=0
+          for attempt in $(seq 1 10); do
+            if curl --fail --silent --show-error "$BASE_URL/api/config" | node --input-type=module -e 'let s="";for await(const c of process.stdin)s+=c;const d=JSON.parse(s);console.log("Google sign-in status:", JSON.stringify({enabled:d.googleSignInEnabled===true,hasClientId:Boolean(d.googleClientId)}));if(d.googleSignInEnabled!==true||!d.googleClientId)process.exit(1)'; then
+              CONFIG_READY=1
+              break
+            fi
+            echo "Google sign-in configuration is not ready yet (attempt $attempt/10); retrying in 3 seconds."
+            sleep 3
+          done
+          test "$CONFIG_READY" = "1" || { echo "::error::Google sign-in is still disabled after 30 seconds. Check the Worker D1 binding and GOOGLE_CLIENT_ID secret."; exit 1; }
+          echo "Google sign-in configuration verified."
+
+      - name: Optional live chat check
+        if: ${{ inputs.run_chat_smoke }}
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --max-time 60 \
+            -H 'Content-Type: application/json' \
+            --data '{"message":"Jelaskan manajemen risiko secara singkat.","agent":"coordinator"}' \
+            'https://ai-command-center.muhriskiawan23.workers.dev/api/chat' \
+            | node --input-type=module -e 'let s="";for await(const c of process.stdin)s+=c;const d=JSON.parse(s);if(typeof d.response!=="string"||d.response.trim().length<20)throw Error("Live chat check failed")'
+
+      - name: Optional live Tavily web and news smoke tests
+        if: ${{ inputs.run_tavily_smoke }}
+        env:
+          TAVILY_SECRET_CONFIGURED: ${{ steps.tavily_secret_audit.outputs.configured }}
+        run: |
+          set -euo pipefail
+          test "$TAVILY_SECRET_CONFIGURED" = "true" || { echo "::error::TAVILY_API_KEY is not present in the Worker secret inventory; refusing live search smoke tests."; exit 1; }
+          BASE_URL="https://ai-command-center.muhriskiawan23.workers.dev"
+          run_search_smoke() {
+            local expected_type="$1"
+            local payload="$2"
+            curl --fail --silent --show-error --max-time 90 \
+              -H 'Content-Type: application/json' \
+              --data "$payload" \
+              "$BASE_URL/api/chat" \
+              | EXPECTED_SOURCE_TYPE="$expected_type" node --input-type=module -e '
+                let s=""; for await (const c of process.stdin) s+=c;
+                const d=JSON.parse(s);
+                if (typeof d.response !== "string" || d.response.trim().length < 10) throw new Error("Live search chat response missing.");
+                const links=Array.isArray(d.links) ? d.links : [];
+                const matches=links.filter(x => x?.ok === true && x?.sourceType === process.env.EXPECTED_SOURCE_TYPE);
+                if (!matches.length) {
+                  const reasons=links.filter(x => x?.ok === false).map(x => x.reason).filter(Boolean).slice(0,2);
+                  throw new Error("No usable live " + process.env.EXPECTED_SOURCE_TYPE + " search source returned. " + reasons.join("; "));
+                }
+                console.log("Live " + process.env.EXPECTED_SOURCE_TYPE + " search passed; usable sources:", matches.length);
+              '
+          }
+          run_search_smoke "search" '{"message":"Cari informasi terbaru tentang perkembangan teknologi kecerdasan buatan di Indonesia.","agent":"coordinator","language":"id"}'
+          run_search_smoke "news" '{"message":"Berita terbaru hari ini tentang ekonomi Indonesia.","agent":"coordinator","language":"id"}'

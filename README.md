@@ -1,0 +1,192 @@
+# BOR AI
+
+Public AI workspace with Google sign-in, temporary guest sessions, private per-account chat history on Cloudflare D1, Workers AI inference, and a multi-agent coordinator.
+
+## Features
+
+- Coordinator routes straightforward requests through one model call and complex requests through a multi-agent workflow.
+- Multi-agent sequence: Researcher → Analyst → Fact Checker → Writer.
+- Specialist modes: Researcher, Analyst, Writer, Fact Checker, Strategist, Coder, Planner, Critic, and Summarizer.
+- Explicit response quality gates for exact numbered-item requests and zero-budget promotion recommendations.
+- Request validation, a 64 KB streaming request-body cap, sanitized model errors, and API method checks.
+- Cloudflare chat rate limiting: 20 accepted chat requests per 60 seconds per client IP and Cloudflare location. Signed-in users are additionally limited per account, so quota cannot be multiplied by changing IP.
+- Public Guest Mode: conversations exist only in page memory and disappear when the visitor leaves or reloads. Only a "guest chosen" flag is kept in `sessionStorage` (per tab) so a refresh does not return to the Welcome screen; no chat content is ever stored.
+- Google sign-up/sign-in with server-verified ID tokens and secure, HttpOnly sessions.
+- Signed-in users get private D1-backed conversation history with cursor-based pagination, individual chat deletion, delete-all history, persistent conversation pinning, archive/restore, and plain-text export of the currently open conversation with a privacy warning, plus local browser print/PDF export for individual messages or the full conversation. Long exports disclose when the 500-message read limit applies.
+- Conversation read, pin, archive, rename, and delete endpoints enforce account ownership on the server. History listing uses stable descending keyset pagination (pinned, updated time, ID), with every page scoped to the authenticated account. Signed-in chat retries reuse an account-scoped idempotency key so a lost HTTP response does not duplicate a successfully saved turn. Conversation export is generated in the browser from the currently loaded conversation; it does not create a public share link or send chat content to another service.
+- A private daily usage summary for the current signed-in account or guest IP hash, showing used/remaining quota units and the 07:00 WIB reset time. It does not expose global usage or estimate monetary billing.
+- Signed-in chat submissions carry a client request ID. If the browser loses the response after the Worker has saved the turn, retrying the same request replays the saved answer instead of generating or storing a duplicate. This requires migration `0006_chat_request_idempotency.sql`; guest chats remain memory-only and are not persisted for deduplication.
+- Security headers on API and HTML responses, including a restrictive Content Security Policy compatible with the dashboard's inline assets.
+
+- The browser composer extracts PDF text locally with PDF.js and falls back to local Tesseract.js OCR for scanned/image-only PDFs (English and Indonesian, up to 10 pages); this UI path sends extracted text, not the raw PDF, with `/api/chat`. A separate same-origin `/api/documents/pdf` endpoint is available for callers that explicitly choose server-side PDF conversion; it sends the raw PDF to Cloudflare Workers AI `toMarkdown` and is not used by the current browser composer. CSV and Excel (.xlsx) files up to 5 MB are parsed locally in the browser, with bounded row previews and deterministic numeric summaries. Word DOCX is extracted locally in the browser (up to 5 MB and a bounded 30 MB expanded ZIP archive); only extracted paragraph text is sent with the chat request. Images, headers, footers, comments, and embedded objects are not extracted.
+
+PowerPoint (.pptx) files up to 5 MB are parsed locally for slide text (maximum 80 slides); visual elements, charts, and speaker notes are not extracted. Excel supports up to 10 sheets and 10,000 total data rows per workbook; formulas are shown as literal text and never executed. For browser-local file readers, only extracted/derived text is included in a chat request; raw files are not uploaded by that UI flow. CSV/Excel cell contents are treated as untrusted data and formulas are never executed.
+- Assistant responses include a local Checklist conversion action that preserves surrounding Markdown and code blocks, then offers copy and `.md` download without an AI call.
+- An Email Draft Generator collects recipient, subject, purpose, key points, tone, and language, then prepares a structured prompt for Writer mode. It does not send email or connect to an email account; users review and send the result manually.
+- Answers and complete conversations can be printed or saved as PDF through the browser print dialog. The print view is generated locally from already-loaded chat content; no PDF service, external API, or additional server upload is used. Choose “Save as PDF” in the browser or system print destination.
+- An on-demand, accessible About BOR AI dialog describing the product, current capabilities, privacy controls, and official repository.
+- Phase 2 research foundation: optional Brave web/news search (server-side secret required), first-party curated BOR AI knowledge retrieval, source provenance and citation validation, stale-result exclusion, and explicit disabled-state messaging. See `docs/PHASE-2-SEARCH-NEWS-CURATED-KNOWLEDGE.md`; live search is not active until `BRAVE_SEARCH_API_KEY` is configured.
+- An embeddable BOR AI chat widget and public single-turn chat API with per-site API keys, exact origin allow-lists, per-key daily quotas, and immediate key revocation. API keys are hashed at rest and shown only once at creation. Requires additive migration `0009_public_api_keys.sql`; see `docs/PUBLIC-API.md`.
+- Optional Telegram bot webhook for private text chats, with direct `/start`, `/help`, `/about`, `/status`, and `/agents` commands. It reuses Workers AI, existing rate/daily limits, requires `TELEGRAM_BOT_TOKEN` and `TELEGRAM_WEBHOOK_SECRET` Worker secrets, and does not persist Telegram chat history. See `docs/TELEGRAM-BOT.md`.
+
+## Architecture
+
+- `src/index.js`: Cloudflare Worker API and orchestration.
+- `public/index.html`: frontend dashboard.
+- `wrangler.jsonc`: Worker, Workers AI, static assets, and rate-limit bindings.
+- `tests/`: Worker API, orchestration, and frontend regression tests.
+
+### API
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET | `/api/health` | Service health |
+| GET | `/api/agents` | Available agent IDs and names |
+| GET | `/api/usage` | Current visitor's daily quota usage and remaining units (private; no global totals) |
+| POST | `/api/chat` | Run a Coordinator or selected specialist; saves only for signed-in users |
+| POST | `/api/documents/pdf` | Convert one uploaded PDF into temporary Markdown context for chat (8 MB maximum) |
+| POST | `/api/feedback` | Save or update helpful/not-helpful feedback for an assistant answer owned by the signed-in user |
+| GET/POST | `/api/developer/keys` | List or create API keys for the signed-in account (secret shown only once) |
+| DELETE | `/api/developer/keys/:id` | Revoke an owned public API key |
+| POST | `/api/public/chat` | Public single-turn chat for allow-listed origins using a bearer API key |
+| POST | `/api/integrations/telegram/webhook` | Optional authenticated Telegram webhook (private text chats only) |
+| GET | `/api/config` | Public Google sign-in configuration |
+| GET | `/api/auth/nonce` | One-time sign-in nonce |
+| POST | `/api/auth/google` | Verify Google ID token and create a session |
+| GET | `/api/auth/me` | Current signed-in account |
+| POST | `/api/auth/logout` | End the current session |
+| GET | `/api/conversations` | List the current user's active conversations (or `?archived=1` for archived chats), 100 at a time with a keyset cursor |
+| GET | `/api/conversations/:id` | Read a conversation owned by the current user |
+| DELETE | `/api/conversations/:id` | Delete one owned conversation |
+| DELETE | `/api/conversations` | Delete all conversations owned by the current user |
+
+Chat requests must use `Content-Type: application/json` and contain a non-empty `message`. The optional `agent` field must match one of the IDs returned by `/api/agents`.
+
+## Local development
+
+Requires Node.js 22+ and a Cloudflare account authenticated with Wrangler.
+
+```bash
+npm test
+npm run check
+npm start
+```
+
+The local Worker uses the remote Workers AI binding; AI inference can consume account quota or incur usage charges even while developing locally. Wrangler creates a local D1 database for development. Apply migrations locally with `npx wrangler d1 migrations apply bor-ai-chat --local --config wrangler.jsonc`.
+
+## Preview build
+
+```bash
+npm run preview
+```
+
+The GitHub Actions preview workflow runs this dry-run build on pushes to the hardening branch and pull requests targeting `main`.
+
+## Deployment
+
+Production deployment runs automatically on pushes to `main` through the **BOR AI production deploy** workflow. Manual `workflow_dispatch` is also available; production D1 migrations remain opt-in and are skipped by default.
+
+Before running the workflow, add these **repository Actions secrets**:
+
+- `CLOUDFLARE_API_TOKEN`: token with D1 Write and Workers Scripts Write permissions for the target account.
+- `CLOUDFLARE_ACCOUNT_ID`: Cloudflare account ID.
+- `GOOGLE_CLIENT_ID`: Google OAuth 2.0 Client ID for a Web application. In Google Cloud Console, add `https://ai-command-center.muhriskiawan23.workers.dev` (or the chosen production custom domain) to **Authorized JavaScript origins**.
+
+For a manual run, open **Actions → BOR AI production deploy → Run workflow** on `main`. The workflow verifies the pinned production D1 database, lists pending migrations, deploys Worker/assets, configures Google sign-in, and verifies public endpoints. Applying production D1 migrations requires explicitly enabling the `apply_db_migrations` input; it is off by default. The optional live chat check is off by default because it consumes Workers AI usage.
+
+After a successful workflow, complete a real-browser sign-in, persistence, deletion, and account-isolation check. Also verify Workers AI usage limits/billing and that the `CHAT_LIMITER` binding is active. A health check does not prove live AI inference works.
+Do not treat a Wrangler dry run or health check as proof that live AI inference works. A live chat invocation is a separate release check.
+
+## Security and operational notes
+
+- Chat generation is public and Guest Mode requires no account. Apply usage monitoring, abuse detection, and an appropriate spend ceiling before promoting the endpoint widely.
+- Google ID tokens are signature-verified against Google's published signing keys; the backend also checks issuer, audience, expiry, verified email, and a one-use nonce cookie. Sessions use random opaque tokens stored as SHA-256 hashes in D1 and are issued in Secure, HttpOnly, SameSite=Lax cookies.
+- Conversation queries and deletion are always scoped to the authenticated Google subject. The database uses cascading foreign keys for account-owned records.
+- Guest conversations are never written to D1 or localStorage. They live only in page memory and disappear on refresh, tab close, or leaving the page.
+- The configured rate limiter is a best-effort guardrail, not a strict global quota. Cloudflare applies these counters approximately per Cloudflare location. The current key is the connecting IP, so people sharing a public/mobile network may share a limit.
+- Never put API keys, credentials, or other secrets into prompts or browser storage. Do not put sensitive or regulated data into a public AI service.
+
+## Current release boundary
+
+The repository is prepared for a controlled deployment after the checks above. No production deployment or pull-request merge is performed automatically by CI.
+
+## Conversation memory and failure behavior
+
+- **What the model sees.** Each request sends the most recent turns of the same conversation: at most 12 messages, 8,000 characters in total, 2,000 per message, always starting with a user turn. Older turns are dropped, not summarized.
+- **Signed-in users:** the server loads the history from D1 (after verifying ownership). Any `history` sent by the client is ignored.
+- **Guests:** the client sends its in-memory history. The server validates the shape (`role` is `user`/`assistant`, `content` is a string, at most 40 items) and applies the same bounds. It is treated as untrusted user text.
+- **Multi-agent flow:** history is given to the Researcher and to every Writer pass; the other agents work from the Researcher's output.
+- **Failed turns are never stored.** A user message and its answer are written to D1 together, only after the AI succeeds. If generation fails, nothing is saved. The UI shows the error with a "Coba lagi" button; the failed turn is excluded from later context and is gone after a reload.
+- **Retry** resends the same text and does not create duplicates.
+
+
+## Chat input behavior
+
+- **Enter inserts a new line** on every device (including Shift+Enter). Nothing else sends a message: Ctrl/Cmd+Enter does not either.
+- **The arrow button is the only way to send.** A message is sent once; double taps are ignored while a request is in flight.
+- The textarea grows with its content up to `min(220px, 40dvh)`, then scrolls internally.
+
+## Limits and timeouts
+
+- Opening a conversation returns at most the newest 500 messages (`truncated: true` when older ones exist). The model still only sees the last 12 turns.
+- The browser aborts a chat request after 150 seconds and shows a retry button. If the server finished after the browser gave up, the exchange may already be stored, so retrying can create a duplicate (no idempotency key yet).
+- Every agent receives a fixed "platform capabilities" notice (`CAPABILITY_NOTICE` in `src/index.js`): BOR AI can read user-supplied links under restrictions and bounded PDF content (the current composer extracts locally; a separate server conversion endpoint sends raw PDF bytes to Workers AI), but cannot browse/search autonomously, read arbitrary files or images, run code, or use other apps. Update that notice whenever a real capability is added.
+
+See `docs/AUDIT-BOR-AI.md` for the full technical audit, severity ratings and what could not be tested.
+
+## Daily usage limits (cost protection)
+
+The workspace sidebar includes a **Penggunaan** panel backed by `GET /api/usage`. It reports only the current account's units or the current guest IP's daily hashed counter, the configured limit, remaining units, and the next reset (07:00 WIB). It intentionally does not expose the application-wide counter or claim a monetary cost estimate; provider billing is not available from this counter.
+
+- Units per UTC day (resets 07:00 WIB): **guest 15** (per IP, stored only as a daily-rotating hash), **signed-in account 150**, **whole application 1,500**. A normal message costs 1 unit; a multi-agent request (several model calls) costs 3. A failed AI request gives its units back.
+- Defaults can be changed without code via the Worker variables `DAILY_LIMIT_GUEST`, `DAILY_LIMIT_USER`, `DAILY_LIMIT_GLOBAL`. Optionally set the secret `USAGE_SALT` so guest IP hashes cannot be brute-forced offline.
+- Counters live in the `daily_usage` table (migration `0002`, additive). **Run `bor-ai-deploy` so the migration is applied.** If the table is missing, chat keeps working but limits are disabled and the Worker logs `daily limits are DISABLED`.
+- Other database errors fail closed (503, AI is not called).
+- Not covered: bot protection (e.g. Cloudflare Turnstile). A distributed attacker can still exhaust the global daily budget, but not exceed it.
+
+## Link reader
+
+- Links typed in a message (`https://...` or `www....`, at most 3) are fetched by the Worker, converted to plain text (up to 16,000 characters per page) and given to the model inside `<web_page>` blocks as **untrusted data**. The reply includes a `links` list and the UI shows which links were read or why they failed.
+- Guards (see `src/links.js`): http/https on ports 80/443 only, no credentials in the URL, no private/loopback/link-local/reserved IPs (IPv4 and IPv6, including obfuscated forms), no internal host names, never this Worker's own host; redirects are re-validated on every hop (max 3); 8 s timeout and 1 MB download cap per page.
+- A message with links costs 1 extra daily unit. Page text is never stored in D1.
+- Not supported by the link reader: images, pages that need JavaScript or a login (reported as failed, never guessed). PDF URLs are still not fetched by the link reader; use the PDF attachment control instead.
+- `LINK_FETCHER` is a test hook (an alternative `fetch`); leave it unset in production.
+
+## PDF reader
+
+- **Browser composer path:** users can attach one PDF up to 8 MB. PDF.js extracts text locally in the browser; scanned/image-only PDFs fall back to local Tesseract.js OCR (English and Indonesian, maximum 10 pages). The raw PDF stays in the browser in this path; only bounded extracted text is included in `/api/chat` when the user submits a question. The current composer does not call `/api/documents/pdf`.
+- **Separate server conversion endpoint:** `POST /api/documents/pdf` accepts same-origin multipart uploads, validates the `.pdf` extension and `%PDF-` signature, and enforces an 8 MB limit. It sends the raw PDF bytes to Cloudflare Workers AI through `env.AI.toMarkdown`, with PDF metadata excluded from conversion output. This endpoint is distinct from the browser-local composer path; clients that call it transmit the raw PDF to Cloudflare for conversion.
+- The server endpoint returns temporary Markdown context capped at 32,000 characters; the browser-local reader caps extracted text at 30,000 characters. Page headings such as `### Page 1` can support `[PDF p. N]` citations; page citations that do not match extracted page markers are removed. Truncation and missing page markers are disclosed.
+- PDF content from either path is marked as untrusted data and is never treated as instructions. The original PDF and extracted text are not saved to D1. In the browser path, extracted text remains in browser memory for the active chat only; after reload or switching conversations, the user must attach the PDF again to ask follow-up questions.
+- Scanned/image-only PDFs, password-protected documents, complex layouts, and extraction quality are not guaranteed. Local OCR or the server converter may fail or omit content; users should verify important figures and quotations against the original file.
+- Calling `/api/documents/pdf` consumes one daily usage unit and is subject to the existing request rate limiter. The raw PDF is transmitted to Cloudflare Workers AI for conversion; do not use this endpoint for sensitive documents unless comfortable with that processing. The current browser composer instead performs local extraction and sends derived text with its normal chat request.
+
+## Model call time limits
+
+- Every model call is bounded: 45 s per call (`AI_CALL_TIMEOUT_MS`) and 100 s for a whole multi-agent chain (`AI_TOTAL_BUDGET_MS`); a single answer may retry once. The browser gives up after 150 s, so the server always answers first.
+- While a response is generating, the send control becomes a Stop button. Stopping aborts the browser request; the Worker enables `enable_request_signal` and propagates the signal to Workers AI where supported. Cancelled turns are not saved and daily usage is refunded. A provider that does not honor cancellation may continue processing/billing its in-flight call.
+
+## Modes and communication rules
+
+- Twelve modes (select in the composer): Coordinator (multi-agent) plus Researcher, Analyst, Writer, Fact Checker, Strategist, Coder, Planner, Critic, Summarizer, **Translator** and **Text Analyst**.
+- Translator may return very short answers; every other specialist must still pass the substance gate (20+ words, 2+ lines).
+- All agents receive `COMMUNICATION_NOTICE`: reply in the user's language, use the conversation context (ask one question if context is missing), notice emotional cues without diagnosing or storing anything, and respond to self-harm/violence signals with a caring message that points to emergency services (Indonesia: 112) or a trusted person. These are prompt rules, not a classifier; real-model behavior has not been evaluated.
+- See `docs/FEATURE-TRIAGE.md` for the status of the founder's feature wish-list.
+
+## Memory (opt-in)
+
+- **Off by default**, signed-in accounts only. Nothing is inferred: only text the user explicitly asks to remember is stored, either in the Memori panel or by writing in chat `ingat bahwa ...` / `remember that ...` (single short message; a confirmation line is appended to the answer).
+- Limits: 30 items, 200 characters each; at most ~1,500 characters reach the model, inside the system prompt as data (never instructions; `<` and `>` neutralised). Memory is used only while the switch is on; turning it off keeps the items, "delete all" removes them. Deleting an account row cascades.
+- A conservative, heuristic filter rejects credentials, identity/payment numbers, contact details, health, religion, politics, sexual orientation/activity, ethnicity, personal finances, criminal records and being under 18. It can over-reject and can miss things; the UI warns users not to store sensitive data.
+- API: `GET/DELETE /api/memory`, `POST /api/memory`, `PUT /api/memory/settings`, `DELETE /api/memory/:id` (session required, same-origin for changes).
+- Tables come from migration `0003`. If it has not been applied, chat keeps working, the memory API answers `503 memory_unavailable`, and nothing is stored. **Run `bor-ai-deploy` to apply migrations.**
+- Persistent conversation pinning uses the additive `0004_conversation_pinning.sql` migration.
+- Archive/restore uses the additive `0005_conversation_archive.sql` migration. The production workflow applies pending migrations only when the founder explicitly runs the deploy workflow; CI uses an isolated test database.
+- Answer feedback uses the additive `0007_answer_feedback.sql` migration. Signed-in users can rate a saved assistant answer as helpful/not helpful and optionally add a reason (maximum 500 characters). Feedback is attached to the exact assistant message, can be updated, and is protected by account/conversation ownership checks. Guest feedback is not persisted. The production workflow applies this migration only when the founder explicitly runs the deploy workflow; CI uses an isolated test database.
+- Integrations with other platforms: see `docs/INTEGRATIONS-PLAN.md` (proposal).
+
+
+## GitHub integration
+
+- Per-user GitHub App OAuth connection uses the existing Google-authenticated BOR AI session. Access and refresh tokens are encrypted before storage in D1. The additive migrations `0009_public_api_keys.sql` and `0010_github_connections.sql` are applied in production. Configure the GitHub App and Worker runtime secrets using [`docs/GITHUB-APP-SETUP.md`](docs/GITHUB-APP-SETUP.md). Do not store these credentials in the repository or browser code.
+- API: `GET /api/github/connect`, `GET /api/github/callback`, `GET /api/github/connection`, `POST /api/github/disconnect`, `GET /api/github/installations`, and `GET /api/github/repositories?installation_id=...`. Repository access is restricted to repositories available through the connected user's GitHub App installations.

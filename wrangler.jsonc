@@ -1,0 +1,43 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "ai-command-center",
+  "main": "src/index.js",
+  "compatibility_date": "2026-10-28",
+  "compatibility_flags": [
+    "enable_request_signal"
+  ],
+  "ai": {
+    "binding": "AI",
+    "remote": true
+  },
+  "previews": {
+    "ai": {
+      "binding": "AI"
+    }
+  },
+  "ratelimits": [
+    {
+      "name": "CHAT_LIMITER",
+      "namespace_id": "947231001",
+      "simple": {
+        "limit": 20,
+        "period": 60
+      }
+    }
+  ],
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "bor-ai-chat",
+      "database_id": "d71231a9-9a04-471c-b904-d1bc843940aa",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "vars": {
+    "SEARCH_SHARED_BUDGET_ENABLED": "true"
+  }
+}
