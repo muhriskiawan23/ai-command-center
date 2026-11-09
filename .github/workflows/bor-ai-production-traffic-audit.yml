@@ -5,6 +5,7 @@ on:
     workflows: ["BOR AI production deploy"]
     types: [completed]
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -16,7 +17,7 @@ concurrency:
 jobs:
   audit:
     name: Verify active production traffic allocation
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     environment: production
