@@ -121,3 +121,23 @@ test("provider errors and timeouts fail closed with no invented result", async (
   });
   assert.equal(timeout.reason, "provider_timeout");
 });
+
+
+test("curated capability index reflects bounded DOCX support and its current update date", () => {
+  const result = retrieveCuratedKnowledge("BOR AI DOCX Word support", 1);
+  assert.ok(result.context.includes("Word DOCX paragraphs"));
+  assert.ok(result.context.includes('updated_at="2026-11-09"'));
+});
+
+test("provider error responses are cancelled without buffering their bodies", async () => {
+  let cancelled = false;
+  const body = new ReadableStream({
+    start(controller) { controller.enqueue(new TextEncoder().encode("provider error")); },
+    cancel() { cancelled = true; }
+  });
+  const result = await searchExternal("news", "news", { BRAVE_SEARCH_API_KEY: "secret" }, {
+    fetcher: async () => new Response(body, { status: 429, headers: { "content-type": "application/json" } })
+  });
+  assert.equal(result.reason, "provider_rate_limited");
+  assert.equal(cancelled, true);
+});
