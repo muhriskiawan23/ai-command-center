@@ -243,7 +243,7 @@ export async function fetchPinned(rawUrl, {
  * Request: POST /fetch with {"url":"https://public.example/path"}.
  * Response body is base64 so a Worker adapter can reconstruct the upstream bytes.
  */
-export function createEgressProxyHandler({ token, resolver = dns, timeoutMs = 8000 } = {}) {
+export function createEgressProxyHandler({ token, resolver = dns, timeoutMs = 8000, request = requestOneHop } = {}) {
   if (typeof token !== "string" || token.length < 32) throw new Error("proxy_token_must_be_at_least_32_chars");
   return async function handler(req, res) {
     if (req.method !== "POST" || req.url !== "/fetch") {
@@ -309,11 +309,12 @@ export function createEgressProxyHandler({ token, resolver = dns, timeoutMs = 80
       res.on?.("close", onResponseClose);
       let result;
       try {
-        result = await fetchPinned(input.url, { resolver, timeoutMs, signal: controller.signal });
+        result = await fetchPinned(input.url, { resolver, timeoutMs, request, signal: controller.signal });
       } finally {
         res.off?.("close", onResponseClose);
         res.removeListener?.("close", onResponseClose);
       }
+      if (res.destroyed || res.writableEnded) return;
       const payload = JSON.stringify({
         status: result.status,
         headers: result.headers,
@@ -324,8 +325,10 @@ export function createEgressProxyHandler({ token, resolver = dns, timeoutMs = 80
       res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" }).end(payload);
     } catch (error) {
       const reason = String(error?.message || "egress_failed").slice(0, 80);
-      res.writeHead(502, { "content-type": "application/json", "cache-control": "no-store" })
-        .end(JSON.stringify({ error: reason }));
+      if (!res.destroyed && !res.writableEnded) {
+        res.writeHead(502, { "content-type": "application/json", "cache-control": "no-store" })
+          .end(JSON.stringify({ error: reason }));
+      }
     }
   };
 }
