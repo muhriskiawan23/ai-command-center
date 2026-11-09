@@ -170,3 +170,12 @@ test("provider-neutral search adapter defaults to Brave and returns the normaliz
   assert.equal(result.results[0].ok, true);
   assert.match(buildResearchContext(result).context, /Brave Search API/);
 });
+
+
+test("unsupported provider reports an accurate fail-closed status without implying the Brave key is missing", async () => {
+  const result = await searchExternal("latest news", "news", { SEARCH_PROVIDER: "other" });
+  const context = buildResearchContext(result, 9);
+  assert.match(context.context, /provider_unsupported/);
+  assert.match(context.sources[0].reason, /belum didukung/);
+  assert.doesNotMatch(context.sources[0].reason, /BRAVE_SEARCH_API_KEY/);
+});
