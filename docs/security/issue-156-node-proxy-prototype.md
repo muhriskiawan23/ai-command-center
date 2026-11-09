@@ -51,14 +51,14 @@ The current tests use local loopback fixtures only; no public target or user con
 - URL rejection for credentials, non-default ports, unsupported schemes, and private IP literals.
 - Selection of one numeric DNS answer, single-hop redirect return without following, and the configured response-size default.
 - Actual HTTP loopback socket peer verification and preservation of the original Host authority.
-- Actual HTTPS loopback socket peer verification, original SNI, trusted test-certificate hostname validation, and wrong-host certificate rejection.
+- Actual HTTPS loopback socket peer verification, original SNI, trusted test-certificate hostname validation, wrong-host certificate rejection, and rejection of an untrusted self-signed certificate.
 - HTTP 101 protocol upgrades are rejected immediately and the upgraded socket is closed; CONNECT tunnel events are also rejected defensively.
 - IPv6 loopback socket peer verification when supported by the runner; runtime response byte-cap enforcement; total-request timeout abort.
 
 **Still outstanding:**
 - Live DNS rebinding race tests against an external authoritative DNS service and production-like resolver behavior; current deterministic test proves a private answer on the next hop is rejected after a public first hop.
 - Broader IPv4/IPv6 edge-case coverage, including IPv6 socket integration where loopback IPv6 is available in CI.
-- Expired and missing-SNI TLS negative cases. An untrusted self-signed certificate is rejected by the default TLS verification path; a dedicated regression test for that path remains to be added.
+- Expired-certificate and missing-SNI TLS negative cases.
 - Slow headers/body, connection reset, malformed response, and proxy-down behavior; caller cancellation is covered at the real socket primitive, handler wiring, and DNS-resolution levels, while runtime response-size and total-timeout aborts have local socket tests. The DNS deadline stops waiting and prevents transport from starting; the underlying Node resolver operation itself is not cancellable through the promises API.
 - Authenticated handler tests for authorization, request-body limits/timeouts, response minimization, and client-disconnect cancellation without writing to a closed response.
 - Independent verification that no URL, query, request body, or response body is persisted and that logs contain only approved metadata.
@@ -77,3 +77,11 @@ The loopback integration tests deliberately call the internal low-level socket s
 ## Current gate
 
 This document and prototype are engineering artifacts only. The local socket/TLS integration proof is partial and is not production evidence. Production remains fail-closed until the remaining transport tests, independent security review, privacy/provider review, Cloudflare account prerequisites, and a separately approved controlled production smoke all pass.
+
+
+## Address-registry reference
+
+The conservative IPv4/IPv6 denylist was checked against the IANA Special-Purpose Address Registries. This implementation deliberately rejects special-purpose blocks even when individual IANA entries are marked globally reachable; this favors SSRF resistance over reachability to those exceptional destinations.
+
+- IPv4: https://www.iana.org/assignments/iana-ipv4-special-registry
+- IPv6: https://www.iana.org/assignments/iana-ipv6-special-registry
