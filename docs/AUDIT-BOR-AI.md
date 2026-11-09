@@ -196,9 +196,21 @@ Pemeriksaan kode terbaru menemukan komentar lama yang menyatakan Workers tidak d
 - Cloudflare Workers exposes node:dns for compatibility dates 2026-08-04 and later. BOR AI's compatibility_date is 2026-10-28, so Node.js compatibility (including node:dns) is enabled by default even though wrangler.jsonc does not list an explicit nodejs_compat flag. DNS resolution uses DNS over HTTPS through 1.1.1.1 and each lookup counts as a Worker subrequest; lookup, lookupService, and resolve are not implemented. A separate resolve4/resolve6 preflight still does not pin the later fetch's origin resolution.
 - Cloudflare's fetch resolveOverride only takes effect when both the URL hostname and override hostname are within the same Cloudflare zone. It therefore cannot directly pin arbitrary user-submitted public hostnames to a resolved IP.
 - A robust fix needs a controlled egress layer/proxy that performs resolution, rejects private/reserved answers, and pins the chosen address for the actual connection, or another network-level enforcement design. A lookup-only check would leave a DNS time-of-check/time-of-use gap.
-- Active Worker version VPC bindings and account-wide egress controls are not yet audited. PR #154 adds a read-only version-binding check; its result must be recorded separately after that workflow is deployed and run.
+- PR #154 traffic audit run 42596251536 inspected the exact active Worker version and found no direct vpc_network or vpc_service binding. Account-wide egress controls, indirect service paths, and DNS-rebinding protection remain unverified.
 
 Official Cloudflare references:
 - https://developers.cloudflare.com/workers/runtime-apis/nodejs/dns/
 - https://developers.cloudflare.com/workers/runtime-apis/request/
 - https://developers.cloudflare.com/workers-vpc/
+
+
+## 0.4. Hasil audit release SHA dan binding VPC aktif — 9 November 2026
+
+- PR #154 merge commit: 8a2f4ac2e3443f919066d030cc9eeb7398911d50.
+- Production deploy run 42596155154 succeeded. Post-merge tests run 42596155264 succeeded.
+- Cloudflare traffic audit run 42596251536 confirmed deployment faaf651a-49e6-46b2-bbec-d1ab808e3ca6 and active Worker version a5eb2104-62eb-4d4c-a300-a5fe5b5257c9 at exactly 100% of production traffic.
+- The active deployment annotation matched the triggering release SHA: github-sha:8a2f4ac2e3443f919066d030cc9eeb7398911d50.
+- The exact active Worker version had no direct vpc_network or vpc_service binding. The API response was processed in memory; binding values and network identifiers were not logged.
+- Scope limitation: absence of direct VPC bindings does not prove that account-level egress policy, indirect service bindings, or all private-network routes are absent. The account-level egress policy still requires separate verification.
+- DNS rebinding remains open: node:dns is available under the current compatibility date, but a resolve4/resolve6 preflight is not a connection pin. Cloudflare's resolveOverride is limited to hostnames in the same zone; the current URL-reader fetch path has not been proven to pin arbitrary external DNS answers.
+
