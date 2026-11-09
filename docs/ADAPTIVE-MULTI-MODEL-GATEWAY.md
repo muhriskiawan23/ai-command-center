@@ -1,8 +1,8 @@
 # BOR AI Adaptive Multi-Model Gateway
 
 **Decision:** Adaptive Multi-Model is the default routing strategy.  
-**Status:** Architecture specification plus implemented runtime gateway (PR #94, deployed). Phase A/B and one-provider adaptive routing are active; no external provider adapter is enabled. PR #147–#153 search/security/release-integrity work does not add or activate another model provider.  
-**Compatibility baseline:** production `main` at `8a2f4ac2e3443f919066d030cc9eeb7398911d50` (PR #154 merged; the single-provider adaptive gateway remains active).
+**Status:** Architecture specification plus implemented runtime gateway (PR #94, deployed). Phase A/B and one-provider adaptive routing are active; no external provider adapter is enabled. PR #147–#157 search/security/release-integrity work does not add or activate another model provider.  
+**Compatibility baseline:** production `main` at `61ec5a40214e16484cb795ed6f56cc9843668be6` (PR #157 merged; the single-provider adaptive gateway remains active).
 
 ## 1. Repository audit and current baseline
 
@@ -162,7 +162,7 @@ Do not expose secrets, raw provider errors, private prompts or internal routing 
 
 Fallback is allowed only when the next candidate satisfies the same hard requirements and data policy.
 
-- Retry transient network failures, provider 429 responses and eligible 5xx/timeouts within the shared request deadline and retry budget.
+- Retry only transient network failures and explicitly eligible HTTP statuses (408, 500, 502, 503, 504) within the shared request deadline and retry budget. Do not retry provider rate limits (429/432/433), auth/permission failures, aborts or programming errors.
 - Do not retry invalid requests, authentication/permission failures, policy denials, unsupported capability errors or malformed user input with another provider.
 - Do not fall back to a model that lacks required vision/audio/tool/structured-output capability.
 - Never cross a data-handling or consent boundary during fallback.
