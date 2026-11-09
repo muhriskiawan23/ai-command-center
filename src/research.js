@@ -130,7 +130,7 @@ export async function searchExternal(query, mode, env = {}, { fetcher = env.SEAR
       return { configured: true, mode, results: [], reason: response.status === 429 ? "provider_rate_limited" : "provider_error" };
     }
     const contentType = response.headers.get("content-type") || "";
-    if (!/^application\\/json(?:\\s*;|$)/i.test(contentType)) {
+    if (!/^application\/json(?:\s*;|$)/i.test(contentType)) {
       await cancelResponseBody(response);
       return { configured: true, mode, results: [], reason: "provider_invalid_response" };
     }
