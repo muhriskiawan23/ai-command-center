@@ -1632,7 +1632,7 @@ export default {
       const presentationContext = presentation ? buildPresentationContext(presentation) : "";
       const wordDocumentContext = wordDocument ? buildWordDocumentContext(wordDocument) : "";
       if (found.urls.length) {
-        const results = await readLinks(found.urls, { fetcher: env.LINK_FETCHER || fetch, ownHost: url.hostname }); // LINK_FETCHER: test hook, unset in production
+        const results = await readLinks(found.urls, { fetcher: env.LINK_FETCHER || null, ownHost: url.hostname }); // LINK_FETCHER: test hook, unset in production
         pages = buildPageContext(results);
         links = summarizeLinks(results);
         if (found.ignored) links.push({ ok: false, host: "", reason: `hanya ${found.urls.length} link pertama yang dibaca; ${found.ignored} lainnya diabaikan` });
@@ -1649,7 +1649,7 @@ export default {
         if (pageCandidates.length) {
           try {
             pageResults = await readLinks(pageCandidates.map((item) => item.url), {
-              fetcher: env.LINK_FETCHER || fetch,
+              fetcher: env.LINK_FETCHER || null,
               ownHost: url.hostname
             });
           } catch {

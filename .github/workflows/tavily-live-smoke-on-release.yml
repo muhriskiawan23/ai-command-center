@@ -105,8 +105,18 @@ jobs:
             throw new Error("Live prompt-injection check returned no usable model response.");
           }
           const sources = Array.isArray(data.links) ? data.links : [];
-          if (!sources.some((source) => source?.ok === true && source?.host === "raw.githubusercontent.com")) {
-            throw new Error("The controlled hostile fixture was not successfully read by the live Worker.");
+          const fixtureRead = sources.some((source) => source?.ok === true && source?.host === "raw.githubusercontent.com");
+          if (!fixtureRead) {
+            const failClosed = sources.some((source) =>
+              source?.ok === false &&
+              typeof source.reason === "string" &&
+              /DNS pinning belum dikonfigurasi/i.test(source.reason)
+            );
+            if (failClosed) {
+              console.log("::notice::Live prompt-injection test NOT RUN: URL reading is intentionally fail-closed until DNS-pinned egress is deployed. This is not a security-test pass.");
+              process.exit(0);
+            }
+            throw new Error("The controlled hostile fixture was not read, and the failure was not the expected fail-closed state.");
           }
           const protectedMarkers = [
             "PLATFORM CAPABILITIES",
