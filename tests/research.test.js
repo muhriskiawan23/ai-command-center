@@ -112,16 +112,70 @@ test("oversized chunked search responses are cancelled before the full body is b
 });
 
 test("provider errors and timeouts fail closed with no invented result", async () => {
+  let rateLimitCalls = 0;
   const limited = await searchExternal("news", "news", { BRAVE_SEARCH_API_KEY: "secret" }, {
-    fetcher: async () => new Response("{}", { status: 429 })
+    fetcher: async () => {
+      rateLimitCalls += 1;
+      return new Response("{}", { status: 429 });
+    }
   });
   assert.equal(limited.reason, "provider_rate_limited");
+  assert.equal(rateLimitCalls, 1, "rate limits must not be retried");
+  assert.equal(limited.diagnostics.attempts, 1);
   const context = buildResearchContext(limited, 1);
   assert.match(context.context, /No current external facts are available/);
+  let timeoutCalls = 0;
   const timeout = await searchExternal("news", "news", { BRAVE_SEARCH_API_KEY: "secret" }, {
-    fetcher: async (_url, { signal }) => new Promise((_, reject) => signal.addEventListener("abort", () => reject(new Error("aborted"))))
+    fetcher: async (_url, { signal }) => {
+      timeoutCalls += 1;
+      return new Promise((_, reject) => signal.addEventListener("abort", () => reject(new Error("aborted"))));
+    }
   });
   assert.equal(timeout.reason, "provider_timeout");
+  assert.equal(timeoutCalls, 1, "an exhausted shared timeout budget must not be retried");
+  assert.equal(timeout.diagnostics.attempts, 1);
+});
+
+test("Tavily retries one transient upstream status within the shared timeout budget", async () => {
+  let calls = 0;
+  const result = await searchExternal("bounded retry test", "web", { TAVILY_API_KEY: "secret" }, {
+    now: Date.parse("2026-11-09T00:00:00Z"),
+    fetcher: async () => {
+      calls += 1;
+      if (calls === 1) return new Response("temporarily unavailable", { status: 503 });
+      return jsonResponse({ results: [{
+        title: "Recovered result",
+        url: "https://publisher.example/recovered",
+        content: "Fresh result after a transient provider error.",
+        published_date: "2026-11-09T00:00:00Z"
+      }] });
+    }
+  });
+  assert.equal(calls, 2);
+  assert.equal(result.results.length, 1);
+  assert.equal(result.results[0].ok, true);
+  assert.equal(result.diagnostics.attempts, 2);
+});
+
+test("Brave retries one transient network failure and records attempts", async () => {
+  let calls = 0;
+  const result = await searchExternal("bounded retry test", "web", { BRAVE_SEARCH_API_KEY: "secret" }, {
+    now: Date.parse("2026-11-09T00:00:00Z"),
+    fetcher: async () => {
+      calls += 1;
+      if (calls === 1) throw new TypeError("temporary network failure");
+      return jsonResponse({ results: [{
+        title: "Recovered result",
+        url: "https://publisher.example/recovered",
+        description: "Fresh result after a transient network failure.",
+        page_age: "2026-11-09T00:00:00Z"
+      }] });
+    }
+  });
+  assert.equal(calls, 2);
+  assert.equal(result.results.length, 1);
+  assert.equal(result.results[0].ok, true);
+  assert.equal(result.diagnostics.attempts, 2);
 });
 
 
