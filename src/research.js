@@ -403,6 +403,49 @@ async function searchWithTavily(query, mode, env = {}, { fetcher = env.SEARCH_FE
 // Provider adapter contract: each adapter returns the same normalized result shape
 // ({ configured, mode, results, reason? }). Add new providers here only after
 // reviewing official API terms, regional coverage, retention, pricing, and credentials.
+// Per-isolate circuit breaker: reduces repeated calls in one Worker isolate, not a durable/global spend limit.
+export function createSearchCircuitBreaker({ failureThreshold = 3, cooldownMs = 30_000 } = {}) {
+  const threshold = Number.isInteger(failureThreshold) && failureThreshold > 0 ? failureThreshold : 3;
+  const cooldown = Number.isFinite(cooldownMs) && cooldownMs >= 0 ? cooldownMs : 30_000;
+  const states = new Map();
+  const transientReasons = new Set(["provider_timeout", "provider_unavailable", "provider_error", "provider_rate_limited"]);
+  function snapshot(provider) { return states.get(provider)?.status || "closed"; }
+  return {
+    state: snapshot,
+    allow(provider, now = Date.now()) {
+      const state = states.get(provider);
+      if (!state) return { allowed: true, state: "closed" };
+      if (state.status === "open") {
+        const retryAfterMs = Math.max(0, cooldown - (now - state.openedAt));
+        if (retryAfterMs > 0) return { allowed: false, state: "open", retryAfterMs };
+        state.status = "half_open"; state.probeInFlight = false;
+      }
+      if (state.status === "half_open") {
+        if (state.probeInFlight) return { allowed: false, state: "half_open", retryAfterMs: 0 };
+        state.probeInFlight = true;
+        return { allowed: true, state: "half_open" };
+      }
+      return { allowed: true, state: "closed" };
+    },
+    record(provider, result, now = Date.now()) {
+      const failed = transientReasons.has(result?.reason);
+      const current = states.get(provider);
+      if (current?.status === "half_open") {
+        if (failed) states.set(provider, { status: "open", failures: threshold, openedAt: now, probeInFlight: false });
+        else states.delete(provider);
+        return snapshot(provider);
+      }
+      if (failed) {
+        const failures = (current?.failures || 0) + 1;
+        if (failures >= threshold) states.set(provider, { status: "open", failures, openedAt: now, probeInFlight: false });
+        else states.set(provider, { status: "closed", failures });
+      } else if (current) states.delete(provider);
+      return snapshot(provider);
+    }
+  };
+}
+const DEFAULT_SEARCH_CIRCUIT_BREAKER = createSearchCircuitBreaker();
+
 const hasProviderSecret = (value) => typeof value === "string" && value.trim().length > 0;
 
 const SEARCH_ADAPTERS = new Map([["tavily", {
@@ -429,7 +472,18 @@ export function isSearchProviderConfigured(env = {}) {
 export async function searchExternal(query, mode, env = {}, options = {}) {
   const { provider, adapter } = selectedSearchAdapter(env);
   if (!adapter) return { configured: false, provider, mode, results: [], reason: "provider_unsupported" };
+  // Injected fetchers opt out by default; production uses the isolate-local breaker.
+  const breaker = options.circuitBreaker || (options.fetcher ? null : DEFAULT_SEARCH_CIRCUIT_BREAKER);
+  const now = Number.isFinite(options.now) ? options.now : Date.now();
+  if (breaker && adapter.isConfigured(env)) {
+    const gate = breaker.allow(provider, now);
+    if (!gate.allowed) return { configured: true, provider, mode, results: [], reason: "provider_circuit_open", diagnostics: { attempts: 0, circuitState: gate.state, retryAfterMs: gate.retryAfterMs } };
+  }
   const result = await adapter.search(query, mode, env, options);
+  if (breaker && result.configured) {
+    const circuitState = breaker.record(provider, result, Date.now());
+    return { ...result, provider, diagnostics: { ...(result.diagnostics || {}), circuitState } };
+  }
   return { ...result, provider };
 }
 
