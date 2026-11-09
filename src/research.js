@@ -226,10 +226,14 @@ async function searchWithTavily(query, mode, env = {}, { fetcher = env.SEARCH_FE
       })
     });
     if (!response.ok) {
+      const status = response.status;
       await cancelResponseBody(response);
-      if ([429, 432, 433].includes(response.status)) return { configured: true, mode, results: [], reason: "provider_rate_limited" };
-      if (response.status === 401) return { configured: true, mode, results: [], reason: "provider_auth_error" };
-      return { configured: true, mode, results: [], reason: "provider_error" };
+      const reason = [429, 432, 433].includes(status) ? "provider_rate_limited"
+        : status === 401 ? "provider_auth_error"
+        : status === 403 ? "provider_permission_error"
+        : status >= 400 && status < 500 ? "provider_request_rejected"
+        : "provider_error";
+      return { configured: true, mode, results: [], reason, diagnostics: { httpStatus: status, candidateCount: 0, usableCount: 0 } };
     }
     const contentType = response.headers.get("content-type") || "";
     if (!/^application\/json(?:\s*;|$)/i.test(contentType)) {
@@ -278,9 +282,27 @@ async function searchWithTavily(query, mode, env = {}, { fetcher = env.SEARCH_FE
       (ok ? usableResults : excludedResults).push(normalizedResult);
     }
     const results = [...usableResults, ...excludedResults].slice(0, SEARCH_MAX_RESULTS);
-    return { configured: true, mode, results };
+    const exclusionCounts = excludedResults.reduce((counts, item) => {
+      const key = item.stale ? "stale" : item.trust === "blocked-low-trust-or-invalid" ? "invalid_or_low_trust" : "source_diversity";
+      counts[key] = (counts[key] || 0) + 1;
+      return counts;
+    }, {});
+    const reason = items.length === 0 ? "provider_empty_results"
+      : usableResults.length === 0 ? "provider_no_usable_results" : undefined;
+    return {
+      configured: true, mode, results, reason,
+      diagnostics: {
+        httpStatus: response.status, candidateCount: items.length,
+        usableCount: usableResults.length, excludedCount: excludedResults.length,
+        exclusionCounts
+      }
+    };
   } catch {
-    return { configured: true, mode, results: [], reason: controller.signal.aborted ? "provider_timeout" : "provider_unavailable" };
+    return {
+      configured: true, mode, results: [],
+      reason: controller.signal.aborted ? "provider_timeout" : "provider_unavailable",
+      diagnostics: { failureStage: "request_or_response" }
+    };
   } finally { clearTimeout(timer); }
 }
 
@@ -327,10 +349,23 @@ export function buildResearchContext(search, startSourceId = 1) {
       sources: [{ sourceId: startSourceId, ok: false, host: "Search/news", reason }]
     };
   }
-  if (search.reason) return {
-    context: "LIVE SEARCH STATUS: The configured provider did not return usable search results (" + search.reason + "). No current external facts are available. Do not guess or imply that a search succeeded.",
-    sources: [{ sourceId: startSourceId, ok: false, host: SEARCH_ADAPTERS.get(search.provider)?.label || "Search/news", reason: search.reason === "provider_rate_limited" ? "Provider membatasi permintaan. Coba lagi nanti." : "Penyedia pencarian tidak mengembalikan hasil yang dapat digunakan." }]
-  };
+  if (search.reason) {
+    const diagnostics = search.diagnostics || {};
+    const detail = Number.isInteger(diagnostics.httpStatus)
+      ? "Tavily membalas HTTP " + diagnostics.httpStatus + " (" + search.reason + ")."
+      : search.reason === "provider_empty_results" ? "Tavily merespons sukses tetapi tidak mengirim kandidat hasil."
+      : search.reason === "provider_no_usable_results"
+        ? "Tavily mengirim " + Number(diagnostics.candidateCount || 0) + " kandidat, tetapi tidak ada yang lolos validasi (" +
+          Object.entries(diagnostics.exclusionCounts || {}).map(([key, value]) => key + "=" + value).join(", ") + ")."
+        : search.reason === "provider_auth_error" ? "Tavily menolak autentikasi (HTTP 401); periksa status key tanpa membagikan nilainya."
+        : search.reason === "provider_permission_error" ? "Tavily menolak akses (HTTP 403); periksa izin atau status akun."
+        : search.reason === "provider_rate_limited" ? "Tavily membatasi permintaan atau kredit/kuota tidak tersedia."
+        : "Tavily tidak dapat menyelesaikan permintaan (" + search.reason + ").";
+    return {
+      context: "LIVE SEARCH STATUS: The configured provider did not return usable search results (" + search.reason + "). No current external facts are available. Do not guess or imply that a search succeeded.",
+      sources: [{ sourceId: startSourceId, ok: false, host: SEARCH_ADAPTERS.get(search.provider)?.label || "Search/news", reason: detail }]
+    };
+  }
   const sources = search.results.map((item, index) => ({
     sourceId: startSourceId + index, ok: item.ok, url: item.url,
     resolvedUrl: item.pageResolvedUrl || undefined,
