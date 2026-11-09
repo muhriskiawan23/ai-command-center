@@ -1,7 +1,7 @@
 # Issue #156 — Node egress proxy prototype notes
 
 Date: 2026-11-09  
-Status: **Design/prototype notes only. Not deployed; production URL reading remains fail-closed.**
+Status: **Isolated prototype and loopback socket/TLS integration tests added. Not deployed; production URL reading remains fail-closed.**
 
 ## Why this addendum exists
 
@@ -42,7 +42,7 @@ Node's custom \`lookup\` hook is a way to direct the socket connection to a sele
 
 ## Prototype test matrix
 
-The prototype must run only against controlled test domains and a local/non-production proxy:
+The prototype tests run only against local loopback fixtures; no public target or user content is contacted. Current coverage:
 
 - Unit tests for canonical URL parsing, IP range classification, CNAME chain traversal, loops, depth limits, mixed public/private records, empty answers, and DNS failures.
 - A deterministic resolver fixture for rebinding: the selected address changes between lookups; prove that the connection still uses only the vetted address for that hop and that a new redirect hop is re-resolved.
@@ -62,4 +62,4 @@ The prototype must run only against controlled test domains and a local/non-prod
 
 ## Current gate
 
-This document is design guidance only. The next engineering artifact must be an isolated, tested proxy implementation with peer-IP and TLS proof. Production remains fail-closed until that proof, privacy review, account prerequisites, and controlled production smoke all pass.
+This document and prototype are engineering artifacts only. The local socket/TLS integration proof is partial and is not production evidence. Production remains fail-closed until the remaining transport tests, independent security review, privacy/provider review, Cloudflare account prerequisites, and a separately approved controlled production smoke all pass.
