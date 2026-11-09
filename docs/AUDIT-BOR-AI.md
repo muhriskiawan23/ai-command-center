@@ -193,7 +193,7 @@ Pemeriksaan kode terbaru menemukan komentar lama yang menyatakan Workers tidak d
 
 **DNS rebinding design boundary:**
 - The current URL validator still does not resolve or pin DNS. Do not treat a DNS preflight lookup followed by ordinary fetch as a complete fix.
-- Cloudflare Workers supports node:dns resolution via DNS over HTTPS using 1.1.1.1; DNS requests count as Worker subrequests. This lookup is separate from the Worker fetch's origin resolution.
+- Cloudflare Workers can expose node:dns when nodejs_compat is enabled; it resolves via DNS over HTTPS using 1.1.1.1 and each DNS request counts as a Worker subrequest. BOR AI's current wrangler.jsonc does not enable nodejs_compat, so node:dns is not currently available in this Worker. Even if enabled, a separate DNS lookup would not pin the later fetch's origin resolution.
 - Cloudflare's fetch resolveOverride only takes effect when both the URL hostname and override hostname are within the same Cloudflare zone. It therefore cannot directly pin arbitrary user-submitted public hostnames to a resolved IP.
 - A robust fix needs a controlled egress layer/proxy that performs resolution, rejects private/reserved answers, and pins the chosen address for the actual connection, or another network-level enforcement design. A lookup-only check would leave a DNS time-of-check/time-of-use gap.
 - Active Worker version VPC bindings and account-wide egress controls are not yet audited. PR #154 adds a read-only version-binding check; its result must be recorded separately after that workflow is deployed and run.
