@@ -1,0 +1,73 @@
+name: BOR AI one-time Tavily live smoke
+
+on:
+  workflow_run:
+    workflows: ["BOR AI production deploy"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  tavily-live-smoke:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      contains(github.event.workflow_run.head_commit.message, '[run-tavily-live-smoke]')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    environment: production
+    steps:
+      - name: Check out released main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Verify Tavily secret presence (names only)
+        id: tavily_secret_audit
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          SECRET_LIST="$(npx --yes wrangler@4 secret list --config wrangler.jsonc --format json)"
+          PRESENT="$(printf '%s' "$SECRET_LIST" | node --input-type=module -e '
+            let s=""; for await (const c of process.stdin) s+=c;
+            const entries=JSON.parse(s);
+            if (!Array.isArray(entries)) throw new Error("Unexpected Wrangler secret-list response.");
+            process.stdout.write(String(entries.some((entry) => entry?.name === "TAVILY_API_KEY")));
+          ')"
+          echo "TAVILY_API_KEY Worker secret: $PRESENT"
+          test "$PRESENT" = "true" || { echo "::error::TAVILY_API_KEY is not present; refusing live smoke tests."; exit 1; }
+
+      - name: Run one live Tavily web search and one news search
+        run: |
+          set -euo pipefail
+          BASE_URL="https://ai-command-center.muhriskiawan23.workers.dev"
+          run_search_smoke() {
+            local expected_type="$1"
+            local payload="$2"
+            curl --fail --silent --show-error --max-time 90 \
+              -H 'Content-Type: application/json' \
+              --data "$payload" \
+              "$BASE_URL/api/chat" \
+              | EXPECTED_SOURCE_TYPE="$expected_type" node --input-type=module -e '
+                let s=""; for await (const c of process.stdin) s+=c;
+                const d=JSON.parse(s);
+                if (typeof d.response !== "string" || d.response.trim().length < 10) throw new Error("Live search chat response missing.");
+                const links=Array.isArray(d.links) ? d.links : [];
+                const matches=links.filter(x => x?.ok === true && x?.sourceType === process.env.EXPECTED_SOURCE_TYPE);
+                if (!matches.length) {
+                  const reasons=links.filter(x => x?.ok === false).map(x => x.reason).filter(Boolean).slice(0,2);
+                  throw new Error("No usable live " + process.env.EXPECTED_SOURCE_TYPE + " search source returned. " + reasons.join("; "));
+                }
+                console.log("Live " + process.env.EXPECTED_SOURCE_TYPE + " search passed; usable sources:", matches.length);
+              '
+          }
+          run_search_smoke "search" '{"message":"Cari informasi terbaru tentang perkembangan teknologi kecerdasan buatan di Indonesia.","agent":"coordinator","language":"id"}'
+          run_search_smoke "news" '{"message":"Berita terbaru hari ini tentang ekonomi Indonesia.","agent":"coordinator","language":"id"}'
