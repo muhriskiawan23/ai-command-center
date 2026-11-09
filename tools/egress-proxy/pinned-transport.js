@@ -62,7 +62,7 @@ function isPublicAddress(address) {
 }
 export { isPublicAddress };
 
-const NO_CNAME = new Set(["ENODATA", "ENOTIMP"]);
+const NO_CNAME = new Set(["ENODATA"]);
 async function resolveChain(hostname, resolver = dns) {
   let current = hostname;
   const seen = new Set();
