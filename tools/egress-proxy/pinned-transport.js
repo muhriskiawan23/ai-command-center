@@ -117,7 +117,7 @@ function validateTarget(raw) {
 /** @internal Low-level socket primitive. Callers must validate DNS and target policy first. */
 export function requestOneHop({
   url, host, family, peerIp, timeoutMs = 8000,
-  maxBytes = MAX_RESPONSE_BYTES, tlsCa, port
+  maxBytes = MAX_RESPONSE_BYTES, tlsCa, port, signal
 }) {
   return new Promise((resolve, reject) => {
     const secure = url.protocol === "https:";
@@ -129,6 +129,7 @@ export function requestOneHop({
       if (settled) return;
       settled = true;
       if (totalTimer) clearTimeout(totalTimer);
+      signal?.removeEventListener("abort", onAbort);
       if (error) reject(error);
       else resolve(value);
     };
@@ -136,6 +137,12 @@ export function requestOneHop({
       finish(error instanceof Error ? error : new Error("egress_request_failed"));
       if (req && !req.destroyed) req.destroy();
     };
+    const onAbort = () => fail(new Error("request_aborted"));
+    if (signal?.aborted) {
+      finish(new Error("request_aborted"));
+      return;
+    }
+    signal?.addEventListener("abort", onAbort, { once: true });
     const options = {
       protocol: url.protocol,
       hostname: host,
@@ -218,12 +225,14 @@ export async function fetchPinned(rawUrl, {
   resolver = dns,
   timeoutMs = 8000,
   maxBytes = MAX_RESPONSE_BYTES,
-  request = requestOneHop
+  request = requestOneHop,
+  signal
 } = {}) {
   const { url, host, family } = validateTarget(rawUrl);
   const addresses = family ? [host] : await resolveChain(host, resolver);
   const peerIp = addresses[0];
-  const result = await request({ url, host, family, peerIp, timeoutMs, maxBytes });
+  if (signal?.aborted) throw new Error("request_aborted");
+  const result = await request({ url, host, family, peerIp, timeoutMs, maxBytes, signal });
   if (REDIRECTS.has(result.status)) return { ...result, body: Buffer.alloc(0), peerIp, redirect: true };
   return { ...result, peerIp, redirect: false };
 }
@@ -293,7 +302,18 @@ export function createEgressProxyHandler({ token, resolver = dns, timeoutMs = 80
       return;
     }
     try {
-      const result = await fetchPinned(input.url, { resolver, timeoutMs });
+      const controller = new AbortController();
+      const onResponseClose = () => {
+        if (!res.writableEnded) controller.abort();
+      };
+      res.on?.("close", onResponseClose);
+      let result;
+      try {
+        result = await fetchPinned(input.url, { resolver, timeoutMs, signal: controller.signal });
+      } finally {
+        res.off?.("close", onResponseClose);
+        res.removeListener?.("close", onResponseClose);
+      }
       const payload = JSON.stringify({
         status: result.status,
         headers: result.headers,
