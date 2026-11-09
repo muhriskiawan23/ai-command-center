@@ -206,6 +206,7 @@ async function searchWithTavily(query, mode, env = {}, { fetcher = env.SEARCH_FE
   if (!safeQuery) return { configured: true, mode, results: [], reason: "empty_query" };
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), SEARCH_TIMEOUT_MS);
+  let failureStage = "network_request";
   try {
     const response = await fetcher("https://api.tavily.com/search", {
       method: "POST", redirect: "error", signal: controller.signal,
@@ -235,6 +236,7 @@ async function searchWithTavily(query, mode, env = {}, { fetcher = env.SEARCH_FE
         : "provider_error";
       return { configured: true, mode, results: [], reason, diagnostics: { httpStatus: status, candidateCount: 0, usableCount: 0 } };
     }
+    failureStage = "response_headers";
     const contentType = response.headers.get("content-type") || "";
     if (!/^application\/json(?:\s*;|$)/i.test(contentType)) {
       await cancelResponseBody(response);
@@ -245,8 +247,10 @@ async function searchWithTavily(query, mode, env = {}, { fetcher = env.SEARCH_FE
       await cancelResponseBody(response);
       return { configured: true, mode, results: [], reason: "provider_response_too_large" };
     }
+    failureStage = "response_body";
     const raw = await readBoundedResponseText(response, SEARCH_MAX_RESPONSE_BYTES);
     if (raw === null || raw.length > SEARCH_MAX_RESPONSE_BYTES) return { configured: true, mode, results: [], reason: "provider_response_too_large" };
+    failureStage = "payload_parse";
     let payload;
     try { payload = JSON.parse(raw); } catch { return { configured: true, mode, results: [], reason: "provider_invalid_response" }; }
     if (!payload || typeof payload !== "object" || Array.isArray(payload) || !Array.isArray(payload.results)) {
@@ -303,11 +307,14 @@ async function searchWithTavily(query, mode, env = {}, { fetcher = env.SEARCH_FE
         exclusionCounts
       }
     };
-  } catch {
+  } catch (error) {
     return {
       configured: true, mode, results: [],
       reason: controller.signal.aborted ? "provider_timeout" : "provider_unavailable",
-      diagnostics: { failureStage: "request_or_response" }
+      diagnostics: {
+        failureStage: controller.signal.aborted ? "timeout" : failureStage,
+        errorName: typeof error?.name === "string" ? error.name.slice(0, 40) : "UnknownError"
+      }
     };
   } finally { clearTimeout(timer); }
 }
