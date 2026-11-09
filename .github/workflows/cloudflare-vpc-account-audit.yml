@@ -1,0 +1,118 @@
+name: BOR AI Cloudflare VPC account audit
+
+on:
+  workflow_run:
+    workflows: ["BOR AI production deploy"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bor-ai-cloudflare-vpc-account-audit
+  cancel-in-progress: false
+
+jobs:
+  read-only-account-audit:
+    if: \${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      CLOUDFLARE_ACCOUNT_ID: \${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: \${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - name: Inspect Cloudflare Zero Trust resources (read-only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          const account = process.env.CLOUDFLARE_ACCOUNT_ID;
+          const token = process.env.CLOUDFLARE_API_TOKEN;
+
+          if (!account || !token) {
+            console.log("Cloudflare Zero Trust account audit: skipped (account ID or API token unavailable).");
+            process.exit(0);
+          }
+
+          const base = "https://api.cloudflare.com/client/v4/accounts/" + encodeURIComponent(account);
+          const headers = { Authorization: "Bearer " + token, Accept: "application/json" };
+
+          async function readCollection(label, path, summarize) {
+            try {
+              const response = await fetch(base + path, {
+                method: "GET",
+                headers,
+                signal: AbortSignal.timeout(20000)
+              });
+
+              if (response.status === 401 || response.status === 403) {
+                console.log(label + ": permission_denied (HTTP " + response.status + "); this is not an empty result.");
+                return;
+              }
+              if (!response.ok) {
+                console.log(label + ": http_error (HTTP " + response.status + "); response body suppressed.");
+                return;
+              }
+
+              const payload = await response.json();
+              if (payload?.success !== true || !Array.isArray(payload.result)) {
+                const codes = Array.isArray(payload?.errors)
+                  ? payload.errors.map((error) => error?.code).filter(Number.isFinite).slice(0, 5)
+                  : [];
+                console.log(label + ": api_error (success/result shape not verified; codes=" + (codes.join(",") || "unavailable") + ").");
+                return;
+              }
+
+              summarize(payload.result, payload.result_info || {});
+            } catch (error) {
+              const name = error?.name === "TimeoutError" || error?.name === "AbortError" ? "timeout" : "request_error";
+              console.log(label + ": " + name + "; details suppressed.");
+            }
+          }
+
+          await readCollection(
+            "Tunnel/Mesh/WAN on-ramps",
+            "/tunnels?per_page=1000&is_deleted=false",
+            (items, info) => {
+              const counts = {};
+              for (const item of items) {
+                const type = String(item?.tun_type || item?.type || "unknown");
+                counts[type] = (counts[type] || 0) + 1;
+              }
+              console.log("Tunnel/Mesh/WAN on-ramps: authorized; visible=" +
+                (Number.isFinite(info.total_count) ? info.total_count : items.length) +
+                "; returned=" + items.length +
+                "; types=" + (Object.entries(counts).map(([key, value]) => key + ":" + value).join(",") || "none") + ".");
+            }
+          );
+
+          await readCollection(
+            "Virtual networks",
+            "/teamnet/virtual_networks?is_deleted=false",
+            (items) => {
+              const defaults = items.filter((item) => item?.is_default_network === true).length;
+              console.log("Virtual networks: authorized; visible=" + items.length + "; default_networks=" + defaults + ".");
+            }
+          );
+
+          await readCollection(
+            "Gateway policies",
+            "/gateway/rules?per_page=100&page=1",
+            (items, info) => {
+              const enabled = items.filter((item) => item?.enabled === true).length;
+              const filters = {};
+              for (const item of items) {
+                for (const filter of Array.isArray(item?.filters) ? item.filters : []) {
+                  filters[String(filter)] = (filters[String(filter)] || 0) + 1;
+                }
+              }
+              console.log("Gateway policies: authorized; page_count=" + items.length +
+                "; reported_total=" + (Number.isFinite(info.total_count) ? info.total_count : "unknown") +
+                "; enabled_on_page=" + enabled +
+                "; filter_types_on_page=" + (Object.entries(filters).map(([key, value]) => key + ":" + value).join(",") || "none") + ".");
+            }
+          );
+
+          console.log("Read-only audit complete. No Cloudflare resources, policies, bindings, or secrets were changed.");
+          NODE
