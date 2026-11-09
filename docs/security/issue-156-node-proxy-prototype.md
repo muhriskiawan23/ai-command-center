@@ -46,18 +46,19 @@ The current tests use local loopback fixtures only; no public target or user con
 
 **Implemented and covered by tests:**
 - Representative IPv4/IPv6 public-address classification and rejection of common special-use/private ranges.
-- CNAME traversal and loop rejection; rejection of mixed public/private DNS answers.
+- CNAME traversal, loop and depth-limit rejection; empty terminal DNS answer rejection; rejection of mixed public/private DNS answers and a deterministic public-to-private rebinding on the next hop.
 - Fail-closed handling for DNS resolver errors other than an explicit no-data response.
 - URL rejection for credentials, non-default ports, unsupported schemes, and private IP literals.
 - Selection of one numeric DNS answer, single-hop redirect return without following, and the configured response-size default.
 - Actual HTTP loopback socket peer verification and preservation of the original Host authority.
 - Actual HTTPS loopback socket peer verification, original SNI, trusted test-certificate hostname validation, and wrong-host certificate rejection.
+- IPv6 loopback socket peer verification when supported by the runner; runtime response byte-cap enforcement; total-request timeout abort.
 
 **Still outstanding:**
-- CNAME depth-limit and empty-answer test cases; live DNS rebinding race tests and re-resolution proof across separate redirect hops.
-- IPv6 socket integration and broader IPv4/IPv6 edge-case coverage.
+- Live DNS rebinding race tests against an external authoritative DNS service and production-like resolver behavior; current deterministic test proves a private answer on the next hop is rejected after a public first hop.
+- Broader IPv4/IPv6 edge-case coverage, including IPv6 socket integration where loopback IPv6 is available in CI.
 - Expired, untrusted, and missing-SNI TLS cases.
-- Runtime oversized-body enforcement, slow headers/body, cancellation, connection reset, malformed response, and proxy-down behavior.
+- Slow headers/body, caller cancellation, connection reset, malformed response, and proxy-down behavior; runtime response-size and total-timeout aborts now have local socket tests.
 - Authenticated handler tests for authorization, request-body limits/timeouts, and response minimization.
 - Independent verification that no URL, query, request body, or response body is persisted and that logs contain only approved metadata.
 - End-to-end proof that the Worker has no direct-fetch fallback when a proxy binding is absent or errors.
