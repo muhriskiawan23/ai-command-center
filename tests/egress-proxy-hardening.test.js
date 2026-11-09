@@ -28,7 +28,7 @@ const socketArgs = (port, peerIp = "127.0.0.1") => ({
 test("CNAME depth overflow and empty terminal answers fail closed", async () => {
   const deep = {
     resolveCname: async (host) => {
-      const n = Number(host.match(/^n(\\d+)\\.example$/)?.[1] ?? 0);
+      const n = Number(host.match(/^n(\d+)\.example$/)?.[1] ?? 0);
       return n < 9 ? [`n${n + 1}.example`] : Promise.reject(noData());
     },
     resolve4: async () => ["8.8.8.8"],
