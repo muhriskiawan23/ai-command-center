@@ -65,6 +65,18 @@ async function cancelResponseBody(response) {
 
 
 
+async function waitForProviderRetry(signal) {
+  if (signal?.aborted) return false;
+  await new Promise((resolve) => setTimeout(resolve, SEARCH_RETRY_DELAY_MS));
+  return !signal?.aborted;
+}
+
+function retryBudgetAbortError() {
+  const error = new Error("Provider retry budget exhausted");
+  error.name = "AbortError";
+  return error;
+}
+
 async function fetchProviderWithRetry(fetcher, url, init) {
   let attempts = 0;
   let lastError;
@@ -72,17 +84,19 @@ async function fetchProviderWithRetry(fetcher, url, init) {
     attempts += 1;
     try {
       const response = await fetcher(url, init);
-      if (attempt === 0 && SEARCH_RETRYABLE_STATUSES.has(response.status) && !init.signal?.aborted) {
+      if (attempt === 0 && SEARCH_RETRYABLE_STATUSES.has(response.status)) {
         await cancelResponseBody(response);
-        await new Promise((resolve) => setTimeout(resolve, SEARCH_RETRY_DELAY_MS));
-        continue;
+        if (await waitForProviderRetry(init.signal)) continue;
+        if (init.signal?.aborted) return { error: retryBudgetAbortError(), attempts };
       }
       return { response, attempts };
     } catch (error) {
       lastError = error;
-      if (attempt === 0 && !init.signal?.aborted) {
-        await new Promise((resolve) => setTimeout(resolve, SEARCH_RETRY_DELAY_MS));
-        continue;
+      // Only retry fetch's standard network TypeError. Never retry aborts, programming
+      // errors, provider 4xx responses, or errors after the shared deadline.
+      if (attempt === 0 && error?.name !== "AbortError" && error instanceof TypeError) {
+        if (await waitForProviderRetry(init.signal)) continue;
+        if (init.signal?.aborted) return { error: retryBudgetAbortError(), attempts };
       }
       return { error: lastError, attempts };
     }
