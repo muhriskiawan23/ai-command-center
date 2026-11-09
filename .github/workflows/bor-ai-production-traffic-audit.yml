@@ -83,16 +83,21 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          response_file="$(mktemp)"
-          trap 'rm -f "$response_file"' EXIT
-          curl --fail --silent --show-error --retry 2 --retry-delay 2 --max-time 30 \
-            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-            -H "Accept: application/json" \
-            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/ai-command-center/versions/$ACTIVE_VERSION_ID" \
-            --output "$response_file"
-          node --input-type=module - "$response_file" <<'NODE'
-          import fs from "node:fs";
-          const payload = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+          node --input-type=module <<'NODE'
+          const url = "https://api.cloudflare.com/client/v4/accounts/" +
+            process.env.CLOUDFLARE_ACCOUNT_ID +
+            "/workers/scripts/ai-command-center/versions/" +
+            process.env.ACTIVE_VERSION_ID;
+          const response = await fetch(url, {
+            headers: {
+              Authorization: "Bearer " + process.env.CLOUDFLARE_API_TOKEN,
+              Accept: "application/json"
+            }
+          });
+          if (!response.ok) {
+            throw new Error("Cloudflare version metadata request failed with HTTP " + response.status + ".");
+          }
+          const payload = await response.json();
           const bindings = payload.result?.resources?.bindings;
           if (payload.success !== true || !Array.isArray(bindings)) {
             throw new Error("Cloudflare did not return bindings for the active Worker version.");
@@ -105,5 +110,5 @@ jobs:
             console.log("Private-network binding types:", [...new Set(privateNetworkBindings.map((binding) => binding.type))].join(", "));
             console.log("Private-network binding names:", privateNetworkBindings.map((binding) => binding.name).filter(Boolean).join(", "));
           }
-          console.log("Binding values and network identifiers were not logged.");
+          console.log("Binding values and network identifiers were not logged; the API response was processed in memory only.");
           NODE
