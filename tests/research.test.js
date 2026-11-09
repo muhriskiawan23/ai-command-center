@@ -373,3 +373,16 @@ test("search diagnostics identify the selected provider instead of hard-coding T
   assert.match(context.sources[0].reason, /Brave Search API/);
   assert.doesNotMatch(context.sources[0].reason, /Tavily/);
 });
+
+test("Tavily rejects a successful HTTP response with an invalid result schema", async () => {
+  const result = await searchExternal("query", "web", { TAVILY_API_KEY: "secret" }, {
+    fetcher: async () => jsonResponse({ unexpected: [] })
+  });
+  assert.equal(result.reason, "provider_invalid_response");
+  assert.deepEqual(result.diagnostics, {
+    httpStatus: 200, candidateCount: 0, usableCount: 0, failureStage: "payload_schema"
+  });
+  const context = buildResearchContext(result);
+  assert.match(context.sources[0].reason, /invalid_response/);
+  assert.doesNotMatch(context.sources[0].reason, /empty results/);
+});
