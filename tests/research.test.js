@@ -157,6 +157,24 @@ test("Tavily retries one transient upstream status within the shared timeout bud
   assert.equal(result.diagnostics.attempts, 2);
 });
 
+test("provider retry does not repeat aborts or non-network programming errors", async () => {
+  for (const failure of [
+    Object.assign(new Error("aborted"), { name: "AbortError" }),
+    new Error("unexpected adapter bug")
+  ]) {
+    let calls = 0;
+    const result = await searchExternal("retry classification", "web", { BRAVE_SEARCH_API_KEY: "secret" }, {
+      fetcher: async () => {
+        calls += 1;
+        throw failure;
+      }
+    });
+    assert.equal(calls, 1);
+    assert.equal(result.reason, "provider_unavailable");
+    assert.equal(result.diagnostics.attempts, 1);
+  }
+});
+
 test("Brave retries one transient network failure and records attempts", async () => {
   let calls = 0;
   const result = await searchExternal("bounded retry test", "web", { BRAVE_SEARCH_API_KEY: "secret" }, {
