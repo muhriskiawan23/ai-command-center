@@ -115,10 +115,27 @@ function validateTarget(raw) {
 }
 
 /** @internal Low-level socket primitive. Callers must validate DNS and target policy first. */
-export function requestOneHop({ url, host, family, peerIp, timeoutMs, maxBytes, tlsCa, port }) {
+export function requestOneHop({
+  url, host, family, peerIp, timeoutMs = 8000,
+  maxBytes = MAX_RESPONSE_BYTES, tlsCa, port
+}) {
   return new Promise((resolve, reject) => {
     const secure = url.protocol === "https:";
     const transport = secure ? https : http;
+    let settled = false;
+    let req;
+    let totalTimer;
+    const finish = (error, value) => {
+      if (settled) return;
+      settled = true;
+      if (totalTimer) clearTimeout(totalTimer);
+      if (error) reject(error);
+      else resolve(value);
+    };
+    const fail = (error) => {
+      finish(error instanceof Error ? error : new Error("egress_request_failed"));
+      if (req && !req.destroyed) req.destroy();
+    };
     const options = {
       protocol: url.protocol,
       hostname: host,
@@ -132,54 +149,67 @@ export function requestOneHop({ url, host, family, peerIp, timeoutMs, maxBytes, 
         Accept: "text/html,application/xhtml+xml,text/plain,application/json"
       },
       ...(family ? {} : {
-        lookup: (_hostname, options, callback) => {
-          const family = net.isIP(peerIp);
-          if (options?.all) callback(null, [{ address: peerIp, family }]);
-          else callback(null, peerIp, family);
+        lookup: (_hostname, lookupOptions, callback) => {
+          const addressFamily = net.isIP(peerIp);
+          if (lookupOptions?.all) callback(null, [{ address: peerIp, family: addressFamily }]);
+          else callback(null, peerIp, addressFamily);
         }
       }),
       ...(secure && !family ? { servername: host, rejectUnauthorized: true } : {}),
       ...(secure && tlsCa ? { ca: tlsCa } : {})
     };
-    const req = transport.request(options, (res) => {
+    totalTimer = setTimeout(() => fail(new Error("request_timeout")), timeoutMs);
+    req = transport.request(options, (res) => {
       const chunks = [];
       let size = 0;
       res.on("data", (chunk) => {
+        if (settled) return;
         size += chunk.length;
         if (size > maxBytes) {
-          req.destroy(new Error("response_too_large"));
+          const error = new Error("response_too_large");
+          fail(error);
+          res.destroy();
           return;
         }
         chunks.push(chunk);
       });
-      res.on("end", () => resolve({
-        status: res.statusCode || 502,
-        headers: {
-          "content-type": res.headers["content-type"] || "application/octet-stream",
-          ...(res.headers.location ? { location: res.headers.location } : {})
-        },
-        body: Buffer.concat(chunks)
-      }));
-      res.on("error", reject);
+      res.on("end", () => {
+        if (settled) return;
+        finish(null, {
+          status: res.statusCode || 502,
+          headers: {
+            "content-type": res.headers["content-type"] || "application/octet-stream",
+            ...(res.headers.location ? { location: res.headers.location } : {})
+          },
+          body: Buffer.concat(chunks)
+        });
+      });
+      res.on("aborted", () => fail(new Error("response_aborted")));
+      res.on("error", fail);
     });
     const verifyPeer = (socket) => {
+      if (settled) return;
       const actual = normalizePeer(socket.remoteAddress);
-      if (actual !== normalizePeer(peerIp)) req.destroy(new Error("peer_ip_mismatch"));
-      if (secure && !family && socket.servername !== host) req.destroy(new Error("tls_sni_mismatch"));
+      if (actual !== normalizePeer(peerIp)) {
+        fail(new Error("peer_ip_mismatch"));
+        return;
+      }
+      if (secure && !family && socket.servername !== host) {
+        fail(new Error("tls_sni_mismatch"));
+        return;
+      }
       if (secure && !family) {
         const cert = socket.getPeerCertificate?.();
         const identityError = cert && tls.checkServerIdentity(host, cert);
-        if (identityError) req.destroy(new Error("tls_identity_mismatch"));
+        if (identityError) fail(new Error("tls_identity_mismatch"));
       }
     };
     req.on("socket", (socket) => {
       if (secure) socket.once("secureConnect", () => verifyPeer(socket));
       else socket.once("connect", () => verifyPeer(socket));
     });
-    const totalTimer = setTimeout(() => req.destroy(new Error("request_timeout")), timeoutMs);
-    req.setTimeout(timeoutMs, () => req.destroy(new Error("request_timeout")));
-    req.on("close", () => clearTimeout(totalTimer));
-    req.on("error", (error) => reject(error));
+    req.setTimeout(timeoutMs, () => fail(new Error("request_timeout")));
+    req.on("error", fail);
     req.end();
   });
 }
