@@ -1,8 +1,8 @@
 # BOR AI Adaptive Multi-Model Gateway
 
 **Decision:** Adaptive Multi-Model is the default routing strategy.  
-**Status:** Architecture specification plus implemented runtime gateway (PR #94, deployed). Phase A/B and one-provider adaptive routing are active; no external provider adapter is enabled. PR #147–#153 search/security/release-integrity work does not add or activate another model provider.  
-**Compatibility baseline:** production `main` at `8a2f4ac2e3443f919066d030cc9eeb7398911d50` (PR #154 merged; the single-provider adaptive gateway remains active).
+**Status:** Architecture specification plus implemented runtime gateway (PR #94, deployed). Phase A/B and one-provider adaptive routing are active; no external provider adapter is enabled. PR #147–#157 search/security/release-integrity work does not add or activate another model provider.  
+**Compatibility baseline:** production `main` at `61ec5a40214e16484cb795ed6f56cc9843668be6` (PR #157 merged; the single-provider adaptive gateway remains active).
 
 ## 1. Repository audit and current baseline
 
