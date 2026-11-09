@@ -62,7 +62,7 @@ function isPublicAddress(address) {
 }
 export { isPublicAddress };
 
-const NO_CNAME = new Set(["ENODATA", "ENOTFOUND", "ENOTIMP", "ESERVFAIL"]);
+const NO_CNAME = new Set(["ENODATA", "ENOTIMP"]);
 async function resolveChain(hostname, resolver = dns) {
   let current = hostname;
   const seen = new Set();
@@ -79,8 +79,8 @@ async function resolveChain(hostname, resolver = dns) {
     current = aliases[0].replace(/\.$/, "");
   }
   const [v4, v6] = await Promise.all([
-    resolver.resolve4(current).catch((e) => { if (e.code === "ENODATA" || e.code === "ENOTFOUND") return []; throw new Error("dns_a_error"); }),
-    resolver.resolve6(current).catch((e) => { if (e.code === "ENODATA" || e.code === "ENOTFOUND") return []; throw new Error("dns_aaaa_error"); })
+    resolver.resolve4(current).catch((e) => { if (e.code === "ENODATA") return []; throw new Error("dns_a_error"); }),
+    resolver.resolve6(current).catch((e) => { if (e.code === "ENODATA") return []; throw new Error("dns_aaaa_error"); })
   ]);
   const addresses = [...new Set([...v4, ...v6])];
   if (!addresses.length || addresses.some((ip) => !isPublicAddress(ip))) throw new Error("dns_unsafe_or_empty");
@@ -105,7 +105,8 @@ function validateTarget(raw) {
   return { url, host, family };
 }
 
-function requestOneHop({ url, host, family, peerIp, timeoutMs, maxBytes }) {
+/** @internal Low-level socket primitive. Callers must validate DNS and target policy first. */
+export function requestOneHop({ url, host, family, peerIp, timeoutMs, maxBytes, tlsCa }) {
   return new Promise((resolve, reject) => {
     const secure = url.protocol === "https:";
     const transport = secure ? https : http;
@@ -124,7 +125,8 @@ function requestOneHop({ url, host, family, peerIp, timeoutMs, maxBytes }) {
       ...(family ? {} : {
         lookup: (_hostname, _options, callback) => callback(null, peerIp, net.isIP(peerIp))
       }),
-      ...(secure && !family ? { servername: host, rejectUnauthorized: true } : {})
+      ...(secure && !family ? { servername: host, rejectUnauthorized: true } : {}),
+      ...(secure && tlsCa ? { ca: tlsCa } : {})
     };
     const req = transport.request(options, (res) => {
       const chunks = [];
