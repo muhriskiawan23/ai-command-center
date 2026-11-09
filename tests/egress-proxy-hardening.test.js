@@ -210,3 +210,28 @@ test("private handler rejects wrong route and method", async () => {
     assert.equal(ended, true);
   }
 });
+
+
+test("actual upstream socket is destroyed when the caller aborts", async (t) => {
+  let clientClosed = false;
+  const server = http.createServer((_req, res) => {
+    res.writeHead(200, { "content-type": "text/plain" });
+    res.write("start");
+    res.on("close", () => { clientClosed = true; });
+    // Keep the response open until the client socket is destroyed.
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  const controller = new AbortController();
+  const pending = requestOneHop({
+    ...socketArgs(server.address().port),
+    maxBytes: 100,
+    timeoutMs: 2000,
+    signal: controller.signal
+  });
+  await new Promise((resolve) => setTimeout(resolve, 40));
+  controller.abort();
+  await assert.rejects(pending, /request_aborted/);
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(clientClosed, true);
+});
