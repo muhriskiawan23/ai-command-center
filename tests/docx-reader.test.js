@@ -32,6 +32,14 @@ test("rejects archives with excessive expanded size", async () => {
   await assert.rejects(parseDocxArrayBuffer(new Uint8Array([80, 75, 3, 4]), { jszip: jszip(makeZip({ huge: true })) }), /30 MB/);
 });
 
+test("rejects oversized raw buffers and archives with too many entries", async () => {
+  await assert.rejects(parseDocxArrayBuffer(new Uint8Array(DOCX_MAX_BYTES + 1)), /5 MB/);
+  const files = Object.fromEntries(Array.from({ length: 2001 }, (_, i) => ["entry-" + i, {
+    _data: { uncompressedSize: 0 }, async: async () => ""
+  }]));
+  await assert.rejects(parseDocxArrayBuffer(new Uint8Array([80, 75, 3, 4]), { jszip: jszip({ files }) }), /terlalu kompleks/);
+});
+
 test("rejects archives without Word document structure", async () => {
   const invalid = { files: { "document.xml": { _data: { uncompressedSize: 5 }, async: async () => "<x/>" } } };
   await assert.rejects(parseDocxArrayBuffer(new Uint8Array([80, 75, 3, 4]), { jszip: jszip(invalid) }), /struktur dokumen Word/);
