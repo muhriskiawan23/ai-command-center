@@ -237,6 +237,14 @@ export function requestOneHop({
       else socket.once("connect", () => verifyPeer(socket));
     });
     req.setTimeout(timeoutMs, () => fail(new Error("request_timeout")));
+    req.on("upgrade", (_res, socket) => {
+      socket.destroy();
+      fail(new Error("protocol_upgrade_rejected"));
+    });
+    req.on("connect", (_res, socket) => {
+      socket.destroy();
+      fail(new Error("protocol_connect_rejected"));
+    });
     req.on("error", fail);
     req.end();
   });
