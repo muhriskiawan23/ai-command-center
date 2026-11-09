@@ -87,6 +87,42 @@ test("HTTPS integration pins the socket, sends original SNI, and validates the c
 });
 
 
+test("HTTPS IP-literal target omits SNI but validates the certificate IP subject alternative name", async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bor-egress-ip-tls-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const keyPath = path.join(dir, "key.pem");
+  const certPath = path.join(dir, "cert.pem");
+  execFileSync("openssl", [
+    "req", "-x509", "-newkey", "rsa:2048", "-nodes",
+    "-keyout", keyPath, "-out", certPath, "-days", "2",
+    "-subj", "/CN=127.0.0.1",
+    "-addext", "subjectAltName=IP:127.0.0.1"
+  ], { stdio: "ignore" });
+  const key = fs.readFileSync(keyPath);
+  const cert = fs.readFileSync(certPath);
+  let observedSni = "not-connected";
+  const server = https.createServer({ key, cert }, (req, res) => {
+    observedSni = req.socket.servername;
+    res.writeHead(200, { "content-type": "text/plain" }).end("ip-secure");
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  const port = server.address().port;
+  const result = await requestOneHop({
+    url: new URL(`https://127.0.0.1:${port}/probe`),
+    host: "127.0.0.1",
+    family: 4,
+    peerIp: "127.0.0.1",
+    port,
+    timeoutMs: 3000,
+    maxBytes: 128,
+    tlsCa: cert
+  });
+  assert.equal(result.status, 200);
+  assert.equal(result.body.toString(), "ip-secure");
+  assert.equal(observedSni, undefined);
+});
+
 test("IPv6 loopback socket verifies the actual peer when IPv6 is available", async (t) => {
   const server = http.createServer((_req, res) => res.end("v6"));
   try {
