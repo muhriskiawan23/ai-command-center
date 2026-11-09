@@ -151,7 +151,7 @@ test("provider-neutral search adapter rejects unknown and prototype-like provide
       fetcher: async () => { called = true; return jsonResponse({ results: [] }); }
     });
     assert.equal(result.configured, false);
-    assert.equal(result.provider, provider);
+    assert.equal(result.provider, provider.toLowerCase());
     assert.equal(result.reason, "provider_unsupported");
     assert.deepEqual(result.results, []);
     assert.equal(called, false);
