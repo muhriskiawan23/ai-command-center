@@ -398,5 +398,9 @@ test("Tavily network failures expose only a safe failure stage and error class",
     errorName: "TypeError"
   });
   const context = buildResearchContext(result);
+  assert.deepEqual(context.sources[0].diagnostics, {
+    failureStage: "network_request",
+    errorName: "TypeError"
+  });
   assert.doesNotMatch(context.context + JSON.stringify(context.sources), /sensitive transport details|secret/);
 });
