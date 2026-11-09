@@ -38,9 +38,9 @@ export function extractDocxParagraphs(documentXml, maxParagraphs = DOCX_MAX_PARA
 }
 
 export async function parseDocxArrayBuffer(buffer, { jszip, name = "document.docx" } = {}) {
-  if (!jszip?.loadAsync) throw new Error("Library Word belum siap. Periksa koneksi internet.");
   const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
   if (bytes.length > DOCX_MAX_BYTES) throw new Error("Ukuran Word maksimal 5 MB.");
+  if (!jszip?.loadAsync) throw new Error("Library Word belum siap. Periksa koneksi internet.");
   if (bytes.length < 4 || bytes[0] !== 80 || bytes[1] !== 75) throw new Error("File bukan dokumen .docx yang valid.");
   const zip = await jszip.loadAsync(bytes, { checkCRC32: false, createFolders: false });
   const entries = Object.values(zip.files || {});
