@@ -52,9 +52,9 @@ jobs:
 
       - name: Validate required credentials
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          CLOUDFLARE_API_TOKEN: \${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: \${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          GOOGLE_CLIENT_ID: \${{ secrets.GOOGLE_CLIENT_ID }}
         run: |
           set -euo pipefail
           test -n "$CLOUDFLARE_API_TOKEN" || { echo "::error::Missing CLOUDFLARE_API_TOKEN repository secret"; exit 1; }
@@ -69,8 +69,8 @@ jobs:
 
       - name: Verify the pinned production D1 database (read-only)
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: \${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: \${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           set -euo pipefail
           DB_ID="$(node --input-type=module <<'NODE'
@@ -94,33 +94,55 @@ jobs:
               throw new Error("Pinned D1 database verification failed; refusing production changes.");
             }
             console.log("Verified existing production D1 database:", db.name, db.uuid);
-          ' 
+          '
+
       - name: List pending production D1 migrations
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: \${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: \${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: npx --yes wrangler@4 d1 migrations list bor-ai-chat --remote --config wrangler.jsonc
 
       - name: Apply D1 migrations
-        if: ${{ inputs.apply_db_migrations }}
+        if: \${{ inputs.apply_db_migrations }}
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: \${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: \${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: npx --yes wrangler@4 d1 migrations apply bor-ai-chat --remote --config wrangler.jsonc
 
       - name: Explain skipped production migrations
-        if: ${{ !inputs.apply_db_migrations }}
+        if: \${{ !inputs.apply_db_migrations }}
         run: echo "Production D1 migrations were not applied. Review the migration list and explicitly enable apply_db_migrations on a later dispatch if needed."
 
       # GOOGLE_CLIENT_ID is managed as a persistent Worker secret outside routine releases.
-      # Do not run `wrangler secret put` here: it immediately deploys an intermediate Worker version.
+      # Do not run wrangler secret put here: it immediately deploys an intermediate Worker version.
       # The credential presence check above remains fail-closed; production secret rotation is a
       # separate, explicitly coordinated operation followed by a single reviewed release.
       - name: Deploy Worker and assets
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: \${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: \${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: npm run deploy
+
+      # Read-only audit: Wrangler returns secret names/types, never secret values.
+      # Keep this non-blocking so an optional search provider cannot break core releases.
+      - name: Audit Brave Search Worker secret presence (names only)
+        id: brave_secret_audit
+        continue-on-error: true
+        env:
+          CLOUDFLARE_API_TOKEN: \${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: \${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          SECRET_LIST="$(npx --yes wrangler@4 secret list --config wrangler.jsonc --format json)"
+          export SECRET_LIST
+          node --input-type=module <<'NODE' >> "$GITHUB_OUTPUT"
+          const entries = JSON.parse(process.env.SECRET_LIST);
+          if (!Array.isArray(entries)) throw new Error("Unexpected Wrangler secret-list response.");
+          const present = entries.some((entry) => entry?.name === "BRAVE_SEARCH_API_KEY");
+          console.log("BRAVE_SEARCH_API_KEY Worker secret:", present ? "present" : "missing");
+          console.log("configured=" + String(present));
+          if (!present) console.log("::warning::Live Brave Search remains disabled until the founder configures the Worker secret.");
+          NODE
 
       - name: Verify production endpoints
         run: |
@@ -141,7 +163,7 @@ jobs:
           echo "Google sign-in configuration verified."
 
       - name: Optional live chat check
-        if: ${{ inputs.run_chat_smoke }}
+        if: \${{ inputs.run_chat_smoke }}
         run: |
           set -euo pipefail
           curl --fail --silent --show-error --max-time 60 \
