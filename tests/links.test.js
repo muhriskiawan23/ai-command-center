@@ -27,7 +27,7 @@ test("SSRF: alamat internal, metadata cloud, IPv6, bentuk IP terselubung, kreden
     "http://user:pass@example.com/", "https://example.com:8443/", "http://example.com:8080/", "ftp://example.com/", "file:///etc/passwd", "javascript:alert(1)", "data:text/html,hi", "http://"
   ];
   for (const url of blocked) assert.equal(validateUrl(url).ok, false, `harus ditolak: ${url}`);
-  const allowed = ["https://example.com/", "http://example.com/path?x=1", "https://sub.contoh.co.id/a", "https://8.8.8.8/", "https://[2606:4700:4700::1111]/", "https://example.com:443/"];
+  const allowed = ["https://example.com/", "http://example.com/path?x=1", "https://sub.contoh.co.id/a", "https://8.8.8.8/", "https://[2606:4700:4700::1111]/", "https://[2a00::1]/", "https://example.com:443/"];
   for (const url of allowed) assert.equal(validateUrl(url).ok, true, `harus diizinkan: ${url}`);
   assert.equal(validateUrl("https://app.example.workers.dev/", "app.example.workers.dev").ok, false);   // host aplikasi sendiri
   assert.equal(blockedHostReason("example.com"), null);
@@ -144,4 +144,12 @@ test("non-ok and unsupported responses are cancelled without buffering their bod
     assert.equal(result.ok, false);
     assert.equal(cancelled, true);
   }
+});
+
+
+test("IPv6 compressed zero hextets are expanded before special-range checks", () => {
+  assert.equal(validateUrl("https://[2a00::1]/").ok, true);
+  assert.equal(validateUrl("https://[2606:4700::1111]/").ok, true);
+  assert.equal(validateUrl("https://[2001::1]/").ok, false);
+  assert.equal(validateUrl("https://[3fff::1]/").ok, false);
 });

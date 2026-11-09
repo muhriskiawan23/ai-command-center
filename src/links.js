@@ -70,15 +70,25 @@ function isPublicIpv4(host) {
 }
 
 function isPublicIpv6(inner) {
-  const groups = inner.split(":");
-  const first = parseInt(groups[0] || "0", 16);
-  const second = parseInt(groups[1] || "0", 16);
-  if (!Number.isFinite(first) || !Number.isFinite(second) || first < 0x2000 || first > 0x3fff) return false; // only global unicast 2000::/3
-  if (first === 0x2002) return false;                                            // 6to4 embeds an IPv4 address
+  // Expand :: before inspecting the prefix: a compressed zero second hextet is valid and must not be mistaken for malformed input.
+  const halves = String(inner || "").toLowerCase().split("::");
+  if (halves.length > 2) return false;
+  const left = halves[0] ? halves[0].split(":") : [];
+  const right = halves.length === 2 && halves[1] ? halves[1].split(":") : [];
+  const missing = 8 - left.length - right.length;
+  if ((halves.length === 1 && missing !== 0) || (halves.length === 2 && missing < 1)) return false;
+  const groups = halves.length === 2
+    ? [...left, ...Array(missing).fill("0"), ...right]
+    : left;
+  if (groups.length !== 8 || groups.some((group) => !/^[0-9a-f]{1,4}$/.test(group))) return false;
+  const first = parseInt(groups[0], 16);
+  const second = parseInt(groups[1], 16);
+  if (first < 0x2000 || first > 0x3fff) return false; // only global unicast 2000::/3
+  if (first === 0x2002) return false; // 6to4 embeds an IPv4 address
   // Conservatively block the IANA 2001::/23 protocol-assignment range; this reader does not need its special-purpose anycast/transition addresses.
   if (first === 0x2001 && second <= 0x01ff) return false;
-  if (first === 0x2001 && second === 0x0db8) return false;                         // documentation
-  if (first === 0x3fff && second <= 0x0fff) return false;                          // IANA/RFC 9637 documentation prefix
+  if (first === 0x2001 && second === 0x0db8) return false; // documentation
+  if (first === 0x3fff && second <= 0x0fff) return false; // IANA/RFC 9637 documentation prefix
   return true;
 }
 
