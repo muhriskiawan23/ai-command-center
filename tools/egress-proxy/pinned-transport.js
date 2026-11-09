@@ -64,7 +64,25 @@ function isPublicAddress(address) {
 export { isPublicAddress };
 
 const NO_CNAME = new Set(["ENODATA"]);
-async function resolveChain(hostname, resolver = dns) {
+
+function awaitWithSignal(promise, signal) {
+  if (!signal) return promise;
+  if (signal.aborted) return Promise.reject(signal.reason || new Error("request_aborted"));
+  return new Promise((resolve, reject) => {
+    const cleanup = () => signal.removeEventListener("abort", onAbort);
+    const onAbort = () => {
+      cleanup();
+      reject(signal.reason || new Error("request_aborted"));
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    Promise.resolve(promise).then(
+      (value) => { cleanup(); resolve(value); },
+      (error) => { cleanup(); reject(error); }
+    );
+  });
+}
+async function resolveChain(hostname, resolver = dns, options = {}) {
+  const signal = options.signal;
   let current = hostname;
   const seen = new Set();
   for (let depth = 0; depth <= DNS_CNAME_LIMIT; depth++) {
@@ -72,17 +90,20 @@ async function resolveChain(hostname, resolver = dns) {
     if (seen.has(key)) throw new Error("dns_cname_loop");
     seen.add(key);
     let aliases = [];
-    try { aliases = await resolver.resolveCname(current); }
-    catch (error) { if (!NO_CNAME.has(error.code)) throw new Error("dns_cname_error"); }
+    try { aliases = await awaitWithSignal(resolver.resolveCname(current), signal); }
+    catch (error) {
+      if (signal?.aborted) throw signal.reason || new Error("request_aborted");
+      if (!NO_CNAME.has(error.code)) throw new Error("dns_cname_error");
+    }
     if (!aliases.length) break;
     if (depth === DNS_CNAME_LIMIT) throw new Error("dns_cname_depth");
     if (aliases.length !== 1) throw new Error("dns_ambiguous_cname");
     current = aliases[0].replace(/\.$/, "");
   }
-  const [v4, v6] = await Promise.all([
+  const [v4, v6] = await awaitWithSignal(Promise.all([
     resolver.resolve4(current).catch((e) => { if (e.code === "ENODATA") return []; throw new Error("dns_a_error"); }),
     resolver.resolve6(current).catch((e) => { if (e.code === "ENODATA") return []; throw new Error("dns_aaaa_error"); })
-  ]);
+  ]), signal);
   const addresses = [...new Set([...v4, ...v6])];
   if (!addresses.length || addresses.some((ip) => !isPublicAddress(ip))) throw new Error("dns_unsafe_or_empty");
   return addresses;
@@ -228,11 +249,26 @@ export async function fetchPinned(rawUrl, {
   request = requestOneHop,
   signal
 } = {}) {
+  const startedAt = Date.now();
   const { url, host, family } = validateTarget(rawUrl);
-  const addresses = family ? [host] : await resolveChain(host, resolver);
+  let addresses;
+  if (family) {
+    addresses = [host];
+  } else {
+    const dnsDeadline = new AbortController();
+    const dnsTimer = setTimeout(() => dnsDeadline.abort(new Error("dns_timeout")), timeoutMs);
+    const dnsSignal = signal ? AbortSignal.any([signal, dnsDeadline.signal]) : dnsDeadline.signal;
+    try {
+      addresses = await resolveChain(host, resolver, { signal: dnsSignal });
+    } finally {
+      clearTimeout(dnsTimer);
+    }
+  }
   const peerIp = addresses[0];
   if (signal?.aborted) throw new Error("request_aborted");
-  const result = await request({ url, host, family, peerIp, timeoutMs, maxBytes, signal });
+  const remainingTimeoutMs = timeoutMs - (Date.now() - startedAt);
+  if (remainingTimeoutMs <= 0) throw new Error("request_timeout");
+  const result = await request({ url, host, family, peerIp, timeoutMs: remainingTimeoutMs, maxBytes, signal });
   if (REDIRECTS.has(result.status)) return { ...result, body: Buffer.alloc(0), peerIp, redirect: true };
   return { ...result, peerIp, redirect: false };
 }
