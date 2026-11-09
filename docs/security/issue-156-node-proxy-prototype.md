@@ -51,14 +51,14 @@ The current tests use local loopback fixtures only; no public target or user con
 - URL rejection for credentials, non-default ports, unsupported schemes, and private IP literals.
 - Selection of one numeric DNS answer, single-hop redirect return without following, and the configured response-size default.
 - Actual HTTP loopback socket peer verification and preservation of the original Host authority.
-- Actual HTTPS loopback socket peer verification, original SNI, trusted test-certificate hostname validation, wrong-host certificate rejection, and rejection of an untrusted self-signed certificate.
+- Actual HTTPS loopback socket peer verification, original DNS-name SNI, trusted test-certificate hostname validation, wrong-host certificate rejection, rejection of an untrusted self-signed certificate, and IP-literal HTTPS with no SNI but a validated IP subject alternative name.
 - HTTP 101 protocol upgrades are rejected immediately and the upgraded socket is closed; CONNECT tunnel events are also rejected defensively.
 - IPv6 loopback socket peer verification when supported by the runner; runtime response byte-cap enforcement; total-request timeout abort.
 
 **Still outstanding:**
 - Live DNS rebinding race tests against an external authoritative DNS service and production-like resolver behavior; current deterministic test proves a private answer on the next hop is rejected after a public first hop.
 - Broader IPv4/IPv6 edge-case coverage, including IPv6 socket integration where loopback IPv6 is available in CI.
-- Expired-certificate and missing-SNI TLS negative cases.
+- Expired-certificate rejection remains outstanding. DNS-name requests always set SNI; IP-literal HTTPS intentionally omits SNI and is now covered with IP SAN verification.
 - Slow headers/body, connection reset, malformed response, and proxy-down behavior; caller cancellation is covered at the real socket primitive, handler wiring, and DNS-resolution levels, while runtime response-size and total-timeout aborts have local socket tests. The DNS deadline stops waiting and prevents transport from starting; the underlying Node resolver operation itself is not cancellable through the promises API.
 - Authenticated handler tests for authorization, request-body limits/timeouts, response minimization, and client-disconnect cancellation without writing to a closed response.
 - Independent verification that no URL, query, request body, or response body is persisted and that logs contain only approved metadata.
