@@ -249,7 +249,13 @@ async function searchWithTavily(query, mode, env = {}, { fetcher = env.SEARCH_FE
     if (raw === null || raw.length > SEARCH_MAX_RESPONSE_BYTES) return { configured: true, mode, results: [], reason: "provider_response_too_large" };
     let payload;
     try { payload = JSON.parse(raw); } catch { return { configured: true, mode, results: [], reason: "provider_invalid_response" }; }
-    const items = Array.isArray(payload?.results) ? payload.results : [];
+    if (!payload || typeof payload !== "object" || Array.isArray(payload) || !Array.isArray(payload.results)) {
+      return {
+        configured: true, mode, results: [], reason: "provider_invalid_response",
+        diagnostics: { httpStatus: response.status, candidateCount: 0, usableCount: 0, failureStage: "payload_schema" }
+      };
+    }
+    const items = payload.results;
     const usableResults = [];
     const excludedResults = [];
     const seenUrls = new Set();
