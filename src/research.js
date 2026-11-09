@@ -183,7 +183,9 @@ export function retrieveCuratedKnowledge(query, startSourceId = 1, maxDocuments 
 }
 
 async function searchWithBrave(query, mode, env = {}, { fetcher = env.SEARCH_FETCHER || fetch, now = Date.now() } = {}) {
-  if (!env.BRAVE_SEARCH_API_KEY) return { configured: false, mode, results: [], reason: "provider_not_configured" };
+  // Match Tavily handling: copy-pasted Wrangler secrets may contain surrounding whitespace.
+  const apiKey = typeof env.BRAVE_SEARCH_API_KEY === "string" ? env.BRAVE_SEARCH_API_KEY.trim() : "";
+  if (!apiKey) return { configured: false, mode, results: [], reason: "provider_not_configured" };
   const safeQuery = String(query || "").trim().slice(0, 500);
   if (!safeQuery) return { configured: true, mode, results: [], reason: "empty_query" };
   const endpoint = new URL("https://api.search.brave.com/res/v1/" + (mode === "news" ? "news" : "web") + "/search");
@@ -199,7 +201,7 @@ async function searchWithBrave(query, mode, env = {}, { fetcher = env.SEARCH_FET
   try {
     const request = await fetchProviderWithRetry(fetcher, endpoint.toString(), {
       method: "GET", redirect: "manual", signal: controller.signal,
-      headers: { "Accept": "application/json", "X-Subscription-Token": env.BRAVE_SEARCH_API_KEY }
+      headers: { "Accept": "application/json", "X-Subscription-Token": apiKey }
     });
     attempts = request.attempts;
     if (request.error) throw request.error;
