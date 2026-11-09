@@ -42,9 +42,14 @@ test("extracts namespaced paragraph tags and ignores empty paragraphs", () => {
   assert.deepEqual(extractDocxParagraphs('<w:p><w:r><w:t>One</w:t></w:r></w:p><w:p/><w:p><w:r><w:t>Two &gt; one</w:t></w:r></w:p>'), ["One", "Two > one"]);
 });
 
-test("ignores fake Word tags inside XML comments and CDATA", () => {
-  const xml = '<w:document><!-- <w:p><w:r><w:t>comment payload</w:t></w:r></w:p> --><w:p><w:r><w:t>Visible</w:t></w:r></w:p><![CDATA[<w:p><w:r><w:t>CDATA payload</w:t></w:r></w:p>]]></w:document>';
+test("ignores fake Word tags inside XML comments, CDATA, processing instructions, and DTD", () => {
+  const xml = '<?xml version="1.0"?><!DOCTYPE w:document [<!ENTITY fake "<w:p><w:r><w:t>DTD payload</w:t></w:r></w:p>">]><w:document><!-- <w:p><w:r><w:t>comment payload</w:t></w:r></w:p> --><w:p><w:r><w:t>Visible</w:t></w:r></w:p><![CDATA[<w:p><w:r><w:t>CDATA payload</w:t></w:r></w:p>]]><?test <w:p><w:t>PI payload</w:t></w:p>?></w:document>';
   assert.deepEqual(extractDocxParagraphs(xml), ["Visible"]);
+});
+
+test("preserves CDATA as literal text inside a real Word text node", () => {
+  const xml = '<w:p><w:r><w:t><![CDATA[Literal <w:p> markup]]></w:t></w:r></w:p>';
+  assert.deepEqual(extractDocxParagraphs(xml), ["Literal <w:p> markup"]);
 });
 
 test("enforces actual decompressed bytes even when ZIP metadata under-reports size", async () => {
