@@ -313,7 +313,9 @@ async function searchWithTavily(query, mode, env = {}, { fetcher = env.SEARCH_FE
       reason: controller.signal.aborted ? "provider_timeout" : "provider_unavailable",
       diagnostics: {
         failureStage: controller.signal.aborted ? "timeout" : failureStage,
-        errorName: typeof error?.name === "string" ? error.name.slice(0, 40) : "UnknownError"
+        errorName: typeof error?.name === "string" ? error.name.slice(0, 40) : "UnknownError",
+        ...(["EAI_AGAIN", "ECONNREFUSED", "ECONNRESET", "ENOTFOUND", "ETIMEDOUT", "UND_ERR_CONNECT_TIMEOUT", "UND_ERR_SOCKET", "ERR_TLS_CERT_ALTNAME_INVALID"].includes(error?.cause?.code)
+          ? { causeCode: error.cause.code } : {})
       }
     };
   } finally { clearTimeout(timer); }
@@ -384,6 +386,9 @@ export function buildResearchContext(search, startSourceId = 1) {
     }
     if (typeof diagnostics.errorName === "string" && /^[A-Za-z][A-Za-z0-9]{0,39}$/.test(diagnostics.errorName)) {
       safeDiagnostics.errorName = diagnostics.errorName;
+    }
+    if (["EAI_AGAIN", "ECONNREFUSED", "ECONNRESET", "ENOTFOUND", "ETIMEDOUT", "UND_ERR_CONNECT_TIMEOUT", "UND_ERR_SOCKET", "ERR_TLS_CERT_ALTNAME_INVALID"].includes(diagnostics.causeCode)) {
+      safeDiagnostics.causeCode = diagnostics.causeCode;
     }
     const diagnosticMetadata = Object.keys(safeDiagnostics).length ? { diagnostics: safeDiagnostics } : {};
     return {

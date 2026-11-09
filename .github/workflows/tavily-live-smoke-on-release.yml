@@ -69,7 +69,8 @@ jobs:
                     diagnostics: {
                       httpStatus: Number.isInteger(x?.diagnostics?.httpStatus) ? x.diagnostics.httpStatus : undefined,
                       failureStage: ["network_request","response_headers","response_body","payload_parse","payload_schema","timeout"].includes(x?.diagnostics?.failureStage) ? x.diagnostics.failureStage : undefined,
-                      errorName: typeof x?.diagnostics?.errorName === "string" && /^[A-Za-z][A-Za-z0-9]{0,39}$/.test(x.diagnostics.errorName) ? x.diagnostics.errorName : undefined
+                      errorName: typeof x?.diagnostics?.errorName === "string" && /^[A-Za-z][A-Za-z0-9]{0,39}$/.test(x.diagnostics.errorName) ? x.diagnostics.errorName : undefined,
+                      causeCode: ["EAI_AGAIN","ECONNREFUSED","ECONNRESET","ENOTFOUND","ETIMEDOUT","UND_ERR_CONNECT_TIMEOUT","UND_ERR_SOCKET","ERR_TLS_CERT_ALTNAME_INVALID"].includes(x?.diagnostics?.causeCode) ? x.diagnostics.causeCode : undefined
                     }
                   }));
                   console.log("Safe provider diagnostics:", JSON.stringify(safeDiagnostics));
