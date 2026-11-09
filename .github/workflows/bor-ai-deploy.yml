@@ -45,10 +45,10 @@ jobs:
             exit 1
           fi
 
-      - name: Check out main
+      - name: Check out the exact triggering commit
         uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ github.sha }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
