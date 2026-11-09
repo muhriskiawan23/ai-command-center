@@ -132,6 +132,8 @@ test("Word DOCX upload is locally extracted and sent as an untrusted word docume
   assert.match(appJs, /parseDocxLocally/);
   assert.match(appJs, /payload\.wordDocument=/);
   assert.match(appJs, /kind="word-document"/);
+  assert.match(page, /Word Reader/);
+  assert.match(page, /gambar, header\/footer, komentar, dan objek tertanam tidak dibaca/);
   assert.match(appJs, /function appendWordDocumentSource/);
   assert.match(appJs, /wordDocument:activeCsv\?\.kind==="word-document"/);
 });
