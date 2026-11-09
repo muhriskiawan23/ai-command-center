@@ -1,9 +1,45 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildResearchContext, detectResearchMode, isSearchProviderConfigured, retrieveCuratedKnowledge, searchExternal } from "../src/research.js";
+import { buildResearchContext, createSearchCircuitBreaker, detectResearchMode, isSearchProviderConfigured, retrieveCuratedKnowledge, searchExternal } from "../src/research.js";
 
 const jsonResponse = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
+test("search circuit breaker opens after transient failures and admits one half-open probe", () => {
+  const breaker = createSearchCircuitBreaker({ failureThreshold: 2, cooldownMs: 100 });
+  assert.deepEqual(breaker.allow("tavily", 1), { allowed: true, state: "closed" });
+  assert.equal(breaker.record("tavily", { reason: "provider_unavailable" }, 2), "closed");
+  assert.equal(breaker.record("tavily", { reason: "provider_timeout" }, 3), "open");
+  assert.deepEqual(breaker.allow("tavily", 50), { allowed: false, state: "open", retryAfterMs: 53 });
+  assert.deepEqual(breaker.allow("tavily", 103), { allowed: true, state: "half_open" });
+  assert.deepEqual(breaker.allow("tavily", 104), { allowed: false, state: "half_open", retryAfterMs: 0 });
+  assert.equal(breaker.record("tavily", { configured: true, results: [] }, 105), "closed");
+  assert.deepEqual(breaker.allow("tavily", 106), { allowed: true, state: "closed" });
+});
+
+test("search circuit breaker reopens after a failed probe and isolates provider states", () => {
+  const breaker = createSearchCircuitBreaker({ failureThreshold: 1, cooldownMs: 10 });
+  assert.equal(breaker.record("brave", { reason: "provider_rate_limited" }, 5), "open");
+  assert.deepEqual(breaker.allow("tavily", 6), { allowed: true, state: "closed" });
+  assert.deepEqual(breaker.allow("brave", 16), { allowed: true, state: "half_open" });
+  assert.equal(breaker.record("brave", { reason: "provider_error" }, 17), "open");
+  assert.deepEqual(breaker.allow("brave", 18), { allowed: false, state: "open", retryAfterMs: 9 });
+  const isolated = createSearchCircuitBreaker({ failureThreshold: 1 });
+  assert.equal(isolated.record("tavily", { reason: "provider_auth_error" }, 1), "closed");
+});
+
+test("searchExternal short-circuits an open injected provider circuit without a network call", async () => {
+  const breaker = createSearchCircuitBreaker({ failureThreshold: 1, cooldownMs: 5000 });
+  breaker.record("tavily", { reason: "provider_unavailable" }, 1);
+  let calls = 0;
+  const result = await searchExternal("latest news", "news", { TAVILY_API_KEY: "secret" }, {
+    now: 2, circuitBreaker: breaker,
+    fetcher: async () => { calls += 1; return jsonResponse({ results: [] }); }
+  });
+  assert.equal(result.reason, "provider_circuit_open");
+  assert.equal(result.diagnostics.circuitState, "open");
+  assert.equal(result.diagnostics.attempts, 0);
+  assert.equal(calls, 0);
+});
 test("detects explicit search and news intent without treating ordinary chat as live search", () => {
   assert.equal(detectResearchMode("Cari berita terbaru tentang ekonomi Indonesia"), "news");
   assert.equal(detectResearchMode("Search current AI regulation today"), "web");
