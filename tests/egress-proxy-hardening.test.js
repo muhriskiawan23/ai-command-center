@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
+import { EventEmitter } from "node:events";
 import {
   fetchPinned,
   resolveChain,
@@ -234,4 +235,38 @@ test("actual upstream socket is destroyed when the caller aborts", async (t) => 
   await assert.rejects(pending, /request_aborted/);
   await new Promise((resolve) => setTimeout(resolve, 20));
   assert.equal(clientClosed, true);
+});
+
+
+test("private handler cancels upstream work and avoids writing after client disconnect", async () => {
+  let markStarted;
+  const started = new Promise((resolve) => { markStarted = resolve; });
+  let upstreamAborted = false;
+  const handler = createEgressProxyHandler({
+    token: "t".repeat(40),
+    resolver: resolverFor("8.8.8.8"),
+    request: ({ signal }) => new Promise((_resolve, reject) => {
+      markStarted();
+      signal.addEventListener("abort", () => {
+        upstreamAborted = true;
+        reject(new Error("request_aborted"));
+      }, { once: true });
+    })
+  });
+  const req = {
+    method: "POST", url: "/fetch",
+    headers: { authorization: "Bearer " + "t".repeat(40) },
+    async *[Symbol.asyncIterator]() { yield Buffer.from(JSON.stringify({ url: "https://fixture.example/path" })); }
+  };
+  const res = new EventEmitter();
+  res.destroyed = false;
+  res.writableEnded = false;
+  res.writeHead = () => { throw new Error("must not write headers after disconnect"); };
+  res.end = () => { throw new Error("must not write body after disconnect"); };
+  const pending = handler(req, res);
+  await started;
+  res.destroyed = true;
+  res.emit("close");
+  await pending;
+  assert.equal(upstreamAborted, true);
 });
