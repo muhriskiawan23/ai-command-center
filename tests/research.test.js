@@ -361,3 +361,15 @@ test("Tavily distinguishes empty responses from candidates rejected by source va
   assert.match(context.sources[0].reason, /stale=1/);
   assert.match(context.sources[0].reason, /invalid_or_low_trust=1/);
 });
+
+test("search diagnostics identify the selected provider instead of hard-coding Tavily", () => {
+  const context = buildResearchContext({
+    configured: true,
+    provider: "brave",
+    mode: "web",
+    results: [],
+    reason: "provider_rate_limited"
+  });
+  assert.match(context.sources[0].reason, /Brave Search API/);
+  assert.doesNotMatch(context.sources[0].reason, /Tavily/);
+});
