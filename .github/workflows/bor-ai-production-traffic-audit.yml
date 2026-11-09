@@ -92,7 +92,8 @@ jobs:
             headers: {
               Authorization: "Bearer " + process.env.CLOUDFLARE_API_TOKEN,
               Accept: "application/json"
-            }
+            },
+            signal: AbortSignal.timeout(30000)
           });
           if (!response.ok) {
             throw new Error("Cloudflare version metadata request failed with HTTP " + response.status + ".");
