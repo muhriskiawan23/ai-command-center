@@ -46,7 +46,7 @@ The current tests use local loopback fixtures only; no public target or user con
 
 **Implemented and covered by tests:**
 - Representative IPv4/IPv6 public-address classification and rejection of common special-use/private ranges.
-- CNAME traversal, loop and depth-limit rejection; empty terminal DNS answer rejection; rejection of mixed public/private DNS answers and a deterministic public-to-private rebinding on the next hop.
+- CNAME traversal, loop and depth-limit rejection; empty terminal DNS answer rejection; rejection of mixed public/private DNS answers and a deterministic public-to-private rebinding on the next hop; bounded DNS resolution under the same request deadline, including caller cancellation before any upstream socket is opened.
 - Fail-closed handling for DNS resolver errors other than an explicit no-data response.
 - URL rejection for credentials, non-default ports, unsupported schemes, and private IP literals.
 - Selection of one numeric DNS answer, single-hop redirect return without following, and the configured response-size default.
@@ -58,7 +58,7 @@ The current tests use local loopback fixtures only; no public target or user con
 - Live DNS rebinding race tests against an external authoritative DNS service and production-like resolver behavior; current deterministic test proves a private answer on the next hop is rejected after a public first hop.
 - Broader IPv4/IPv6 edge-case coverage, including IPv6 socket integration where loopback IPv6 is available in CI.
 - Expired, untrusted, and missing-SNI TLS cases.
-- Slow headers/body, connection reset, malformed response, and proxy-down behavior; caller cancellation is covered at the real socket primitive and handler wiring levels, while runtime response-size and total-timeout aborts have local socket tests.
+- Slow headers/body, connection reset, malformed response, and proxy-down behavior; caller cancellation is covered at the real socket primitive, handler wiring, and DNS-resolution levels, while runtime response-size and total-timeout aborts have local socket tests. The DNS deadline stops waiting and prevents transport from starting; the underlying Node resolver operation itself is not cancellable through the promises API.
 - Authenticated handler tests for authorization, request-body limits/timeouts, response minimization, and client-disconnect cancellation without writing to a closed response.
 - Independent verification that no URL, query, request body, or response body is persisted and that logs contain only approved metadata.
 - End-to-end proof that the Worker has no direct-fetch fallback when a proxy binding is absent or errors.
