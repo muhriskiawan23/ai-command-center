@@ -125,7 +125,7 @@ export function buildPresentationContext(presentation) {
 
 export const WORD_CONTEXT_MAX_CHARS = 10_000;
 export function safeWordDocumentName(value) {
-  const name = String(value || "document.docx").replace(/[\\x00-\\x1f\\x7f]/g, "").replace(/[\\/\\\\<>:"|?*]/g, "_").trim().slice(0, 120);
+  const name = String(value || "document.docx").replace(/[\x00-\x1f\x7f]/g, "").replace(/[\/\\<>:"|?*]/g, "_").trim().slice(0, 120);
   return name.toLowerCase().endsWith(".docx") ? name : "document.docx";
 }
 export function buildWordDocumentContext(document) {
@@ -138,5 +138,5 @@ export function buildWordDocumentContext(document) {
     "<word_document name=\"" + name + "\">",
     content,
     "</word_document>"
-  ].join("\\n");
+  ].join("\n");
 }
