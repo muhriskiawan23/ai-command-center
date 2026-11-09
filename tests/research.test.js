@@ -144,16 +144,20 @@ test("provider error responses are cancelled without buffering their bodies", as
 });
 
 
-test("provider-neutral search adapter rejects unknown providers without making network requests", async () => {
-  let called = false;
-  const result = await searchExternal("latest news", "news", { SEARCH_PROVIDER: "unknown" }, {
-    fetcher: async () => { called = true; return jsonResponse({ results: [] }); }
-  });
-  assert.equal(result.configured, false);
-  assert.equal(result.provider, "unknown");
-  assert.equal(result.reason, "provider_unsupported");
-  assert.deepEqual(result.results, []);
-  assert.equal(called, false);
+test("provider-neutral search adapter rejects unknown and prototype-like providers without network requests", async () => {
+  for (const provider of ["unknown", "__proto__", "constructor", "toString", "hasOwnProperty"]) {
+    let called = false;
+    const result = await searchExternal("latest news", "news", { SEARCH_PROVIDER: provider }, {
+      fetcher: async () => { called = true; return jsonResponse({ results: [] }); }
+    });
+    assert.equal(result.configured, false);
+    assert.equal(result.provider, provider);
+    assert.equal(result.reason, "provider_unsupported");
+    assert.deepEqual(result.results, []);
+    assert.equal(called, false);
+    const context = buildResearchContext(result, 1);
+    assert.match(context.sources[0].reason, /belum didukung/);
+  }
 });
 
 test("provider-neutral search adapter defaults to Brave and returns the normalized provider identifier", async () => {
