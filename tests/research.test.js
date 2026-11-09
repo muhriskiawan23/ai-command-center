@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildResearchContext, detectResearchMode, retrieveCuratedKnowledge, searchExternal } from "../src/research.js";
+import { buildResearchContext, detectResearchMode, isSearchProviderConfigured, retrieveCuratedKnowledge, searchExternal } from "../src/research.js";
 
 const jsonResponse = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
@@ -182,4 +182,12 @@ test("unsupported provider reports an accurate fail-closed status without implyi
   assert.match(context.context, /provider_unsupported/);
   assert.match(context.sources[0].reason, /belum didukung/);
   assert.doesNotMatch(context.sources[0].reason, /BRAVE_SEARCH_API_KEY/);
+});
+
+
+test("provider readiness is resolved by the selected adapter instead of a Brave-specific quota check", () => {
+  assert.equal(isSearchProviderConfigured({}), false);
+  assert.equal(isSearchProviderConfigured({ BRAVE_SEARCH_API_KEY: "secret" }), true);
+  assert.equal(isSearchProviderConfigured({ SEARCH_PROVIDER: "unknown", BRAVE_SEARCH_API_KEY: "secret" }), false);
+  assert.equal(isSearchProviderConfigured({ SEARCH_PROVIDER: "__proto__", BRAVE_SEARCH_API_KEY: "secret" }), false);
 });
