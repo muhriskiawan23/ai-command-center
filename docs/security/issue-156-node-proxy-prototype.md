@@ -45,19 +45,20 @@ Node's custom \`lookup\` hook is a way to direct the socket connection to a sele
 The current tests use local loopback fixtures only; no public target or user content is contacted.
 
 **Implemented and covered by tests:**
-- Representative IPv4/IPv6 public-address classification and rejection of common special-use/private ranges.
+- Representative IPv4/IPv6 public-address classification and rejection of common special-use/private ranges, including the IANA-registered IPv6 AS112 anycast prefix (2620:4f:8000::/48); the registry is used conservatively, with special-purpose ranges blocked even where IANA marks some as globally reachable.
 - CNAME traversal, loop and depth-limit rejection; empty terminal DNS answer rejection; rejection of mixed public/private DNS answers and a deterministic public-to-private rebinding on the next hop; bounded DNS resolution under the same request deadline, including caller cancellation before any upstream socket is opened.
 - Fail-closed handling for DNS resolver errors other than an explicit no-data response.
 - URL rejection for credentials, non-default ports, unsupported schemes, and private IP literals.
 - Selection of one numeric DNS answer, single-hop redirect return without following, and the configured response-size default.
 - Actual HTTP loopback socket peer verification and preservation of the original Host authority.
 - Actual HTTPS loopback socket peer verification, original SNI, trusted test-certificate hostname validation, and wrong-host certificate rejection.
+- HTTP 101 protocol upgrades are rejected immediately and the upgraded socket is closed; CONNECT tunnel events are also rejected defensively.
 - IPv6 loopback socket peer verification when supported by the runner; runtime response byte-cap enforcement; total-request timeout abort.
 
 **Still outstanding:**
 - Live DNS rebinding race tests against an external authoritative DNS service and production-like resolver behavior; current deterministic test proves a private answer on the next hop is rejected after a public first hop.
 - Broader IPv4/IPv6 edge-case coverage, including IPv6 socket integration where loopback IPv6 is available in CI.
-- Expired, untrusted, and missing-SNI TLS cases.
+- Expired and missing-SNI TLS negative cases. An untrusted self-signed certificate is rejected by the default TLS verification path; a dedicated regression test for that path remains to be added.
 - Slow headers/body, connection reset, malformed response, and proxy-down behavior; caller cancellation is covered at the real socket primitive, handler wiring, and DNS-resolution levels, while runtime response-size and total-timeout aborts have local socket tests. The DNS deadline stops waiting and prevents transport from starting; the underlying Node resolver operation itself is not cancellable through the promises API.
 - Authenticated handler tests for authorization, request-body limits/timeouts, response minimization, and client-disconnect cancellation without writing to a closed response.
 - Independent verification that no URL, query, request body, or response body is persisted and that logs contain only approved metadata.
