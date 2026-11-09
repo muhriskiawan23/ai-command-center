@@ -106,14 +106,14 @@ function validateTarget(raw) {
 }
 
 /** @internal Low-level socket primitive. Callers must validate DNS and target policy first. */
-export function requestOneHop({ url, host, family, peerIp, timeoutMs, maxBytes, tlsCa }) {
+export function requestOneHop({ url, host, family, peerIp, timeoutMs, maxBytes, tlsCa, port }) {
   return new Promise((resolve, reject) => {
     const secure = url.protocol === "https:";
     const transport = secure ? https : http;
     const options = {
       protocol: url.protocol,
       hostname: host,
-      port: secure ? 443 : 80,
+      port: port ?? (secure ? 443 : 80),
       method: "GET",
       path: url.pathname + url.search,
       agent: false,
