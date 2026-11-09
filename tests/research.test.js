@@ -292,7 +292,7 @@ test("provider readiness is resolved by the selected adapter instead of a Brave-
 
 test("provider readiness ignores whitespace-only secrets and selects a usable fallback provider", async () => {
   assert.equal(isSearchProviderConfigured({ TAVILY_API_KEY: "   " }), false);
-  assert.equal(isSearchProviderConfigured({ BRAVE_SEARCH_API_KEY: "\\n\\t" }), false);
+  assert.equal(isSearchProviderConfigured({ BRAVE_SEARCH_API_KEY: "\n\t" }), false);
   assert.equal(isSearchProviderConfigured({ TAVILY_API_KEY: "  ", BRAVE_SEARCH_API_KEY: "brave-valid" }), true);
 
   const result = await searchExternal("current technology", "web", {
