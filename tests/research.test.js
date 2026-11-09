@@ -450,7 +450,7 @@ test("Tavily exposes safe HTTP diagnostics without including provider response b
     fetcher: async () => new Response("private provider payload", { status: 400 })
   });
   assert.equal(result.reason, "provider_request_rejected");
-  assert.deepEqual(result.diagnostics, { httpStatus: 400, candidateCount: 0, usableCount: 0 });
+  assert.deepEqual(result.diagnostics, { httpStatus: 400, candidateCount: 0, usableCount: 0, attempts: 1 });
   const context = buildResearchContext({ ...result, provider: "tavily" });
   assert.match(context.sources[0].reason, /HTTP 400/);
   assert.doesNotMatch(context.sources[0].reason, /private provider payload|secret/);
@@ -497,7 +497,7 @@ test("Tavily rejects a successful HTTP response with an invalid result schema", 
   });
   assert.equal(result.reason, "provider_invalid_response");
   assert.deepEqual(result.diagnostics, {
-    httpStatus: 200, candidateCount: 0, usableCount: 0, failureStage: "payload_schema"
+    httpStatus: 200, candidateCount: 0, usableCount: 0, failureStage: "payload_schema", attempts: 1
   });
   const context = buildResearchContext(result);
   assert.match(context.sources[0].reason, /invalid_response/);
@@ -536,6 +536,7 @@ test("Tavily network failures expose only a safe failure stage and error class",
   assert.equal(result.reason, "provider_unavailable");
   assert.deepEqual(result.diagnostics, {
     failureStage: "network_request",
+    attempts: 2,
     errorName: "TypeError"
   });
   const context = buildResearchContext(result);
