@@ -145,7 +145,6 @@ async function searchWithBrave(query, mode, env = {}, { fetcher = env.SEARCH_FET
       await cancelResponseBody(response);
       return { configured: true, mode, results: [], reason: response.status === 429 ? "provider_rate_limited" : "provider_error" };
     }
-    failureStage = "response_headers";
     const contentType = response.headers.get("content-type") || "";
     if (!/^application\/json(?:\s*;|$)/i.test(contentType)) {
       await cancelResponseBody(response);
@@ -156,10 +155,8 @@ async function searchWithBrave(query, mode, env = {}, { fetcher = env.SEARCH_FET
       await cancelResponseBody(response);
       return { configured: true, mode, results: [], reason: "provider_response_too_large" };
     }
-    failureStage = "response_body";
     const raw = await readBoundedResponseText(response, SEARCH_MAX_RESPONSE_BYTES);
     if (raw === null || raw.length > SEARCH_MAX_RESPONSE_BYTES) return { configured: true, mode, results: [], reason: "provider_response_too_large" };
-    failureStage = "payload_parse";
     let payload;
     try { payload = JSON.parse(raw); } catch { return { configured: true, mode, results: [], reason: "provider_invalid_response" }; }
     const items = Array.isArray(payload?.results) ? payload.results : Array.isArray(payload?.web?.results) ? payload.web.results : [];
@@ -239,6 +236,7 @@ async function searchWithTavily(query, mode, env = {}, { fetcher = env.SEARCH_FE
         : "provider_error";
       return { configured: true, mode, results: [], reason, diagnostics: { httpStatus: status, candidateCount: 0, usableCount: 0 } };
     }
+    failureStage = "response_headers";
     const contentType = response.headers.get("content-type") || "";
     if (!/^application\/json(?:\s*;|$)/i.test(contentType)) {
       await cancelResponseBody(response);
@@ -249,8 +247,10 @@ async function searchWithTavily(query, mode, env = {}, { fetcher = env.SEARCH_FE
       await cancelResponseBody(response);
       return { configured: true, mode, results: [], reason: "provider_response_too_large" };
     }
+    failureStage = "response_body";
     const raw = await readBoundedResponseText(response, SEARCH_MAX_RESPONSE_BYTES);
     if (raw === null || raw.length > SEARCH_MAX_RESPONSE_BYTES) return { configured: true, mode, results: [], reason: "provider_response_too_large" };
+    failureStage = "payload_parse";
     let payload;
     try { payload = JSON.parse(raw); } catch { return { configured: true, mode, results: [], reason: "provider_invalid_response" }; }
     if (!payload || typeof payload !== "object" || Array.isArray(payload) || !Array.isArray(payload.results)) {
