@@ -2,6 +2,9 @@ import { validateUrl } from "./links.js";
 // Phase 2 research adapter: optional Brave Search/News + a small first-party curated knowledge index.
 // External content is always treated as untrusted evidence, never as instructions.
 const SEARCH_TIMEOUT_MS = 15_000;
+const SEARCH_MAX_ATTEMPTS = 2;
+const SEARCH_RETRY_DELAY_MS = 200;
+const SEARCH_RETRYABLE_STATUSES = new Set([408, 500, 502, 503, 504]);
 const SEARCH_MAX_RESULTS = 5;
 const SEARCH_MAX_CANDIDATES = 10;
 const SEARCH_MAX_RESULTS_PER_HOST = 2;
@@ -58,6 +61,62 @@ function canonicalSearchUrl(value) {
 
 async function cancelResponseBody(response) {
   try { await response.body?.cancel(); } catch { /* ignore cancellation errors */ }
+}
+
+
+
+async function waitForProviderRetry(signal) {
+  if (signal?.aborted) return false;
+  return new Promise((resolve) => {
+    let timer;
+    const cleanup = () => {
+      if (timer) clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+    };
+    const onAbort = () => {
+      cleanup();
+      resolve(false);
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+    timer = setTimeout(() => {
+      cleanup();
+      resolve(!signal?.aborted);
+    }, SEARCH_RETRY_DELAY_MS);
+    if (signal?.aborted) onAbort();
+  });
+}
+
+function retryBudgetAbortError() {
+  const error = new Error("Provider retry budget exhausted");
+  error.name = "AbortError";
+  return error;
+}
+
+async function fetchProviderWithRetry(fetcher, url, init) {
+  let attempts = 0;
+  let lastError;
+  for (let attempt = 0; attempt < SEARCH_MAX_ATTEMPTS; attempt += 1) {
+    attempts += 1;
+    try {
+      const response = await fetcher(url, init);
+      if (attempt === 0 && SEARCH_RETRYABLE_STATUSES.has(response.status)) {
+        await cancelResponseBody(response);
+        if (await waitForProviderRetry(init.signal)) continue;
+        if (init.signal?.aborted) return { error: retryBudgetAbortError(), attempts };
+      }
+      return { response, attempts };
+    } catch (error) {
+      lastError = error;
+      // Only retry fetch's standard network TypeError. Never retry aborts, programming
+      // errors, provider 4xx responses, or errors after the shared deadline.
+      if (attempt === 0 && error?.name !== "AbortError" && error instanceof TypeError) {
+        if (await waitForProviderRetry(init.signal)) continue;
+        if (init.signal?.aborted) return { error: retryBudgetAbortError(), attempts };
+      }
+      return { error: lastError, attempts };
+    }
+  }
+  return { error: lastError, attempts };
 }
 
 async function readBoundedResponseText(response, maxBytes) {
@@ -136,29 +195,33 @@ async function searchWithBrave(query, mode, env = {}, { fetcher = env.SEARCH_FET
   else if (/\b(minggu ini|this week|recent|pekan ini)\b/i.test(safeQuery)) endpoint.searchParams.set("freshness", "pw");
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), SEARCH_TIMEOUT_MS);
+  let attempts = 0;
   try {
-    const response = await fetcher(endpoint.toString(), {
+    const request = await fetchProviderWithRetry(fetcher, endpoint.toString(), {
       method: "GET", redirect: "manual", signal: controller.signal,
       headers: { "Accept": "application/json", "X-Subscription-Token": env.BRAVE_SEARCH_API_KEY }
     });
+    attempts = request.attempts;
+    if (request.error) throw request.error;
+    const response = request.response;
     if (!response.ok) {
       await cancelResponseBody(response);
-      return { configured: true, mode, results: [], reason: response.status === 429 ? "provider_rate_limited" : response.status >= 300 && response.status < 400 ? "provider_redirect_rejected" : "provider_error", diagnostics: { httpStatus: response.status, candidateCount: 0, usableCount: 0 } };
+      return { configured: true, mode, results: [], reason: response.status === 429 ? "provider_rate_limited" : response.status >= 300 && response.status < 400 ? "provider_redirect_rejected" : "provider_error", diagnostics: { httpStatus: response.status, candidateCount: 0, usableCount: 0, attempts } };
     }
     const contentType = response.headers.get("content-type") || "";
     if (!/^application\/json(?:\s*;|$)/i.test(contentType)) {
       await cancelResponseBody(response);
-      return { configured: true, mode, results: [], reason: "provider_invalid_response" };
+      return { configured: true, mode, results: [], reason: "provider_invalid_response", diagnostics: { attempts } };
     }
     const length = Number(response.headers.get("content-length") || 0);
     if (length > SEARCH_MAX_RESPONSE_BYTES) {
       await cancelResponseBody(response);
-      return { configured: true, mode, results: [], reason: "provider_response_too_large" };
+      return { configured: true, mode, results: [], reason: "provider_response_too_large", diagnostics: { attempts } };
     }
     const raw = await readBoundedResponseText(response, SEARCH_MAX_RESPONSE_BYTES);
-    if (raw === null || raw.length > SEARCH_MAX_RESPONSE_BYTES) return { configured: true, mode, results: [], reason: "provider_response_too_large" };
+    if (raw === null || raw.length > SEARCH_MAX_RESPONSE_BYTES) return { configured: true, mode, results: [], reason: "provider_response_too_large", diagnostics: { attempts } };
     let payload;
-    try { payload = JSON.parse(raw); } catch { return { configured: true, mode, results: [], reason: "provider_invalid_response" }; }
+    try { payload = JSON.parse(raw); } catch { return { configured: true, mode, results: [], reason: "provider_invalid_response", diagnostics: { attempts } }; }
     const items = Array.isArray(payload?.results) ? payload.results : Array.isArray(payload?.web?.results) ? payload.web.results : [];
     const usableResults = [];
     const excludedResults = [];
@@ -193,9 +256,9 @@ async function searchWithBrave(query, mode, env = {}, { fetcher = env.SEARCH_FET
     }
     // Invalid, stale, or host-limited early candidates must not crowd out later usable sources.
     const results = [...usableResults, ...excludedResults].slice(0, SEARCH_MAX_RESULTS);
-    return { configured: true, mode, results };
+    return { configured: true, mode, results, diagnostics: { attempts } };
   } catch {
-    return { configured: true, mode, results: [], reason: controller.signal.aborted ? "provider_timeout" : "provider_unavailable" };
+    return { configured: true, mode, results: [], reason: controller.signal.aborted ? "provider_timeout" : "provider_unavailable", diagnostics: { attempts } };
   } finally { clearTimeout(timer); }
 }
 
@@ -209,8 +272,9 @@ async function searchWithTavily(query, mode, env = {}, { fetcher = env.SEARCH_FE
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), SEARCH_TIMEOUT_MS);
   let failureStage = "network_request";
+  let attempts = 0;
   try {
-    const response = await fetcher("https://api.tavily.com/search", {
+    const request = await fetchProviderWithRetry(fetcher, "https://api.tavily.com/search", {
       method: "POST", redirect: "manual", signal: controller.signal,
       headers: {
         "Accept": "application/json",
@@ -228,6 +292,9 @@ async function searchWithTavily(query, mode, env = {}, { fetcher = env.SEARCH_FE
         include_usage: false
       })
     });
+    attempts = request.attempts;
+    if (request.error) throw request.error;
+    const response = request.response;
     if (!response.ok) {
       const status = response.status;
       await cancelResponseBody(response);
@@ -237,29 +304,29 @@ async function searchWithTavily(query, mode, env = {}, { fetcher = env.SEARCH_FE
         : status === 403 ? "provider_permission_error"
         : status >= 400 && status < 500 ? "provider_request_rejected"
         : "provider_error";
-      return { configured: true, mode, results: [], reason, diagnostics: { httpStatus: status, candidateCount: 0, usableCount: 0 } };
+      return { configured: true, mode, results: [], reason, diagnostics: { httpStatus: status, candidateCount: 0, usableCount: 0, attempts } };
     }
     failureStage = "response_headers";
     const contentType = response.headers.get("content-type") || "";
     if (!/^application\/json(?:\s*;|$)/i.test(contentType)) {
       await cancelResponseBody(response);
-      return { configured: true, mode, results: [], reason: "provider_invalid_response" };
+      return { configured: true, mode, results: [], reason: "provider_invalid_response", diagnostics: { attempts } };
     }
     const length = Number(response.headers.get("content-length") || 0);
     if (length > SEARCH_MAX_RESPONSE_BYTES) {
       await cancelResponseBody(response);
-      return { configured: true, mode, results: [], reason: "provider_response_too_large" };
+      return { configured: true, mode, results: [], reason: "provider_response_too_large", diagnostics: { attempts } };
     }
     failureStage = "response_body";
     const raw = await readBoundedResponseText(response, SEARCH_MAX_RESPONSE_BYTES);
-    if (raw === null || raw.length > SEARCH_MAX_RESPONSE_BYTES) return { configured: true, mode, results: [], reason: "provider_response_too_large" };
+    if (raw === null || raw.length > SEARCH_MAX_RESPONSE_BYTES) return { configured: true, mode, results: [], reason: "provider_response_too_large", diagnostics: { attempts } };
     failureStage = "payload_parse";
     let payload;
-    try { payload = JSON.parse(raw); } catch { return { configured: true, mode, results: [], reason: "provider_invalid_response" }; }
+    try { payload = JSON.parse(raw); } catch { return { configured: true, mode, results: [], reason: "provider_invalid_response", diagnostics: { attempts } }; }
     if (!payload || typeof payload !== "object" || Array.isArray(payload) || !Array.isArray(payload.results)) {
       return {
         configured: true, mode, results: [], reason: "provider_invalid_response",
-        diagnostics: { httpStatus: response.status, candidateCount: 0, usableCount: 0, failureStage: "payload_schema" }
+        diagnostics: { httpStatus: response.status, candidateCount: 0, usableCount: 0, failureStage: "payload_schema", attempts }
       };
     }
     const items = payload.results;
@@ -306,7 +373,7 @@ async function searchWithTavily(query, mode, env = {}, { fetcher = env.SEARCH_FE
       configured: true, mode, results, reason,
       diagnostics: {
         httpStatus: response.status, candidateCount: items.length,
-        usableCount: usableResults.length, excludedCount: excludedResults.length,
+        usableCount: usableResults.length, excludedCount: excludedResults.length, attempts,
         exclusionCounts
       }
     };
@@ -323,6 +390,7 @@ async function searchWithTavily(query, mode, env = {}, { fetcher = env.SEARCH_FE
       reason: controller.signal.aborted ? "provider_timeout" : "provider_unavailable",
       diagnostics: {
         failureStage: controller.signal.aborted ? "timeout" : failureStage,
+        attempts,
         errorName: typeof error?.name === "string" && /^[A-Za-z][A-Za-z0-9]{0,39}$/.test(error.name) ? error.name : "UnknownError",
         ...(causeCode ? { causeCode } : {})
       }
