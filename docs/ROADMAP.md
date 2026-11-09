@@ -99,12 +99,12 @@ Acceptance:
 
 ### Milestone 1 — Reliable Web Intelligence
 
-**Priority:** P0 · **Status:** partially implemented; provider-neutral adapter foundation implemented in PR #129 with Brave as the only registered provider; live provider verification blocked by secret configuration
+**Priority:** P0 · **Status:** provider-neutral adapter foundation merged in PR #129; Tavily adapter is being added in the current PR, with Brave retained as an optional provider. The founder reports that `TAVILY_API_KEY` has been configured in Cloudflare; secret presence, key validity, quota, and live results are not independently verified yet.
 
 Work:
 - PR #91 is merged and deployed; keep live Brave verification blocked until a controlled request confirms key validity and provider quota.
-- Configure and verify Brave Search/News in a controlled environment after the founder supplies the secret through Cloudflare's secret manager.
-- Provider-neutral interfaces for search and news are implemented in PR #129; Brave remains the only registered adapter. Add another provider only after reviewing official API terms, regional coverage, retention, pricing, and credentials.
+- Run one controlled live Tavily web-search smoke test and one news-search smoke test only after the adapter is merged/deployed; verify key validity and provider quota without logging the key or query payload. The founder reports the Worker secret is configured, but this has not yet been independently verified.
+- Provider-neutral interfaces for search and news are implemented in PR #129. The Tavily adapter uses the official Bearer-authenticated Search endpoint, `basic` depth, a maximum of 10 candidates, `include_answer=false`, `include_raw_content=false`, and the existing URL/freshness/deduplication/diversity gates. When `SEARCH_PROVIDER` is unset and `TAVILY_API_KEY` exists, Tavily is selected; otherwise the existing Brave default remains. Brave remains available through explicit provider selection. Basic Tavily search is documented as 1 credit/request; the free plan currently advertises 1,000 monthly credits and no card requirement. This is a code-level cost bound, not a hard account-level spend cap.
 - Evaluate a second provider only after checking official API availability, pricing, terms, regional coverage, data retention and credentials. Do not scrape consumer search pages or use undocumented endpoints as a production fallback.
 - Add deterministic provider selection, bounded retries, timeouts, circuit breaking, per-provider budgets and a safe fallback policy.
 - Add query classification, freshness controls, source diversity, duplicate detection, canonical URL handling and source-quality signals.
