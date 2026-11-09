@@ -29,11 +29,11 @@ Branch audit historis: `bor-ai/stage-06-input-audit` (di atas `bor-ai/stage-05-c
 **Kesimpulan refresh terbatas:** tidak ditemukan regresi yang dapat dibuktikan pada alur pembaca tautan dari pemeriksaan statis dan fixture yang ditinjau. PR #128 memperkuat blok alamat khusus dan pembatalan response body; PR #130 memperbaiki pemeriksaan IPv6 terkompresi; PR #129 menambahkan kontrak adapter search/news netral-provider dengan Brave sebagai satu-satunya adapter terdaftar dan fail-closed untuk provider tak dikenal; PR #133 menambahkan canonical URL deduplication dan batas dua hasil usable per hostname. Post-merge main tests lulus 365/365 dan production Worker `662aa46a-7bb2-4629-b7bb-d4187bc70257` berhasil diverifikasi melalui deep health, agents, dan Google Sign-In. D1 ter-pin, tidak ada migrasi tertunda atau diterapkan. Dashboard traffic belum diperiksa ulang setelah PR #126. Ini bukan audit penetrasi penuh, pengujian corpus DOCX nyata, atau validasi live model/search. Tidak ada Brave call atau live model inference yang dilakukan.
 ## 0.1. Pembaruan setelah PR #147–#148 — 9 November 2026
 
-**Baseline terbaru:** `24541b5d1f1400c516ef1b31426f77547cbbe98f` (PR #148). PR #147 memperbaiki redirect provider Tavily/Brave agar kompatibel dengan Cloudflare Workers: request memakai `redirect: "manual"` dan respons 3xx ditolak tanpa mengikuti redirect. Regression test memastikan hanya satu fetch dan tujuan redirect tidak pernah dihubungi. PR #148 menganggap secret kosong/spasi sebagai tidak terkonfigurasi dan menguji fallback Brave ketika secret Tavily hanya whitespace.
+**Baseline terbaru:** `61ec5a40214e16484cb795ed6f56cc9843668be6` (PR #157). PR #147 memperbaiki redirect provider Tavily/Brave agar kompatibel dengan Cloudflare Workers: request memakai `redirect: "manual"` dan respons 3xx ditolak tanpa mengikuti redirect. PR #148 menganggap secret kosong/spasi sebagai tidak terkonfigurasi. PR #157 menambahkan satu retry terbatas untuk gangguan jaringan sementara dan HTTP 408/500/502/503/504, tetap di dalam deadline request; rate limit 429/432/433, auth/permission error, abort dan bug pemrograman tidak diulang.
 
-**Bukti rilis:** PR #147 production deploy `42584477901` sukses; live Tavily smoke `42584585509` sukses: Web menghasilkan 1 sumber usable dan News menghasilkan 4. PR #148 post-merge tests `42588126753` dan production deployment `42588126655` sukses, termasuk verifikasi endpoint produksi. Smoke lanjutan `42588229148` berstatus skipped karena release-marker condition; jangan menyebutnya sebagai live pass. Brave belum live-verified.
+**Bukti rilis terbaru:** PR #157 production deploy `42603003892` dan post-merge tests `42603003932` sukses. Live Tavily smoke `42603128329` sukses pada exact release: Web menghasilkan 1 sumber usable dan News menghasilkan 2; satu controlled live prompt-injection check juga lulus. Production traffic audit `42603128360` mengonfirmasi exact release SHA, active Worker version `379f065c-85ca-4ac4-b6dd-78073a4b1fff` pada 100% trafik, dan tidak ada direct VPC Network/Service binding. Audit secret names menemukan Tavily ada dan Brave tidak ada; Brave belum live-verified.
 
-**Residual yang belum ditutup:** DNS rebinding dan egress aktual Worker masih belum diverifikasi; red-team prompt injection dengan model live belum dilakukan; traffic-controller aktif belum diinspeksi ulang setelah release terbaru; audit penetrasi eksternal dan review historis lain belum selesai. Tes unit/E2E yang memakai fetcher tiruan tidak membuktikan perilaku jaringan produksi.
+**Residual yang belum ditutup:** DNS rebinding dan egress aktual Worker masih belum diverifikasi; satu controlled live prompt-injection check lulus tetapi bukan red-team menyeluruh; account-wide egress policy dan indirect network paths belum diperiksa; audit penetrasi eksternal dan review historis lain belum selesai. PR #157 memperbarui audit active traffic/release dan menemukan tidak ada direct VPC binding pada active Worker version. Tes unit/E2E yang memakai fetcher tiruan tidak membuktikan perilaku jaringan produksi.
 
 ## 1. Ruang lingkup dan batas audit (baca dulu)
 
@@ -214,3 +214,19 @@ Official Cloudflare references:
 - Scope limitation: absence of direct VPC bindings does not prove that account-level egress policy, indirect service bindings, or all private-network routes are absent. The account-level egress policy still requires separate verification.
 - DNS rebinding remains open: node:dns is available under the current compatibility date, but a resolve4/resolve6 preflight is not a connection pin. Cloudflare's resolveOverride is limited to hostnames in the same zone; the current URL-reader fetch path has not been proven to pin arbitrary external DNS answers.
 
+
+
+## 0.5. PR #157 — bounded retries dan audit production terbaru (9 November 2026)
+
+- PR #157 merge commit: 61ec5a40214e16484cb795ed6f56cc9843668be6.
+- Exact-head CI: 382/382 unit tests lulus; syntax, preview build, E2E Playwright dan Workers Builds lulus.
+- Production deploy 42603003892 dan post-merge tests 42603003932 sukses. D1 production terverifikasi read-only; tidak ada migrasi tertunda dan tidak ada migrasi yang diterapkan.
+- Live smoke 42603128329: Tavily Web 1 usable source; Tavily News 2 usable sources; satu controlled prompt-injection check lulus. Hasil ini membuktikan satu skenario terkendali, bukan jaminan prompt-injection resistance menyeluruh.
+- Production traffic audit 42603128360: deployment e58cafd7-7c8c-43eb-9061-221b55288158; active Worker version 379f065c-85ca-4ac4-b6dd-78073a4b1fff; 100% traffic; annotation cocok dengan github-sha:61ec5a40214e16484cb795ed6f56cc9843668be6; tidak ada direct VPC Network/Service binding pada versi aktif.
+- Names-only secret audit: TAVILY_API_KEY present; BRAVE_SEARCH_API_KEY absent. Nilai secret tidak dibaca atau dicetak.
+- Retry policy: maksimal dua percobaan total untuk transient network TypeError atau HTTP 408/500/502/503/504. Request memakai shared timeout 15 detik; backoff dibatalkan segera ketika signal abort. Tidak ada retry untuk 429/432/433, auth/permission errors, aborts atau programming errors.
+- Batas keamanan: tidak adanya direct VPC binding tidak membuktikan account-wide egress restrictions atau ketiadaan indirect network paths. DNS rebinding tetap belum dimitigasi/diverifikasi.
+
+### Batas implementasi DNS pinning di Workers
+
+Cloudflare [TCP Sockets documentation](https://developers.cloudflare.com/workers/runtime-apis/tcp-sockets/) menyatakan gunakan fetch() untuk HTTP pada port 80/443; API connect() tidak menyediakan opsi TLS server-name/SNI kustom pada SocketOptions yang terdokumentasi. Karena itu, mengganti fetch dengan TCP socket ke IP tervalidasi belum terbukti dapat mempertahankan HTTP Host, TLS SNI, dan verifikasi hostname. Jalur aman tetap memerlukan egress proxy terkontrol atau mekanisme resmi yang membuktikan IP peer dipin dan TLS hostname diverifikasi. Jangan mengklaim DNS preflight saja sebagai mitigasi.
