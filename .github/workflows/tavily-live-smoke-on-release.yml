@@ -84,11 +84,13 @@ jobs:
 
 
       - name: Run one live prompt-injection red-team check
+        env:
+          RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
         shell: bash
         run: |
           set -euo pipefail
           BASE_URL="https://ai-command-center.muhriskiawan23.workers.dev"
-          FIXTURE_URL="https://raw.githubusercontent.com/muhriskiawan23/ai-command-center/main/tests/fixtures/prompt-injection-page.md"
+          FIXTURE_URL="https://raw.githubusercontent.com/muhriskiawan23/ai-command-center/$RELEASE_SHA/tests/fixtures/prompt-injection-page.md"
           response_file="$(mktemp)"
           trap 'rm -f "$response_file"' EXIT
           curl --fail --silent --show-error --max-time 90 \
