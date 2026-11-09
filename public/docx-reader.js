@@ -19,28 +19,114 @@ function decodeXml(value) {
     .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "");
 }
 
-function stripNonContentXml(xml) {
-  return String(xml || "")
-    .replace(/<!--[\s\S]*?-->/g, "")
-    .replace(/<!\[CDATA\[[\s\S]*?\]\]>/g, "");
+function xmlLocalName(name) {
+  const separator = name.lastIndexOf(":");
+  return separator < 0 ? name : name.slice(separator + 1);
 }
 
-function paragraphText(xml) {
-  const parts = [];
-  for (const match of String(xml).matchAll(/<(?:[\w.-]+:)?t\b[^>]*>([\s\S]*?)<\/(?:[\w.-]+:)?t\s*>/gi)) {
-    parts.push(decodeXml(match[1]));
+function findXmlMarkupEnd(xml, start, declaration = false) {
+  let quote = "";
+  let subsetDepth = 0;
+  for (let index = start; index < xml.length; index++) {
+    const char = xml[index];
+    if (quote) {
+      if (char === quote) quote = "";
+      continue;
+    }
+    if (char === '"' || char === "'") {
+      quote = char;
+      continue;
+    }
+    if (declaration && char === "[") subsetDepth++;
+    else if (declaration && char === "]" && subsetDepth > 0) subsetDepth--;
+    else if (char === ">" && subsetDepth === 0) return index;
   }
-  return parts.join("").replace(/[ \t]+/g, " ").trim();
+  return -1;
 }
 
 export function extractDocxParagraphs(documentXml, maxParagraphs = DOCX_MAX_PARAGRAPHS) {
+  const xml = String(documentXml || "");
   const paragraphs = [];
-  const contentXml = stripNonContentXml(documentXml);
-  for (const match of contentXml.matchAll(/<(?:[\w.-]+:)?p\b[^>]*>([\s\S]*?)<\/(?:[\w.-]+:)?p\s*>/gi)) {
-    const value = paragraphText(match[1]);
-    if (value) paragraphs.push(value);
-    if (paragraphs.length >= maxParagraphs) break;
+  const stack = [];
+  let currentParagraph = null;
+  let index = 0;
+  if (!Number.isInteger(maxParagraphs) || maxParagraphs <= 0) return paragraphs;
+
+  while (index < xml.length && paragraphs.length < maxParagraphs) {
+    if (xml[index] !== "<") {
+      const next = xml.indexOf("<", index);
+      const end = next < 0 ? xml.length : next;
+      if (stack.at(-1)?.localName === "t" && currentParagraph) {
+        currentParagraph.parts.push(decodeXml(xml.slice(index, end)));
+      }
+      index = end;
+      continue;
+    }
+
+    if (xml.startsWith("<!--", index)) {
+      const end = xml.indexOf("-->", index + 4);
+      if (end < 0) throw new Error("Struktur XML Word tidak valid.");
+      index = end + 3;
+      continue;
+    }
+    if (xml.startsWith("<![CDATA[", index)) {
+      const end = xml.indexOf("]]>", index + 9);
+      if (end < 0) throw new Error("Struktur XML Word tidak valid.");
+      if (stack.at(-1)?.localName === "t" && currentParagraph) {
+        currentParagraph.parts.push(xml.slice(index + 9, end));
+      }
+      index = end + 3;
+      continue;
+    }
+    if (xml.startsWith("<?", index)) {
+      const end = xml.indexOf("?>", index + 2);
+      if (end < 0) throw new Error("Struktur XML Word tidak valid.");
+      index = end + 2;
+      continue;
+    }
+    if (xml.slice(index, index + 9).toUpperCase() === "<!DOCTYPE" || xml.startsWith("<!", index)) {
+      const end = findXmlMarkupEnd(xml, index + 2, true);
+      if (end < 0) throw new Error("Struktur XML Word tidak valid.");
+      index = end + 1;
+      continue;
+    }
+
+    if (xml.startsWith("</", index)) {
+      const match = xml.slice(index).match(/^<\/\s*([^\s>]+)\s*>/);
+      if (!match) throw new Error("Struktur XML Word tidak valid.");
+      const frame = stack.pop();
+      if (!frame || frame.name !== match[1]) throw new Error("Struktur XML Word tidak valid.");
+      if (frame.localName === "p" && frame.paragraph) {
+        const value = frame.paragraph.parts.join("").replace(/[ \t]+/g, " ").trim();
+        if (value) paragraphs.push(value);
+        currentParagraph = frame.parentParagraph;
+      }
+      index += match[0].length;
+      continue;
+    }
+
+    const nameMatch = xml.slice(index).match(/^<\s*([^\s/>]+)/);
+    if (!nameMatch) throw new Error("Struktur XML Word tidak valid.");
+    const tagEnd = findXmlMarkupEnd(xml, index + nameMatch[0].length);
+    if (tagEnd < 0) throw new Error("Struktur XML Word tidak valid.");
+    const rawTag = xml.slice(index, tagEnd + 1);
+    const selfClosing = /\/\s*>$/.test(rawTag);
+    const name = nameMatch[1];
+    const localName = xmlLocalName(name);
+    const parentParagraph = currentParagraph;
+    const paragraph = localName === "p" ? { parts: [] } : currentParagraph;
+    const frame = { name, localName, paragraph, parentParagraph: localName === "p" ? parentParagraph : null };
+    if (!selfClosing) {
+      stack.push(frame);
+      if (localName === "p") currentParagraph = paragraph;
+    } else if (localName === "p" && paragraph) {
+      const value = paragraph.parts.join("").trim();
+      if (value) paragraphs.push(value);
+    }
+    index = tagEnd + 1;
   }
+
+  if (stack.length && paragraphs.length < maxParagraphs) throw new Error("Struktur XML Word tidak valid.");
   return paragraphs;
 }
 
