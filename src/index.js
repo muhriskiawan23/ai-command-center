@@ -1489,6 +1489,14 @@ export default {
     if (request.method === "GET" && url.pathname === "/api/health") {
       if (url.searchParams.get("deep") !== "1") return json({ ok: true, service: "BOR AI" });
       const checks = { database: false, aiBinding: Boolean(env.AI) };
+      if (!env.CHAT_LIMITER?.limit) return json({ ok: false, service: "BOR AI", checks }, 503);
+      try {
+        const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+        const limit = await env.CHAT_LIMITER.limit({ key: "health:deep:" + ip });
+        if (!limit?.success) return json({ ok: false, service: "BOR AI", checks }, 429, { "Retry-After": "60" });
+      } catch {
+        return json({ ok: false, service: "BOR AI", checks }, 503);
+      }
       try {
         if (env.DB?.prepare) {
           const row = await env.DB.prepare("SELECT 1 AS ok").first();
