@@ -428,3 +428,29 @@ test("Tavily network failures expose only a safe failure stage and error class",
   });
   assert.doesNotMatch(context.context + JSON.stringify(context.sources), /sensitive transport details|secret/);
 });
+
+
+test("Tavily trims pasted secret whitespace before building the Authorization header", async () => {
+  let authorization;
+  const result = await searchExternal("trim secret test", "web", { TAVILY_API_KEY: "  tvly-test-secret\\n" }, {
+    fetcher: async (_url, init) => {
+      authorization = init.headers.Authorization;
+      return jsonResponse({ results: [] });
+    }
+  });
+  assert.equal(result.provider, "tavily");
+  assert.equal(authorization, "Bearer tvly-test-secret");
+});
+
+test("Tavily transport diagnostics find allowlisted codes in nested causes only", async () => {
+  const result = await searchExternal("nested cause test", "web", { TAVILY_API_KEY: "secret" }, {
+    fetcher: async () => {
+      const error = new TypeError("private transport detail");
+      error.cause = { cause: { code: "UND_ERR_CONNECT_TIMEOUT", message: "private nested detail" } };
+      throw error;
+    }
+  });
+  assert.equal(result.reason, "provider_unavailable");
+  assert.equal(result.diagnostics.causeCode, "UND_ERR_CONNECT_TIMEOUT");
+  assert.doesNotMatch(JSON.stringify(result), /private transport detail|private nested detail|secret/);
+});
