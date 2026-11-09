@@ -62,6 +62,7 @@ function isPublicIpv4(host) {
   if (a === 172 && b >= 16 && b <= 31) return false;                         // private
   if (a === 192 && b === 168) return false;                                  // private
   if (a === 192 && b === 0 && (c === 0 || c === 2)) return false;            // IETF protocol / TEST-NET-1
+  if (a === 192 && b === 88 && c === 99) return false;                        // deprecated 6to4 relay block (IANA special-purpose registry)
   if (a === 198 && (b === 18 || b === 19)) return false;                      // benchmarking
   if (a === 198 && b === 51 && c === 100) return false;                       // TEST-NET-2
   if (a === 203 && b === 0 && c === 113) return false;                        // TEST-NET-3
@@ -71,9 +72,13 @@ function isPublicIpv4(host) {
 function isPublicIpv6(inner) {
   const groups = inner.split(":");
   const first = parseInt(groups[0] || "0", 16);
-  if (!Number.isFinite(first) || first < 0x2000 || first > 0x3fff) return false; // only global unicast 2000::/3
+  const second = parseInt(groups[1] || "0", 16);
+  if (!Number.isFinite(first) || !Number.isFinite(second) || first < 0x2000 || first > 0x3fff) return false; // only global unicast 2000::/3
   if (first === 0x2002) return false;                                            // 6to4 embeds an IPv4 address
-  if (first === 0x2001 && (groups[1] === "0" || groups[1] === "db8")) return false; // Teredo, documentation
+  // Conservatively block the IANA 2001::/23 protocol-assignment range; this reader does not need its special-purpose anycast/transition addresses.
+  if (first === 0x2001 && second <= 0x01ff) return false;
+  if (first === 0x2001 && second === 0x0db8) return false;                         // documentation
+  if (first === 0x3fff && second <= 0x0fff) return false;                          // IANA/RFC 9637 documentation prefix
   return true;
 }
 
@@ -135,6 +140,10 @@ export function htmlToText(html) {
 
 const failure = (url, reason) => ({ ok: false, url, requested: url, reason });
 
+async function cancelResponseBody(response) {
+  try { await response.body?.cancel(); } catch { /* ignore cancellation errors */ }
+}
+
 async function readBody(response) {
   const reader = response.body?.getReader();
   if (!reader) return { bytes: new Uint8Array(0), cut: false };
@@ -190,9 +199,15 @@ export async function readLink(rawUrl, { fetcher = fetch, ownHost = "", timeoutM
         try { current = new URL(location, check.url).toString(); } catch { return failure(rawUrl, "pengalihan ke alamat tidak valid"); }
         continue;
       }
-      if (!response.ok) return failure(rawUrl, `situs membalas ${response.status}`);
+      if (!response.ok) {
+        await cancelResponseBody(response);
+        return failure(rawUrl, `situs membalas ${response.status}`);
+      }
       const type = response.headers.get("content-type") || "";
-      if (!READABLE_TYPE.test(type)) return failure(rawUrl, `jenis konten belum didukung (${type.split(";")[0] || "tidak diketahui"})`);
+      if (!READABLE_TYPE.test(type)) {
+        await cancelResponseBody(response);
+        return failure(rawUrl, `jenis konten belum didukung (${type.split(";")[0] || "tidak diketahui"})`);
+      }
       const { bytes, cut } = await readBody(response);
       const raw = decode(bytes, type);
       const { title, text } = /html/i.test(type) ? htmlToText(raw) : { title: "", text: raw.replace(/\r/g, "").trim() };

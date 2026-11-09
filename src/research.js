@@ -12,7 +12,7 @@ const CURATED_DOCUMENTS = [
   { id: "identity", title: "BOR AI — project overview", content: "BOR AI is an independent, early-stage AI technology project building a text-based AI assistant platform. It includes a Coordinator, specialist modes, and multi-agent orchestration. A feature described in a roadmap or proposal is not necessarily shipped; verify current platform and repository status before making availability claims." },
   { id: "capabilities", title: "BOR AI — documented capabilities", content: "The repository documents chat, specialist modes, multi-agent workflows, Google sign-in, private conversation history for signed-in users, optional memory, an embeddable widget and public API, Telegram bot integration, read-only GitHub integration, and limited user-supplied link reading. Current availability must be checked against the live platform." },
   { id: "privacy", title: "BOR AI — privacy and data handling", content: "Guest conversations are held in page memory and are not saved as account chat history. Signed-in conversation history is stored in Cloudflare D1 and scoped to the authenticated account. Optional memory is off by default and requires explicit activation. Do not submit passwords, API keys, financial credentials, or other sensitive information to a public AI service." },
-  { id: "files", title: "BOR AI — document and file support", content: "BOR AI supports bounded PDF text extraction and OCR, and local browser parsing of CSV, Excel XLSX, and PowerPoint PPTX text. PDF and office-file content is bounded and may be truncated. PowerPoint extraction is text-only; images, charts, animations, and speaker notes are not inspected. Arbitrary DOCX, image, and other file formats are not established as supported." },
+  { id: "files", title: "BOR AI — document and file support", content: "BOR AI supports bounded PDF text extraction and OCR, and local browser parsing of CSV, Excel XLSX, PowerPoint PPTX text, and Word DOCX paragraphs. Office-file content is bounded and may be truncated. DOCX extraction reads only `word/document.xml`; images, headers/footers, comments, tracked deletions, and embedded objects are not extracted. PowerPoint extraction is text-only; images, charts, animations, and speaker notes are not inspected. General image understanding and arbitrary other file formats are not established as supported." },
   { id: "official-links", title: "BOR AI — official destinations", content: "Official platform: https://ai-command-center.muhriskiawan23.workers.dev. Official GitHub repository: https://github.com/muhriskiawan23/ai-command-center. Official X account: https://x.com/BORAI_Official. Beware of impersonation accounts and unofficial token or payment links." },
   { id: "development", title: "BOR AI — development status and roadmap", content: "BOR AI is in active early development. Roadmap items, proposals, issues, and founder discussions are plans rather than proof of shipped features. Production deployment, successful tests, or a health check alone do not prove every live capability works. Do not invent customers, usage statistics, partnerships, funding, legal status, token details, release dates, or performance benchmarks." }
 ];
@@ -38,6 +38,10 @@ function staleDate(value, now) {
   if (!value) return false;
   const age = now - Date.parse(value);
   return age > MAX_SOURCE_AGE_DAYS * 86400000;
+}
+
+async function cancelResponseBody(response) {
+  try { await response.body?.cancel(); } catch { /* ignore cancellation errors */ }
 }
 
 async function readBoundedResponseText(response, maxBytes) {
@@ -88,11 +92,11 @@ export function retrieveCuratedKnowledge(query, startSourceId = 1, maxDocuments 
   const sources = ranked.map(({ doc }, index) => ({
     sourceId: startSourceId + index, ok: true, url: OFFICIAL_KB_URL,
     host: "github.com", title: doc.title, sourceType: "curated",
-    trust: "official-curated", publishedAt: null, updatedAt: "2026-11-07",
+    trust: "official-curated", publishedAt: null, updatedAt: "2026-11-09",
     documentId: doc.id
   }));
   const blocks = ranked.map(({ doc }, index) =>
-    '<curated_document source_id="' + (startSourceId + index) + '" title="' + neutralise(doc.title) + '" trust="official-curated" updated_at="2026-11-07">\n' +
+    '<curated_document source_id="' + (startSourceId + index) + '" title="' + neutralise(doc.title) + '" trust="official-curated" updated_at="2026-11-09">\n' +
     neutralise(doc.content) + "\n</curated_document>"
   );
   const context = blocks.length ? [
@@ -121,9 +125,20 @@ export async function searchExternal(query, mode, env = {}, { fetcher = env.SEAR
       method: "GET", redirect: "error", signal: controller.signal,
       headers: { "Accept": "application/json", "X-Subscription-Token": env.BRAVE_SEARCH_API_KEY }
     });
-    if (!response.ok) return { configured: true, mode, results: [], reason: response.status === 429 ? "provider_rate_limited" : "provider_error" };
+    if (!response.ok) {
+      await cancelResponseBody(response);
+      return { configured: true, mode, results: [], reason: response.status === 429 ? "provider_rate_limited" : "provider_error" };
+    }
+    const contentType = response.headers.get("content-type") || "";
+    if (!/^application\/json(?:\s*;|$)/i.test(contentType)) {
+      await cancelResponseBody(response);
+      return { configured: true, mode, results: [], reason: "provider_invalid_response" };
+    }
     const length = Number(response.headers.get("content-length") || 0);
-    if (length > SEARCH_MAX_RESPONSE_BYTES) return { configured: true, mode, results: [], reason: "provider_response_too_large" };
+    if (length > SEARCH_MAX_RESPONSE_BYTES) {
+      await cancelResponseBody(response);
+      return { configured: true, mode, results: [], reason: "provider_response_too_large" };
+    }
     const raw = await readBoundedResponseText(response, SEARCH_MAX_RESPONSE_BYTES);
     if (raw === null || raw.length > SEARCH_MAX_RESPONSE_BYTES) return { configured: true, mode, results: [], reason: "provider_response_too_large" };
     let payload;
