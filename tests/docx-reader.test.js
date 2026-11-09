@@ -8,10 +8,24 @@ import {
   parseDocxLocally
 } from "../public/docx-reader.js";
 
-function makeZip({ huge = false, xml = '<w:document><w:body><w:p><w:r><w:t>Hello &amp; welcome</w:t></w:r></w:p><w:p><w:r><w:t>Revenue 2026</w:t></w:r></w:p></w:body></w:document>' } = {}) {
+function streamEntry(value) {
+  return {
+    on(event, callback) { this.handlers ||= {}; this.handlers[event] = callback; return this; },
+    resume() {
+      const bytes = new TextEncoder().encode(value);
+      for (let offset = 0; offset < bytes.length; offset += 7) this.handlers.data?.(bytes.slice(offset, offset + 7));
+      this.handlers.end?.();
+    },
+    pause() { this.paused = true; }
+  };
+}
+function makeZip({ huge = false, xml = '<w:document><w:body><w:p><w:r><w:t>Hello &amp; welcome</w:t></w:r></w:p><w:p><w:r><w:t>Revenue 2026</w:t></w:r></w:p></w:body></w:document>', reportedSize } = {}) {
   return { files: {
-    "word/document.xml": { _data: { uncompressedSize: huge ? DOCX_MAX_UNCOMPRESSED_BYTES + 1 : xml.length }, async: async () => xml },
-    "word/styles.xml": { _data: { uncompressedSize: 20 }, async: async () => "<w:styles/>" }
+    "word/document.xml": {
+      _data: { uncompressedSize: reportedSize ?? (huge ? DOCX_MAX_UNCOMPRESSED_BYTES + 1 : xml.length) },
+      internalStream: () => streamEntry(xml)
+    },
+    "word/styles.xml": { _data: { uncompressedSize: 20 } }
   } };
 }
 const jszip = zip => ({ loadAsync: async () => zip });
@@ -26,6 +40,20 @@ test("extracts Word paragraphs and decodes XML entities in order", async () => {
 
 test("extracts namespaced paragraph tags and ignores empty paragraphs", () => {
   assert.deepEqual(extractDocxParagraphs('<w:p><w:r><w:t>One</w:t></w:r></w:p><w:p/><w:p><w:r><w:t>Two &gt; one</w:t></w:r></w:p>'), ["One", "Two > one"]);
+});
+
+test("ignores fake Word tags inside XML comments and CDATA", () => {
+  const xml = '<w:document><!-- <w:p><w:r><w:t>comment payload</w:t></w:r></w:p> --><w:p><w:r><w:t>Visible</w:t></w:r></w:p><![CDATA[<w:p><w:r><w:t>CDATA payload</w:t></w:r></w:p>]]></w:document>';
+  assert.deepEqual(extractDocxParagraphs(xml), ["Visible"]);
+});
+
+test("enforces actual decompressed bytes even when ZIP metadata under-reports size", async () => {
+  const oversizedXml = '<w:document>' + 'x'.repeat(DOCX_MAX_UNCOMPRESSED_BYTES + 1) + '</w:document>';
+  const underreported = makeZip({ xml: oversizedXml, reportedSize: 1 });
+  await assert.rejects(
+    parseDocxArrayBuffer(new Uint8Array([80, 75, 3, 4]), { jszip: jszip(underreported) }),
+    /30 MB/
+  );
 });
 
 test("rejects archives with excessive expanded size", async () => {
