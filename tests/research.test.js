@@ -564,7 +564,7 @@ test("Brave trims pasted secret whitespace before building the X-Subscription-To
   let requestedUrl;
   let subscriptionToken;
   const result = await searchExternal("trim secret test", "web", {
-    BRAVE_SEARCH_API_KEY: "  brave-test-secret\\r\\n "
+    BRAVE_SEARCH_API_KEY: "  brave-test-secret\r\n "
   }, {
     fetcher: async (url, init) => {
       requestedUrl = url;
