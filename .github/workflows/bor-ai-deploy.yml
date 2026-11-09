@@ -11,6 +11,11 @@ on:
         required: true
         type: boolean
         default: false
+      run_tavily_smoke:
+        description: "Run one bounded live Tavily web search and one news search after deployment (uses 2 Tavily credits and 2 AI calls)"
+        required: true
+        type: boolean
+        default: false
       apply_db_migrations:
         description: "Apply pending production D1 migrations (only after reviewing pending changes and confirming the current Time Travel bookmark)"
         required: true
@@ -146,6 +151,28 @@ jobs:
             echo "::warning::Live Brave Search remains disabled until the founder configures the Worker secret."
           fi
 
+      # Read-only audit: inspect secret names only; never print secret values.
+      - name: Audit Tavily Search Worker secret presence (names only)
+        id: tavily_secret_audit
+        continue-on-error: true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          SECRET_LIST="$(npx --yes wrangler@4 secret list --config wrangler.jsonc --format json)"
+          PRESENT="$(printf '%s' "$SECRET_LIST" | node --input-type=module -e '
+            let s=""; for await (const c of process.stdin) s+=c;
+            const entries=JSON.parse(s);
+            if (!Array.isArray(entries)) throw new Error("Unexpected Wrangler secret-list response.");
+            process.stdout.write(String(entries.some((entry) => entry?.name === "TAVILY_API_KEY")));
+          ')"
+          echo "TAVILY_API_KEY Worker secret: $PRESENT"
+          echo "configured=$PRESENT" >> "$GITHUB_OUTPUT"
+          if [[ "$PRESENT" != "true" ]]; then
+            echo "::warning::Live Tavily Search remains disabled until the Worker secret is configured."
+          fi
+
       - name: Verify production endpoints
         run: |
           set -euo pipefail
@@ -173,3 +200,34 @@ jobs:
             --data '{"message":"Jelaskan manajemen risiko secara singkat.","agent":"coordinator"}' \
             'https://ai-command-center.muhriskiawan23.workers.dev/api/chat' \
             | node --input-type=module -e 'let s="";for await(const c of process.stdin)s+=c;const d=JSON.parse(s);if(typeof d.response!=="string"||d.response.trim().length<20)throw Error("Live chat check failed")'
+
+      - name: Optional live Tavily web and news smoke tests
+        if: ${{ inputs.run_tavily_smoke }}
+        env:
+          TAVILY_SECRET_CONFIGURED: ${{ steps.tavily_secret_audit.outputs.configured }}
+        run: |
+          set -euo pipefail
+          test "$TAVILY_SECRET_CONFIGURED" = "true" || { echo "::error::TAVILY_API_KEY is not present in the Worker secret inventory; refusing live search smoke tests."; exit 1; }
+          BASE_URL="https://ai-command-center.muhriskiawan23.workers.dev"
+          run_search_smoke() {
+            local expected_type="$1"
+            local payload="$2"
+            curl --fail --silent --show-error --max-time 90 \
+              -H 'Content-Type: application/json' \
+              --data "$payload" \
+              "$BASE_URL/api/chat" \
+              | EXPECTED_SOURCE_TYPE="$expected_type" node --input-type=module -e '
+                let s=""; for await (const c of process.stdin) s+=c;
+                const d=JSON.parse(s);
+                if (typeof d.response !== "string" || d.response.trim().length < 10) throw new Error("Live search chat response missing.");
+                const links=Array.isArray(d.links) ? d.links : [];
+                const matches=links.filter(x => x?.ok === true && x?.sourceType === process.env.EXPECTED_SOURCE_TYPE);
+                if (!matches.length) {
+                  const reasons=links.filter(x => x?.ok === false).map(x => x.reason).filter(Boolean).slice(0,2);
+                  throw new Error("No usable live " + process.env.EXPECTED_SOURCE_TYPE + " search source returned. " + reasons.join("; "));
+                }
+                console.log("Live " + process.env.EXPECTED_SOURCE_TYPE + " search passed; usable sources:", matches.length);
+              '
+          }
+          run_search_smoke "search" '{"message":"Cari informasi terbaru tentang perkembangan teknologi kecerdasan buatan di Indonesia.","agent":"coordinator","language":"id"}'
+          run_search_smoke "news" '{"message":"Berita terbaru hari ini tentang ekonomi Indonesia.","agent":"coordinator","language":"id"}'
