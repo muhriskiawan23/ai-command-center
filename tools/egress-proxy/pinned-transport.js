@@ -98,10 +98,10 @@ function validateTarget(raw) {
   if (!["http:", "https:"].includes(url.protocol)) throw new Error("unsupported_scheme");
   if (url.username || url.password || url.port) throw new Error("credentials_or_port_rejected");
   if (!url.hostname || url.hostname.endsWith(".") === false && !url.hostname.includes(".")) throw new Error("invalid_hostname");
-  const host = url.hostname.replace(/^\[|\]$/g, "");
+  const host = url.hostname.replace(/^\[|\]$/g, "").replace(/\.$/, "").toLowerCase();
   const family = net.isIP(host);
   if (family && !isPublicAddress(host)) throw new Error("unsafe_ip_literal");
-  if (!family && (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local") || host.endsWith(".internal"))) throw new Error("internal_hostname");
+  if (!family && (!host.includes(".") || /(^|\.)(localhost|local|internal|lan|home|corp|intranet|home\.arpa)$/.test(host))) throw new Error("internal_hostname");
   return { url, host, family };
 }
 
@@ -161,7 +161,9 @@ function requestOneHop({ url, host, family, peerIp, timeoutMs, maxBytes }) {
       if (secure) socket.once("secureConnect", () => verifyPeer(socket));
       else socket.once("connect", () => verifyPeer(socket));
     });
+    const totalTimer = setTimeout(() => req.destroy(new Error("request_timeout")), timeoutMs);
     req.setTimeout(timeoutMs, () => req.destroy(new Error("request_timeout")));
+    req.on("close", () => clearTimeout(totalTimer));
     req.on("error", (error) => reject(error));
     req.end();
   });
