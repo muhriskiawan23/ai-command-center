@@ -186,7 +186,7 @@ test("HTTPS IP-literal target omits SNI but validates the certificate IP subject
   });
   assert.equal(result.status, 200);
   assert.equal(result.body.toString(), "ip-secure");
-  assert.equal(observedSni, undefined);
+  assert.ok(!observedSni, "IP-literal TLS connection must not send SNI");
 });
 
 test("IPv6 loopback socket verifies the actual peer when IPv6 is available", async (t) => {
