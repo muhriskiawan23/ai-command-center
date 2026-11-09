@@ -351,16 +351,17 @@ export function buildResearchContext(search, startSourceId = 1) {
   }
   if (search.reason) {
     const diagnostics = search.diagnostics || {};
-    const detail = search.reason === "provider_empty_results" ? "Tavily merespons sukses tetapi tidak mengirim kandidat hasil."
+    const providerLabel = SEARCH_ADAPTERS.get(search.provider)?.label || "Penyedia pencarian";
+    const detail = search.reason === "provider_empty_results" ? providerLabel + " merespons sukses tetapi tidak mengirim kandidat hasil."
       : search.reason === "provider_no_usable_results"
-        ? "Tavily mengirim " + Number(diagnostics.candidateCount || 0) + " kandidat, tetapi tidak ada yang lolos validasi (" +
+        ? providerLabel + " mengirim " + Number(diagnostics.candidateCount || 0) + " kandidat, tetapi tidak ada yang lolos validasi (" +
           Object.entries(diagnostics.exclusionCounts || {}).map(([key, value]) => key + "=" + value).join(", ") + ")."
-        : search.reason === "provider_auth_error" ? "Tavily menolak autentikasi (HTTP 401); periksa status key tanpa membagikan nilainya."
-        : search.reason === "provider_permission_error" ? "Tavily menolak akses (HTTP 403); periksa izin atau status akun."
-        : search.reason === "provider_rate_limited" ? "Tavily membatasi permintaan atau kredit/kuota tidak tersedia."
+        : search.reason === "provider_auth_error" ? providerLabel + " menolak autentikasi (HTTP 401); periksa status kredensial tanpa membagikan nilainya."
+        : search.reason === "provider_permission_error" ? providerLabel + " menolak akses (HTTP 403); periksa izin atau status akun."
+        : search.reason === "provider_rate_limited" ? providerLabel + " membatasi permintaan atau kredit/kuota tidak tersedia."
         : Number.isInteger(diagnostics.httpStatus)
-          ? "Tavily membalas HTTP " + diagnostics.httpStatus + " (" + search.reason + ")."
-          : "Tavily tidak dapat menyelesaikan permintaan (" + search.reason + ").";
+          ? providerLabel + " membalas HTTP " + diagnostics.httpStatus + " (" + search.reason + ")."
+          : providerLabel + " tidak dapat menyelesaikan permintaan (" + search.reason + ").";
     return {
       context: "LIVE SEARCH STATUS: The configured provider did not return usable search results (" + search.reason + "). No current external facts are available. Do not guess or imply that a search succeeded.",
       sources: [{ sourceId: startSourceId, ok: false, host: SEARCH_ADAPTERS.get(search.provider)?.label || "Search/news", reason: detail }]
