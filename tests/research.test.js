@@ -160,6 +160,77 @@ test("provider-neutral search adapter rejects unknown and prototype-like provide
   }
 });
 
+test("Tavily is selected when its Worker secret is configured and maps fresh search/news results safely", async () => {
+  let requested;
+  const result = await searchExternal("berita ekonomi Indonesia", "news", { TAVILY_API_KEY: "tavily-test-secret" }, {
+    now: Date.parse("2026-11-08T00:00:00Z"),
+    fetcher: async (url, init) => {
+      requested = { url, init, body: JSON.parse(init.body) };
+      return jsonResponse({ results: [{
+        title: "Berita ekonomi",
+        url: "https://publisher.example/economy?utm_source=feed#top",
+        content: "Ringkasan berita ekonomi terbaru.",
+        published_date: "2026-11-07T10:00:00Z",
+        score: 0.91
+      }] });
+    }
+  });
+  assert.equal(result.provider, "tavily");
+  assert.equal(result.configured, true);
+  assert.equal(result.results[0].ok, true);
+  assert.equal(result.results[0].url, "https://publisher.example/economy");
+  assert.equal(result.results[0].description, "Ringkasan berita ekonomi terbaru.");
+  assert.equal(result.results[0].publishedAt, "2026-11-07T10:00:00.000Z");
+  assert.equal(result.results[0].sourceType, "news");
+  assert.equal(requested.url, "https://api.tavily.com/search");
+  assert.equal(requested.init.method, "POST");
+  assert.equal(requested.init.headers.Authorization, "Bearer tavily-test-secret");
+  assert.equal(requested.body.query, "berita ekonomi Indonesia");
+  assert.equal(requested.body.topic, "news");
+  assert.equal(requested.body.search_depth, "basic");
+  assert.equal(requested.body.max_results, 10);
+  assert.equal(requested.body.include_answer, false);
+  assert.equal(requested.body.include_raw_content, false);
+  assert.equal(requested.body.api_key, undefined);
+  assert.match(buildResearchContext(result).context, /Tavily Search API/);
+});
+
+test("Tavily auth, quota and malformed responses fail closed without exposing provider details", async () => {
+  const auth = await searchExternal("query", "web", { TAVILY_API_KEY: "secret" }, {
+    fetcher: async () => new Response("unauthorized", { status: 401 })
+  });
+  assert.equal(auth.reason, "provider_auth_error");
+  const quota = await searchExternal("query", "web", { TAVILY_API_KEY: "secret" }, {
+    fetcher: async () => new Response("quota", { status: 432 })
+  });
+  assert.equal(quota.reason, "provider_rate_limited");
+  const context = buildResearchContext(quota);
+  assert.match(context.context, /No current external facts are available/);
+  assert.doesNotMatch(context.context, /secret|quota/i);
+  const invalid = await searchExternal("query", "web", { TAVILY_API_KEY: "secret" }, {
+    fetcher: async () => new Response("not-json", { headers: { "content-type": "text/plain" } })
+  });
+  assert.equal(invalid.reason, "provider_invalid_response");
+});
+
+test("Tavily results pass the same URL, freshness, deduplication and source-diversity gates", async () => {
+  const result = await searchExternal("safe search", "web", { TAVILY_API_KEY: "secret" }, {
+    now: Date.parse("2026-11-08T00:00:00Z"),
+    fetcher: async () => jsonResponse({ results: [
+      { title: "Invalid", url: "https://127.0.0.1/admin", content: "Private", published_date: "2026-11-07T00:00:00Z" },
+      { title: "Old", url: "https://old.example/story", content: "Stale", published_date: "2026-09-01T00:00:00Z" },
+      { title: "First", url: "https://publisher.example/story?utm_source=x", content: "Fresh", published_date: "2026-11-07T00:00:00Z" },
+      { title: "Duplicate", url: "https://publisher.example/story", content: "Duplicate", published_date: "2026-11-07T00:00:00Z" },
+      { title: "Second host", url: "https://another.example/story", content: "Fresh other", published_date: "2026-11-07T00:00:00Z" }
+    ] })
+  });
+  assert.equal(result.results.find((item) => item.title === "Invalid").ok, false);
+  assert.equal(result.results.find((item) => item.title === "Old").stale, true);
+  assert.equal(result.results.some((item) => item.title === "Duplicate"), false);
+  assert.equal(result.results.find((item) => item.title === "First").ok, true);
+  assert.equal(result.results.find((item) => item.title === "Second host").ok, true);
+});
+
 test("provider-neutral search adapter defaults to Brave and returns the normalized provider identifier", async () => {
   const result = await searchExternal("current technology", "web", { BRAVE_SEARCH_API_KEY: "secret" }, {
     fetcher: async () => jsonResponse({ results: [{
@@ -187,6 +258,8 @@ test("unsupported provider reports an accurate fail-closed status without implyi
 
 test("provider readiness is resolved by the selected adapter instead of a Brave-specific quota check", () => {
   assert.equal(isSearchProviderConfigured({}), false);
+  assert.equal(isSearchProviderConfigured({ TAVILY_API_KEY: "secret" }), true);
+  assert.equal(isSearchProviderConfigured({ SEARCH_PROVIDER: "brave", TAVILY_API_KEY: "secret" }), false);
   assert.equal(isSearchProviderConfigured({ BRAVE_SEARCH_API_KEY: "secret" }), true);
   assert.equal(isSearchProviderConfigured({ SEARCH_PROVIDER: "unknown", BRAVE_SEARCH_API_KEY: "secret" }), false);
   assert.equal(isSearchProviderConfigured({ SEARCH_PROVIDER: "__proto__", BRAVE_SEARCH_API_KEY: "secret" }), false);

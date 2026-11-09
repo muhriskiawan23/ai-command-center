@@ -199,17 +199,106 @@ async function searchWithBrave(query, mode, env = {}, { fetcher = env.SEARCH_FET
   } finally { clearTimeout(timer); }
 }
 
+
+async function searchWithTavily(query, mode, env = {}, { fetcher = env.SEARCH_FETCHER || fetch, now = Date.now() } = {}) {
+  if (!env.TAVILY_API_KEY) return { configured: false, mode, results: [], reason: "provider_not_configured" };
+  const safeQuery = String(query || "").trim().slice(0, 500);
+  if (!safeQuery) return { configured: true, mode, results: [], reason: "empty_query" };
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), SEARCH_TIMEOUT_MS);
+  try {
+    const response = await fetcher("https://api.tavily.com/search", {
+      method: "POST", redirect: "error", signal: controller.signal,
+      headers: {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + env.TAVILY_API_KEY
+      },
+      body: JSON.stringify({
+        query: safeQuery,
+        search_depth: "basic",
+        max_results: SEARCH_MAX_CANDIDATES,
+        topic: mode === "news" ? "news" : "general",
+        include_answer: false,
+        include_raw_content: false,
+        include_published_date: true,
+        include_usage: false
+      })
+    });
+    if (!response.ok) {
+      await cancelResponseBody(response);
+      if ([429, 432, 433].includes(response.status)) return { configured: true, mode, results: [], reason: "provider_rate_limited" };
+      if (response.status === 401) return { configured: true, mode, results: [], reason: "provider_auth_error" };
+      return { configured: true, mode, results: [], reason: "provider_error" };
+    }
+    const contentType = response.headers.get("content-type") || "";
+    if (!/^application\/json(?:\s*;|$)/i.test(contentType)) {
+      await cancelResponseBody(response);
+      return { configured: true, mode, results: [], reason: "provider_invalid_response" };
+    }
+    const length = Number(response.headers.get("content-length") || 0);
+    if (length > SEARCH_MAX_RESPONSE_BYTES) {
+      await cancelResponseBody(response);
+      return { configured: true, mode, results: [], reason: "provider_response_too_large" };
+    }
+    const raw = await readBoundedResponseText(response, SEARCH_MAX_RESPONSE_BYTES);
+    if (raw === null || raw.length > SEARCH_MAX_RESPONSE_BYTES) return { configured: true, mode, results: [], reason: "provider_response_too_large" };
+    let payload;
+    try { payload = JSON.parse(raw); } catch { return { configured: true, mode, results: [], reason: "provider_invalid_response" }; }
+    const items = Array.isArray(payload?.results) ? payload.results : [];
+    const usableResults = [];
+    const excludedResults = [];
+    const seenUrls = new Set();
+    const usableResultsPerHost = new Map();
+    for (const item of items.slice(0, SEARCH_MAX_CANDIDATES)) {
+      if (usableResults.length >= SEARCH_MAX_RESULTS) break;
+      const url = typeof item?.url === "string" ? item.url : "";
+      const checkedUrl = validateUrl(url);
+      const host = checkedUrl.ok ? checkedUrl.url.hostname.toLowerCase().replace(/^www\./, "") : hostOf(url);
+      const publishedAt = parsedDate(item?.published_date || item?.published || item?.date);
+      const canonicalUrl = checkedUrl.ok ? canonicalSearchUrl(url) : null;
+      if (canonicalUrl && seenUrls.has(canonicalUrl)) continue;
+      if (canonicalUrl) seenUrls.add(canonicalUrl);
+      const validUrl = /^https:\/\//i.test(url) && checkedUrl.ok && !isLowTrust(host);
+      const normalizedUrl = validUrl ? canonicalUrl : undefined;
+      const stale = staleDate(publishedAt, now);
+      const hostCount = usableResultsPerHost.get(host) || 0;
+      const hostLimited = validUrl && !stale && hostCount >= SEARCH_MAX_RESULTS_PER_HOST;
+      if (validUrl && !stale && !hostLimited) usableResultsPerHost.set(host, hostCount + 1);
+      const ok = validUrl && !stale && !hostLimited;
+      const normalizedResult = {
+        ok, url: normalizedUrl, requestedUrl: normalizedUrl,
+        host: host || "sumber eksternal", title: String(item?.title || "Tanpa judul").slice(0, 200),
+        description: String(item?.content || item?.description || "").slice(0, 1800),
+        publishedAt, sourceType: mode === "news" ? "news" : "search",
+        trust: hostLimited ? "limited-source-diversity" : validUrl ? "unverified-external" : "blocked-low-trust-or-invalid",
+        reason: !validUrl ? "Sumber eksternal tidak lolos pemeriksaan URL atau termasuk platform UGC/sosial." : stale ? "Sumber lebih lama dari 30 hari dan dikecualikan dari konteks AI." : hostLimited ? "Sumber dari host yang sama dibatasi untuk menjaga keragaman hasil." : undefined,
+        stale
+      };
+      (ok ? usableResults : excludedResults).push(normalizedResult);
+    }
+    const results = [...usableResults, ...excludedResults].slice(0, SEARCH_MAX_RESULTS);
+    return { configured: true, mode, results };
+  } catch {
+    return { configured: true, mode, results: [], reason: controller.signal.aborted ? "provider_timeout" : "provider_unavailable" };
+  } finally { clearTimeout(timer); }
+}
+
 // Provider adapter contract: each adapter returns the same normalized result shape
 // ({ configured, mode, results, reason? }). Add new providers here only after
 // reviewing official API terms, regional coverage, retention, pricing, and credentials.
-const SEARCH_ADAPTERS = new Map([["brave", {
+const SEARCH_ADAPTERS = new Map([["tavily", {
+  label: "Tavily Search API",
+  isConfigured: (env) => Boolean(env.TAVILY_API_KEY),
+  search: searchWithTavily
+}], ["brave", {
   label: "Brave Search API",
   isConfigured: (env) => Boolean(env.BRAVE_SEARCH_API_KEY),
   search: searchWithBrave
 }]]);
 
 function selectedSearchAdapter(env = {}) {
-  const provider = String(env.SEARCH_PROVIDER || "brave").trim().toLowerCase();
+  const provider = String(env.SEARCH_PROVIDER || (env.TAVILY_API_KEY ? "tavily" : "brave")).trim().toLowerCase();
   return { provider, adapter: SEARCH_ADAPTERS.get(provider) };
 }
 
