@@ -97,10 +97,13 @@ jobs:
           if (payload.success !== true || !Array.isArray(bindings)) {
             throw new Error("Cloudflare did not return bindings for the active Worker version.");
           }
-          const vpcBindings = bindings.filter((binding) => binding?.type === "vpc_network");
-          console.log("Active Worker VPC network binding:", vpcBindings.length ? "present" : "absent");
-          if (vpcBindings.length) {
-            console.log("VPC binding names:", vpcBindings.map((binding) => binding.name).filter(Boolean).join(", "));
+          const privateNetworkBindings = bindings.filter((binding) =>
+            binding?.type === "vpc_network" || binding?.type === "vpc_service"
+          );
+          console.log("Active Worker private-network binding:", privateNetworkBindings.length ? "present" : "absent");
+          if (privateNetworkBindings.length) {
+            console.log("Private-network binding types:", [...new Set(privateNetworkBindings.map((binding) => binding.type))].join(", "));
+            console.log("Private-network binding names:", privateNetworkBindings.map((binding) => binding.name).filter(Boolean).join(", "));
           }
           console.log("Binding values and network identifiers were not logged.");
           NODE
