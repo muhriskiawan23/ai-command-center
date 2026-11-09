@@ -814,8 +814,10 @@ function appendSpreadsheetSource(spreadsheet){
 function appendPresentationSource(p){const row=messagesEl.lastElementChild,body=row&&row.querySelector(".message-body");if(!body||!p)return;const box=document.createElement("div");box.className="sources presentation-source";const h=document.createElement("strong");h.textContent="Presentasi yang dianalisis:";const item=document.createElement("div");item.className="source ok";item.textContent="✓ "+String(p.name||"presentation.pptx")+(Number.isSafeInteger(p.slideCount)?" · "+p.slideCount+" slide":"")+(p.truncated?" · teks dibatasi":"");box.append(h,item);body.append(box)}
 function renderCsvAttachment(){
   const wrap=$("csvAttachment"),name=$("csvName");if(!wrap||!name)return;
-  wrap.hidden=!activeCsv;const filename=activeCsv?.name||"",isPptx=/\.pptx$/i.test(filename),isExcel=/\.xlsx$/i.test(filename);name.textContent=activeCsv?filename+(isPptx?" · PowerPoint siap":isExcel?" · Excel siap":" · CSV siap"):"";
-  $("attachCsv").textContent=activeCsv?(isPptx?"Ganti PowerPoint":isExcel?"Ganti Excel":"Ganti CSV"):"＋ CSV / Excel / PPTX";
+  wrap.hidden=!activeCsv;const filename=activeCsv?.name||"",isDocx=/\.docx$/i.test(filename),isPptx=/\.pptx$/i.test(filename),isExcel=/\.xlsx$/i.test(filename);
+  const label=isDocx?"Word siap":isPptx?"PowerPoint siap":isExcel?"Excel siap":"CSV siap";
+  name.textContent=activeCsv?filename+" · "+label:"";
+  $("attachCsv").textContent=activeCsv?(isDocx?"Ganti Word":isPptx?"Ganti PowerPoint":isExcel?"Ganti Excel":"Ganti CSV"):"＋ File · CSV / XLSX / PPTX / DOCX";
 }
 async function uploadPdf(file){
   if(!file)return;
@@ -856,18 +858,19 @@ async function ensureXlsxLibrary(){
 }
 async function uploadCsv(file){
   if(!file)return;
-  const filename=file.name.toLowerCase(),isExcel=filename.endsWith(".xlsx"),isPptx=filename.endsWith(".pptx");
-  if(!isExcel&&!isPptx&&!filename.endsWith(".csv")){toast("Pilih file CSV, Excel (.xlsx), atau PowerPoint (.pptx).");return;}
+  const filename=file.name.toLowerCase(),isDocx=filename.endsWith(".docx"),isExcel=filename.endsWith(".xlsx"),isPptx=filename.endsWith(".pptx");
+  if(!isDocx&&!isExcel&&!isPptx&&!filename.endsWith(".csv")){toast("Pilih file CSV, Excel (.xlsx), PowerPoint (.pptx), atau Word (.docx).");return;}
   if(file.size>5*1024*1024){toast("Ukuran file maksimal 5 MB.");return;}
   if(file.size<1){toast("File kosong.");return;}
   const button=$("attachCsv");button.disabled=true;button.textContent="Membaca…";
   try{
     let parsed;
-    if(isPptx){const jszip=await ensurePptxLibrary();const {parsePptxLocally}=await import("/pptx-reader.js");parsed=await parsePptxLocally(file,{jszip});parsed.kind="presentation";}
+    if(isDocx){const jszip=await ensurePptxLibrary();const {parseDocxLocally}=await import("/docx-reader.js");parsed=await parseDocxLocally(file,{jszip});parsed.kind="word-document";}
+    else if(isPptx){const jszip=await ensurePptxLibrary();const {parsePptxLocally}=await import("/pptx-reader.js");parsed=await parsePptxLocally(file,{jszip});parsed.kind="presentation";}
     else if(isExcel){const xlsx=await ensureXlsxLibrary();const {parseXlsxLocally}=await import("/xlsx-reader.js");parsed=await parseXlsxLocally(file,{xlsx});}
     else{const {parseCsvLocally}=await import("/csv-reader.js");parsed=await parseCsvLocally(file);}
     activePdf=null;renderPdfAttachment();activeCsv=parsed;renderCsvAttachment();
-    toast(isPptx?"PowerPoint berhasil dibaca secara lokal. Tanyakan isi slide di kolom chat.":isExcel?"Excel berhasil dibaca secara lokal. Tanyakan analisisnya di kolom chat.":"CSV berhasil dibaca secara lokal. Tanyakan analisisnya di kolom chat.");
+    toast(isDocx?"Word berhasil dibaca secara lokal. Tanyakan isi dokumen di kolom chat.":isPptx?"PowerPoint berhasil dibaca secara lokal. Tanyakan isi slide di kolom chat.":isExcel?"Excel berhasil dibaca secara lokal. Tanyakan analisisnya di kolom chat.":"CSV berhasil dibaca secara lokal. Tanyakan analisisnya di kolom chat.");
   }catch(error){toast(error.message||"File gagal dibaca.");}
   finally{button.disabled=busy||loadingChat;renderCsvAttachment()}
 }
@@ -897,7 +900,7 @@ async function submit(options={}){
   if(createdNew)replaceRoute({name:"chat",id:chat.id});
   const stillActive=()=>activeId===startId;const start=Date.now();
   try{
-    const payload={message:text,agent,requestId,language:window.BORLocale?.current||"en"};if(activePdf)payload.document={name:activePdf.name,content:activePdf.content,truncated:activePdf.truncated};if(activeCsv?.kind==="presentation")payload.presentation={name:activeCsv.name,content:activeCsv.content,slideCount:activeCsv.slideCount,truncated:activeCsv.truncated};else if(activeCsv)payload.spreadsheet={name:activeCsv.name,content:activeCsv.content,rowCount:activeCsv.rowCount,columnCount:activeCsv.columnCount,truncated:activeCsv.truncated};if(history.length)payload.history=history;if(state===AppState.AUTH&&chat.serverId)payload.conversationId=chat.serverId;if(replacing&&state===AppState.AUTH&&chat.serverId)payload.replaceLastTurn=true;
+    const payload={message:text,agent,requestId,language:window.BORLocale?.current||"en"};if(activePdf)payload.document={name:activePdf.name,content:activePdf.content,truncated:activePdf.truncated};if(activeCsv?.kind==="word-document")payload.wordDocument={name:activeCsv.name,content:activeCsv.content,paragraphCount:activeCsv.paragraphCount,truncated:activeCsv.truncated};else if(activeCsv?.kind==="presentation")payload.presentation={name:activeCsv.name,content:activeCsv.content,slideCount:activeCsv.slideCount,truncated:activeCsv.truncated};else if(activeCsv)payload.spreadsheet={name:activeCsv.name,content:activeCsv.content,rowCount:activeCsv.rowCount,columnCount:activeCsv.columnCount,truncated:activeCsv.truncated};if(history.length)payload.history=history;if(state===AppState.AUTH&&chat.serverId)payload.conversationId=chat.serverId;if(replacing&&state===AppState.AUTH&&chat.serverId)payload.replaceLastTurn=true;
     const data=await postJson("/api/chat",payload,CHAT_TIMEOUT_MS,activeChatController.signal);
     if(typeof data.response!=="string"||!data.response.trim())throw new Error("AI tidak menghasilkan jawaban.");
     if(pendingRetryRequest?.requestId===requestId)pendingRetryRequest=null;
