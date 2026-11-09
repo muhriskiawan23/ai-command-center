@@ -333,18 +333,21 @@ async function searchWithTavily(query, mode, env = {}, { fetcher = env.SEARCH_FE
 // Provider adapter contract: each adapter returns the same normalized result shape
 // ({ configured, mode, results, reason? }). Add new providers here only after
 // reviewing official API terms, regional coverage, retention, pricing, and credentials.
+const hasProviderSecret = (value) => typeof value === "string" && value.trim().length > 0;
+
 const SEARCH_ADAPTERS = new Map([["tavily", {
   label: "Tavily Search API",
-  isConfigured: (env) => Boolean(env.TAVILY_API_KEY),
+  isConfigured: (env) => hasProviderSecret(env.TAVILY_API_KEY),
   search: searchWithTavily
 }], ["brave", {
   label: "Brave Search API",
-  isConfigured: (env) => Boolean(env.BRAVE_SEARCH_API_KEY),
+  isConfigured: (env) => hasProviderSecret(env.BRAVE_SEARCH_API_KEY),
   search: searchWithBrave
 }]]);
 
 function selectedSearchAdapter(env = {}) {
-  const provider = String(env.SEARCH_PROVIDER || (env.TAVILY_API_KEY ? "tavily" : "brave")).trim().toLowerCase();
+  const defaultProvider = hasProviderSecret(env.TAVILY_API_KEY) ? "tavily" : "brave";
+  const provider = String(env.SEARCH_PROVIDER || defaultProvider).trim().toLowerCase();
   return { provider, adapter: SEARCH_ADAPTERS.get(provider) };
 }
 
