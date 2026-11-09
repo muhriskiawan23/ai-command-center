@@ -3,7 +3,7 @@
 ## What ships in this milestone
 
 - Explicit search/news intent detection in chat.
-- Optional Brave Search API adapter for web and news results.
+- Provider-neutral search/news contract with bounded Tavily and Brave Search adapters. Tavily is the production default when TAVILY_API_KEY is configured and SEARCH_PROVIDER is unset; Brave requires explicit provider selection and its own configured secret.
 - First-party BOR AI knowledge retrieval from a small curated index based on the official project knowledge base.
 - Deterministic source IDs, source links, publication dates, trust labels, and citation validation.
 - Freshness guard: results with a parseable publication date older than 30 days are excluded from model context.
@@ -12,20 +12,14 @@
 
 ## Provider configuration
 
-Set this secret in the Cloudflare Worker environment:
-
-```sh
-npx wrangler secret put BRAVE_SEARCH_API_KEY
-```
-
-The key is sent only in the `X-Subscription-Token` request header and is never sent to the browser, persisted in D1, added to prompts, or logged.
+Configure the provider secret in the Cloudflare Worker environment through Wrangler secret management. For Tavily, use TAVILY_API_KEY; for Brave, use BRAVE_SEARCH_API_KEY. Never put either value in source code, browser code, chat, or logs. Tavily uses an Authorization Bearer header; Brave uses the X-Subscription-Token header. Both adapters use bounded requests and normalize results before URL/freshness/diversity validation.
 
 Optional Worker variables:
 
 - `BRAVE_SEARCH_COUNTRY` — two-letter country code; defaults to `ID`.
 - `BRAVE_SEARCH_LANG` — search language; defaults to `id`.
 
-The integration uses Brave's `/web/search` endpoint for general search and `/news/search` for news. Search is triggered only when the user's message clearly asks for search, current information, or news. It is not run for ordinary chat. The existing chat rate limiter applies, and a configured external search consumes one additional daily usage unit.
+Search is triggered only when the user's message clearly asks for search, current information, or news. It is not run for ordinary chat. The existing chat rate limiter applies, and a configured external search consumes one additional daily usage unit. Tavily uses its Search endpoint with basic depth, at most 10 candidates, and no generated answer or raw content. Brave uses its Web and News endpoints. Provider selection fails closed when the selected provider is unsupported or not configured.
 
 A missing key is an intentional disabled state, not a fallback to model guesses. Provider errors, timeouts, and rate limits fail closed and are shown as unavailable sources.
 
@@ -64,4 +58,4 @@ npm run check
 npm run preview
 ```
 
-Live provider behaviour is tested with a stubbed fetcher. A successful test does not prove the production provider key is configured or that the live provider account has quota. After setting the secret, verify one general-search request and one news request in the preview environment before announcing the feature as live.
+Unit/integration tests use stubbed fetchers and do not prove live provider access. Production Tavily was verified after PR #150: live Web Search returned 4 usable sources and News Search returned 4 usable sources (workflow run 42590615200). The production secret-name audit confirmed TAVILY_API_KEY present and BRAVE_SEARCH_API_KEY absent; therefore Brave remains unconfigured and unverified. After adding the Brave secret and confirming plan/quota, run a bounded Web and News smoke before describing Brave as live.
