@@ -386,3 +386,17 @@ test("Tavily rejects a successful HTTP response with an invalid result schema", 
   assert.match(context.sources[0].reason, /invalid_response/);
   assert.doesNotMatch(context.sources[0].reason, /empty results/);
 });
+
+
+test("Tavily network failures expose only a safe failure stage and error class", async () => {
+  const result = await searchExternal("query", "web", { TAVILY_API_KEY: "secret" }, {
+    fetcher: async () => { throw new TypeError("sensitive transport details"); }
+  });
+  assert.equal(result.reason, "provider_unavailable");
+  assert.deepEqual(result.diagnostics, {
+    failureStage: "network_request",
+    errorName: "TypeError"
+  });
+  const context = buildResearchContext(result);
+  assert.doesNotMatch(context.context + JSON.stringify(context.sources), /sensitive transport details|secret/);
+});
