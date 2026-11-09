@@ -90,7 +90,15 @@ export { resolveChain };
 
 function normalizePeer(value) {
   if (!value) return "";
-  return value.startsWith("::ffff:") ? value.slice(7) : value;
+  const mapped = /^::ffff:(\\d+\\.\\d+\\.\\d+\\.\\d+)$/i.exec(value);
+  if (mapped) return normalizePeer(mapped[1]);
+  const family = net.isIP(value);
+  if (family === 4) return `4:${value.split(".").map(Number).join(".")}`;
+  if (family === 6) {
+    const numeric = ipv6Number(value);
+    return numeric === null ? value.toLowerCase() : `6:${numeric.toString(16).padStart(32, "0")}`;
+  }
+  return value.toLowerCase();
 }
 function validateTarget(raw) {
   let url;
