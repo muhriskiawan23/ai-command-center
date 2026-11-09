@@ -80,3 +80,56 @@ test("HTTPS integration pins the socket, sends original SNI, and validates the c
     /certificate|identity|hostname|altname/i
   );
 });
+
+
+test("IPv6 loopback socket verifies the actual peer when IPv6 is available", async (t) => {
+  const server = http.createServer((_req, res) => res.end("v6"));
+  try {
+    await new Promise((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "::1", resolve);
+    });
+  } catch {
+    t.skip("IPv6 loopback is unavailable in this runner");
+    return;
+  }
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  const port = server.address().port;
+  const result = await requestOneHop({
+    url: new URL(`http://[::1]:${port}/probe`),
+    host: "::1",
+    family: 6,
+    peerIp: "::1",
+    port,
+    timeoutMs: 1000,
+    maxBytes: 128
+  });
+  assert.equal(result.status, 200);
+  assert.equal(result.body.toString(), "v6");
+});
+
+test("runtime response-size cap aborts an oversized socket response", async (t) => {
+  const server = http.createServer((_req, res) => {
+    res.writeHead(200, { "content-type": "text/plain" });
+    res.end("x".repeat(4096));
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  await assert.rejects(
+    requestOneHop({ ...fixture("http", server.address().port), maxBytes: 32 }),
+    /response_too_large/
+  );
+});
+
+test("total request timeout aborts a slow response", async (t) => {
+  const server = http.createServer((_req, res) => {
+    res.writeHead(200, { "content-type": "text/plain" });
+    setTimeout(() => res.end("late"), 500);
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  await assert.rejects(
+    requestOneHop({ ...fixture("http", server.address().port), timeoutMs: 50 }),
+    /request_timeout/
+  );
+});
