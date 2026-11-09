@@ -170,7 +170,6 @@ async function searchWithBrave(query, mode, env = {}, { fetcher = env.SEARCH_FET
   } finally { clearTimeout(timer); }
 }
 
- 
 // Provider adapter contract: each adapter returns the same normalized result shape
 // ({ configured, mode, results, reason? }). Add new providers here only after
 // reviewing official API terms, regional coverage, retention, pricing, and credentials.
@@ -188,10 +187,18 @@ export async function searchExternal(query, mode, env = {}, options = {}) {
 }
 
 export function buildResearchContext(search, startSourceId = 1) {
-  if (!search?.configured) return {
-    context: "LIVE SEARCH STATUS: Search/news provider is not configured. No live external search was performed. Do not claim current information or invent search results; tell the user live search is not active yet.",
-    sources: [{ sourceId: startSourceId, ok: false, host: "Search/news", reason: "Pencarian langsung belum aktif: BRAVE_SEARCH_API_KEY belum dikonfigurasi." }]
-  };
+  if (!search?.configured) {
+    const unsupported = search?.reason === "provider_unsupported";
+    const reason = unsupported
+      ? "Penyedia pencarian yang dipilih belum didukung: " + String(search.provider || "unknown") + "."
+      : search?.provider === "brave" || !search?.provider
+        ? "Pencarian langsung belum aktif: BRAVE_SEARCH_API_KEY belum dikonfigurasi."
+        : "Penyedia pencarian belum dikonfigurasi.";
+    return {
+      context: "LIVE SEARCH STATUS: Search/news provider is not active (" + (search?.reason || "provider_not_configured") + "). No live external search was performed. Do not claim current information or invent search results; tell the user live search is not active yet.",
+      sources: [{ sourceId: startSourceId, ok: false, host: "Search/news", reason }]
+    };
+  }
   if (search.reason) return {
     context: "LIVE SEARCH STATUS: The configured provider did not return usable search results (" + search.reason + "). No current external facts are available. Do not guess or imply that a search succeeded.",
     sources: [{ sourceId: startSourceId, ok: false, host: SEARCH_PROVIDER_LABELS[search.provider] || "Search/news", reason: search.reason === "provider_rate_limited" ? "Provider membatasi permintaan. Coba lagi nanti." : "Penyedia pencarian tidak mengembalikan hasil yang dapat digunakan." }]
