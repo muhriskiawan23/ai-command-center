@@ -1,0 +1,65 @@
+# Issue #156 — Node egress proxy prototype notes
+
+Date: 2026-11-09  
+Status: **Design/prototype notes only. Not deployed; production URL reading remains fail-closed.**
+
+## Why this addendum exists
+
+The current ADR selects a dedicated, user-controlled egress proxy behind a narrowly scoped Cloudflare Workers VPC Service as the preferred candidate. This note narrows the transport implementation to a testable Node.js prototype without creating infrastructure or moving user traffic.
+
+## Candidate transport inside the proxy
+
+A Node.js service can use the documented low-level HTTP/TLS client interfaces rather than a generic \`fetch()\`:
+
+1. Parse the requested URL and reject anything except HTTP/HTTPS on the default ports, credentials, malformed hostnames, and disallowed IP literals.
+2. Resolve and walk the complete CNAME chain with explicit depth and loop bounds; collect every A and AAAA address. Reject the entire hostname if any answer is unsafe or if resolution is incomplete/ambiguous.
+3. Select one validated numeric address for this hop.
+4. For HTTP, call \`http.request\` with the original hostname as the request hostname and a custom \`lookup\` callback that returns only the selected vetted numeric address. Set the HTTP \`Host\` header explicitly to the original authority.
+5. For HTTPS, do the same with \`https.request\`, explicitly set \`servername\` to the original DNS hostname, keep certificate verification enabled (\`rejectUnauthorized: true\`), and do not provide a permissive \`checkServerIdentity\` override. Use a non-reusing per-request agent/socket configuration so a pooled connection cannot silently reuse a different peer for a later URL.
+6. On the connected socket, inspect \`remoteAddress\` and fail the request unless it exactly matches the selected numeric address after canonical IP normalization. For HTTPS, also verify the negotiated TLS socket's servername and peer certificate identity against the original hostname. Emit only bounded, privacy-minimized evidence fields.
+7. Disable automatic redirects and return only the single-hop response. The Worker reader already handles redirects manually; each next hop must be a new authenticated proxy request and repeat the full DNS and peer checks.
+
+This is a prototype direction, not a claim that the implementation already exists. The decisive security evidence is the socket's actual \`remoteAddress\` plus successful TLS hostname verification—not the DNS answer, custom lookup callback, request URL, or Gateway logs alone.
+
+## Cloudflare VPC Service request shape
+
+Cloudflare's current VPC Service documentation states that the service's configured host and port determine the private backend route. The hostname in a Worker \`fetch()\` request is used for the HTTP \`Host\` header and, for HTTPS, SNI; it does not select the backend route.
+
+For the prototype, prefer a single fixed VPC Service backend and an HTTP request over the private Worker-to-service route, with the target URL carried in a bounded JSON body rather than overloading the inbound \`Host\` header. The proxy must treat that body as untrusted input and must not derive the backend route from it. This avoids sending an arbitrary internet target hostname as SNI to the private proxy's own TLS endpoint. Cloudflare documents that HTTP VPC Service traffic is encrypted to the network via Tunnel, then plaintext from the tunnel to the private service; the private network segment and host therefore need an explicit trust and access-control review.
+
+The proxy must authenticate requests independently (for example, a rotated, high-entropy Worker-to-proxy credential), reject requests from any other caller, and be reachable only through the intended Tunnel/VPC Service path. No public listener or general-purpose open-proxy interface is acceptable.
+
+## Node.js API references and limits
+
+- Node \`https.request()\` accepts TLS options including \`servername\`; the default certificate validation must remain enabled: https://nodejs.org/api/https.html
+- Node \`tls.connect()\` documents the \`servername\` SNI option and hostname identity checking: https://nodejs.org/api/tls.html
+- Node \`net.connect()\` documents the custom \`lookup\` callback option used by the HTTP/TLS client socket path: https://nodejs.org/api/net.html
+- Node DNS APIs distinguish OS name resolution (\`dns.lookup\`) from DNS record queries (\`dns.resolve*\`); the prototype must explicitly inspect CNAME, A and AAAA results rather than assume one resolver call proves the full chain: https://nodejs.org/api/dns.html
+- Cloudflare VPC Services document fixed backend routing, HTTP Host/SNI behavior, and TLS verification modes: https://developers.cloudflare.com/workers-vpc/configuration/vpc-services/
+- Cloudflare VPC binding docs describe the VPC Service binding's fixed route and Worker request behavior: https://developers.cloudflare.com/workers-vpc/api/
+
+Node's custom \`lookup\` hook is a way to direct the socket connection to a selected address, but it is not by itself sufficient proof. The implementation must test the actual socket peer address and TLS identity, including redirects, keep-alive behavior, IPv4/IPv6, and error paths.
+
+## Prototype test matrix
+
+The prototype must run only against controlled test domains and a local/non-production proxy:
+
+- Unit tests for canonical URL parsing, IP range classification, CNAME chain traversal, loops, depth limits, mixed public/private records, empty answers, and DNS failures.
+- A deterministic resolver fixture for rebinding: the selected address changes between lookups; prove that the connection still uses only the vetted address for that hop and that a new redirect hop is re-resolved.
+- Local TCP test server instrumentation records the accepted socket's remote peer; assert it equals the selected vetted numeric IP.
+- Local HTTPS server with certificates for the controlled test hostname; assert correct SNI and hostname validation. Wrong-host, expired, untrusted, and missing-SNI cases must fail.
+- Redirect-to-private, redirect-to-metadata, cross-host redirect, oversized response, slow headers/body, cancellation, connection reset, malformed response, and proxy-down tests.
+- Assert that the proxy does not persist URLs, query strings, request bodies, or response bodies and that logs contain only the approved minimal metadata.
+- Assert no direct Worker \`fetch()\` fallback exists when the proxy binding is absent or errors.
+
+## Explicit non-goals
+
+- Do not create a Cloudflare Tunnel, VPC Service, VPC Network binding, Gateway policy, proxy host, secret, or production deployment in this PR.
+- Do not transfer live user URLs or page content to any new provider.
+- Do not claim Issue #156 is complete or enable production URL reading.
+- Before deployment, obtain a documented decision on hosting/provider, jurisdiction, access controls, backups, retention, credentials/rotation, incident response, and recurring cost.
+- Keep the Cloudflare read-only account audit separate; a successful Actions job is not proof of complete audit coverage.
+
+## Current gate
+
+This document is design guidance only. The next engineering artifact must be an isolated, tested proxy implementation with peer-IP and TLS proof. Production remains fail-closed until that proof, privacy review, account prerequisites, and controlled production smoke all pass.
