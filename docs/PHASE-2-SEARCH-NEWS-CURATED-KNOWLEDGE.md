@@ -12,7 +12,7 @@
 
 ## Provider configuration
 
-Configure the provider secret in the Cloudflare Worker environment through Wrangler secret management. For Tavily, use TAVILY_API_KEY; for Brave, use BRAVE_SEARCH_API_KEY. Never put either value in source code, browser code, chat, or logs. Tavily uses an Authorization Bearer header; Brave uses the X-Subscription-Token header. Both adapters use bounded requests and normalize results before URL/freshness/diversity validation.
+Configure the provider secret in the Cloudflare Worker environment through Wrangler secret management. For Tavily, use TAVILY_API_KEY; for Brave, use BRAVE_SEARCH_API_KEY. Never put either value in source code, browser code, chat, or logs. Tavily uses an Authorization Bearer header; Brave uses the X-Subscription-Token header. Both adapters use bounded requests, one transient-only retry (maximum two attempts within the shared 15-second timeout), and normalize results before URL/freshness/diversity validation. HTTP 429/432/433, auth/permission errors, aborts and programming errors are not retried.
 
 Optional Worker variables:
 
@@ -58,4 +58,4 @@ npm run check
 npm run preview
 ```
 
-Unit/integration tests use stubbed fetchers and do not prove live provider access. Production Tavily was re-verified after PR #152: live Web Search returned 4 usable sources and News Search returned 4 usable sources (workflow run 42594205654). The same release passed one controlled live prompt-injection test against a hostile external page; this tests one scenario only. The production secret-name audit confirmed TAVILY_API_KEY present and BRAVE_SEARCH_API_KEY absent; therefore Brave remains unconfigured and unverified. After adding the Brave secret and confirming plan/quota, run a bounded Web and News smoke before describing Brave as live.
+Unit/integration tests use stubbed fetchers and do not prove live provider access. Production Tavily was re-verified on the exact PR #157 release: live Web Search returned 1 usable source and News Search returned 2 usable sources (workflow run 42603128329). The same release passed one controlled live prompt-injection test against a hostile external page; this tests one scenario only. The production secret-name audit confirmed TAVILY_API_KEY present and BRAVE_SEARCH_API_KEY absent; therefore Brave remains unconfigured and unverified. After adding the Brave secret and confirming plan/quota, run a bounded Web and News smoke before describing Brave as live.
