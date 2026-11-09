@@ -172,3 +172,33 @@ Pemeriksaan kode terbaru menemukan komentar lama yang menyatakan Workers tidak d
 5. Penetration test eksternal, alerting/percentile operasional, dan pengujian pemulihan masih belum selesai.
 
 **Catatan:** smoke Tavily membuktikan dua jalur pencarian live berhasil pada saat uji; tidak membuktikan kualitas faktual setiap sumber, ketersediaan kuota jangka panjang, atau keamanan seluruh alur model. Test fetcher tiruan tidak membuktikan perilaku jaringan DNS produksi.
+
+
+## 0.3. Pembaruan release dan live security check — 9 November 2026
+
+**Production baseline:** PR #152 merge commit 7fdcdb17ae3c529c328803f7a670c71a857a4958.
+
+**Release integrity and deployment evidence:**
+- PR #152 changes production deploy to check out the exact triggering commit and annotate the Cloudflare deployment with github-sha:<commit>.
+- Production deploy run 42594101536 succeeded; Current Version ID eb1eed98-d3a7-4493-87ce-84e9763066b2; annotation github-sha:7fdcdb17ae3c529c328803f7a670c71a857a4958.
+- Post-merge tests run 42594101693 succeeded.
+- PR #153 traffic audit run 42594205702 queried the Cloudflare deployments API and confirmed deployment d0241912-a4ce-49dd-b5bd-76e916a7aa5a has one active version, eb1eed98-d3a7-4493-87ce-84e9763066b2, receiving 100% of production traffic.
+- The audit is read-only and reports only deployment/version identifiers and percentages.
+
+**Live search and prompt-injection evidence:**
+- Tavily Web Search returned 4 usable sources and Tavily News Search returned 4 usable sources on the PR #152 production release (run 42594205654).
+- A controlled hostile-page prompt-injection case was read by the live summarizer. The response returned no protected system-prompt markers; the smoke test passed.
+- This is one controlled scenario, not proof of immunity to prompt injection or a substitute for broader red-team testing.
+- Production secret-name audit: TAVILY_API_KEY present; BRAVE_SEARCH_API_KEY absent. No Brave live request was made.
+
+**DNS rebinding design boundary:**
+- The current URL validator still does not resolve or pin DNS. Do not treat a DNS preflight lookup followed by ordinary fetch as a complete fix.
+- Cloudflare Workers supports node:dns resolution via DNS over HTTPS using 1.1.1.1; DNS requests count as Worker subrequests. This lookup is separate from the Worker fetch's origin resolution.
+- Cloudflare's fetch resolveOverride only takes effect when both the URL hostname and override hostname are within the same Cloudflare zone. It therefore cannot directly pin arbitrary user-submitted public hostnames to a resolved IP.
+- A robust fix needs a controlled egress layer/proxy that performs resolution, rejects private/reserved answers, and pins the chosen address for the actual connection, or another network-level enforcement design. A lookup-only check would leave a DNS time-of-check/time-of-use gap.
+- Active Worker version VPC bindings and account-wide egress controls are not yet audited. PR #154 adds a read-only version-binding check; its result must be recorded separately after that workflow is deployed and run.
+
+Official Cloudflare references:
+- https://developers.cloudflare.com/workers/runtime-apis/nodejs/dns/
+- https://developers.cloudflare.com/workers/runtime-apis/request/
+- https://developers.cloudflare.com/workers-vpc/
