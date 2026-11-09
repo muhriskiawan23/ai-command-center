@@ -145,3 +145,30 @@ BOR AI tidak memiliki runtime eksekusi kode/build APK, kontrol browser/komputer,
 Pemeriksaan kode terbaru menemukan komentar lama yang menyatakan Workers tidak dapat menjangkau jaringan privat. Klaim tersebut terlalu luas dan telah dikoreksi di `src/links.js`. Dokumentasi Cloudflare menyebut Workers dapat menjangkau layanan privat melalui Workers VPC bindings ([Workers VPC overview](https://developers.cloudflare.com/workers-vpc/), [VPC Networks](https://developers.cloudflare.com/workers-vpc/configuration/vpc-networks/)). Konfigurasi `wrangler.jsonc` BOR AI saat ini tidak mendeklarasikan binding VPC, tetapi audit ini tidak memiliki bukti kebijakan egress account-wide atau perilaku resolusi DNS aktual untuk semua jalur Worker.
 
 **Kesimpulan yang aman:** validasi URL menolak IP literal non-publik dan host internal yang dikenal, serta memvalidasi setiap redirect. Ia tidak melakukan DNS resolution/pinning. Karena itu, DNS rebinding tidak boleh ditandai sebagai mitigasi selesai. Langkah berikutnya adalah memeriksa konfigurasi jaringan/egress Cloudflare yang benar-benar aktif dan memilih kontrol yang dapat mengikat hostname ke alamat IP tervalidasi (atau menggunakan egress proxy yang menerapkan kebijakan tersebut). Tidak ada perubahan perilaku runtime dalam PR dokumentasi ini.
+
+
+## 0.2. Pembaruan setelah PR #147–#150 — 9 November 2026
+
+**Baseline produksi:** merge PR #150, commit f22bbd1d5f4ee0ebe0092457a8503ba1075ef710.
+
+**Perubahan dan bukti:**
+- PR #147 memperbaiki adapter Tavily/Brave agar menggunakan redirect manual pada Cloudflare Workers dan menolak respons 3xx tanpa mengikuti redirect. Live smoke pada release PR #147 (42584585509) berhasil: Web 1 sumber usable, News 4 sumber usable.
+- PR #148 memperbaiki pemeriksaan secret yang hanya berisi whitespace agar dianggap belum dikonfigurasi.
+- PR #149 menyelaraskan dokumentasi dengan bukti release.
+- PR #150 memperbaiki komentar yang terlalu luas tentang akses private network di Workers dan mencatat batas DNS rebinding. PR #150 tidak mengubah perilaku runtime, konfigurasi Worker, atau kebijakan egress.
+
+**Verifikasi release PR #150:**
+- Exact-head unit/syntax/preview validation, E2E, preview build, dan Workers Builds: sukses.
+- Production deployment 42590507391: sukses. D1 database bor-ai-chat terverifikasi ter-pin; tidak ada migrasi tertunda, sehingga langkah migrasi dilewati. Worker/assets dan pemeriksaan endpoint produksi berhasil.
+- Post-merge tests 42590507411: sukses.
+- Tavily live smoke 42590615200: sukses. Live Web Search mengembalikan 4 sumber usable; Live News Search mengembalikan 4 sumber usable. Pemeriksaan hanya mengungkap nama secret, bukan nilainya.
+- Pemeriksaan secret produksi melaporkan TAVILY_API_KEY ada dan BRAVE_SEARCH_API_KEY tidak ada. Karena itu Tavily telah diverifikasi live pada release PR #150; Brave belum dikonfigurasi dan tidak boleh disebut sebagai fallback aktif.
+
+**Residual keamanan yang belum ditutup:**
+1. src/links.js memvalidasi IP literal dan sintaks hostname, tetapi tidak melakukan DNS resolution atau pinning. DNS rebinding belum dimitigasi atau diverifikasi pada jalur runtime.
+2. wrangler.jsonc tidak mendeklarasikan Workers VPC binding. Ini bukan bukti bahwa akun Cloudflare tidak memiliki konfigurasi egress/private-network lain; konfigurasi akun dan trafik aktif belum diperiksa dari dashboard.
+3. Mitigasi prompt injection pada halaman eksternal bersifat defense-in-depth: konten dinetralkan dan ditandai sebagai data tidak tepercaya, tetapi belum ada red-team menggunakan model produksi.
+4. Dashboard Cloudflare untuk memastikan versi Worker yang menerima 100% trafik belum diperiksa ulang setelah release PR #150.
+5. Penetration test eksternal, alerting/percentile operasional, dan pengujian pemulihan masih belum selesai.
+
+**Catatan:** smoke Tavily membuktikan dua jalur pencarian live berhasil pada saat uji; tidak membuktikan kualitas faktual setiap sumber, ketersediaan kuota jangka panjang, atau keamanan seluruh alur model. Test fetcher tiruan tidak membuktikan perilaku jaringan DNS produksi.
