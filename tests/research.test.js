@@ -560,6 +560,25 @@ test("Tavily trims pasted secret whitespace before building the Authorization he
   assert.equal(authorization, "Bearer tvly-test-secret");
 });
 
+test("Brave trims pasted secret whitespace before building the X-Subscription-Token header", async () => {
+  let requestedUrl;
+  let subscriptionToken;
+  const result = await searchExternal("trim secret test", "web", {
+    BRAVE_SEARCH_API_KEY: "  brave-test-secret\\r\\n "
+  }, {
+    fetcher: async (url, init) => {
+      requestedUrl = url;
+      subscriptionToken = init.headers["X-Subscription-Token"];
+      return jsonResponse({ results: [] });
+    }
+  });
+  assert.equal(result.provider, "brave");
+  assert.equal(result.configured, true);
+  assert.equal(subscriptionToken, "brave-test-secret");
+  assert.ok(!requestedUrl.includes("brave-test-secret"));
+  assert.doesNotMatch(JSON.stringify(result), /brave-test-secret/);
+});
+
 test("Tavily transport diagnostics find allowlisted codes in nested causes only", async () => {
   const result = await searchExternal("nested cause test", "web", { TAVILY_API_KEY: "secret" }, {
     fetcher: async () => {
