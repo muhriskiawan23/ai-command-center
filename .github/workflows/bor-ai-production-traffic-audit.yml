@@ -23,7 +23,9 @@ jobs:
     environment: production
     steps:
       - name: Read latest active Worker deployment
+        id: active_deployment
         env:
+          EXPECTED_RELEASE_SHA: ${{ github.event.workflow_run.head_sha || '' }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         shell: bash
@@ -58,8 +60,56 @@ jobs:
           if (active.length !== 1 || active[0].percentage !== 100) {
             throw new Error("Expected one active production Worker version receiving exactly 100 percent of traffic.");
           }
+          const releaseMessage = deployment.annotations?.["workers/message"] ?? "";
+          const expectedSha = process.env.EXPECTED_RELEASE_SHA;
+          if (expectedSha && releaseMessage !== "github-sha:" + expectedSha) {
+            throw new Error("Active production deployment annotation does not match the exact release commit.");
+          }
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, "version_id=" + active[0].version_id + "\n");
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, "deployment_id=" + deployment.id + "\n");
           console.log("Production deployment:", deployment.id);
           console.log("Active Worker version:", active[0].version_id);
           console.log("Active traffic allocation:", active[0].percentage + "%");
+          console.log("Deployment release annotation:", releaseMessage || "not set (manual/legacy deployment)");
           console.log("Deployment created:", deployment.created_on);
+          NODE
+
+
+      - name: Inspect active Worker version network bindings
+        env:
+          ACTIVE_VERSION_ID: ${{ steps.active_deployment.outputs.version_id }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          const url = "https://api.cloudflare.com/client/v4/accounts/" +
+            process.env.CLOUDFLARE_ACCOUNT_ID +
+            "/workers/scripts/ai-command-center/versions/" +
+            process.env.ACTIVE_VERSION_ID;
+          const response = await fetch(url, {
+            headers: {
+              Authorization: "Bearer " + process.env.CLOUDFLARE_API_TOKEN,
+              Accept: "application/json"
+            },
+            signal: AbortSignal.timeout(30000)
+          });
+          if (!response.ok) {
+            throw new Error("Cloudflare version metadata request failed with HTTP " + response.status + ".");
+          }
+          const payload = await response.json();
+          const bindings = payload.result?.resources?.bindings;
+          if (payload.success !== true || !Array.isArray(bindings)) {
+            throw new Error("Cloudflare did not return bindings for the active Worker version.");
+          }
+          const privateNetworkBindings = bindings.filter((binding) =>
+            binding?.type === "vpc_network" || binding?.type === "vpc_service"
+          );
+          console.log("Active Worker private-network binding:", privateNetworkBindings.length ? "present" : "absent");
+          if (privateNetworkBindings.length) {
+            console.log("Private-network binding types:", [...new Set(privateNetworkBindings.map((binding) => binding.type))].join(", "));
+            console.log("Private-network binding names:", privateNetworkBindings.map((binding) => binding.name).filter(Boolean).join(", "));
+          }
+          console.log("Binding values and network identifiers were not logged; the API response was processed in memory only.");
           NODE
