@@ -19,6 +19,12 @@ function decodeXml(value) {
     .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "");
 }
 
+function stripNonContentXml(xml) {
+  return String(xml || "")
+    .replace(/<!--[\s\S]*?-->/g, "")
+    .replace(/<!\[CDATA\[[\s\S]*?\]\]>/g, "");
+}
+
 function paragraphText(xml) {
   const parts = [];
   for (const match of String(xml).matchAll(/<(?:[\w.-]+:)?t\b[^>]*>([\s\S]*?)<\/(?:[\w.-]+:)?t\s*>/gi)) {
@@ -29,12 +35,53 @@ function paragraphText(xml) {
 
 export function extractDocxParagraphs(documentXml, maxParagraphs = DOCX_MAX_PARAGRAPHS) {
   const paragraphs = [];
-  for (const match of String(documentXml || "").matchAll(/<(?:[\w.-]+:)?p\b[^>]*>([\s\S]*?)<\/(?:[\w.-]+:)?p\s*>/gi)) {
+  const contentXml = stripNonContentXml(documentXml);
+  for (const match of contentXml.matchAll(/<(?:[\w.-]+:)?p\b[^>]*>([\s\S]*?)<\/(?:[\w.-]+:)?p\s*>/gi)) {
     const value = paragraphText(match[1]);
     if (value) paragraphs.push(value);
     if (paragraphs.length >= maxParagraphs) break;
   }
   return paragraphs;
+}
+
+async function readZipEntryTextBounded(entry, maxBytes) {
+  if (typeof entry?.internalStream !== "function") {
+    throw new Error("Library Word tidak mendukung pembacaan arsip secara terbatas.");
+  }
+  const stream = entry.internalStream("uint8array");
+  if (!stream?.on || !stream?.resume || !stream?.pause) {
+    throw new Error("Stream arsip Word tidak valid.");
+  }
+  const decoder = new TextDecoder("utf-8", { fatal: false });
+  const parts = [];
+  let totalBytes = 0;
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const fail = error => {
+      if (settled) return;
+      settled = true;
+      try { stream.pause(); } catch {}
+      reject(error);
+    };
+    stream.on("data", chunk => {
+      if (settled) return;
+      const bytes = chunk instanceof Uint8Array ? chunk : new Uint8Array(chunk);
+      totalBytes += bytes.byteLength;
+      if (totalBytes > maxBytes) {
+        fail(new Error("Isi Word terlalu besar setelah diekstrak (maksimal 30 MB)."));
+        return;
+      }
+      parts.push(decoder.decode(bytes, { stream: true }));
+    });
+    stream.on("error", fail);
+    stream.on("end", () => {
+      if (settled) return;
+      settled = true;
+      parts.push(decoder.decode());
+      resolve(parts.join(""));
+    });
+    stream.resume();
+  });
 }
 
 export async function parseDocxArrayBuffer(buffer, { jszip, name = "document.docx" } = {}) {
@@ -55,7 +102,8 @@ export async function parseDocxArrayBuffer(buffer, { jszip, name = "document.doc
   }
   const documentFile = zip.files["word/document.xml"];
   if (!documentFile || documentFile.dir) throw new Error("File tidak memiliki struktur dokumen Word (.docx).");
-  const xml = await documentFile.async("string");
+  // ZIP metadata is attacker-controlled; enforce the limit on actual decompressed chunks.
+  const xml = await readZipEntryTextBounded(documentFile, DOCX_MAX_UNCOMPRESSED_BYTES);
   const paragraphs = extractDocxParagraphs(xml);
   if (!paragraphs.length) throw new Error("Dokumen Word tidak memiliki teks yang dapat dibaca.");
   const allText = [
