@@ -232,7 +232,7 @@ async function searchWithTavily(query, mode, env = {}, { fetcher = env.SEARCH_FE
       return { configured: true, mode, results: [], reason: "provider_error" };
     }
     const contentType = response.headers.get("content-type") || "";
-    if (!/^application\\/json(?:\\s*;|$)/i.test(contentType)) {
+    if (!/^application\/json(?:\s*;|$)/i.test(contentType)) {
       await cancelResponseBody(response);
       return { configured: true, mode, results: [], reason: "provider_invalid_response" };
     }
@@ -254,12 +254,12 @@ async function searchWithTavily(query, mode, env = {}, { fetcher = env.SEARCH_FE
       if (usableResults.length >= SEARCH_MAX_RESULTS) break;
       const url = typeof item?.url === "string" ? item.url : "";
       const checkedUrl = validateUrl(url);
-      const host = checkedUrl.ok ? checkedUrl.url.hostname.toLowerCase().replace(/^www\\./, "") : hostOf(url);
+      const host = checkedUrl.ok ? checkedUrl.url.hostname.toLowerCase().replace(/^www\./, "") : hostOf(url);
       const publishedAt = parsedDate(item?.published_date || item?.published || item?.date);
       const canonicalUrl = checkedUrl.ok ? canonicalSearchUrl(url) : null;
       if (canonicalUrl && seenUrls.has(canonicalUrl)) continue;
       if (canonicalUrl) seenUrls.add(canonicalUrl);
-      const validUrl = /^https:\\/\\//i.test(url) && checkedUrl.ok && !isLowTrust(host);
+      const validUrl = /^https:\/\//i.test(url) && checkedUrl.ok && !isLowTrust(host);
       const normalizedUrl = validUrl ? canonicalUrl : undefined;
       const stale = staleDate(publishedAt, now);
       const hostCount = usableResultsPerHost.get(host) || 0;
