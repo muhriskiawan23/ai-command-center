@@ -110,3 +110,42 @@ test("DNS resolver failures other than no-data fail closed", async () => {
   };
   await assert.rejects(resolveChain("missing.example", addressFailure), /dns_a_error/);
 });
+
+
+test("CNAME depth is bounded and empty terminal DNS answers fail closed", async () => {
+  const deep = {
+    resolveCname: async (host) => {
+      const n = Number(host.match(/^n(\\d+)\\.example$/)?.[1] || 0);
+      return n <= 8 ? [`n${n + 1}.example`] : [];
+    },
+    resolve4: async () => ["8.8.8.8"],
+    resolve6: async () => []
+  };
+  await assert.rejects(resolveChain("n0.example", deep), /dns_cname_depth/);
+
+  const empty = {
+    resolveCname: async () => { throw noData(); },
+    resolve4: async () => [],
+    resolve6: async () => []
+  };
+  await assert.rejects(resolveChain("empty.example", empty), /dns_unsafe_or_empty/);
+});
+
+test("each separate redirect hop resolves again and rejects a rebinding to a private address", async () => {
+  let answer = "8.8.8.8";
+  let connections = 0;
+  const resolver = {
+    resolveCname: async () => { throw noData(); },
+    resolve4: async () => [answer],
+    resolve6: async () => []
+  };
+  const request = async ({ peerIp }) => {
+    connections++;
+    return { status: 302, headers: { location: "http://other.example/next" }, body: Buffer.alloc(0), peerIp };
+  };
+  const first = await fetchPinned("http://public.example/start", { resolver, request });
+  assert.equal(first.peerIp, "8.8.8.8");
+  answer = "127.0.0.1";
+  await assert.rejects(fetchPinned("http://other.example/next", { resolver, request }), /dns_unsafe_or_empty/);
+  assert.equal(connections, 1);
+});
