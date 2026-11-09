@@ -1,7 +1,7 @@
 import { validateUrl } from "./links.js";
 // Phase 2 research adapter: optional Brave Search/News + a small first-party curated knowledge index.
 // External content is always treated as untrusted evidence, never as instructions.
-const SEARCH_TIMEOUT_MS = 6500;
+const SEARCH_TIMEOUT_MS = 15_000;
 const SEARCH_MAX_RESULTS = 5;
 const SEARCH_MAX_CANDIDATES = 10;
 const SEARCH_MAX_RESULTS_PER_HOST = 2;
@@ -201,7 +201,9 @@ async function searchWithBrave(query, mode, env = {}, { fetcher = env.SEARCH_FET
 
 
 async function searchWithTavily(query, mode, env = {}, { fetcher = env.SEARCH_FETCHER || fetch, now = Date.now() } = {}) {
-  if (!env.TAVILY_API_KEY) return { configured: false, mode, results: [], reason: "provider_not_configured" };
+  // Wrangler/CI secret values can contain a trailing newline from copy-paste; trim it before constructing Headers.
+  const apiKey = typeof env.TAVILY_API_KEY === "string" ? env.TAVILY_API_KEY.trim() : "";
+  if (!apiKey) return { configured: false, mode, results: [], reason: "provider_not_configured" };
   const safeQuery = String(query || "").trim().slice(0, 500);
   if (!safeQuery) return { configured: true, mode, results: [], reason: "empty_query" };
   const controller = new AbortController();
@@ -213,7 +215,7 @@ async function searchWithTavily(query, mode, env = {}, { fetcher = env.SEARCH_FE
       headers: {
         "Accept": "application/json",
         "Content-Type": "application/json",
-        "Authorization": "Bearer " + env.TAVILY_API_KEY
+        "Authorization": "Bearer " + apiKey
       },
       body: JSON.stringify({
         query: safeQuery,
@@ -308,14 +310,20 @@ async function searchWithTavily(query, mode, env = {}, { fetcher = env.SEARCH_FE
       }
     };
   } catch (error) {
+    const allowedCauseCodes = new Set(["EAI_AGAIN", "ECONNREFUSED", "ECONNRESET", "ENOTFOUND", "ETIMEDOUT", "UND_ERR_CONNECT_TIMEOUT", "UND_ERR_SOCKET", "ERR_TLS_CERT_ALTNAME_INVALID"]);
+    let cause = error?.cause;
+    let causeCode;
+    // Cloudflare/undici may wrap transport causes; inspect a short bounded chain, never expose raw messages.
+    for (let depth = 0; depth < 4 && cause && !causeCode; depth += 1, cause = cause?.cause) {
+      if (allowedCauseCodes.has(cause?.code)) causeCode = cause.code;
+    }
     return {
       configured: true, mode, results: [],
       reason: controller.signal.aborted ? "provider_timeout" : "provider_unavailable",
       diagnostics: {
         failureStage: controller.signal.aborted ? "timeout" : failureStage,
-        errorName: typeof error?.name === "string" ? error.name.slice(0, 40) : "UnknownError",
-        ...(["EAI_AGAIN", "ECONNREFUSED", "ECONNRESET", "ENOTFOUND", "ETIMEDOUT", "UND_ERR_CONNECT_TIMEOUT", "UND_ERR_SOCKET", "ERR_TLS_CERT_ALTNAME_INVALID"].includes(error?.cause?.code)
-          ? { causeCode: error.cause.code } : {})
+        errorName: typeof error?.name === "string" && /^[A-Za-z][A-Za-z0-9]{0,39}$/.test(error.name) ? error.name : "UnknownError",
+        ...(causeCode ? { causeCode } : {})
       }
     };
   } finally { clearTimeout(timer); }
