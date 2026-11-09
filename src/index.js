@@ -1,7 +1,7 @@
 import { extractUrls, readLinks, buildPageContext, summarizeLinks } from "./links.js";
 import { PDF_MAX_BYTES, PDF_CONTEXT_MAX_CHARS, safePdfName, normalizePdfConversion, buildPdfContext, validatePdfPageCitations, SPREADSHEET_CONTEXT_MAX_CHARS, safeSpreadsheetName, buildSpreadsheetContext, PRESENTATION_CONTEXT_MAX_CHARS, safePresentationName, buildPresentationContext, WORD_CONTEXT_MAX_CHARS, buildWordDocumentContext } from "./documents.js";
 import { validateCitationReferences } from "./citations.js";
-import { detectResearchMode, searchExternal, buildResearchContext, retrieveCuratedKnowledge } from "./research.js";
+import { detectResearchMode, isSearchProviderConfigured, searchExternal, buildResearchContext, retrieveCuratedKnowledge } from "./research.js";
 import { MEMORY_MAX_ITEMS, MEMORY_MAX_CHARS, getMemoryState, setMemoryEnabled, addMemory, deleteMemory, deleteAllMemories, parseRememberCommand, buildMemoryBlock } from "./memory.js";
 import { handleDeveloperKeysRoute, handlePublicChatRoute } from "./widget-api.js";
 import { handleTelegramWebhook } from "./telegram.js";
@@ -1576,7 +1576,7 @@ export default {
       const found = extractUrls(message);
       const researchMode = detectResearchMode(message);
       // External link reading and live search consume extra provider/network budget.
-      const researchCharge = researchMode && env.BRAVE_SEARCH_API_KEY ? 1 : 0;
+      const researchCharge = researchMode && isSearchProviderConfigured(env) ? 1 : 0;
       const usage = await enforceDailyLimits(env, request, user, (useMultiAgent ? MULTI_AGENT_UNITS : 1) + (found.urls.length ? 1 : 0) + researchCharge);
       if (!usage.ok) return usage.response;
       let history = clientHistory.history;
