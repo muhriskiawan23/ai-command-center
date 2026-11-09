@@ -7,7 +7,8 @@ import {
   resolveChain,
   requestOneHop,
   createEgressProxyHandler,
-  MAX_REQUEST_BYTES
+  MAX_REQUEST_BYTES,
+  MAX_CONCURRENT_REQUESTS
 } from "../tools/egress-proxy/pinned-transport.js";
 
 const noData = () => Object.assign(new Error("no data"), { code: "ENODATA" });
@@ -60,6 +61,79 @@ test("each fetch invocation resolves DNS again instead of reusing a prior pin", 
   await fetchPinned("https://rotate.example/b", { resolver, request });
   assert.deepEqual(peers, ["8.8.8.8", "1.1.1.1"]);
   assert.equal(lookups, 2);
+});
+
+test("DNS rebinding after preflight cannot replace the vetted address used by the transport", async () => {
+  let answer = "8.8.8.8";
+  let observed;
+  const resolver = {
+    resolveCname: async () => { throw noData(); },
+    resolve4: async () => [answer],
+    resolve6: async () => []
+  };
+  const request = async ({ peerIp }) => {
+    // Simulate the authoritative answer changing after validation but before connect.
+    answer = "127.0.0.1";
+    observed = { pinnedPeer: peerIp, answerAtConnectionTime: (await resolver.resolve4("rebinding.example"))[0] };
+    return { status: 200, headers: {}, body: Buffer.from("pinned") };
+  };
+  const result = await fetchPinned("https://rebinding.example/path", { resolver, request });
+  assert.deepEqual(observed, { pinnedPeer: "8.8.8.8", answerAtConnectionTime: "127.0.0.1" });
+  assert.equal(result.peerIp, "8.8.8.8");
+});
+
+test("private handler bounds concurrent upstream requests and returns 429 when saturated", async () => {
+  let markStarted;
+  const started = new Promise((resolve) => { markStarted = resolve; });
+  let release;
+  const pendingResult = new Promise((resolve) => { release = resolve; });
+  let upstreamCalls = 0;
+  const handler = createEgressProxyHandler({
+    token: "t".repeat(40),
+    resolver: resolverFor("8.8.8.8"),
+    maxConcurrentRequests: 1,
+    request: () => {
+      upstreamCalls++;
+      markStarted();
+      return pendingResult;
+    }
+  });
+  const invoke = async () => {
+    const req = {
+      method: "POST", url: "/fetch",
+      headers: { authorization: "Bearer " + "t".repeat(40) },
+      async *[Symbol.asyncIterator]() {
+        yield Buffer.from(JSON.stringify({ url: "https://fixture.example/path" }));
+      }
+    };
+    const res = new EventEmitter();
+    res.destroyed = false;
+    res.writableEnded = false;
+    res.writeHead = function (status, headers = {}) {
+      this.status = status;
+      this.headers = headers;
+      return this;
+    };
+    res.end = function (body = "") {
+      this.body = body;
+      this.writableEnded = true;
+      return this;
+    };
+    await handler(req, res);
+    return res;
+  };
+  const firstPending = invoke();
+  await started;
+  const second = await invoke();
+  assert.equal(second.status, 429);
+  assert.equal(second.headers["cache-control"], "no-store");
+  assert.equal(JSON.parse(second.body).error, "egress_busy");
+  assert.equal(upstreamCalls, 1);
+  release({ status: 200, headers: {}, body: Buffer.from("ok") });
+  const first = await firstPending;
+  assert.equal(first.status, 200);
+  assert.equal(upstreamCalls, 1);
+  assert.equal(MAX_CONCURRENT_REQUESTS, 4);
 });
 
 test("actual socket response cap aborts an oversized upstream body", async (t) => {
