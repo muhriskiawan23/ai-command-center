@@ -250,17 +250,44 @@ export function createEgressProxyHandler({ token, resolver = dns, timeoutMs = 80
     }
     const chunks = [];
     let size = 0;
-    for await (const chunk of req) {
-      size += chunk.length;
-      if (size > MAX_REQUEST_BYTES) {
-        res.writeHead(413).end();
-        return;
+    const bodyTimeoutMs = Math.min(Math.max(timeoutMs, 1000), 10000);
+    let bodyTimer;
+    let bodyError;
+    const iterator = req[Symbol.asyncIterator]();
+    try {
+      const deadline = new Promise((_, reject) => {
+        bodyTimer = setTimeout(() => reject(new Error("request_body_timeout")), bodyTimeoutMs);
+      });
+      while (true) {
+        const next = await Promise.race([iterator.next(), deadline]);
+        if (next.done) break;
+        const chunk = Buffer.isBuffer(next.value) ? next.value : Buffer.from(next.value);
+        size += chunk.length;
+        if (size > MAX_REQUEST_BYTES) {
+          bodyError = "request_body_too_large";
+          break;
+        }
+        chunks.push(chunk);
       }
-      chunks.push(chunk);
+    } catch (error) {
+      bodyError = error?.message === "request_body_timeout" ? "request_body_timeout" : "request_body_aborted";
+    } finally {
+      if (bodyTimer) clearTimeout(bodyTimer);
+      if (bodyError && typeof iterator.return === "function") {
+        // Do not await iterator.return(): a stalled stream may never settle it.
+        Promise.resolve(iterator.return()).catch(() => {});
+      }
+    }
+    if (bodyError) {
+      const status = bodyError === "request_body_too_large" ? 413 : 408;
+      if (!req.aborted && !res.destroyed) {
+        res.writeHead(status, { "cache-control": "no-store" }).end();
+      }
+      return;
     }
     let input;
     try { input = JSON.parse(Buffer.concat(chunks).toString("utf8")); }
-    catch { res.writeHead(400).end(); return; }
+    catch { res.writeHead(400, { "cache-control": "no-store" }).end(); return; }
     if (typeof input.url !== "string" || input.url.length > 4096) {
       res.writeHead(400).end();
       return;
