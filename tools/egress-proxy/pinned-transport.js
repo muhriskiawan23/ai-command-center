@@ -7,6 +7,7 @@ import { timingSafeEqual } from "node:crypto";
 
 export const MAX_RESPONSE_BYTES = 1_000_000;
 export const MAX_REQUEST_BYTES = 16_384;
+export const MAX_CONCURRENT_REQUESTS = 4;
 export const DNS_CNAME_LIMIT = 8;
 const REDIRECTS = new Set([301, 302, 303, 307, 308]);
 const BLOCKED_V4 = [
@@ -287,8 +288,10 @@ export async function fetchPinned(rawUrl, {
  * Request: POST /fetch with {"url":"https://public.example/path"}.
  * Response body is base64 so a Worker adapter can reconstruct the upstream bytes.
  */
-export function createEgressProxyHandler({ token, resolver = dns, timeoutMs = 8000, request = requestOneHop } = {}) {
+export function createEgressProxyHandler({ token, resolver = dns, timeoutMs = 8000, request = requestOneHop, maxConcurrentRequests = MAX_CONCURRENT_REQUESTS } = {}) {
   if (typeof token !== "string" || token.length < 32) throw new Error("proxy_token_must_be_at_least_32_chars");
+  if (!Number.isSafeInteger(maxConcurrentRequests) || maxConcurrentRequests < 1 || maxConcurrentRequests > 64) throw new Error("invalid_max_concurrent_requests");
+  let activeRequests = 0;
   return async function handler(req, res) {
     if (req.method !== "POST" || req.url !== "/fetch") {
       res.writeHead(404).end();
@@ -345,6 +348,12 @@ export function createEgressProxyHandler({ token, resolver = dns, timeoutMs = 80
       res.writeHead(400).end();
       return;
     }
+    if (activeRequests >= maxConcurrentRequests) {
+      res.writeHead(429, { "cache-control": "no-store", "retry-after": "1" })
+        .end(JSON.stringify({ error: "egress_busy" }));
+      return;
+    }
+    activeRequests++;
     try {
       const controller = new AbortController();
       const onResponseClose = () => {
@@ -373,6 +382,8 @@ export function createEgressProxyHandler({ token, resolver = dns, timeoutMs = 80
         res.writeHead(502, { "content-type": "application/json", "cache-control": "no-store" })
           .end(JSON.stringify({ error: reason }));
       }
+    } finally {
+      activeRequests--;
     }
   };
 }
