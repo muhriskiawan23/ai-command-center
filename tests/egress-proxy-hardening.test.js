@@ -270,3 +270,41 @@ test("private handler cancels upstream work and avoids writing after client disc
   await pending;
   assert.equal(upstreamAborted, true);
 });
+
+
+test("DNS resolution is bounded by the request deadline before any upstream request", async () => {
+  let requested = false;
+  const resolver = {
+    resolveCname: () => new Promise(() => {}),
+    resolve4: async () => ["8.8.8.8"],
+    resolve6: async () => []
+  };
+  await assert.rejects(
+    fetchPinned("https://stalled-dns.example/path", {
+      resolver,
+      timeoutMs: 30,
+      request: async () => { requested = true; return { status: 200, headers: {}, body: Buffer.alloc(0) }; }
+    }),
+    /dns_timeout/
+  );
+  assert.equal(requested, false);
+});
+
+test("caller cancellation during DNS resolution prevents the upstream request", async () => {
+  let requested = false;
+  const controller = new AbortController();
+  const resolver = {
+    resolveCname: () => new Promise(() => {}),
+    resolve4: async () => ["8.8.8.8"],
+    resolve6: async () => []
+  };
+  const pending = fetchPinned("https://cancel-dns.example/path", {
+    resolver,
+    timeoutMs: 1000,
+    signal: controller.signal,
+    request: async () => { requested = true; return { status: 200, headers: {}, body: Buffer.alloc(0) }; }
+  });
+  setTimeout(() => controller.abort(new Error("request_aborted")), 20);
+  await assert.rejects(pending, /request_aborted/);
+  assert.equal(requested, false);
+});
