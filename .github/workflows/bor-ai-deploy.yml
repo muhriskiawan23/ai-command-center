@@ -126,7 +126,7 @@ jobs:
         run: |
           set -euo pipefail
           BASE_URL="https://ai-command-center.muhriskiawan23.workers.dev"
-          curl --fail --silent --show-error "$BASE_URL/api/health" | node --input-type=module -e 'let s="";for await(const c of process.stdin)s+=c;const d=JSON.parse(s);if(d.ok!==true)throw Error("Health check failed")'
+          curl --fail --silent --show-error "$BASE_URL/api/health?deep=1" | node --input-type=module -e 'let s="";for await(const c of process.stdin)s+=c;const d=JSON.parse(s);if(d.ok!==true||d.checks?.database!==true||d.checks?.aiBinding!==true)throw Error("Health check failed")'
           curl --fail --silent --show-error "$BASE_URL/api/agents" | node --input-type=module -e 'let s="";for await(const c of process.stdin)s+=c;const d=JSON.parse(s);if(!Array.isArray(d.agents)||d.agents.length<10)throw Error("Agents check failed")'
           CONFIG_READY=0
           for attempt in $(seq 1 10); do
