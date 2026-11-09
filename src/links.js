@@ -4,8 +4,11 @@
 //  - SSRF: only http(s) on ports 80/443, no credentials in the URL, no private/loopback/link-local/reserved addresses
 //    (IPv4 and IPv6 literals), no single-label or internal-looking host names, never this Worker's own host.
 //    Redirects are followed manually (max 3) and EVERY hop is validated again.
-//    Limitation: a public host name that resolves to a private IP (DNS rebinding) cannot be detected from a Worker.
-//    Workers cannot reach private networks anyway, so this is defence in depth, not the only barrier.
+//    Limitation: this validator checks IP literals and hostname syntax; it does NOT resolve DNS or pin the resolved address.
+//    Cloudflare Workers can reach private networks through explicitly configured Workers VPC bindings. This app's
+//    wrangler.jsonc currently declares no VPC binding, but that alone is not proof of account-wide egress policy.
+//    Do not claim DNS-rebinding protection or rely on an assumed platform block without verifying the deployed
+//    account/network configuration. A DNS-pinning transport or controlled egress proxy would be needed to enforce it here.
 //  - Resource limits: 8 s per request, 1 MB download cap, 16,000 characters kept per page, at most 3 links per message.
 //  - Prompt injection: page text is untrusted DATA. It is wrapped in <web_page> blocks with every '<' and '>' neutralised,
 //    and the system prompt tells the model never to follow instructions found there.
