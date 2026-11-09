@@ -138,12 +138,12 @@ async function searchWithBrave(query, mode, env = {}, { fetcher = env.SEARCH_FET
   const timer = setTimeout(() => controller.abort(), SEARCH_TIMEOUT_MS);
   try {
     const response = await fetcher(endpoint.toString(), {
-      method: "GET", redirect: "error", signal: controller.signal,
+      method: "GET", redirect: "manual", signal: controller.signal,
       headers: { "Accept": "application/json", "X-Subscription-Token": env.BRAVE_SEARCH_API_KEY }
     });
     if (!response.ok) {
       await cancelResponseBody(response);
-      return { configured: true, mode, results: [], reason: response.status === 429 ? "provider_rate_limited" : "provider_error" };
+      return { configured: true, mode, results: [], reason: response.status === 429 ? "provider_rate_limited" : response.status >= 300 && response.status < 400 ? "provider_redirect_rejected" : "provider_error", diagnostics: { httpStatus: response.status, candidateCount: 0, usableCount: 0 } };
     }
     const contentType = response.headers.get("content-type") || "";
     if (!/^application\/json(?:\s*;|$)/i.test(contentType)) {
@@ -211,7 +211,7 @@ async function searchWithTavily(query, mode, env = {}, { fetcher = env.SEARCH_FE
   let failureStage = "network_request";
   try {
     const response = await fetcher("https://api.tavily.com/search", {
-      method: "POST", redirect: "error", signal: controller.signal,
+      method: "POST", redirect: "manual", signal: controller.signal,
       headers: {
         "Accept": "application/json",
         "Content-Type": "application/json",
@@ -232,6 +232,7 @@ async function searchWithTavily(query, mode, env = {}, { fetcher = env.SEARCH_FE
       const status = response.status;
       await cancelResponseBody(response);
       const reason = [429, 432, 433].includes(status) ? "provider_rate_limited"
+        : status >= 300 && status < 400 ? "provider_redirect_rejected"
         : status === 401 ? "provider_auth_error"
         : status === 403 ? "provider_permission_error"
         : status >= 400 && status < 500 ? "provider_request_rejected"

@@ -47,6 +47,7 @@ test("Brave API key is sent only in a header and fresh results receive provenanc
   });
   assert.equal(result.configured, true);
   assert.equal(result.provider, "brave");
+  assert.equal(requested.init.redirect, "manual");
   assert.equal(result.results[0].ok, true);
   assert.equal(result.results[0].publishedAt, "2026-11-06T10:00:00.000Z");
   assert.match(requested.url, /\/news\/search/);
@@ -176,6 +177,7 @@ test("Tavily is selected when its Worker secret is configured and maps fresh sea
     }
   });
   assert.equal(result.provider, "tavily");
+  assert.equal(requested.init.redirect, "manual");
   assert.equal(result.configured, true);
   assert.equal(result.results[0].ok, true);
   assert.equal(result.results[0].url, "https://publisher.example/economy");
@@ -193,6 +195,28 @@ test("Tavily is selected when its Worker secret is configured and maps fresh sea
   assert.equal(requested.body.include_raw_content, false);
   assert.equal(requested.body.api_key, undefined);
   assert.match(buildResearchContext(result).context, /Tavily Search API/);
+});
+
+test("search providers use Workers-compatible manual redirects and reject 3xx without following", async () => {
+  for (const env of [
+    { BRAVE_SEARCH_API_KEY: "brave-test" },
+    { TAVILY_API_KEY: "tavily-test" }
+  ]) {
+    let calls = 0;
+    let redirectMode;
+    const result = await searchExternal("redirect safety test", "web", env, {
+      fetcher: async (_url, init) => {
+        calls += 1;
+        redirectMode = init.redirect;
+        return new Response("", { status: 302, headers: { location: "https://untrusted.example/collect" } });
+      }
+    });
+    assert.equal(redirectMode, "manual");
+    assert.equal(calls, 1, "the redirect destination must never be fetched");
+    assert.equal(result.reason, "provider_redirect_rejected");
+    assert.equal(result.diagnostics.httpStatus, 302);
+    assert.deepEqual(result.results, []);
+  }
 });
 
 test("Tavily auth, quota and malformed responses fail closed without exposing provider details", async () => {
