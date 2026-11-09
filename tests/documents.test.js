@@ -318,6 +318,11 @@ test("Word document context is bounded, escaped, and marked as untrusted", () =>
   assert.equal((context.match(/<\/word_document>/g) || []).length, 1);
 });
 
+test("Word context explicitly discloses client-side truncation", () => {
+  const context = buildWordDocumentContext({ name: "report.docx", content: "A short extracted section", truncated: true });
+  assert.match(context, /Extracted Word text was truncated/);
+});
+
 test("Word document context safely normalizes names and truncates long text", () => {
   assert.equal(safeWordDocumentName("../../private/report.docx"), ".._.._private_report.docx");
   const context = buildWordDocumentContext({ name: "report.docx", content: "x".repeat(WORD_CONTEXT_MAX_CHARS + 100) });
