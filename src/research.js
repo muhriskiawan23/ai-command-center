@@ -375,9 +375,20 @@ export function buildResearchContext(search, startSourceId = 1) {
         : Number.isInteger(diagnostics.httpStatus)
           ? providerLabel + " membalas HTTP " + diagnostics.httpStatus + " (" + search.reason + ")."
           : providerLabel + " tidak dapat menyelesaikan permintaan (" + search.reason + ").";
+    const safeDiagnostics = {};
+    if (Number.isInteger(diagnostics.httpStatus) && diagnostics.httpStatus >= 100 && diagnostics.httpStatus <= 599) {
+      safeDiagnostics.httpStatus = diagnostics.httpStatus;
+    }
+    if (["network_request", "response_headers", "response_body", "payload_parse", "payload_schema", "timeout"].includes(diagnostics.failureStage)) {
+      safeDiagnostics.failureStage = diagnostics.failureStage;
+    }
+    if (typeof diagnostics.errorName === "string" && /^[A-Za-z][A-Za-z0-9]{0,39}$/.test(diagnostics.errorName)) {
+      safeDiagnostics.errorName = diagnostics.errorName;
+    }
+    const diagnosticMetadata = Object.keys(safeDiagnostics).length ? { diagnostics: safeDiagnostics } : {};
     return {
       context: "LIVE SEARCH STATUS: The configured provider did not return usable search results (" + search.reason + "). No current external facts are available. Do not guess or imply that a search succeeded.",
-      sources: [{ sourceId: startSourceId, ok: false, host: SEARCH_ADAPTERS.get(search.provider)?.label || "Search/news", reason: detail }]
+      sources: [{ sourceId: startSourceId, ok: false, host: SEARCH_ADAPTERS.get(search.provider)?.label || "Search/news", reason: detail, ...diagnosticMetadata }]
     };
   }
   const sources = search.results.map((item, index) => ({
