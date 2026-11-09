@@ -160,11 +160,12 @@ async function searchWithBrave(query, mode, env = {}, { fetcher = env.SEARCH_FET
     let payload;
     try { payload = JSON.parse(raw); } catch { return { configured: true, mode, results: [], reason: "provider_invalid_response" }; }
     const items = Array.isArray(payload?.results) ? payload.results : Array.isArray(payload?.web?.results) ? payload.web.results : [];
-    const results = [];
+    const usableResults = [];
+    const excludedResults = [];
     const seenUrls = new Set();
     const usableResultsPerHost = new Map();
     for (const item of items.slice(0, SEARCH_MAX_CANDIDATES)) {
-      if (results.length >= SEARCH_MAX_RESULTS) break;
+      if (usableResults.length >= SEARCH_MAX_RESULTS) break;
       const url = typeof item?.url === "string" ? item.url : "";
       const checkedUrl = validateUrl(url);
       const host = checkedUrl.ok ? checkedUrl.url.hostname.toLowerCase().replace(/^www\./, "") : hostOf(url);
@@ -179,7 +180,7 @@ async function searchWithBrave(query, mode, env = {}, { fetcher = env.SEARCH_FET
       const hostLimited = validUrl && !stale && hostCount >= SEARCH_MAX_RESULTS_PER_HOST;
       if (validUrl && !stale && !hostLimited) usableResultsPerHost.set(host, hostCount + 1);
       const ok = validUrl && !stale && !hostLimited;
-      results.push({
+      const normalizedResult = {
         ok, url: normalizedUrl, requestedUrl: normalizedUrl,
         host: host || "sumber eksternal", title: String(item?.title || "Tanpa judul").slice(0, 200),
         description: String(item?.description || item?.snippet || "").slice(0, 1800),
@@ -187,8 +188,11 @@ async function searchWithBrave(query, mode, env = {}, { fetcher = env.SEARCH_FET
         trust: hostLimited ? "limited-source-diversity" : validUrl ? "unverified-external" : "blocked-low-trust-or-invalid",
         reason: !validUrl ? "Sumber eksternal tidak lolos pemeriksaan URL atau termasuk platform UGC/sosial." : stale ? "Sumber lebih lama dari 30 hari dan dikecualikan dari konteks AI." : hostLimited ? "Sumber dari host yang sama dibatasi untuk menjaga keragaman hasil." : undefined,
         stale
-      });
+      };
+      (ok ? usableResults : excludedResults).push(normalizedResult);
     }
+    // Invalid, stale, or host-limited early candidates must not crowd out later usable sources.
+    const results = [...usableResults, ...excludedResults].slice(0, SEARCH_MAX_RESULTS);
     return { configured: true, mode, results };
   } catch {
     return { configured: true, mode, results: [], reason: controller.signal.aborted ? "provider_timeout" : "provider_unavailable" };

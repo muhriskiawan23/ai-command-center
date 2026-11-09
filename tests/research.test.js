@@ -213,6 +213,30 @@ test("search canonicalizes tracking variants and removes duplicate URLs before a
   assert.ok(result.results.every((item) => item.ok));
 });
 
+test("early excluded candidates do not crowd out later usable search results", async () => {
+  const result = await searchExternal("candidate selection", "web", { BRAVE_SEARCH_API_KEY: "secret" }, {
+    now: Date.parse("2026-11-07T00:00:00Z"),
+    fetcher: async () => jsonResponse({ results: [
+      ...Array.from({ length: 5 }, (_, index) => ({
+        title: `Rejected ${index + 1}`,
+        url: `http://insecure.example/${index + 1}`,
+        description: "Must not displace a valid source",
+        page_age: "2026-11-06T00:00:00Z"
+      })),
+      {
+        title: "Usable sixth candidate",
+        url: "https://reliable.example/article",
+        description: "A fresh usable source",
+        page_age: "2026-11-06T00:00:00Z"
+      }
+    ] })
+  });
+  assert.equal(result.results.length, 5);
+  assert.equal(result.results[0].title, "Usable sixth candidate");
+  assert.equal(result.results.filter((item) => item.ok).length, 1);
+  assert.equal(result.results[0].url, "https://reliable.example/article");
+});
+
 test("search limits usable results to two per hostname while continuing to diversify candidates", async () => {
   const result = await searchExternal("diverse search results", "web", { BRAVE_SEARCH_API_KEY: "secret" }, {
     now: Date.parse("2026-11-07T00:00:00Z"),
