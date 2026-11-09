@@ -115,7 +115,7 @@ test("DNS resolver failures other than no-data fail closed", async () => {
 test("CNAME depth is bounded and empty terminal DNS answers fail closed", async () => {
   const deep = {
     resolveCname: async (host) => {
-      const n = Number(host.match(/^n(\\d+)\\.example$/)?.[1] || 0);
+      const n = Number(host.match(/^n(\d+)\.example$/)?.[1] || 0);
       return n <= 8 ? [`n${n + 1}.example`] : [];
     },
     resolve4: async () => ["8.8.8.8"],
