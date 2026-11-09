@@ -126,3 +126,14 @@ test("sidebar uses a compact Claude-inspired layout with GitHub moved into Integ
   assert.match(appCss, /--sidebar-width:276px/);
   assert.doesNotMatch(page.match(/<aside class="sidebar"[\s\S]*?<\/aside>/)?.[0] || "", /github-connect-panel/);
 });
+
+test("Word DOCX upload is locally extracted and sent as an untrusted word document context", () => {
+  assert.match(page, /\.docx,application\/vnd\.openxmlformats-officedocument\.wordprocessingml\.document/);
+  assert.match(appJs, /parseDocxLocally/);
+  assert.match(appJs, /payload\.wordDocument=/);
+  assert.match(appJs, /kind="word-document"/);
+  assert.match(page, /Word Reader/);
+  assert.match(page, /gambar, header\/footer, komentar, dan objek tertanam tidak dibaca/);
+  assert.match(appJs, /function appendWordDocumentSource/);
+  assert.match(appJs, /wordDocument:activeCsv\?\.kind==="word-document"/);
+});

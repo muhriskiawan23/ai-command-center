@@ -2,7 +2,7 @@
 
 **Direction:** Hybrid + All Capabilities  
 **Repository:** `muhriskiawan23/ai-command-center`  
-**Baseline:** `main` at `6aea5f9f8da5bb4d23df3f4fb6071819d618ddb8`  
+**Baseline:** `main` at `706004ae48cc06182cb74fcd0b6c70fff501dc81`  
 **Last repository audit:** 2026-11-09  
 **Release rule:** No pull request is merged and no production deployment is initiated without explicit founder approval.
 
@@ -29,11 +29,11 @@ The objective is not to claim that BOR AI is already better than ChatGPT, Claude
 | Language and UI | Automatic device language, 10 interface languages, Arabic RTL, localized response handling | Translation quality and layout need human review on real devices and browsers. |
 | Web research | Optional Brave Search and News adapter, curated BOR AI knowledge, source IDs, freshness/trust rules, citation validation | Live search requires the Cloudflare Worker secret `BRAVE_SEARCH_API_KEY`; provider quota and live behavior are not proven by stub tests. |
 | Source-page reading | User-supplied URL reader with SSRF protections and bounded reading of up to three search-result pages, page-read status and redirect-aware citation validation | PR #91 is merged and deployed. Live Brave search still depends on a valid `BRAVE_SEARCH_API_KEY` and provider quota; this deployment did not prove live Brave availability. |
-| Documents | PDF conversion, local OCR fallback for scanned PDFs, CSV/XLSX parsing, PPTX text extraction | Image understanding, charts/visual extraction, speaker notes and arbitrary document formats are not implemented. |
+| Documents | PDF conversion, local OCR fallback for scanned PDFs, CSV/XLSX parsing, PPTX text extraction, and local DOCX paragraph extraction (PR #125, security hardening added; exact-head CI pending) | Image understanding, charts/visual extraction, speaker notes, and arbitrary document formats are not implemented. DOCX parser reads only `word/document.xml`; images, headers/footers, comments, and embedded objects are not extracted. |
 | Integrations | Telegram webhook; embeddable widget and public API keys; GitHub repository/PR read-only capabilities and OAuth foundation | Each external integration needs live credential, permission, revocation and abuse testing. Gmail/Drive, Calendar, Slack, WhatsApp and general browser automation are not complete. |
 | Developer/product APIs | Public single-turn chat API, per-site keys, origin allow-list and quotas | No general-purpose safe code execution or autonomous software-building runtime exists. |
 | Security and cost controls | Request limits, daily usage accounting, timeouts, session ownership checks, CSP/security headers, input bounds and regression tests | Production observability, spend controls, anti-bot, disaster recovery and full external penetration testing remain incomplete. |
-| Deployment | Cloudflare Worker and static assets, D1 migrations, GitHub Actions tests/preview/deploy workflow | PR #117 baseline `cee8b27` was production-deployed successfully by run `42518807471`; PR #121 security hotfix is now the latest main code commit `6aea5f9`. The production workflow runs on push to `main`; post-PR #121 production run status is not verifiable through the current GitHub connector. The last verified run found no pending D1 migrations, skipped applying migrations and optional live chat, and passed health/agents/Google-config checks. Cloudflare Git-integration deployment settings remain unverified. |
+| Deployment | Cloudflare Worker and static assets, D1 migrations, GitHub Actions tests/preview/deploy workflow, plus Cloudflare Workers Builds Git integration | Main baseline `706004a` is deployed. Push commit `706004ae48cc06182cb74fcd0b6c70fff501dc81` triggered both GitHub Actions production deploy run `42522046920` and Cloudflare Workers Builds production build `10eaf962-e1aa-40fc-adc5-b3c77db8c8f3`; both succeeded within one second of each other. GitHub Actions deployed Worker version `a5ebf238-d863-4c83-951b-999e3180d9aa`, verified pinned D1, found no pending migrations, skipped migration application, re-applied existing `GOOGLE_CLIENT_ID`, and passed health/agents/Google-config checks. Cloudflare Workers Builds reported production version `9b118c1d-28e9-45a0-8264-c5907436503c`. This proves two active production deployment controllers; single-controller governance is a P0 blocker tracked in issue #122. Optional live chat was skipped. |
 
 ### Current work and evidence status
 
@@ -48,8 +48,11 @@ The objective is not to claim that BOR AI is already better than ChatGPT, Claude
 - **Live Brave provider verification:** status remains unverified until a controlled request confirms `BRAVE_SEARCH_API_KEY`, active plan/quota and successful live results. Never place the key in chat, source code, GitHub issues, or browser code.
 - **Second model provider:** none is active. Provider selection, budget, data policy, consent, and rollback must be approved before a provider pilot.
 - **Historic audit document:** `docs/AUDIT-BOR-AI.md` is dated 2026-10-31. Treat its findings as historical leads, not as a fresh confirmation of current production behavior. Re-test each item before changing its status.
-- **PR #121 — PDF multipart resource-limit hotfix:** merged as `6aea5f9`. The PDF endpoint now caps actual streamed multipart bytes before `formData()`; `Content-Length` is only an early-rejection hint. Regression coverage uses a chunked upload without `Content-Length`. CI passed 335/335 unit tests, syntax, preview build, and E2E (564 passed, 12 skipped); Cloudflare preview deployment succeeded. This was a separate security hotfix, not a production change within Milestone 0. The push-to-main production workflow is triggered automatically, but its post-merge result is not verified here.
-- **PR #120 — Audit and capability documentation refresh:** open for review. It clarifies local versus server-side PDF data paths, refreshes the link-reader/security evidence, and updates D1/deployment findings. It is documentation-only and is being held to avoid an unnecessary production redeploy while Milestone 0 remains in progress.
+- **PR #121 — PDF multipart resource-limit hotfix:** merged as `6aea5f9` and included in the production deployment of main commit `706004a`. The PDF endpoint caps actual streamed multipart bytes before `formData()`; `Content-Length` is only an early-rejection hint. Regression coverage uses a chunked upload without `Content-Length`. CI passed 335/335 unit tests, syntax, preview build, and E2E (564 passed, 12 skipped); Cloudflare preview deployment succeeded. GitHub Actions post-merge production deployment passed endpoint checks; Cloudflare Workers Builds also deployed the same push. No oversized live production upload has been run.
+- **PR #120 — Audit and capability documentation refresh:** merged as `706004ae48cc06182cb74fcd0b6c70fff501dc81`. Unit/syntax/preview validation, E2E, and Cloudflare preview build passed. The merge triggered both production deployment controllers; GitHub Actions production run `42522046920` and Cloudflare Workers Builds production version `9b118c1d-28e9-45a0-8264-c5907436503c` succeeded. GitHub Actions reported 335/335 unit tests, pinned D1 verified, no pending migrations, no migration applied, and health/agents/Google config passed; optional live chat skipped.
+- **PR #123 — Production deployment evidence and release documentation:** open, all four checks passed (unit/syntax/preview, E2E 564 passed / 12 skipped, preview build, Cloudflare preview). Documentation-only. It records both production controllers and exact deployment versions for main commit `706004a`. Held open because merging it triggers another production push while issue #122 remains unresolved.
+- **PR #124 — Deep readiness endpoint:** open, all four checks passed (337/337 unit tests, E2E 564 passed / 12 skipped, preview build, Cloudflare preview). Adds `/api/health?deep=1`, which verifies a read-only D1 query and presence of the Workers AI binding without invoking inference; the deploy workflow requires both checks. This verifies binding presence, not live model inference. Held open until the single-controller release path is established.
+- **PR #125 — Local DOCX ingestion:** open. Adds bounded local Word paragraph extraction (5 MB file, 30 MB expanded ZIP, 2,000 entries/paragraphs, 10,000-character context), server-side size validation and untrusted-context escaping. It does not upload the raw DOCX or persist extracted text. Security review additionally replaced regex-only extraction with a bounded XML tokenizer, rejects DTD declarations, skips comments/processing instructions/CDATA markup, preserves CDATA inside real text nodes, and enforces 30 MB against actual decompressed chunks rather than ZIP metadata alone. Regression tests cover these cases and metadata under-reporting. Latest exact head `b14c217389118c95e84b2eb2612be75da764b1e2`; unit/syntax/preview passed, E2E queued. Held open pending exact-head E2E and issue #122 release-integrity resolution.
 
 ## 3. Execution principles and release gates
 
@@ -74,19 +77,20 @@ A milestone is considered ready only when:
 
 ### Milestone 0 — Release integrity and repository truth
 
-**Priority:** P0 · **Status:** in progress
+**Priority:** P0 · **Status:** blocked — deployment integrity requires a single production controller
 
 Work:
 - Re-audit merged source-page reading and its SSRF/redirect behavior, source-ID integrity, prompt-injection boundaries, page-read status, persistence boundaries and test coverage.
 - Reconcile the historic audit with current code and test evidence. Reproduce open findings before labelling them open or fixed.
+- Resolve the dual production deployment path documented in issue #122. Keep GitHub Actions as the proposed authoritative release gate; configure Cloudflare Workers Builds for preview-only/non-production or disconnect its production push deployment after dashboard review.
 - Verify the authoritative production deployment path and document the exact release gate.
 - Establish and maintain a single capability matrix that distinguishes implemented, tested with mocks, live-verified, blocked by credentials, and planned.
 
 Acceptance:
 - No duplicate or conflicting open PRs for the same feature.
 - Every claimed capability has a source file, test, and a clearly stated live-verification status.
-- The release path and production migration/secret ownership are documented.
-- No production change is made as part of this milestone.
+- Exactly one production deployment controller is active, with preview behavior and rollback ownership documented.
+- Production migration and secret ownership are documented; no unreviewed migration or provider activation occurs.
 
 ### Milestone 1 — Reliable Web Intelligence
 
