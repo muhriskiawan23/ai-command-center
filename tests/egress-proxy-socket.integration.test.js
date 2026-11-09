@@ -87,6 +87,72 @@ test("HTTPS integration pins the socket, sends original SNI, and validates the c
 });
 
 
+test("HTTPS rejects an expired certificate even when its issuing CA is trusted", async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bor-egress-expired-tls-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const caKey = path.join(dir, "ca-key.pem");
+  const caCertPath = path.join(dir, "ca-cert.pem");
+  const leafKey = path.join(dir, "leaf-key.pem");
+  const csrPath = path.join(dir, "leaf.csr");
+  const certPath = path.join(dir, "expired-cert.pem");
+  const dbPath = path.join(dir, "index.txt");
+  const serialPath = path.join(dir, "serial");
+  const newCertsPath = path.join(dir, "newcerts");
+  const configPath = path.join(dir, "openssl.cnf");
+  fs.mkdirSync(newCertsPath);
+  fs.writeFileSync(dbPath, "");
+  fs.writeFileSync(serialPath, "1000\n");
+  const config = `[ ca ]
+default_ca = CA_default
+[ CA_default ]
+database = ${dbPath}
+serial = ${serialPath}
+new_certs_dir = ${newCertsPath}
+certificate = ${caCertPath}
+private_key = ${caKey}
+default_md = sha256
+policy = policy_any
+x509_extensions = leaf_extensions
+[ policy_any ]
+commonName = supplied
+[ leaf_extensions ]
+basicConstraints = critical,CA:FALSE
+subjectAltName = DNS:fixture.example
+`;
+  fs.writeFileSync(configPath, config);
+  execFileSync("openssl", [
+    "req", "-x509", "-newkey", "rsa:2048", "-nodes",
+    "-keyout", caKey, "-out", caCertPath, "-days", "2",
+    "-subj", "/CN=egress-test-ca",
+    "-addext", "basicConstraints=critical,CA:TRUE",
+    "-addext", "keyUsage=critical,keyCertSign,cRLSign"
+  ], { stdio: "ignore" });
+  execFileSync("openssl", [
+    "req", "-new", "-newkey", "rsa:2048", "-nodes",
+    "-keyout", leafKey, "-out", csrPath,
+    "-subj", "/CN=fixture.example"
+  ], { stdio: "ignore" });
+  execFileSync("openssl", [
+    "ca", "-batch", "-config", configPath,
+    "-in", csrPath, "-out", certPath,
+    "-startdate", "20200101000000Z",
+    "-enddate", "20200102000000Z"
+  ], { stdio: "ignore" });
+  const server = https.createServer({
+    key: fs.readFileSync(leafKey),
+    cert: fs.readFileSync(certPath)
+  }, (_req, res) => res.end("must-not-be-reached"));
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  await assert.rejects(
+    requestOneHop({
+      ...fixture("https", server.address().port),
+      tlsCa: fs.readFileSync(caCertPath)
+    }),
+    /expired|CERT_HAS_EXPIRED/i
+  );
+});
+
 test("HTTPS IP-literal target omits SNI but validates the certificate IP subject alternative name", async (t) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bor-egress-ip-tls-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
