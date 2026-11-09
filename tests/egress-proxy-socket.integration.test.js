@@ -79,6 +79,11 @@ test("HTTPS integration pins the socket, sends original SNI, and validates the c
     }),
     /certificate|identity|hostname|altname/i
   );
+
+  await assert.rejects(
+    requestOneHop(fixture("https", server.address().port)),
+    /self.signed|unable to verify|certificate/i
+  );
 });
 
 
