@@ -2,7 +2,7 @@
 
 **Direction:** Hybrid + All Capabilities  
 **Repository:** `muhriskiawan23/ai-command-center`  
-**Code baseline:** PR #142 safe Tavily diagnostics merged as `e7103102dbbae69ddcfe4840178edb9aa905e17e`; includes PR #137 Tavily adapter, PR #138 gated secret/live-smoke checks, PRs #139–#142 bounded diagnostics, PR #133 search deduplication/source diversity, PR #129 provider-neutral search contract, and PRs #128/#130 SSRF and IPv6 hardening  
+**Code baseline:** PR #148 whitespace-only provider-secret readiness fix merged as `24541b5d1f1400c516ef1b31426f77547cbbe98f`; includes PR #147 Workers-compatible manual redirect handling and live Tavily verification, PR #137 Tavily adapter, PR #138 gated secret/live-smoke checks, PRs #139–#142 bounded diagnostics, PR #133 search deduplication/source diversity, PR #129 provider-neutral search contract, and PRs #128/#130 SSRF and IPv6 hardening  
 **Last repository audit:** 2026-11-09  
 **Release rule:** No pull request is merged and no production deployment is initiated without explicit founder approval.
 
@@ -83,7 +83,7 @@ A milestone is considered ready only when:
 
 ### Milestone 0 — Release integrity and repository truth
 
-**Priority:** P0 · **Status:** in progress — deployment-controller conflict resolved (issue #122 closed); repository-truth and capability-matrix audit remains underway
+**Priority:** P0 · **Status:** in progress — deployment-controller conflict resolved; source-reader regression coverage and release evidence refreshed, while DNS rebinding/egress, live-model prompt-injection resistance, full production traffic-controller reinspection, and remaining historical findings still need verification
 
 Work:
 - Re-audit merged source-page reading and its SSRF/redirect behavior, source-ID integrity, prompt-injection boundaries, page-read status, persistence boundaries and test coverage.
@@ -100,14 +100,14 @@ Acceptance:
 
 ### Milestone 1 — Reliable Web Intelligence
 
-**Priority:** P0 · **Status:** Tavily adapter and safe failure-diagnostic path merged in PRs #137–#142. PR #141's production release audit detected the `TAVILY_API_KEY` secret name, but a controlled live web-search attempt returned `provider_unavailable` and stopped before the news request. PR #142 exposes only allowlisted `httpStatus`, `failureStage`, and `errorName` diagnostics. Secret presence does not prove key validity, quota, or successful provider connectivity. The post-PR-#142 production release and a fresh bounded smoke result still require verification.
+**Priority:** P0 · **Status:** core adapter and safe diagnostics merged; Tavily Web and News were both live-verified in one bounded post-deployment smoke on commit `3e93c057` (run `42584585509`: Web returned 1 usable source; News returned 4). PR #147 fixed Workers-compatible provider redirects and was production-deployed; PR #148 hardened whitespace-only secret readiness and was also production-deployed. The post-PR-#148 smoke workflow (`42588229148`) was skipped by its release-marker condition, so the successful live evidence is from the immediately preceding PR #147 release, not the exact latest commit. Brave live verification remains outstanding.
 
 Work:
 - PR #91 is merged and deployed; keep live Brave verification blocked until a controlled request confirms key validity and provider quota.
-- Run one controlled live Tavily web-search smoke test and one news-search smoke test only after the adapter is merged/deployed; verify key validity and provider quota without logging the key or query payload. The founder reports the Worker secret is configured, but this has not yet been independently verified.
+- **Completed on PR #147 release:** one bounded live Tavily Web and News smoke passed (run `42584585509`); secret-name presence was verified without reading or printing the secret value. Web returned 1 usable source and News returned 4. The smoke was not rerun on PR #148 because its release-marker condition skipped run `42588229148`; do not represent that skipped run as a pass.
 - Provider-neutral interfaces for search and news are implemented in PR #129. The Tavily adapter uses the official Bearer-authenticated Search endpoint, `basic` depth, a maximum of 10 candidates, `include_answer=false`, `include_raw_content=false`, and the existing URL/freshness/deduplication/diversity gates. When `SEARCH_PROVIDER` is unset and `TAVILY_API_KEY` exists, Tavily is selected; otherwise the existing Brave default remains. Brave remains available through explicit provider selection. Basic Tavily search is documented as 1 credit/request; the free plan currently advertises 1,000 monthly credits and no card requirement. This is a code-level cost bound, not a hard account-level spend cap.
 - Evaluate a second provider only after checking official API availability, pricing, terms, regional coverage, data retention and credentials. Do not scrape consumer search pages or use undocumented endpoints as a production fallback.
-- Add deterministic provider selection, bounded retries, timeouts, circuit breaking, per-provider budgets and a safe fallback policy.
+- **Completed in PR #148:** provider readiness ignores whitespace-only secrets and safely selects a configured fallback; regression test covers Tavily whitespace plus a valid Brave key. Remaining: bounded retries, circuit breaking, per-provider hard budgets and explicit fallback policy.
 - Add query classification, freshness controls, source diversity, duplicate detection, canonical URL handling and source-quality signals.
 - Improve page extraction for common HTML/article layouts; report paywalls, bot challenges, unsupported formats and failed reads accurately.
 - Add retrieval evaluation fixtures for Indonesian and English queries, news, finance, technical research and official documentation.
@@ -318,11 +318,12 @@ For each milestone, track:
 
 A passing mocked test proves code behavior under the test fixture. It does not prove a live provider, real model, production secret, real user account or production deployment is working.
 
-## 9. Tavily live verification update — 2026-11-09
+## 9. Tavily live verification and post-PR-#148 release update — 2026-11-09
 
-- PR #144 is merged and its safe transport-cause diagnostics are deployed to production at commit `3a9fe172ade966825fae91110318690bad58f99e`.
-- Production deployment run #42581584459 completed successfully; the Worker deployment job and its validation steps completed successfully.
-- The one-time Tavily smoke workflow run #42581654493 was **skipped**, not passed. Its release-marker condition was not met by the deployment commit message.
-- The previous live smoke run #42579125229 failed during the first Web search with `provider_unavailable`; the News search was not reached.
-- Next action: trigger exactly one bounded post-deployment Tavily smoke with the required release marker, then inspect only allowlisted diagnostics. Do not retry automatically or infer provider health from deployment success.
-- Live Tavily status remains **unverified** until a Web search passes; News remains unverified until its sequential test is reached.
+- PR #147 merged as `3e93c057ffd34412cd8e4542fb69e4390b990a3e`; production deployment run `42584477901` succeeded.
+- One-time live Tavily smoke run `42584585509` succeeded against that released main commit. The Worker secret name was present (value was not read or logged). Live Web search returned 1 usable source and live News search returned 4 usable sources.
+- PR #148 merged as `24541b5d1f1400c516ef1b31426f77547cbbe98f`; post-merge tests run `42588126753` and production deployment run `42588126655` both succeeded. Production endpoint verification passed. The change trims/validates provider secrets and falls back safely when Tavily is whitespace-only.
+- The post-PR-#148 one-time smoke run `42588229148` was **skipped** by the workflow release-marker condition. It is not a failed smoke, but it also is not a live verification of the exact PR #148 release. The prior successful PR #147 smoke remains valid evidence for the Tavily integration immediately before this readiness-only change.
+- Brave Search/News has not been live-verified in this evidence set. Do not infer Brave health from adapter tests or Tavily results.
+- Remaining Milestone 1 work: controlled post-PR-#148 Tavily smoke when an approved workflow trigger is available; separately verify Brave credentials/quota and one bounded live request; add operational metrics, bounded retries/circuit breaking and retrieval quality evaluations.
+- Remaining Milestone 0 work: DNS rebinding/Worker egress behavior, live-model prompt-injection red-team, full production traffic-controller reinspection after latest releases, and reproduction of historical audit findings.
