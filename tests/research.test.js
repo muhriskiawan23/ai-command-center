@@ -388,6 +388,30 @@ test("Tavily rejects a successful HTTP response with an invalid result schema", 
 });
 
 
+test("Tavily transport diagnostics expose only allowlisted cause codes", async () => {
+  const classified = await searchExternal("query", "web", { TAVILY_API_KEY: "secret" }, {
+    fetcher: async () => {
+      const error = new TypeError("do not expose this transport message");
+      error.cause = { code: "ECONNRESET", message: "contains private details" };
+      throw error;
+    }
+  });
+  assert.equal(classified.diagnostics.causeCode, "ECONNRESET");
+  const context = buildResearchContext(classified);
+  assert.equal(context.sources[0].diagnostics.causeCode, "ECONNRESET");
+  assert.doesNotMatch(context.context + JSON.stringify(context.sources), /private details|transport message|secret/);
+
+  const unknown = await searchExternal("query", "web", { TAVILY_API_KEY: "secret" }, {
+    fetcher: async () => {
+      const error = new TypeError("do not expose this transport message");
+      error.cause = { code: "PRIVATE_INTERNAL_VALUE", message: "private" };
+      throw error;
+    }
+  });
+  assert.equal(unknown.diagnostics.causeCode, undefined);
+  assert.doesNotMatch(JSON.stringify(unknown), /PRIVATE_INTERNAL_VALUE|private|secret/);
+});
+
 test("Tavily network failures expose only a safe failure stage and error class", async () => {
   const result = await searchExternal("query", "web", { TAVILY_API_KEY: "secret" }, {
     fetcher: async () => { throw new TypeError("sensitive transport details"); }
