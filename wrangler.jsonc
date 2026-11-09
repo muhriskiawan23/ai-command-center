@@ -3,7 +3,9 @@
   "name": "ai-command-center",
   "main": "src/index.js",
   "compatibility_date": "2026-10-28",
-  "compatibility_flags": ["enable_request_signal"],
+  "compatibility_flags": [
+    "enable_request_signal"
+  ],
   "ai": {
     "binding": "AI",
     "remote": true
@@ -34,5 +36,8 @@
       "database_id": "d71231a9-9a04-471c-b904-d1bc843940aa",
       "migrations_dir": "migrations"
     }
-  ]
+  ],
+  "vars": {
+    "SEARCH_SHARED_BUDGET_ENABLED": "true"
+  }
 }
