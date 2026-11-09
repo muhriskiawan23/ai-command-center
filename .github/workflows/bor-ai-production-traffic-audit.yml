@@ -1,0 +1,65 @@
+name: BOR AI production traffic audit
+
+on:
+  workflow_run:
+    workflows: ["BOR AI production deploy"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bor-ai-production-traffic-audit
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    name: Verify active production traffic allocation
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    environment: production
+    steps:
+      - name: Read latest active Worker deployment
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          response_file="$(mktemp)"
+          trap 'rm -f "$response_file"' EXIT
+          curl --fail --silent --show-error --retry 2 --retry-delay 2 --max-time 30 \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            -H "Accept: application/json" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/ai-command-center/deployments?per_page=1" \
+            --output "$response_file"
+          node --input-type=module - "$response_file" <<'NODE'
+          import fs from "node:fs";
+          const payload = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+          if (payload.success !== true || !Array.isArray(payload.result?.deployments)) {
+            throw new Error("Cloudflare did not return a valid Worker deployment list.");
+          }
+          const deployment = payload.result.deployments[0];
+          const versions = deployment?.versions;
+          if (!Array.isArray(versions) || versions.length === 0) {
+            throw new Error("The latest production deployment has no traffic allocation.");
+          }
+          const active = versions.filter((version) =>
+            Number.isFinite(version?.percentage) && version.percentage > 0 &&
+            typeof version?.version_id === "string"
+          );
+          const total = active.reduce((sum, version) => sum + version.percentage, 0);
+          if (Math.abs(total - 100) > 0.001) {
+            throw new Error("Active production traffic allocation does not total 100 percent.");
+          }
+          if (active.length !== 1 || active[0].percentage !== 100) {
+            throw new Error("Expected one active production Worker version receiving exactly 100 percent of traffic.");
+          }
+          console.log("Production deployment:", deployment.id);
+          console.log("Active Worker version:", active[0].version_id);
+          console.log("Active traffic allocation:", active[0].percentage + "%");
+          console.log("Deployment created:", deployment.created_on);
+          NODE
