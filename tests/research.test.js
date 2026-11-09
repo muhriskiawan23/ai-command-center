@@ -290,6 +290,27 @@ test("provider readiness is resolved by the selected adapter instead of a Brave-
 });
 
 
+test("provider readiness ignores whitespace-only secrets and selects a usable fallback provider", async () => {
+  assert.equal(isSearchProviderConfigured({ TAVILY_API_KEY: "   " }), false);
+  assert.equal(isSearchProviderConfigured({ BRAVE_SEARCH_API_KEY: "\\n\\t" }), false);
+  assert.equal(isSearchProviderConfigured({ TAVILY_API_KEY: "  ", BRAVE_SEARCH_API_KEY: "brave-valid" }), true);
+
+  const result = await searchExternal("current technology", "web", {
+    TAVILY_API_KEY: "  ",
+    BRAVE_SEARCH_API_KEY: "brave-valid"
+  }, {
+    fetcher: async () => jsonResponse({ results: [{
+      title: "Current technology",
+      url: "https://publisher.example/current",
+      description: "A current report",
+      page_age: "2026-11-08T10:00:00Z"
+    }] })
+  });
+  assert.equal(result.provider, "brave");
+  assert.equal(result.configured, true);
+  assert.equal(result.results[0].ok, true);
+});
+
 test("search canonicalizes tracking variants and removes duplicate URLs before assigning sources", async () => {
   let requested;
   const result = await searchExternal("research duplicate URLs", "web", { BRAVE_SEARCH_API_KEY: "secret" }, {
