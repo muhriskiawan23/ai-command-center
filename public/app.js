@@ -693,7 +693,7 @@ async function showChat(cid){
   }
   if(seq!==navSeq)return null;
   activePdf=null;activeCsv=null;renderPdfAttachment();renderCsvAttachment();activeId=cid;$("exportConversation").hidden=false;$("printConversation").hidden=false;welcomeEl.hidden=true;messagesEl.hidden=false;messagesEl.replaceChildren();
-  for(let i=0;i<c.messages.length;i++){const m=c.messages[i];const last=i===c.messages.length-1;const previous=i===c.messages.length-2;appendMessage(m.role,m.content,false,{edit:m.role==="user"&&previous&&c.messages.at(-1)?.role==="assistant",regenerate:m.role==="assistant"&&last&&c.messages.at(-2)?.role==="user",responseId:m.role==="assistant"?m.id:null,conversationId:c.serverId||c.id,feedback:m.feedback||null});if(m.role==="assistant"&&m.links?.length)appendSources(m.links);if(m.role==="assistant"&&m.pdf)appendPdfSource(m.pdf);if(m.role==="assistant"&&m.spreadsheet)appendSpreadsheetSource(m.spreadsheet);}
+  for(let i=0;i<c.messages.length;i++){const m=c.messages[i];const last=i===c.messages.length-1;const previous=i===c.messages.length-2;appendMessage(m.role,m.content,false,{edit:m.role==="user"&&previous&&c.messages.at(-1)?.role==="assistant",regenerate:m.role==="assistant"&&last&&c.messages.at(-2)?.role==="user",responseId:m.role==="assistant"?m.id:null,conversationId:c.serverId||c.id,feedback:m.feedback||null});if(m.role==="assistant"&&m.links?.length)appendSources(m.links);if(m.role==="assistant"&&m.pdf)appendPdfSource(m.pdf);if(m.role==="assistant"&&m.spreadsheet)appendSpreadsheetSource(m.spreadsheet);if(m.role==="assistant"&&m.wordDocument)appendWordDocumentSource(m.wordDocument);}
   $("workflow").hidden=true;renderHistory();conversation.scrollTop=conversation.scrollHeight;
   return true;
 }
@@ -812,6 +812,14 @@ function appendSpreadsheetSource(spreadsheet){
   box.append(item);body.append(box);
 }
 function appendPresentationSource(p){const row=messagesEl.lastElementChild,body=row&&row.querySelector(".message-body");if(!body||!p)return;const box=document.createElement("div");box.className="sources presentation-source";const h=document.createElement("strong");h.textContent="Presentasi yang dianalisis:";const item=document.createElement("div");item.className="source ok";item.textContent="✓ "+String(p.name||"presentation.pptx")+(Number.isSafeInteger(p.slideCount)?" · "+p.slideCount+" slide":"")+(p.truncated?" · teks dibatasi":"");box.append(h,item);body.append(box)}
+function appendWordDocumentSource(document){
+  const row=messagesEl.lastElementChild;const body=row&&row.querySelector(".message-body");if(!body||!document)return;
+  const box=document.createElement("div");box.className="sources word-document-source";
+  const head=document.createElement("strong");head.textContent="Dokumen Word yang dianalisis:";box.append(head);
+  const item=document.createElement("div");item.className="source ok";
+  item.textContent="✓ "+String(document.name||"document.docx")+(Number.isSafeInteger(document.paragraphCount)?" · "+document.paragraphCount.toLocaleString("id-ID")+" paragraf":"")+(document.truncated?" · teks dibatasi":"");
+  box.append(item);body.append(box);
+}
 function renderCsvAttachment(){
   const wrap=$("csvAttachment"),name=$("csvName");if(!wrap||!name)return;
   wrap.hidden=!activeCsv;const filename=activeCsv?.name||"",isDocx=/\.docx$/i.test(filename),isPptx=/\.pptx$/i.test(filename),isExcel=/\.xlsx$/i.test(filename);
@@ -904,8 +912,8 @@ async function submit(options={}){
     const data=await postJson("/api/chat",payload,CHAT_TIMEOUT_MS,activeChatController.signal);
     if(typeof data.response!=="string"||!data.response.trim())throw new Error("AI tidak menghasilkan jawaban.");
     if(pendingRetryRequest?.requestId===requestId)pendingRetryRequest=null;
-    chat.messages.push({role:"assistant",content:data.response,id:data.responseId||null,feedback:null,links:data.links||[],pdf:data.pdf||null,spreadsheet:data.spreadsheet||null});chat.updated=Date.now();
-    if(stillActive()){$("typing")?.remove();appendMessage("assistant",data.response,true,{regenerate:true,responseId:data.saved?data.responseId:null,conversationId:data.saved?data.conversationId:null});addEditActionToLastUser();appendSources(data.links);if(data.pdf)appendPdfSource(data.pdf);if(data.spreadsheet)appendSpreadsheetSource(data.spreadsheet);if(data.presentation)appendPresentationSource(data.presentation);renderWorkflow(data.steps)}
+    chat.messages.push({role:"assistant",content:data.response,id:data.responseId||null,feedback:null,links:data.links||[],pdf:data.pdf||null,spreadsheet:data.spreadsheet||null,wordDocument:activeCsv?.kind==="word-document"?{name:activeCsv.name,paragraphCount:activeCsv.paragraphCount,truncated:activeCsv.truncated}:null});chat.updated=Date.now();
+    if(stillActive()){$("typing")?.remove();appendMessage("assistant",data.response,true,{regenerate:true,responseId:data.saved?data.responseId:null,conversationId:data.saved?data.conversationId:null});addEditActionToLastUser();appendSources(data.links);if(data.pdf)appendPdfSource(data.pdf);if(data.spreadsheet)appendSpreadsheetSource(data.spreadsheet);if(data.presentation)appendPresentationSource(data.presentation);if(activeCsv?.kind==="word-document")appendWordDocumentSource(activeCsv);renderWorkflow(data.steps)}
     if(state===AppState.AUTH&&data.saved&&data.conversationId){
       chat.serverId=data.conversationId;chat.id=data.conversationId;chat.loaded=true;
       if(stillActive()){activeId=chat.id;replaceRoute({name:"chat",id:chat.id})}
