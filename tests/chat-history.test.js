@@ -181,6 +181,19 @@ test("akun: sumber sitasi link tersimpan dan dikembalikan saat percakapan dibuka
   const replay = await (await post({ message: "Ringkas https://example.com/article?token=secret-value#private-fragment", requestId })).json();
   assert.equal(replay.replayed, true);
   assert.equal(replay.links[0].url, "https://example.com/article");
+
+  const credentialUrl = "https://reader:passphrase@example.com/private?token=secret-value#private-fragment";
+  const credentialResponse = await post({ message: `Check ${credentialUrl}` });
+  assert.equal(credentialResponse.status, 200);
+  const credentialChat = await credentialResponse.json();
+  const credentialStored = app.db.sqlite.prepare("SELECT links_json FROM messages WHERE id = ?").get(credentialChat.responseId);
+  const credentialMetadata = JSON.stringify(JSON.parse(credentialStored.links_json));
+  assert.equal(credentialMetadata.includes("reader"), false);
+  assert.equal(credentialMetadata.includes("passphrase"), false);
+  assert.equal(credentialMetadata.includes("secret-value"), false);
+  assert.equal(credentialMetadata.includes("private-fragment"), false);
+  const credentialMessage = app.db.sqlite.prepare("SELECT content FROM messages WHERE conversation_id = ? AND role = 'user' ORDER BY id DESC LIMIT 1").get(credentialChat.conversationId);
+  assert.equal(credentialMessage.content, `Check ${credentialUrl}`);
   await app.close();
 });
 
