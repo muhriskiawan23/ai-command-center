@@ -1305,11 +1305,37 @@ function safeParseLinks(value) {
   } catch { return []; }
 }
 
+// Persist source URLs without query strings or fragments; keep the original user message untouched.
+function redactPersistedSourceUrl(value) {
+  if (typeof value !== "string") return value;
+  try {
+    const url = new URL(value);
+    url.search = "";
+    url.hash = "";
+    return url.toString();
+  } catch {
+    return value.split(/[?#]/, 1)[0];
+  }
+}
+
+function redactPersistedLinks(links) {
+  if (!Array.isArray(links)) return [];
+  return links.map((link) => {
+    if (!link || typeof link !== "object" || Array.isArray(link)) return link;
+    const safe = { ...link };
+    for (const key of ["url", "requestedUrl", "resolvedUrl"]) {
+      if (Object.prototype.hasOwnProperty.call(safe, key)) safe[key] = redactPersistedSourceUrl(safe[key]);
+    }
+    return safe;
+  });
+}
+
 async function persistConversation(env, user, conversationId, message, response, replaceRows = [], requestId = null, links = []) {
   const now = Math.floor(Date.now() / 1000);
   const id = conversationId || crypto.randomUUID();
   const title = message.replace(/\s+/g, " ").slice(0, 72) || "Percakapan baru";
   const statements = [];
+  const persistedLinks = redactPersistedLinks(links);
   if (replaceRows.length) {
     const latest = await env.DB.prepare("SELECT id AS rid, role FROM messages WHERE conversation_id = ? AND user_id = ? ORDER BY id DESC LIMIT 2").bind(id, user.id).all();
     const rows = latest.results || [];
@@ -1331,7 +1357,7 @@ async function persistConversation(env, user, conversationId, message, response,
   } else {
     statements.push(env.DB.prepare("INSERT INTO messages (conversation_id, user_id, role, content, created_at) VALUES (?, ?, 'user', ?, ?)").bind(id, user.id, message, now));
   }
-  statements.push(env.DB.prepare("INSERT INTO messages (conversation_id, user_id, role, content, created_at, links_json) VALUES (?, ?, 'assistant', ?, ?, ?)").bind(id, user.id, response, now, links.length ? JSON.stringify(links) : null));
+  statements.push(env.DB.prepare("INSERT INTO messages (conversation_id, user_id, role, content, created_at, links_json) VALUES (?, ?, 'assistant', ?, ?, ?)").bind(id, user.id, response, now, persistedLinks.length ? JSON.stringify(persistedLinks) : null));
   try {
     await env.DB.batch(statements);
   } catch (error) {
