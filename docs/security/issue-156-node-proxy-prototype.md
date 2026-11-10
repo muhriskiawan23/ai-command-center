@@ -80,7 +80,7 @@ This document and prototype are engineering artifacts only. The local socket/TLS
 
 ## Address-registry reference
 
-The conservative IPv4/IPv6 denylist was checked against the IANA Special-Purpose Address Registries. This implementation deliberately rejects special-purpose blocks even when individual IANA entries are marked globally reachable; this favors SSRF resistance over reachability to those exceptional destinations.
+The conservative IPv4/IPv6 denylist was checked against the IANA Special-Purpose Address Registries. This implementation deliberately rejects special-purpose blocks even when individual IANA entries are marked globally reachable; this favors SSRF resistance over reachability to those exceptional destinations. Regression inputs also cover IPv6 discard-only/dummy prefixes (outside the accepted 2000::/3 global-unicast range), IETF protocol-assignment space, AMT and AS112 assignments within 2001::/23, and the SRv6 SID block outside global unicast. The classifier's global-unicast gate rejects out-of-range special-use space; explicit denylist entries cover selected special-purpose prefixes inside 2000::/3.
 
 - IPv4: https://www.iana.org/assignments/iana-ipv4-special-registry
 - IPv6: https://www.iana.org/assignments/iana-ipv6-special-registry
@@ -98,7 +98,7 @@ A source-level review of the current Worker path confirms that the statement “
 
 **Privacy implication:** URLs can contain bearer-like query parameters, reset links, document identifiers, search terms, or other sensitive path/query material. Those values may therefore be present in both the original user message and `links_json`. The current behavior must be disclosed as conversation-linked metadata retention; it must not be described as URL-free or query-free logging.
 
-**Required decision before enabling the proxy:** decide whether to (a) keep full URLs as part of user-visible chat history with an explicit retention/deletion policy and user-facing disclosure, or (b) redact query strings and fragments from persisted source metadata and consider whether the original message itself needs separate handling. Any redaction must preserve citation/navigation requirements and must be covered by tests. Review existing export, deletion, backup, and retention behavior for both `messages.content` and `messages.links_json`. No data migration or production behavior was changed by this audit.
+**Approved policy:** the user approved redacting URL username/password credentials, query strings, and fragments from persisted source metadata in `messages.links_json`, while preserving scheme, host, and path for source display/navigation. The original user message in `messages.content` is intentionally unchanged, and the live response may still carry the original URL. Regression tests cover both metadata redaction and preservation of the original message. Existing rows are not retroactively migrated. Review export, deletion, backup, and retention behavior for both `messages.content` and `messages.links_json`; do not describe the overall conversation history as URL-secret-free.
 
 
 ## Privacy lifecycle review — deletion, export, and backups
@@ -110,7 +110,7 @@ A source-level review of the current Worker path confirms that the statement “
 - No account self-service deletion endpoint was identified in the reviewed Worker routes. The base schema does define user-level cascades for conversations and messages if the user row is deleted, but that alone is not an implemented account-deletion workflow.
 - D1 backup/point-in-time recovery retention and deletion expiry are not configured in `wrangler.jsonc` or the repository migration/source reviewed here. Their actual account-level settings and lifecycle must be verified separately with the Cloudflare account owner; do not claim backup copies are immediately erased by a conversation delete.
 
-**Disposition:** conversation-level deletion is implemented at the application/database layer and is now covered by a targeted regression test. Export copies, account deletion workflow, platform backups, and retention duration remain open privacy-review items. This does not resolve the decision about whether full URL query strings/fragments should be retained in chat history or redacted from `links_json`, and it does not authorize proxy activation.
+**Disposition:** conversation-level deletion is implemented at the application/database layer and is covered by a targeted regression test. Persisted source metadata redaction is implemented for new writes, but it is not retroactive. Export copies, account deletion workflow, platform backups, retention duration, and any existing rows containing URL secrets remain open privacy-review items. This does not authorize proxy activation.
 
 ## Worker integration boundary — fail-closed source audit
 
