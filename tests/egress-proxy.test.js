@@ -43,6 +43,13 @@ test("DNS CNAME loops and mixed public/private answers fail closed", async () =>
     resolve6: async () => []
   };
   await assert.rejects(resolveChain("public.example", mixed), /dns_unsafe_or_empty/);
+
+  const mixedFamilies = {
+    resolveCname: async () => { throw noData(); },
+    resolve4: async () => ["8.8.8.8"],
+    resolve6: async () => ["fd00::7"]
+  };
+  await assert.rejects(resolveChain("dualstack.example", mixedFamilies), /dns_unsafe_or_empty/);
 });
 
 test("fetchPinned directs the request to one vetted numeric peer while retaining the original host", async () => {
