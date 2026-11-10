@@ -45,7 +45,7 @@ Node's custom \`lookup\` hook is a way to direct the socket connection to a sele
 The current tests use local loopback fixtures only; no public target or user content is contacted.
 
 **Implemented and covered by tests:**
-- Representative IPv4/IPv6 public-address classification and rejection of common special-use/private ranges, including the IANA-registered IPv6 AS112 anycast prefix (2620:4f:8000::/48); the registry is used conservatively, with special-purpose ranges blocked even where IANA marks some as globally reachable.
+- Representative IPv4/IPv6 public-address classification and rejection of common special-use/private ranges, including the IANA-registered IPv6 AS112 anycast prefix (2620:4f:8000::/48); the registry is used conservatively, with special-purpose ranges blocked even where IANA marks some as globally reachable. IPv6 NAT64 well-known translation (64:ff9b::/96) and local-use translation (64:ff9b:1::/48) prefixes are also explicitly blocked because they can encode IPv4 destinations.
 - CNAME traversal, loop and depth-limit rejection; empty terminal DNS answer rejection; rejection of mixed public/private DNS answers and a deterministic public-to-private rebinding on the next hop; bounded DNS resolution under the same request deadline, including caller cancellation before any upstream socket is opened; a deterministic rebinding race where DNS changes from public to loopback after preflight while the transport retains the vetted numeric peer.
 - Fail-closed handling for DNS resolver errors other than an explicit no-data response.
 - URL rejection for credentials, non-default ports, unsupported schemes, and private IP literals.
