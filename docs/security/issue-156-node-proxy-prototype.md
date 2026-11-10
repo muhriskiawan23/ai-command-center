@@ -109,3 +109,14 @@ A source-level review of the current Worker path confirms that the statement “
 - D1 backup/point-in-time recovery retention and deletion expiry are not configured in `wrangler.jsonc` or the repository migration/source reviewed here. Their actual account-level settings and lifecycle must be verified separately with the Cloudflare account owner; do not claim backup copies are immediately erased by a conversation delete.
 
 **Disposition:** conversation-level deletion is implemented at the application/database layer and is now covered by a targeted regression test. Export copies, account deletion workflow, platform backups, and retention duration remain open privacy-review items. This does not resolve the decision about whether full URL query strings/fragments should be retained in chat history or redacted from `links_json`, and it does not authorize proxy activation.
+
+## Worker integration boundary — fail-closed source audit
+
+A follow-up source audit traced the production chat path from `src/index.js` into `src/links.js`:
+
+- Both user-supplied URLs and research-result page URLs call `readLinks` with `env.LINK_FETCHER || null`.
+- `readLink` immediately returns a disabled/fail-closed result when no explicit fetcher function is supplied; it does not call the global `fetch` as a fallback.
+- The repository's `wrangler.jsonc` does not declare a `LINK_FETCHER` binding. The only `fetch` calls found in the reviewed chat entry point are for Google OAuth signing-key retrieval and static asset handling, not arbitrary user URLs.
+- `tests/links.test.js` includes a regression test asserting that the no-transport path never invokes global fetch.
+
+**Scope limitation:** this is source/configuration evidence for the reviewed branch, not a live production binding inventory or proof that an external deployment has no out-of-band binding. The Node proxy prototype is not mounted or called by the Worker. Therefore the current application remains fail-closed; do not add a binding or enable URL reading until the private VPC route, authentication, privacy policy, and controlled egress proof are independently accepted.
