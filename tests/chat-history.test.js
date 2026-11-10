@@ -159,7 +159,7 @@ test("akun: sumber sitasi link tersimpan dan dikembalikan saat percakapan dibuka
   const first = await firstResponse.json();
   assert.equal(first.saved, true);
   assert.equal(first.links[0].sourceId, 1);
-  assert.equal(first.links[0].url, "https://example.com/article");
+  assert.equal(first.links[0].url, "https://example.com/article?token=secret-value#private-fragment");
   const stored = app.db.sqlite.prepare("SELECT links_json FROM messages WHERE id = ?").get(first.responseId);
   const originalUserMessage = app.db.sqlite.prepare("SELECT content FROM messages WHERE conversation_id = ? AND role = 'user' ORDER BY id DESC LIMIT 1").get(first.conversationId);
   assert.equal(originalUserMessage.content, "Ringkas https://example.com/article?token=secret-value#private-fragment");
