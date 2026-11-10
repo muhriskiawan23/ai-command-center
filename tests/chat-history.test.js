@@ -163,7 +163,10 @@ test("akun: sumber sitasi link tersimpan dan dikembalikan saat percakapan dibuka
   const stored = app.db.sqlite.prepare("SELECT links_json FROM messages WHERE id = ?").get(first.responseId);
   const originalUserMessage = app.db.sqlite.prepare("SELECT content FROM messages WHERE conversation_id = ? AND role = 'user' ORDER BY id DESC LIMIT 1").get(first.conversationId);
   assert.equal(originalUserMessage.content, "Ringkas https://example.com/article?token=secret-value#private-fragment");
-  assert.equal(JSON.parse(stored.links_json)[0].url, "https://example.com/article");\n  assert.equal(JSON.parse(stored.links_json)[0].requestedUrl, "https://example.com/article");\n  assert.equal(JSON.stringify(JSON.parse(stored.links_json)).includes("secret-value"), false);\n  assert.equal(JSON.stringify(JSON.parse(stored.links_json)).includes("private-fragment"), false);
+  assert.equal(JSON.parse(stored.links_json)[0].url, "https://example.com/article");
+  assert.equal(JSON.parse(stored.links_json)[0].requestedUrl, "https://example.com/article");
+  assert.equal(JSON.stringify(JSON.parse(stored.links_json)).includes("secret-value"), false);
+  assert.equal(JSON.stringify(JSON.parse(stored.links_json)).includes("private-fragment"), false);
 
   const detail = await fetch(app.url + "/api/conversations/" + first.conversationId, {
     headers: { Origin: app.url, Cookie: `__Host-borai_session=${token}` }
@@ -172,7 +175,8 @@ test("akun: sumber sitasi link tersimpan dan dikembalikan saat percakapan dibuka
   const history = await detail.json();
   const savedAnswer = history.messages.find(message => message.id === first.responseId);
   assert.equal(savedAnswer.links[0].sourceId, 1);
-  assert.equal(savedAnswer.links[0].url, "https://example.com/article");\n  assert.equal(JSON.stringify(savedAnswer.links).includes("secret-value"), false);
+  assert.equal(savedAnswer.links[0].url, "https://example.com/article");
+  assert.equal(JSON.stringify(savedAnswer.links).includes("secret-value"), false);
 
   const replay = await (await post({ message: "Ringkas https://example.com/article?token=secret-value#private-fragment", requestId })).json();
   assert.equal(replay.replayed, true);
