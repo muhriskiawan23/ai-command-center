@@ -53,7 +53,7 @@ The current tests use local loopback fixtures only; no public target or user con
 - Actual HTTP loopback socket peer verification and preservation of the original Host authority.
 - Actual HTTPS loopback socket peer verification, original DNS-name SNI, trusted test-certificate hostname validation, wrong-host certificate rejection, rejection of an untrusted self-signed certificate, rejection of an expired certificate signed by a trusted test CA, and IP-literal HTTPS with no SNI but a validated IP subject alternative name. DNS-name requests always set SNI; IP-literal HTTPS intentionally omits SNI.
 - HTTP 101 protocol upgrades are rejected immediately and the upgraded socket is closed; CONNECT tunnel events are also rejected defensively.
-- The authenticated handler rejects unauthorized, malformed, oversized, and stalled requests; applies a four-request default upstream concurrency cap with 429 backpressure; minimizes response fields; and cancels upstream work on client disconnect without writing to a closed response.
+- The authenticated handler rejects unauthorized, malformed, oversized, and stalled requests; applies a four-request default upstream concurrency cap with 429 backpressure; minimizes response fields; and cancels upstream work on client disconnect without writing to a closed response. Real HTTP server integration tests also verify oversized and stalled request bodies receive controlled 413/408 responses with connection closure, rather than a client-side socket reset.
 - IPv6 loopback socket peer verification when supported by the runner; runtime response byte-cap enforcement; total-request timeout abort.
 
 **Still outstanding:**
