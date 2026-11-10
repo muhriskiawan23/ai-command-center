@@ -360,3 +360,35 @@ test("akun: pagination riwayat memakai cursor stabil, mempertahankan urutan pin,
   assert.equal(malformed.status, 400);
   await app.close();
 });
+
+
+test("hapus percakapan menghapus messages beserta links_json melalui foreign-key cascade", async () => {
+  const app = await startHarness();
+  const token = seedSession(app.db, { id: "u-delete", email: "delete@example.com" });
+  const now = Math.floor(Date.now() / 1000);
+  const insertConversation = app.db.sqlite.prepare(
+    "INSERT INTO conversations (id,user_id,title,created_at,updated_at) VALUES (?,?,?,?,?)"
+  );
+  const insertMessage = app.db.sqlite.prepare(
+    "INSERT INTO messages (conversation_id,user_id,role,content,created_at,links_json) VALUES (?,?,?,?,?,?)"
+  );
+  insertConversation.run("conv-delete-001", "u-delete", "Delete me", now, now);
+  insertMessage.run("conv-delete-001", "u-delete", "user", "https://example.test/?token=secret", now, null);
+  insertMessage.run("conv-delete-001", "u-delete", "assistant", "Ringkasan", now,
+    JSON.stringify([{ sourceId: 1, ok: true, url: "https://example.test/?token=secret" }]));
+
+  const headers = { Origin: app.url, Cookie: `__Host-borai_session=${token}` };
+  const deleted = await fetch(app.url + "/api/conversations/conv-delete-001", { method: "DELETE", headers });
+  assert.equal(deleted.status, 200);
+  assert.equal(app.db.sqlite.prepare("SELECT COUNT(*) AS n FROM conversations WHERE id = ?").get("conv-delete-001").n, 0);
+  assert.equal(app.db.sqlite.prepare("SELECT COUNT(*) AS n FROM messages WHERE conversation_id = ?").get("conv-delete-001").n, 0);
+
+  insertConversation.run("conv-delete-002", "u-delete", "Delete all", now, now);
+  insertMessage.run("conv-delete-002", "u-delete", "assistant", "Jawaban", now,
+    JSON.stringify([{ sourceId: 1, ok: true, url: "https://example.test/path?q=private" }]));
+  const deleteAll = await fetch(app.url + "/api/conversations", { method: "DELETE", headers });
+  assert.equal(deleteAll.status, 200);
+  assert.equal(app.db.sqlite.prepare("SELECT COUNT(*) AS n FROM conversations WHERE user_id = ?").get("u-delete").n, 0);
+  assert.equal(app.db.sqlite.prepare("SELECT COUNT(*) AS n FROM messages WHERE user_id = ?").get("u-delete").n, 0);
+  await app.close();
+});
