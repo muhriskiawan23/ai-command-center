@@ -130,7 +130,18 @@ The read-only Cloudflare audit workflow now includes a manually dispatchable pat
 - The account's Workers VPC Connectivity Directory Services inventory.
 - Existing Tunnel, Mesh, Magic Cloud Networking, CNI/interconnect, virtual-network, and Gateway policy inventories, with incomplete pagination reported as incomplete rather than silently treated as a complete inventory.
 
-The Connectivity Directory Services inventory requires the Cloudflare **Connectivity Directory Read** role. The Worker settings check requires a Workers Scripts read-capable permission. Other Zero Trust and Magic WAN inventories retain their respective read-only scopes. The workflow remains read-only and does not create, edit, bind, or delete any Cloudflare resource.
+The read-only inventory requires these account scopes/roles (Cloudflare may expose a product-specific or legacy equivalent in the token UI):
+
+- Production Worker settings: **Workers Scripts Read** (or an accepted Workers Scripts write/admin role; the existing token's Workers Scripts Edit should satisfy this read endpoint).
+- Workers VPC Connectivity Directory Services: **Connectivity Directory Read**.
+- Tunnel inventory: **Cloudflare Tunnel Read**, **Cloudflare One Connector: cloudflared Read**, or **Cloudflare One Connectors Read**.
+- Mesh-node inventory: **Cloudflare One Connector: WARP Read** or **Cloudflare One Connectors Read**.
+- Virtual networks: **Cloudflare One Networks Read** (or **Cloudflare Tunnel Read**).
+- Magic Cloud Networking on-ramps: **Magic WAN Read**; this API is documented as Closed Beta.
+- CNI/interconnect inventory: **Magic WAN Read** or **Magic Transit Read**.
+- Gateway policy inventory: an account-scoped read permission accepted for Zero Trust Gateway rules; the endpoint's API reference does not enumerate accepted permission groups in its current Security section, so this scope must be verified in the account token UI/API rather than guessed.
+
+The workflow remains read-only and does not create, edit, bind, or delete any Cloudflare resource.
 
 Current repository evidence: `wrangler.jsonc` has neither `vpc_services` nor `vpc_networks`, and does not declare `LINK_FETCHER`. This is only source/configuration evidence. The deployed Worker settings endpoint and account inventory still need a successful live read; until then, account-wide binding and egress state remains unverified.
 
