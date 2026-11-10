@@ -60,6 +60,10 @@ jobs:
                   record(label, "PERMISSION DENIED", `HTTP ${response.status}; this is not an empty result.`);
                   return;
                 }
+                if (response.status === 404) {
+                  record(label, "ENDPOINT NOT AVAILABLE", "HTTP 404; verify product entitlement/API availability; this is not an empty result.");
+                  return;
+                }
                 if (!response.ok) {
                   record(label, "HTTP ERROR", `HTTP ${response.status}; response body suppressed.`);
                   return;
