@@ -1,6 +1,7 @@
 name: BOR AI Cloudflare VPC account audit
 
 on:
+  workflow_dispatch:
   workflow_run:
     workflows: ["BOR AI production deploy"]
     types: [completed]
@@ -15,14 +16,14 @@ concurrency:
 
 jobs:
   read-only-account-audit:
-    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
     steps:
-      - name: Inspect Cloudflare Zero Trust resources (read-only)
+      - name: Inspect Cloudflare Workers VPC and Zero Trust resources (read-only)
         shell: bash
         run: |
           set -euo pipefail
@@ -81,6 +82,59 @@ jobs:
               }
             }
 
+            // Inspect the deployed Worker binding metadata without emitting IDs, hosts, or secret values.
+            try {
+              const response = await fetch(base + "/workers/scripts/ai-command-center/settings", {
+                method: "GET",
+                headers,
+                signal: AbortSignal.timeout(20000)
+              });
+              if (response.status === 401 || response.status === 403) {
+                record("Production Worker binding inventory", "PERMISSION DENIED", `HTTP ${response.status}; binding state is unknown.`);
+              } else if (!response.ok) {
+                record("Production Worker binding inventory", "HTTP ERROR", `HTTP ${response.status}; binding state is unknown.`);
+              } else {
+                const payload = await response.json();
+                const bindings = payload?.result?.bindings;
+                if (payload?.success !== true || !Array.isArray(bindings)) {
+                  record("Production Worker binding inventory", "API ERROR", "response shape not verified; binding state is unknown.");
+                } else {
+                  const counts = {};
+                  for (const binding of bindings) {
+                    const type = String(binding?.type || "unknown");
+                    counts[type] = (counts[type] || 0) + 1;
+                  }
+                  record(
+                    "Production Worker binding inventory",
+                    "AUTHORIZED",
+                    `total_bindings=${bindings.length}; vpc_services=${bindings.filter((binding) => binding?.type === "vpc_service").length}; vpc_networks=${bindings.filter((binding) => binding?.type === "vpc_network").length}; link_fetcher_named_binding=${bindings.some((binding) => binding?.name === "LINK_FETCHER") ? "present" : "absent"}; types=${Object.entries(counts).map(([key, value]) => key + ":" + value).join(",") || "none"}. No binding IDs or values emitted.`
+                  );
+                }
+              }
+            } catch (error) {
+              const name = error?.name === "TimeoutError" || error?.name === "AbortError" ? "TIMEOUT" : "REQUEST ERROR";
+              record("Production Worker binding inventory", name, "request details suppressed.");
+            }
+
+            await readCollection(
+              "Workers VPC connectivity services",
+              "/connectivity/directory/services?page=1&per_page=100",
+              (items, info) => {
+                const total = Number.isFinite(info.total_count) ? info.total_count : null;
+                const coverage = total === null ? "COVERAGE UNKNOWN" : total > items.length ? "PAGINATION INCOMPLETE" : "AUTHORIZED";
+                const types = {};
+                for (const item of items) {
+                  const type = String(item?.type || "unknown");
+                  types[type] = (types[type] || 0) + 1;
+                }
+                record(
+                  "Workers VPC connectivity services",
+                  coverage,
+                  `returned=${items.length}; reported_total=${total ?? "unknown"}; types=${Object.entries(types).map(([key, value]) => key + ":" + value).join(",") || "none"}; service IDs and host configuration suppressed.`
+                );
+              }
+            );
+
             await readCollection(
               "Tunnel inventory",
               "/tunnels?per_page=1000&is_deleted=false",
@@ -92,7 +146,7 @@ jobs:
                 }
                 record(
                   "Tunnel inventory",
-                  "AUTHORIZED",
+                  Number.isFinite(info.total_count) && info.total_count > items.length ? "PAGINATION INCOMPLETE" : "AUTHORIZED",
                   `visible=${Number.isFinite(info.total_count) ? info.total_count : items.length}; returned=${items.length}; types=${Object.entries(counts).map(([key, value]) => key + ":" + value).join(",") || "none"}. This endpoint inventories tunnel resources; it does not by itself prove absence of every separate WAN on-ramp or interconnect resource.`
                 );
               }
@@ -109,7 +163,7 @@ jobs:
                 }
                 record(
                   "Dedicated Mesh node inventory",
-                  "AUTHORIZED",
+                  Number.isFinite(info.total_count) && info.total_count > items.length ? "PAGINATION INCOMPLETE" : "AUTHORIZED",
                   `visible=${Number.isFinite(info.total_count) ? info.total_count : items.length}; returned=${items.length}; statuses=${Object.entries(states).map(([key, value]) => key + ":" + value).join(",") || "none"}.`
                 );
               }
@@ -188,7 +242,7 @@ jobs:
                 }
                 record(
                   "Gateway policies",
-                  "AUTHORIZED",
+                  !Number.isFinite(info.total_count) ? "COVERAGE UNKNOWN" : info.total_count > items.length ? "PAGINATION INCOMPLETE" : "AUTHORIZED",
                   `page_count=${items.length}; reported_total=${Number.isFinite(info.total_count) ? info.total_count : "unknown"}; enabled_on_page=${enabled}; filter_types_on_page=${Object.entries(filters).map(([key, value]) => key + ":" + value).join(",") || "none"}.`
                 );
               }
