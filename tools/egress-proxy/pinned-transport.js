@@ -19,6 +19,7 @@ const BLOCKED_V4 = [
   ["224.0.0.0", 4], ["240.0.0.0", 4]
 ];
 const BLOCKED_V6 = [
+  // Conservatively deny the complete IETF Protocol Assignments block, including its more-specific allocations.
   ["2001::", 23], ["2001:db8::", 32], ["2002::", 16],
   ["3fff::", 20], ["2620:4f:8000::", 48], ["64:ff9b::", 96], ["64:ff9b:1::", 48],
   ["fc00::", 7], ["fe80::", 10], ["ff00::", 8]
