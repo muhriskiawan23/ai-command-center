@@ -14,6 +14,30 @@ async function setup(fetcher, extraEnv = {}) {
   return { app, post, calls, turns };
 }
 
+test("Worker fails closed without LINK_FETCHER and never falls back to global fetch", async () => {
+  const { app, post } = await setup(okPage(), { LINK_FETCHER: null });
+  const originalFetch = globalThis.fetch;
+  const outboundAttempts = [];
+  globalThis.fetch = async (input, init) => {
+    const target = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    if (target.startsWith(app.url + "/")) return originalFetch(input, init);
+    outboundAttempts.push(target);
+    throw new Error("unexpected direct outbound fetch");
+  };
+  try {
+    const response = await post("Baca https://public.example/article?secret=must-not-fetch");
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(body.links.length, 1);
+    assert.equal(body.links[0].ok, false);
+    assert.match(body.links[0].reason, /dinonaktifkan|DNS pinning/i);
+    assert.deepEqual(outboundAttempts, []);
+  } finally {
+    globalThis.fetch = originalFetch;
+    await app.close();
+  }
+});
+
 test("link di pesan dibaca server dan isinya sampai ke model sebagai data tidak tepercaya; respons menyertakan daftar tautan", async () => {
   const { app, post, calls, turns } = await setup(okPage());
   const res = await post("Tolong ringkas https://contoh.id/berita/beras");
