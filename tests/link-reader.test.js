@@ -251,3 +251,55 @@ test("research-result page reader fails closed without LINK_FETCHER and never fa
     await app.close();
   }
 });
+
+
+test("Worker fails closed when LINK_FETCHER exists but errors for user URLs and research pages", async () => {
+  let adapterCalls = 0;
+  const searchCalls = [];
+  const searchFetcher = async (url) => {
+    searchCalls.push(String(url));
+    return new Response(JSON.stringify({
+      results: [{
+        title: "Contoh hasil riset",
+        url: "https://research-error.example/article",
+        description: "Fixture hasil pencarian untuk pengujian kegagalan proxy."
+      }]
+    }), { headers: { "content-type": "application/json" } });
+  };
+  const { app, post } = await setup(okPage(), {
+    LINK_FETCHER: async () => {
+      adapterCalls++;
+      throw new Error("simulated private proxy connection failure");
+    },
+    BRAVE_SEARCH_API_KEY: "test-search-key",
+    SEARCH_FETCHER: searchFetcher
+  });
+  const originalFetch = globalThis.fetch;
+  const outboundAttempts = [];
+  globalThis.fetch = async (input, init) => {
+    const target = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    if (target.startsWith(app.url + "/")) return originalFetch(input, init);
+    outboundAttempts.push(target);
+    throw new Error("unexpected direct outbound fetch");
+  };
+  try {
+    const directResponse = await post("Baca https://user-source.example/article");
+    const directBody = await directResponse.json();
+    assert.equal(directResponse.status, 200);
+    assert.equal(directBody.links.length, 1);
+    assert.equal(directBody.links[0].ok, false);
+
+    const researchResponse = await post("Cari berita terbaru tentang keamanan siber");
+    const researchBody = await researchResponse.json();
+    assert.equal(researchResponse.status, 200);
+    assert.equal(searchCalls.length, 1, "search provider uses its explicit test adapter");
+    assert.equal(researchBody.links.some((link) => link.host === "research-error.example" && link.ok === true), true,
+      "search result remains citable even when proxy page reading fails");
+
+    assert.equal(adapterCalls, 2, "both URL-reading paths attempted the configured adapter exactly once");
+    assert.deepEqual(outboundAttempts, [], "neither URL-reading path falls back to global fetch");
+  } finally {
+    globalThis.fetch = originalFetch;
+    await app.close();
+  }
+});
