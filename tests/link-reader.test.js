@@ -212,3 +212,42 @@ test("status tautan gagal tetap dikembalikan ketika AI timeout/error", async () 
   assert.match(body.links[0].reason, /403/);
   await app.close();
 });
+
+test("research-result page reader fails closed without LINK_FETCHER and never falls back to global fetch", async () => {
+  const searchCalls = [];
+  const searchFetcher = async (url) => {
+    searchCalls.push(String(url));
+    return new Response(JSON.stringify({
+      results: [{
+        title: "Contoh hasil riset",
+        url: "https://research-source.example/article",
+        description: "Hasil pencarian fixture untuk pengujian fail-closed."
+      }]
+    }), { headers: { "content-type": "application/json" } });
+  };
+  const { app, post } = await setup(okPage(), {
+    LINK_FETCHER: null,
+    BRAVE_SEARCH_API_KEY: "test-search-key",
+    SEARCH_FETCHER: searchFetcher
+  });
+  const originalFetch = globalThis.fetch;
+  const outboundAttempts = [];
+  globalThis.fetch = async (input, init) => {
+    const target = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    if (target.startsWith(app.url + "/")) return originalFetch(input, init);
+    outboundAttempts.push(target);
+    throw new Error("unexpected direct outbound fetch");
+  };
+  try {
+    const response = await post("Cari berita terbaru tentang keamanan siber");
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(searchCalls.length, 1, "provider search uses its explicit test adapter");
+    assert.equal(body.links.some((link) => link.host === "research-source.example" && link.ok === true), true,
+      "search result remains citable as a search result");
+    assert.equal(outboundAttempts.length, 0, "research result page must not use global fetch as fallback");
+  } finally {
+    globalThis.fetch = originalFetch;
+    await app.close();
+  }
+});
