@@ -112,6 +112,28 @@ A source-level review of the current Worker path confirms that the statement “
 
 **Disposition:** conversation-level deletion is implemented at the application/database layer and is covered by a targeted regression test. Persisted source metadata redaction is implemented for new writes, but it is not retroactive. Export copies, account deletion workflow, platform backups, retention duration, and any existing rows containing URL secrets remain open privacy-review items. This does not authorize proxy activation.
 
+## Cloudflare Workers VPC architecture and read-only audit coverage
+
+The Cloudflare architecture options are not interchangeable:
+
+- A **VPC Service** routes to one pre-registered host and port. The host in the Worker `fetch()` URL supplies the HTTP `Host` header and HTTPS SNI, but it does not change the configured network destination. This is a suitable shape for reaching one dedicated egress-proxy origin, not for dynamically routing arbitrary user URLs by itself.
+- A **VPC Network** grants broader reachability through a bound Tunnel, Mesh, or WAN on-ramp. The runtime URL/address selects the destination, and Cloudflare documents public-Internet egress through Gateway for applicable Mesh/WAN paths. That broader routing permission is not a substitute for the proxy's DNS validation, numeric peer pinning, TLS hostname verification, and per-redirect validation.
+- The Worker must not receive a broad VPC Network binding merely to make URL reading work. Prefer a narrowly scoped VPC Service to a dedicated proxy endpoint, with the proxy itself enforcing the pinned transport and outbound policy.
+
+Official references:
+- VPC Services: https://developers.cloudflare.com/workers-vpc/configuration/vpc-services/
+- VPC Networks: https://developers.cloudflare.com/workers-vpc/configuration/vpc-networks/
+- Workers VPC binding API: https://developers.cloudflare.com/workers-vpc/api/
+
+The read-only Cloudflare audit workflow now includes a manually dispatchable path and checks:
+- The deployed `ai-command-center` Worker settings endpoint for VPC Service/Network binding counts and whether a `LINK_FETCHER`-named binding exists. It emits counts only, not binding IDs, hosts, or secret values.
+- The account's Workers VPC Connectivity Directory Services inventory.
+- Existing Tunnel, Mesh, Magic Cloud Networking, CNI/interconnect, virtual-network, and Gateway policy inventories, with incomplete pagination reported as incomplete rather than silently treated as a complete inventory.
+
+The Connectivity Directory Services inventory requires the Cloudflare **Connectivity Directory Read** role. The Worker settings check requires a Workers Scripts read-capable permission. Other Zero Trust and Magic WAN inventories retain their respective read-only scopes. The workflow remains read-only and does not create, edit, bind, or delete any Cloudflare resource.
+
+Current repository evidence: `wrangler.jsonc` has neither `vpc_services` nor `vpc_networks`, and does not declare `LINK_FETCHER`. This is only source/configuration evidence. The deployed Worker settings endpoint and account inventory still need a successful live read; until then, account-wide binding and egress state remains unverified.
+
 ## Worker integration boundary — fail-closed source audit
 
 A follow-up source audit traced the production chat path from `src/index.js` into `src/links.js`:
