@@ -309,7 +309,11 @@ export function createEgressProxyHandler({ token, resolver = dns, timeoutMs = 80
     const bodyTimeoutMs = Math.min(Math.max(timeoutMs, 1000), 10000);
     let bodyTimer;
     let bodyError;
-    const iterator = req[Symbol.asyncIterator]();
+    // IncomingMessage is a Node Readable. Keep early iterator closure from
+    // destroying the socket so the handler can return a bounded 408/413 response.
+    const iterator = typeof req.iterator === "function"
+      ? req.iterator({ destroyOnReturn: false })
+      : req[Symbol.asyncIterator]();
     try {
       const deadline = new Promise((_, reject) => {
         bodyTimer = setTimeout(() => reject(new Error("request_body_timeout")), bodyTimeoutMs);
@@ -329,15 +333,20 @@ export function createEgressProxyHandler({ token, resolver = dns, timeoutMs = 80
       bodyError = error?.message === "request_body_timeout" ? "request_body_timeout" : "request_body_aborted";
     } finally {
       if (bodyTimer) clearTimeout(bodyTimer);
-      if (bodyError && typeof iterator.return === "function") {
-        // Do not await iterator.return(): a stalled stream may never settle it.
-        Promise.resolve(iterator.return()).catch(() => {});
+      if (bodyError) {
+        if (typeof iterator.return === "function") {
+          // Do not await iterator.return(): a stalled stream may never settle it.
+          Promise.resolve(iterator.return()).catch(() => {});
+        }
+        // Stop buffering the remainder. The response below closes this connection.
+        req.pause?.();
       }
     }
     if (bodyError) {
       const status = bodyError === "request_body_too_large" ? 413 : 408;
       if (!req.aborted && !res.destroyed) {
-        res.writeHead(status, { "cache-control": "no-store" }).end();
+        res.shouldKeepAlive = false;
+        res.writeHead(status, { "cache-control": "no-store", connection: "close" }).end();
       }
       return;
     }
