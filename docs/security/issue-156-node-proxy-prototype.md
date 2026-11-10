@@ -84,3 +84,16 @@ The conservative IPv4/IPv6 denylist was checked against the IANA Special-Purpose
 
 - IPv4: https://www.iana.org/assignments/iana-ipv4-special-registry
 - IPv6: https://www.iana.org/assignments/iana-ipv6-special-registry
+
+## Privacy data-flow finding — conversation-linked URL metadata
+
+A source-level review of the current Worker path confirms that the statement “page content is not stored” is true for the fetched HTML/text body, but it is not equivalent to “URLs are not persisted.” The current behavior is:
+
+- The original user message is stored in `messages.content`; when it contains a URL, that can include its path, query string, and fragment.
+- `summarizeLinks(results)` emits successful-source fields `url` / `requestedUrl`, `resolvedUrl`, `host`, `resolvedHost`, `title`, `chars`, and `truncated`. For failed sources it emits `requestedUrl`, `host`, and `reason`.
+- `persistConversation(..., links)` serializes these summaries into the assistant message's `messages.links_json` column. Conversation-history and idempotency-recovery reads parse and return this field to the signed-in user.
+- The fetched page body itself is not included in `links_json`; the integration test asserts that the article text is absent from persisted message rows. That test does not establish that URL query parameters or fragments are absent.
+
+**Privacy implication:** URLs can contain bearer-like query parameters, reset links, document identifiers, search terms, or other sensitive path/query material. Those values may therefore be present in both the original user message and `links_json`. The current behavior must be disclosed as conversation-linked metadata retention; it must not be described as URL-free or query-free logging.
+
+**Required decision before enabling the proxy:** decide whether to (a) keep full URLs as part of user-visible chat history with an explicit retention/deletion policy and user-facing disclosure, or (b) redact query strings and fragments from persisted source metadata and consider whether the original message itself needs separate handling. Any redaction must preserve citation/navigation requirements and must be covered by tests. Review existing export, deletion, backup, and retention behavior for both `messages.content` and `messages.links_json`. No data migration or production behavior was changed by this audit.
