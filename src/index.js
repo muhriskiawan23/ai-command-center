@@ -1310,11 +1310,15 @@ function redactPersistedSourceUrl(value) {
   if (typeof value !== "string") return value;
   try {
     const url = new URL(value);
+    url.username = "";
+    url.password = "";
     url.search = "";
     url.hash = "";
     return url.toString();
   } catch {
-    return value.split(/[?#]/, 1)[0];
+    return value
+      .replace(/^([a-z][a-z0-9+.-]*:\/\/)[^/]*@/i, "$1")
+      .split(/[?#]/, 1)[0];
   }
 }
 
