@@ -1366,7 +1366,7 @@ async function persistConversation(env, user, conversationId, message, response,
     const legacyStatements = statements.slice(0, -2);
     legacyStatements.push(
       env.DB.prepare("INSERT INTO messages (conversation_id, user_id, role, content, created_at) VALUES (?, ?, 'user', ?, ?)").bind(id, user.id, message, now),
-      env.DB.prepare("INSERT INTO messages (conversation_id, user_id, role, content, created_at, links_json) VALUES (?, ?, 'assistant', ?, ?, ?)").bind(id, user.id, response, now, links.length ? JSON.stringify(links) : null)
+      env.DB.prepare("INSERT INTO messages (conversation_id, user_id, role, content, created_at, links_json) VALUES (?, ?, 'assistant', ?, ?, ?)").bind(id, user.id, response, now, persistedLinks.length ? JSON.stringify(persistedLinks) : null)
     );
     await env.DB.batch(legacyStatements);
   }
