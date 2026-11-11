@@ -58,3 +58,11 @@ Next required evidence:
 3. Validate the selected hosted runtime using synthetic fixtures, including observed numeric peer IP and original-host TLS identity, before enabling the URL reader.
 
 Production deployment of the application does not deploy or approve the standalone proxy. Issue #156 remains open and URL reading remains fail-closed.
+
+## Audit credential and coverage follow-up — 11 November 2026
+
+[Account audit #14](https://github.com/muhriskiawan23/ai-command-center/actions/runs/42994105016) still returned 403 for Directory Services, CNI, interconnects, virtual networks and Gateway policies, and 404 for on-ramps. Updating a named dashboard token did not establish that GitHub uses that same token. No permission or credential identity claim follows from the token's display name.
+
+The audit workflow now prefers `CLOUDFLARE_AUDIT_API_TOKEN`, falling back to the existing `CLOUDFLARE_API_TOKEN` for compatibility. It prints only which secret source was selected, never a token value. Configure a dedicated account-scoped read-only audit token directly in GitHub Actions secrets; do not send credentials through chat or replace the working deployment credential. A separate secret does not itself grant any new Cloudflare access.
+
+Partial coverage now exits nonzero after writing the full summary. Reported additional pages or continuation cursors also make coverage incomplete. These checks prevent a green job from disguising denied requests or a known truncated inventory; they do not resolve account entitlement, unknown pagination, the on-ramp endpoint, or hosted peer-IP/TLS evidence. No Worker deployment is required for this workflow-only change. Production URL reading remains fail-closed.
