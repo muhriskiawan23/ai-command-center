@@ -32,7 +32,7 @@ concurrency:
 jobs:
   deploy:
     name: Provision, migrate, and deploy BOR AI
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     environment: production
     steps:
@@ -46,12 +46,12 @@ jobs:
           fi
 
       - name: Check out the exact triggering commit
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           ref: ${{ github.sha }}
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: 22
 
