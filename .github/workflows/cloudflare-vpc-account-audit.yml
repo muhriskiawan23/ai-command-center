@@ -22,6 +22,7 @@ jobs:
     env:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_AUDIT_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+      AUDIT_CLOUD_ONRAMPS_IN_SCOPE: ${{ vars.AUDIT_CLOUD_ONRAMPS_IN_SCOPE || 'false' }}
       AUDIT_CREDENTIAL_SOURCE: ${{ secrets.CLOUDFLARE_AUDIT_API_TOKEN && 'dedicated audit secret' || 'deployment secret fallback' }}
     steps:
       - name: Inspect Cloudflare Zero Trust resources (read-only)
@@ -201,7 +202,14 @@ jobs:
               }
             );
 
-            await readCollection(
+            // Cloud on-ramps is a separate Closed Beta product, not required by a
+            // Workers + D1 deployment without WAN cloud-VPC connectivity.
+            // Opt in explicitly when this account uses cloud on-ramps.
+            const onrampsInScope = process.env.AUDIT_CLOUD_ONRAMPS_IN_SCOPE === "true";
+            if (!onrampsInScope) {
+              summary.push("- **Magic Cloud Networking on-ramps:** OUT OF SCOPE (UNVERIFIED) — excluded by explicit audit scope setting; no on-ramp API request made; no claim of zero resources or API authorization.");
+              console.log(summary.at(-1));
+            } else await readCollection(
               "Magic Cloud Networking on-ramps",
               "/magic/cloud/onramps",
               (items) => {
@@ -274,7 +282,7 @@ jobs:
           }
 
           const complete = statuses.length > 0 && statuses.every((status) => status === "AUTHORIZED");
-          const overall = complete ? "COMPLETE" : "PARTIAL / ACTION REQUIRED";
+          const overall = complete ? (process.env.AUDIT_CLOUD_ONRAMPS_IN_SCOPE === "true" ? "COMPLETE" : "COMPLETE FOR CONFIGURED SCOPE (ON-RAMPS UNVERIFIED)") : "PARTIAL / ACTION REQUIRED";
           const heading = [
             "## Cloudflare account audit",
             "",
