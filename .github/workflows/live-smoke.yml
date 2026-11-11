@@ -67,7 +67,7 @@ jobs:
           const images = directive("img-src");
           if (!script || script.includes("'unsafe-inline'")) throw new Error("script-src is missing or permits unsafe inline scripts.");
           if (!style || style.includes("'unsafe-inline'")) throw new Error("style-src is missing or permits unsafe inline styles.");
-          if (!images || images.includes("https:")) throw new Error("img-src is missing or allows unrestricted HTTPS images.");
+          if (!images || images.split(/\\s+/).includes("https:")) throw new Error("img-src is missing or allows unrestricted HTTPS images.");
           for (const required of ["object-src 'none'", "frame-ancestors 'none'", "style-src-attr 'unsafe-inline'"]) {
             if (!csp.includes(required)) throw new Error("Required CSP directive missing: " + required);
           }
