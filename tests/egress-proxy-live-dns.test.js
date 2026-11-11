@@ -33,11 +33,16 @@ test("real authoritative DNS rebinding answers are pinned or rejected before tra
 
   for (let attempt = 0; attempt < 32 && Date.now() < deadline - 250 && (!publicAccepted || !privateRejected); attempt++) {
     let transportCalls = 0;
+    const observedAddresses = [];
     const underlyingResolver = new dns.Resolver({ timeout: 1_000, tries: 1 });
     const resolver = {};
     for (const method of ["resolveCname", "resolve4", "resolve6"]) {
       resolver[method] = async (...args) => {
-        try { return await underlyingResolver[method](...args); }
+        try {
+          const answers = await underlyingResolver[method](...args);
+          if (method === "resolve4" || method === "resolve6") observedAddresses.push(...answers);
+          return answers;
+        }
         catch (error) {
           const code = /^E[A-Z0-9_]{1,30}$/.test(error?.code || "") ? error.code : "OTHER";
           const key = method + ":" + code;
@@ -65,6 +70,8 @@ test("real authoritative DNS rebinding answers are pinned or rejected before tra
         transientFailures[error.message] = (transientFailures[error.message] || 0) + 1;
       } else {
         if (error?.message !== "dns_unsafe_or_empty") throw error;
+        assert.ok(observedAddresses.includes("127.0.0.1"),
+          "unsafe/empty rejection alone is not proof of the fixture private DNS answer");
         privateRejected++;
         assert.equal(transportCalls, 0, "unsafe DNS answers must be rejected before transport starts");
       }
