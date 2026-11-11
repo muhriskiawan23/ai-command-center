@@ -156,3 +156,18 @@ test("each separate redirect hop resolves again and rejects a rebinding to a pri
   await assert.rejects(fetchPinned("http://other.example/next", { resolver, request }), /dns_unsafe_or_empty/);
   assert.equal(connections, 1);
 });
+
+test("proxy rejects non-object JSON and invalid URL fields without upstream work", async () => {
+  const { createEgressProxyHandler } = await import("../tools/egress-proxy/pinned-transport.js");
+  let calls = 0;
+  const handler = createEgressProxyHandler({ token: "x".repeat(32), request: async () => { calls++; throw new Error("unexpected upstream"); } });
+  for (const body of ["null", "[]", "true", "42", '"text"', "{}", '{"url":null}', '{"url":[]}']) {
+    let status;
+    const req = { method: "POST", url: "/fetch", headers: { authorization: "Bearer " + "x".repeat(32) },
+      async *[Symbol.asyncIterator]() { yield Buffer.from(body); } };
+    const res = { writeHead(code) { status = code; return this; }, end() { return this; } };
+    await handler(req, res);
+    assert.equal(status, 400, body);
+  }
+  assert.equal(calls, 0);
+});
