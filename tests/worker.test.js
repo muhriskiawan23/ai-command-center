@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import worker from "../src/index.js";
 
 const env = {
@@ -12,6 +13,30 @@ const env = {
   },
   ASSETS: { async fetch() { return new Response("asset"); } }
 };
+
+
+test("HTML assets receive security headers through Worker middleware", async () => {
+  const response = await worker.fetch(new Request("https://example.test/"), {
+    ASSETS: {
+      async fetch(request) {
+        assert.equal(new URL(request.url).pathname, "/");
+        return new Response("<!doctype html><html></html>", {
+          headers: { "Content-Type": "text/html; charset=utf-8" }
+        });
+      }
+    }
+  });
+
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get("Content-Security-Policy") || "", /default-src 'self'/);
+  assert.equal(response.headers.get("X-Content-Type-Options"), "nosniff");
+  assert.equal(response.headers.get("X-Frame-Options"), "DENY");
+});
+
+test("Cloudflare Static Assets routes only the HTML shell through Worker first", () => {
+  const config = JSON.parse(readFileSync(new URL("../wrangler.jsonc", import.meta.url), "utf8"));
+  assert.deepEqual(config.assets?.run_worker_first, ["/", "/index.html"]);
+});
 
 test("health endpoint returns a no-store success response", async () => {
   const res = await worker.fetch(new Request("https://example.test/api/health"), env);
