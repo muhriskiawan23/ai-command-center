@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: bor-ai-egress-proof-muhriskiawan23
+    runtime: node
+    plan: free
+    region: oregon
+    branch: main
+    buildCommand: npm ci --omit=dev --ignore-scripts
+    startCommand: node tools/egress-proxy/render/server.mjs
+    healthCheckPath: /health
+    autoDeployTrigger: off
+    numInstances: 1
+    maxShutdownDelaySeconds: 15
+    envVars:
+      - key: EGRESS_PROXY_TOKEN
+        generateValue: true
