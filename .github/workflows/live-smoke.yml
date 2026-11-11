@@ -60,7 +60,7 @@ jobs:
             return index < 0 ? ["", ""] : [line.slice(0, index).trim().toLowerCase(), line.slice(index + 1).trim()];
           }));
           const csp = headers["content-security-policy"];
-          console.log("Production response status:", finalBlock.split(/\\r?\\n/)[0] || "missing");
+          console.log("Production response status:", finalBlock.split(/\r?\n/)[0] || "missing");
           console.log("Production Content-Type:", headers["content-type"] || "missing");
           console.log("Production CSP header present:", Boolean(csp));
           if (!csp) {
