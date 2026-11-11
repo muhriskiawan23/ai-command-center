@@ -53,12 +53,22 @@ jobs:
 
             // These endpoints have different documented response envelopes.
             function cursorCollection(payload) {
+              // CNI's documented contract is { items, next }. Some API
+              // gateways wrap it as { success, result: { items, next } }.
+              // Accept only these explicit envelopes, never infer an empty list.
+              const wrapped = payload?.result != null;
+              const data = wrapped ? payload.result : payload;
+              const errorsOk = payload?.errors == null ||
+                (Array.isArray(payload.errors) && payload.errors.length === 0);
               return {
-                items: payload?.items,
+                items: data?.items,
                 info: {},
-                next: payload?.next,
-                valid: payload?.success !== false &&
-                  (payload?.errors == null || (Array.isArray(payload.errors) && payload.errors.length === 0))
+                next: data?.next,
+                valid: payload != null && typeof payload === "object" &&
+                  payload.success !== false && errorsOk &&
+                  (!wrapped || payload.success === true) &&
+                  Array.isArray(data?.items) &&
+                  (data?.next == null || (Number.isSafeInteger(data.next) && data.next >= 0))
               };
             }
 
