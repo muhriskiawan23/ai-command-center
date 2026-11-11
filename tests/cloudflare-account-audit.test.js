@@ -7,7 +7,7 @@ const script = workflow.split("<<'NODE'\n")[1].split("          NODE")[0]
   .replace('import fs from "node:fs";', "");
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
 
-async function audit(respond, configured = true) {
+async function audit(respond, configured = true, onrampsInScope = true) {
   let summary = "";
   const messages = [];
   const requests = [];
@@ -15,6 +15,7 @@ async function audit(respond, configured = true) {
     CLOUDFLARE_ACCOUNT_ID: "test-account",
     CLOUDFLARE_API_TOKEN: "secret-must-not-appear",
     AUDIT_CREDENTIAL_SOURCE: "dedicated audit secret",
+    AUDIT_CLOUD_ONRAMPS_IN_SCOPE: String(onrampsInScope),
     GITHUB_STEP_SUMMARY: "summary"
   } : {} };
   await new AsyncFunction("fs", "process", "fetch", "console", script)(
@@ -145,4 +146,16 @@ test("on-ramp 404 preserves numeric diagnostic codes but never response messages
   assert.match(result.summary, /HTTP 404; codes=7003/);
   assert.match(result.summary, /Closed Beta/);
   assert.ok(!result.summary.includes("private-network-details"));
+});
+
+
+test("optional beta on-ramps are visibly excluded without claiming an empty inventory", async () => {
+  const result = await audit(url => {
+    assert.ok(!url.includes("/magic/cloud/onramps"));
+    return success(url);
+  }, true, false);
+  assert.equal(result.exitCode, undefined);
+  assert.match(result.summary, /OUT OF SCOPE \(UNVERIFIED\)/);
+  assert.match(result.summary, /COMPLETE FOR CONFIGURED SCOPE \(ON-RAMPS UNVERIFIED\)/);
+  assert.equal(result.requests.length, 7);
 });
