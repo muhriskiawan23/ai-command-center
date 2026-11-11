@@ -21,7 +21,8 @@ jobs:
     timeout-minutes: 5
     env:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_AUDIT_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+      AUDIT_CREDENTIAL_SOURCE: ${{ secrets.CLOUDFLARE_AUDIT_API_TOKEN && 'dedicated audit secret' || 'deployment secret fallback' }}
     steps:
       - name: Inspect Cloudflare Zero Trust resources (read-only)
         shell: bash
@@ -34,6 +35,7 @@ jobs:
           const token = process.env.CLOUDFLARE_API_TOKEN;
           const summary = [];
           const statuses = [];
+          console.log("Credential source: " + process.env.AUDIT_CREDENTIAL_SOURCE);
 
           function record(label, status, detail) {
             const line = `- **${label}:** ${status} — ${detail}`;
@@ -75,7 +77,15 @@ jobs:
                   return;
                 }
 
-                summarize(collection.items, collection.info || {}, collection.next ?? null);
+                const info = collection.info || {};
+                const morePages = collection.next != null ||
+                  (Number.isFinite(info.total_pages) && info.total_pages > 1) ||
+                  (Number.isFinite(info.total_count) && info.total_count > collection.items.length);
+                if (morePages) {
+                  record(label, "PAGINATION INCOMPLETE", "additional results exist; first page is not a complete inventory.");
+                  return;
+                }
+                summarize(collection.items, info, collection.next ?? null);
               } catch (error) {
                 const name = error?.name === "TimeoutError" || error?.name === "AbortError" ? "TIMEOUT" : "REQUEST ERROR";
                 record(label, name, "request details suppressed.");
@@ -229,4 +239,5 @@ jobs:
           ];
           fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, heading.join("\n") + "\n");
           console.log(`Audit coverage: ${overall}. No Cloudflare resources, policies, bindings, or secrets were changed.`);
+          if (!complete) process.exitCode = 1;
           NODE
