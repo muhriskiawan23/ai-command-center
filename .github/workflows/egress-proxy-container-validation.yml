@@ -89,7 +89,7 @@ jobs:
             import assert from "node:assert/strict";
             const result = JSON.parse(fs.readFileSync("/tmp/bor-ai-container-runtime-result.json", "utf8"));
             assert.equal(result.success, true, result.stderr || "Container tests failed");
-            assert.match(result.stdout, /# pass 36/);
+            assert.match(result.stdout, /# pass 37/);
             assert.match(result.stdout, /# fail 0/);
             process.stdout.write(result.stdout);
           '
