@@ -43,6 +43,48 @@ jobs:
           NODE
           rm -f "$response_file"
 
+      - name: Check production CSP and top-level script SRI
+        shell: bash
+        run: |
+          set -euo pipefail
+          headers_file="$(mktemp)"
+          html_file="$(mktemp)"
+          status="$(curl --silent --show-error --max-time 15 --dump-header "$headers_file" --output "$html_file" --write-out '%{http_code}' 'https://ai-command-center.muhriskiawan23.workers.dev/')"
+          test "$status" = "200"
+          node --input-type=module - "$headers_file" "$html_file" <<'NODE'
+          import fs from "node:fs";
+          const headerBlocks = fs.readFileSync(process.argv[2], "utf8").trim().split(/\r?\n\r?\n/);
+          const finalBlock = headerBlocks.filter((block) => /^HTTP\//i.test(block)).at(-1) || "";
+          const headers = Object.fromEntries(finalBlock.split(/\r?\n/).slice(1).map((line) => {
+            const index = line.indexOf(":");
+            return index < 0 ? ["", ""] : [line.slice(0, index).trim().toLowerCase(), line.slice(index + 1).trim()];
+          }));
+          const csp = headers["content-security-policy"];
+          if (!csp) throw new Error("Production Content-Security-Policy header is missing.");
+          const directive = (name) => csp.split(";").map((part) => part.trim()).find((part) => part.startsWith(name + " ")) || "";
+          const script = directive("script-src");
+          const style = directive("style-src");
+          const images = directive("img-src");
+          if (!script || script.includes("'unsafe-inline'")) throw new Error("script-src is missing or permits unsafe inline scripts.");
+          if (!style || style.includes("'unsafe-inline'")) throw new Error("style-src is missing or permits unsafe inline styles.");
+          if (!images || images.includes("https:")) throw new Error("img-src is missing or allows unrestricted HTTPS images.");
+          for (const required of ["object-src 'none'", "frame-ancestors 'none'", "style-src-attr 'unsafe-inline'"]) {
+            if (!csp.includes(required)) throw new Error("Required CSP directive missing: " + required);
+          }
+          const html = fs.readFileSync(process.argv[3], "utf8");
+          for (const [label, pattern] of [
+            ["PDF.js", /<script\b[^>]*src=["'][^"']*pdfjs-dist[^"']*pdf\.min\.js["'][^>]*>/i],
+            ["Tesseract.js", /<script\b[^>]*src=["'][^"']*tesseract\.js[^"']*tesseract\.min\.js["'][^>]*>/i]
+          ]) {
+            const match = html.match(pattern)?.[0];
+            if (!match || !/integrity=["']sha384-[^"']+["']/i.test(match) || !/crossorigin=["']anonymous["']/i.test(match)) {
+              throw new Error(label + " production script is missing SHA-384 SRI or anonymous CORS.");
+            }
+          }
+          console.log("Production CSP directives and PDF.js/Tesseract SHA-384 SRI verified.");
+          NODE
+          rm -f "$headers_file" "$html_file"
+
       - name: Check live agents endpoint
         shell: bash
         run: |
