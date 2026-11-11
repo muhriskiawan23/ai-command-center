@@ -1,6 +1,7 @@
 # Issue #156 — egress architecture decision record
 
 Date: 2026-11-09  
+Last evidence refresh: 2026-11-11  
 Status: **Investigation only; production URL reading remains fail-closed.**
 
 ## Executive decision
@@ -17,12 +18,15 @@ No VPC binding, tunnel, Gateway policy, proxy, secret, or production configurati
 
 Cloudflare documents that a VPC Network binding using `network_id: "cf1:network"` can send Worker public-Internet traffic through Cloudflare Gateway, applying Zero Trust DNS/HTTP/Network policies and producing Gateway logs. The account must have at least one active Tunnel, Mesh node, or WAN on-ramp. Gateway Forward policies can drop Workers VPC HTTP traffic and must be accounted for.
 
-The account audit for the deployed release found:
+The latest read-only account audit on main commit `2314df4572ef3636790a051c8b21bec0875786d8` is [run #43007188447](https://github.com/muhriskiawan23/ai-command-center/actions/runs/43007188447), **SUCCESS for configured scope only**:
 - Tunnel inventory: authorized, zero visible.
-- Dedicated Mesh node inventory: authorized, zero visible.
-- Virtual networks and Gateway policies: HTTP 403.
-- CNI and network interconnect inventory: HTTP 403.
-- Magic Cloud Networking on-ramps: HTTP 404 (the list API is documented as Closed Beta; 404 is not evidence of an empty inventory).
+- Workers VPC Directory Services: authorized, zero returned, empty terminal page.
+- Dedicated Mesh nodes: authorized, zero visible.
+- CNI and network interconnects: authorized, zero returned, no additional cursor page.
+- Virtual networks and Gateway policies: authorized, zero visible/reported on inspected pages.
+- Magic Cloud Networking on-ramps: **OUT OF SCOPE (UNVERIFIED)**; beta API not probed, not evidence of no resources or entitlement. The separate API previously returned HTTP 404/code 10404.
+
+These results are a point-in-time account inventory and do not establish hosted egress proxy availability or actual peer-IP/TLS enforcement.
 
 Therefore the account prerequisite for `cf1:network` is not currently demonstrated. Even if enabled later, Gateway policies/logs are network enforcement and observability, not a per-request proof of the actual peer IP chosen for an arbitrary DNS name. This option is useful defense-in-depth, not the DNS-pinning primitive by itself.
 
@@ -81,7 +85,7 @@ The proxy must have an explicit data-retention policy: do not persist requested 
 
 ## Cloudflare read-only audit token
 
-The last post-PR-#168 audit (run 42630155317) executed successfully but reported partial coverage. The documented API permission matrix indicates these **read-only** scopes are required to inspect all relevant inventory:
+**Historical permission investigation (superseded):** The post-PR-#168 audit (run 42630155317) reported partial coverage. The dedicated read-only audit secret was subsequently configured and the current scoped audit passed on 2026-11-11 (run #43007188447). The documented API permission matrix indicates these **read-only** scopes are required to inspect all relevant inventory:
 
 | Inventory | Accepted read permission(s) |
 |---|---|
@@ -92,12 +96,12 @@ The last post-PR-#168 audit (run 42630155317) executed successfully but reported
 | CNI and network interconnects | `Magic WAN Read` or `Magic Transit Read` |
 | Magic Cloud Networking on-ramps | `Magic WAN Read` (endpoint is currently documented as Closed Beta) |
 
-The minimum practical additive read-only scopes to resolve the observed 403s are:
+The following scopes were identified during the historical 403 investigation; **do not add them now solely on this basis**, since the current scoped inventory is authorized:
 - `Cloudflare One Networks Read`
 - `Zero Trust Read`
 - `Magic WAN Read` (or `Magic Transit Read` for CNI/interconnect inventory; Magic WAN Read is the documented on-ramp scope)
 
-Add `Cloudflare One Connectors Read` only if the existing token does not already authorize the Mesh/Tunnel inventory endpoints. Do not grant Edit/Write permissions. Update the token in Cloudflare and replace the GitHub Actions secret `CLOUDFLARE_API_TOKEN`; never paste the token into an issue, chat, workflow output, or repository.
+Do not grant Edit/Write permissions. The dedicated `CLOUDFLARE_AUDIT_API_TOKEN` is already in use; do not replace it or the deployment secret without a new evidence-based need. Never paste tokens into an issue, chat, workflow output, or repository.
 
 Official API references:
 - https://developers.cloudflare.com/api/resources/zero_trust/subresources/networks/subresources/virtual_networks/methods/list/
@@ -113,3 +117,12 @@ Official API references:
 `src/links.js` deliberately returns a fail-closed error when no explicit transport is injected. The production caller supplies no generic `fetch` transport. Tests may inject a fake transport. Redirects are manually revalidated; response size, content type, timeout and page-text limits are enforced.
 
 This implementation must stay disabled in production until the proxy transport and the isolated peer-IP/TLS proof pass. This document does not close Issue #156.
+
+## Remaining release gates (2026-11-11)
+
+The passing account audit **does not** close Issue #156 or authorize URL reader production activation.
+
+1. **Hosted transport decision:** record the actual operator/hosting jurisdiction, network path, authentication, monthly cost ceiling, secret rotation, access controls, incident response, and failure handling. No hosting provider is approved by this document.
+2. **Synthetic hosted peer-IP and TLS evidence:** in an isolated non-production environment, record selected vetted numeric IP and observed connected peer IP equality; verify original-host SNI, certificate chain and hostname; reject wrong-host and untrusted certificates; prove redirect and DNS-rebinding fail-closed behavior. Use only controlled test domains and privacy-minimized logs.
+3. **Independent privacy and retention signoff:** review URL/query strings and page content passing through proxy; chat message contents, historical citations, user export/deletion semantics, backups, log retention and jurisdiction. Document reviewer, date, findings and explicit decision; no self-attested signoff.
+4. **Controlled production smoke only after gates 1–3 and explicit owner authorization.** Keep the reader fail-closed; do not create a tunnel, VPC binding, proxy, secret or production deploy as part of evidence documentation.
