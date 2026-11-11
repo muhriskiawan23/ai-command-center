@@ -1,0 +1,31 @@
+{
+  "$schema": "../../../node_modules/wrangler/config-schema.json",
+  "name": "bor-ai-egress-container-local-validation",
+  "main": "./local/worker.js",
+  "compatibility_date": "2026-10-28",
+  "containers": [
+    {
+      "class_name": "EgressTransportContainer",
+      "scheduling_policy": "durable_object",
+      "images": {
+        "base": {
+          "dockerfile": "./Dockerfile.runtime"
+        }
+      }
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "EGRESS_CONTAINER",
+        "class_name": "EgressTransportContainer"
+      }
+    ]
+  },
+  "exports": {
+    "EgressTransportContainer": {
+      "type": "durable-object",
+      "storage": "sqlite"
+    }
+  }
+}
