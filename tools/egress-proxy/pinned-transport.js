@@ -355,7 +355,7 @@ export function createEgressProxyHandler({ token, resolver = dns, timeoutMs = 80
     let input;
     try { input = JSON.parse(Buffer.concat(chunks).toString("utf8")); }
     catch { res.writeHead(400, { "cache-control": "no-store" }).end(); return; }
-    if (typeof input.url !== "string" || input.url.length > 4096) {
+    if (!input || typeof input !== "object" || Array.isArray(input) || typeof input.url !== "string" || input.url.length > 4096) {
       res.writeHead(400).end();
       return;
     }
