@@ -125,25 +125,26 @@ Official references:
 - VPC Networks: https://developers.cloudflare.com/workers-vpc/configuration/vpc-networks/
 - Workers VPC binding API: https://developers.cloudflare.com/workers-vpc/api/
 
-The read-only Cloudflare audit workflow now includes a manually dispatchable path and checks:
-- The deployed `ai-command-center` Worker settings endpoint for VPC Service/Network binding counts and whether a `LINK_FETCHER`-named binding exists. It emits counts only, not binding IDs, hosts, or secret values.
-- The account's Workers VPC Connectivity Directory Services inventory.
-- Existing Tunnel, Mesh, Magic Cloud Networking, CNI/interconnect, virtual-network, and Gateway policy inventories, with incomplete pagination reported as incomplete rather than silently treated as a complete inventory.
+The repository has two separate read-only Cloudflare checks, and their coverage must not be conflated:
 
-The read-only inventory requires these account scopes/roles (Cloudflare may expose a product-specific or legacy equivalent in the token UI):
+- The production traffic audit (run `42950898515`, 11 November 2026) inspected the latest active Worker deployment. It verified one version at 100% traffic, release annotation `github-sha:d7210de2aee6524e11b340a8053e3d12bf0c9383`, and **no direct VPC Network or VPC Service binding** on that active version. This checks the active version's bindings; it does not inspect every account-level egress path or prove there is no out-of-band routing.
+- The Cloudflare account audit (run `42950898395`, 11 November 2026) ran read-only inventory requests. Results: Tunnel inventory authorized with 0 visible; Dedicated Mesh inventory authorized with 0 visible; Magic Cloud Networking on-ramps returned HTTP 404; CNI and network interconnects returned HTTP 403; virtual networks returned HTTP 403; Gateway policies returned HTTP 403. **Coverage is PARTIAL / ACTION REQUIRED**, not a complete account audit.
+- The current account-audit workflow on `main` is triggered after a successful production deployment. PR #174 adds a manual-dispatch path so the read-only audit can be rerun without deploying; that change is still draft and is not active until merged.
+- Neither current workflow queries the Workers VPC Connectivity Directory Services inventory or checks for a binding specifically named `LINK_FETCHER`. Do not claim those checks have been completed.
 
-- Production Worker settings: **Workers Scripts Read** (or an accepted Workers Scripts write/admin role; the existing token's Workers Scripts Edit should satisfy this read endpoint).
-- Workers VPC Connectivity Directory Services: **Connectivity Directory Read**.
+The account inventory requires these account scopes/roles (Cloudflare may expose a product-specific or legacy equivalent in the token UI):
+
 - Tunnel inventory: **Cloudflare Tunnel Read**, **Cloudflare One Connector: cloudflared Read**, or **Cloudflare One Connectors Read**.
 - Mesh-node inventory: **Cloudflare One Connector: WARP Read** or **Cloudflare One Connectors Read**.
 - Virtual networks: **Cloudflare One Networks Read** (or **Cloudflare Tunnel Read**).
-- Magic Cloud Networking on-ramps: **Magic WAN Read**; this API is documented as Closed Beta.
+- Magic Cloud Networking on-ramps: **Magic WAN Read**; the endpoint returned 404 in the latest run, so this may be an API availability/path issue rather than a permission issue.
 - CNI/interconnect inventory: **Magic WAN Read** or **Magic Transit Read**.
-- Gateway policy inventory: an account-scoped read permission accepted for Zero Trust Gateway rules; the endpoint's API reference does not enumerate accepted permission groups in its current Security section, so this scope must be verified in the account token UI/API rather than guessed.
+- Gateway policy inventory: an account-scoped read permission accepted for Zero Trust Gateway rules; verify the exact scope in the Cloudflare token UI/API rather than guessing.
+- Workers VPC Connectivity Directory Services is not currently queried; if that inventory is added, **Connectivity Directory Read** is the documented scope to evaluate.
 
-The workflow remains read-only and does not create, edit, bind, or delete any Cloudflare resource.
+The workflows are read-only and do not create, edit, bind, or delete Cloudflare resources.
 
-Current repository evidence: `wrangler.jsonc` has neither `vpc_services` nor `vpc_networks`, and does not declare `LINK_FETCHER`. This is only source/configuration evidence. The deployed Worker settings endpoint and account inventory still need a successful live read; until then, account-wide binding and egress state remains unverified.
+Source/configuration evidence: `wrangler.jsonc` has neither `vpc_services` nor `vpc_networks`, and does not declare `LINK_FETCHER`. The active-version production audit independently found no direct VPC Network/Service binding. However, account-wide egress state remains unverified because multiple inventory endpoints returned 403 and the Directory Services inventory is not yet queried.
 
 ## Worker integration boundary — fail-closed source audit
 
