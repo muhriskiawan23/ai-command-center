@@ -7,52 +7,54 @@ Branch audit historis: `bor-ai/stage-06-input-audit` (di atas `bor-ai/stage-05-c
 
 ## 0.3. Refresh repository dan production live — 11 November 2026
 
-**Baseline repository saat refresh:** `main` pada `d7210de2aee6524e11b340a8053e3d12bf0c9383`. Bagian 0.2 di atas mencatat snapshot audit sebelumnya; status di bawah ini adalah bukti yang lebih baru dan harus dipakai untuk keputusan saat ini.
+**Baseline repository:** `main` pada `35504be7148014f778834c26faa224563e993d17`. Catatan ini menggantikan status sementara di snapshot sebelumnya; bagian historis setelah 0.3 tetap dipertahankan sebagai arsip.
 
-### Production deployment dan health
+### Deployment dan verifikasi production
 
-- GitHub Actions production deploy run `42950805607` selesai sukses untuk SHA `d7210de2aee6524e11b340a8053e3d12bf0c9383`.
-- Production traffic audit run `42950898515` mengonfirmasi deployment `dd99d02d-0ef7-4026-ad9e-e963a5629ff7`, Worker version `c9abdfe0-7f3f-44a1-ae75-19bc7766ecfd`, annotation SHA yang cocok, dan 100% traffic pada satu versi aktif. Versi aktif tidak memiliki direct VPC Network atau VPC Service binding.
-- Health, daftar agents, konfigurasi Google Sign-In, dan pemeriksaan D1 di workflow deploy berhasil. Tidak ada migrasi D1 tertunda; langkah apply migration dilewati.
-- **Catatan keselamatan:** deployment ini terjadi otomatis setelah push ke `main`, karena workflow production deploy pada baseline ini masih memiliki trigger `push: main`. Perubahan pengaman agar deploy hanya melalui manual dispatch berada di PR #174 Draft dan belum aktif di `main`. Tidak ada klaim bahwa deployment ini dilakukan sebagai bagian dari audit ChatGPT.
+- Production deploy run [42957667385](https://github.com/muhriskiawan23/ai-command-center/actions/runs/42957667385) selesai `success` untuk commit di atas.
+- Deployment ID `3de0fa2a-6998-4bc7-8e93-a83c5f8bbfcc`; Worker version `1cc426e4-9e24-460a-85a6-e12c92e93f72`; traffic shift terkonfirmasi 100% ke versi baru.
+- Worker endpoint: `https://ai-command-center.muhriskiawan23.workers.dev`; custom domain `https://borai.my.id` telah dikonfigurasi.
+- `npm ci`, 48 automated tests, Worker syntax check, preview build, dan deployment berhasil. D1 diperiksa; tidak ada migrasi tertunda dan tidak ada migrasi yang diterapkan dalam run ini.
+- Live Worker Smoke Test [42957941159](https://github.com/muhriskiawan23/ai-command-center/actions/runs/42957941159) berhasil. Health, agents, malformed/empty input rejection, CSP directives, dan entry-script SHA-384 SRI untuk PDF.js serta Tesseract.js terverifikasi pada respons production.
+- Batas bukti: smoke ini bukan pengujian live inference/search, bukan browser end-to-end sign-in/account-isolation, dan SRI entry scripts tidak mencakup seluruh dependency transitif, worker/core OCR, atau data bahasa.
 
-### Temuan live CSP — perlu perbaikan sebelum dianggap lulus
+### GitHub Actions dan release controls
 
-Live Worker Smoke Test run `42954079295` berhasil membaca halaman utama dengan HTTP 200 dan `Content-Type: text/html`, tetapi tidak menemukan header `Content-Security-Policy`. Header-name diagnostics menunjukkan CSP memang tidak hadir pada respons tersebut; ini bukan sekadar kegagalan parsing test.
+- PR #174 sudah digabung ke `main`. Production deploy sekarang `workflow_dispatch` only; tidak otomatis berjalan pada push.
+- Workflow actions telah dipin ke immutable commit SHA dan runner distandardisasi ke `ubuntu-24.04`.
+- README harus tetap menyatakan deployment manual-only. Jangan mengaktifkan auto-deploy kembali tanpa keputusan release yang eksplisit.
 
-Source Worker `serveAsset()` sudah menambahkan CSP untuk respons HTML. Namun `wrangler.jsonc` pada baseline `main` belum mengatur `assets.run_worker_first`. Cloudflare Static Assets secara default menggunakan asset-first routing (`run_worker_first=false`), sehingga aset HTML yang cocok dapat dikirim langsung tanpa melewati middleware Worker. PR #174 Draft menambahkan `run_worker_first` hanya untuk `/` dan `/index.html`, serta menyediakan pemeriksaan CSP/SRI manual setelah deployment yang disetujui. Perbaikan belum live sampai perubahan tersebut disetujui dan dideploy secara manual.
+### Live search dan provider
 
-SRI SHA-384 untuk entry script PDF.js dan Tesseract.js ada pada `public/index.html`, tetapi verifikasi browser/live terhadap script tersebut belum selesai karena CSP check berhenti lebih awal. SheetJS, worker/core Tesseract, dan data bahasa tetap belum self-host/SRI-covered.
-
-### GitHub Actions dan kontrol deployment
-
-- Pemeriksaan delapan workflow aktif di `main` menemukan tujuh workflow masih menggunakan tag action `@v4` dan/atau runner `ubuntu-latest`. `.github/workflows/bor-ai-production-traffic-audit.yml` sudah memakai `ubuntu-24.04` dan tidak memakai action eksternal.
-- PR #174 Draft mematok action ke SHA upstream Node 24-compatible, mengunci runner ke `ubuntu-24.04`, membuat production deploy manual-dispatch-only, dan menambahkan manual dispatch untuk audit akun Cloudflare yang read-only.
-- Perubahan tersebut belum merged. Sampai merge yang disetujui, `main` masih dapat memicu production deploy otomatis pada push.
+- Worker secret inventory menemukan `TAVILY_API_KEY`; `BRAVE_SEARCH_API_KEY` tidak ditemukan.
+- Workflow Tavily live smoke [42957758303](https://github.com/muhriskiawan23/ai-command-center/actions/runs/42957758303) berstatus **skipped**, karena commit deploy tidak memuat opt-in marker `[run-tavily-live-smoke]`. Ini bukan hasil lulus atau gagal dari provider.
+- Dengan konfigurasi saat ini, Tavily dipilih secara default ketika secret tersedia, kecuali `SEARCH_PROVIDER` meng-override provider. Dua pencarian live (web dan news) serta satu prompt-injection probe belum dibuktikan oleh run tersebut.
+- Jalankan workflow Tavily smoke secara manual setelah workflow menyediakan `workflow_dispatch` opt-in. Permintaan tersebut memakai kuota Tavily dan Workers AI; jangan menjadikannya otomatis pada setiap deployment.
 
 ### Cloudflare account audit
 
-Cloudflare account audit run `42950898395` selesai menjalankan script tetapi cakupannya **PARTIAL / ACTION REQUIRED**:
-- Tunnel inventory: authorized, 0 visible.
-- Dedicated Mesh node inventory: authorized, 0 visible.
+Audit read-only [42957758443](https://github.com/muhriskiawan23/ai-command-center/actions/runs/42957758443) selesai menjalankan script, tetapi coverage **PARTIAL / ACTION REQUIRED**:
+- Tunnel inventory: authorized, 0 terlihat.
+- Dedicated Mesh node inventory: authorized, 0 terlihat.
+- Workers VPC Connectivity Directory Services: HTTP 403.
+- Cloud Network Interconnects dan network interconnect inventory: HTTP 403.
+- Virtual networks dan Gateway policies: HTTP 403.
 - Magic Cloud Networking on-ramps: HTTP 404.
-- CNI dan network interconnects: HTTP 403.
-- Virtual networks: HTTP 403.
-- Gateway policies: HTTP 403.
 
-HTTP 403 adalah permission denied, bukan inventory kosong. Run `42950898395` pada `main` belum meng-query Workers VPC Connectivity Directory Services. PR #174 Draft menambahkan GET read-only ke `/connectivity/directory/services` dengan status pagination fail-closed; pemeriksaan tersebut baru aktif setelah PR disetujui/merged dan audit dijalankan ulang. Scope yang diperlukan adalah **Connectivity Directory Read**. Jangan menyatakan audit egress account-wide sudah selesai sampai endpoint ini dan semua endpoint 403 berhasil diaudit.
+HTTP 403 berarti permission denied, bukan inventory kosong. HTTP 404 pada endpoint beta tidak membuktikan resource tidak ada. Tambahkan scope **read-only** yang sesuai pada Cloudflare API token (terutama Cloudflare One Networks Read, Zero Trust Read, Magic WAN Read/Magic Transit Read, serta Connectivity Directory Read untuk endpoint yang baru ditambahkan), perbarui GitHub Actions secret `CLOUDFLARE_API_TOKEN`, lalu jalankan audit ulang. Jangan memberikan Edit/Write scope hanya untuk menyelesaikan audit.
 
-### Status egress DNS-pinning
+### Egress, link reader, dan residual security
 
-- Issue #156 tetap open; production URL reader sengaja fail-closed.
-- PR #170 (Node pinned-transport prototype) dan PR #171 (isolated Linux/Containers validation) tetap Draft.
-- PR #171 head `2e327a2c96f5a61d68e0dac26778d1c88c9e64c9` lulus run `42953942089`: 36/36 test di Docker dengan networking disabled dan 36/36 melalui Wrangler local Containers runtime.
-- PR #171 menambahkan external DNS rebinding test opt-in terhadap `rbndr.us`; job tersebut sengaja skipped pada pull-request event dan belum dijalankan manual. Ini akan memberi bukti DNS eksternal, bukan bukti Cloudflare-hosted runtime atau production peer-IP pinning.
+- Issue #156 tetap open. Production URL reader tetap **fail-closed**; jangan mengaktifkannya dengan plain Worker `fetch()` atau DNS preflight saja.
+- PR #170 (Node pinned-transport prototype) dan PR #171 (isolated Linux/Containers validation) tetap Draft. PR #171 membuktikan 36/36 test pada Docker tanpa network dan 36/36 melalui Wrangler local Containers; external DNS rebinding job masih belum dijalankan manual. Bukti ini belum membuktikan peer-IP pinning pada runtime production.
+- Jangan merge/aktifkan egress transport sebelum proxy/runtime proof, actual peer-IP evidence, redirect/TLS/DNS rebinding tests, privacy review, dan account/network prerequisites lengkap.
+- PDF.js/Tesseract.js entry scripts memiliki SHA-384 SRI; SheetJS dan dependency worker/core/language OCR masih belum seluruhnya self-hosted atau integrity-pinned.
+- Session cleanup berjalan saat login dan secara oportunistik dengan peluang 2% pada `/api/auth/me`; ini bukan cron.
+- Pemecahan `public/app.js` dan refactor rute auth/conversation masih merupakan pekerjaan lanjutan, bukan release blocker yang sudah selesai.
 
-### Session cleanup dan refactor
+### Keputusan saat ini
 
-Pembersihan sesi kedaluwarsa berjalan saat login dan secara oportunistik dengan peluang 2% pada request `/api/auth/me`; ini bukan cron/scheduled cleanup. Pemecahan mekanis `src/index.js` ke `prompts.js`, `http.js`, dan `daily-limits.js` sudah ada. Pemecahan `public/app.js` serta rute auth/conversation dan self-hosting SheetJS/OCR masih belum dikerjakan.
-
+Production deployment dan live CSP/SRI smoke **lulus**. Release verification **belum lengkap** sampai live search/inference dan browser account-isolation diuji. Cloudflare account audit tetap parsial. Link reader tetap nonaktif/fail-closed. Tidak ada token launch atau perubahan produksi lain yang dilakukan dalam refresh ini.
 
 
 ## 0.2. Audit menyeluruh dan perbaikan — 11 November 2026
