@@ -16,6 +16,13 @@ on:
       - "tools/egress-proxy/**"
       - "tests/egress-proxy*.test.js"
       - ".github/workflows/egress-proxy-container-validation.yml"
+  workflow_dispatch:
+    inputs:
+      run_live_dns_rebinding:
+        description: "Run the opt-in external DNS rebinding test against rbndr.us (DNS queries only; no external HTTP request)"
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -26,11 +33,11 @@ concurrency:
 
 jobs:
   isolated-linux-container:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: Build test image
         run: docker build --file tools/egress-proxy/containers/Dockerfile --tag bor-ai-egress-transport-test .
@@ -86,3 +93,20 @@ jobs:
             assert.match(result.stdout, /# fail 0/);
             process.stdout.write(result.stdout);
           '
+
+  live-dns-rebinding:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_live_dns_rebinding }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Run opt-in external DNS rebinding test
+        run: node --test tests/egress-proxy-live-dns.test.js
