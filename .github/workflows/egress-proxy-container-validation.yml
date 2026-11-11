@@ -26,7 +26,7 @@ concurrency:
 jobs:
   isolated-linux-container:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -41,3 +41,47 @@ jobs:
           --read-only
           --tmpfs /tmp:rw,noexec,nosuid,size=64m
           bor-ai-egress-transport-test
+
+      - name: Run through Wrangler local Containers runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          export WRANGLER_SEND_METRICS=false
+          npx --yes wrangler@4.141.0 dev \
+            --config tools/egress-proxy/containers/wrangler.local.jsonc \
+            --ip 127.0.0.1 --port 8787 > /tmp/bor-ai-wrangler-containers.log 2>&1 &
+          wrangler_pid=$!
+          trap 'kill "$wrangler_pid" 2>/dev/null || true' EXIT
+
+          ready=0
+          for attempt in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:8787/health >/dev/null; then
+              ready=1
+              break
+            fi
+            if ! kill -0 "$wrangler_pid" 2>/dev/null; then
+              cat /tmp/bor-ai-wrangler-containers.log
+              exit 1
+            fi
+            sleep 1
+          done
+
+          if [ "$ready" -ne 1 ]; then
+            cat /tmp/bor-ai-wrangler-containers.log
+            echo "Wrangler local Worker did not become ready"
+            exit 1
+          fi
+
+          curl --fail --silent --show-error \
+            -X POST http://127.0.0.1:8787/run \
+            -o /tmp/bor-ai-container-runtime-result.json
+
+          node --input-type=module -e '
+            import fs from "node:fs";
+            import assert from "node:assert/strict";
+            const result = JSON.parse(fs.readFileSync("/tmp/bor-ai-container-runtime-result.json", "utf8"));
+            assert.equal(result.success, true, result.stderr || "Container tests failed");
+            assert.match(result.stdout, /# pass 36/);
+            assert.match(result.stdout, /# fail 0/);
+            process.stdout.write(result.stdout);
+          '
