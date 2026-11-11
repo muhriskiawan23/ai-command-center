@@ -1,0 +1,112 @@
+name: BOR AI egress transport container validation
+
+on:
+  push:
+    branches:
+      - test/156-egress-container-runtime
+    paths:
+      - "tools/egress-proxy/**"
+      - "tests/egress-proxy*.test.js"
+      - "docs/security/issue-156-container-runtime-validation.md"
+      - ".github/workflows/egress-proxy-container-validation.yml"
+  pull_request:
+    branches:
+      - security/156-node-egress-prototype-review
+    paths:
+      - "tools/egress-proxy/**"
+      - "tests/egress-proxy*.test.js"
+      - ".github/workflows/egress-proxy-container-validation.yml"
+  workflow_dispatch:
+    inputs:
+      run_live_dns_rebinding:
+        description: "Run the opt-in external DNS rebinding test against rbndr.us (DNS queries only; no external HTTP request)"
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: egress-container-validation-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  isolated-linux-container:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Build test image
+        run: docker build --file tools/egress-proxy/containers/Dockerfile --tag bor-ai-egress-transport-test .
+
+      - name: Run tests with container networking disabled
+        run: >-
+          docker run --rm
+          --network none
+          --read-only
+          --tmpfs /tmp:rw,noexec,nosuid,size=64m
+          bor-ai-egress-transport-test
+
+      - name: Run through Wrangler local Containers runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          export WRANGLER_SEND_METRICS=false
+          npx --yes wrangler@4.160.0 dev \
+            --config tools/egress-proxy/containers/wrangler.local.jsonc \
+            --ip 127.0.0.1 --port 8787 > /tmp/bor-ai-wrangler-containers.log 2>&1 &
+          wrangler_pid=$!
+          trap 'kill "$wrangler_pid" 2>/dev/null || true' EXIT
+
+          ready=0
+          for attempt in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:8787/health >/dev/null; then
+              ready=1
+              break
+            fi
+            if ! kill -0 "$wrangler_pid" 2>/dev/null; then
+              cat /tmp/bor-ai-wrangler-containers.log
+              exit 1
+            fi
+            sleep 1
+          done
+
+          if [ "$ready" -ne 1 ]; then
+            cat /tmp/bor-ai-wrangler-containers.log
+            echo "Wrangler local Worker did not become ready"
+            exit 1
+          fi
+
+          curl --fail --silent --show-error \
+            -X POST http://127.0.0.1:8787/run \
+            -o /tmp/bor-ai-container-runtime-result.json
+
+          node --input-type=module -e '
+            import fs from "node:fs";
+            import assert from "node:assert/strict";
+            const result = JSON.parse(fs.readFileSync("/tmp/bor-ai-container-runtime-result.json", "utf8"));
+            assert.equal(result.success, true, result.stderr || "Container tests failed");
+            assert.match(result.stdout, /# pass 36/);
+            assert.match(result.stdout, /# fail 0/);
+            process.stdout.write(result.stdout);
+          '
+
+  live-dns-rebinding:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_live_dns_rebinding }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Run opt-in external DNS rebinding test
+        run: node --test tests/egress-proxy-live-dns.test.js
