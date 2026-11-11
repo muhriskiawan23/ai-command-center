@@ -27,7 +27,7 @@ From the repository root:
 docker build --file tools/egress-proxy/containers/Dockerfile --tag bor-ai-egress-transport-test .
 docker run --rm --network none --read-only --tmpfs /tmp:rw,noexec,nosuid,size=64m bor-ai-egress-transport-test
 
-npx --yes wrangler@4.141.0 dev --config tools/egress-proxy/containers/wrangler.local.jsonc --ip 127.0.0.1 --port 8787
+npx --yes wrangler@4.160.0 dev --config tools/egress-proxy/containers/wrangler.local.jsonc --ip 127.0.0.1 --port 8787
 ```
 
 In another terminal, trigger the local Container test:
@@ -56,6 +56,17 @@ The image installs OpenSSL at build time because HTTPS integration tests generat
 - It does not perform public-internet DNS rebinding tests; the Container is intentionally started with `enableInternet: false`.
 - It does not prove production privacy, retention, or operational controls.
 - It does not authorize deployment, a production binding, or enabling production URL reading.
+
+## Optional real authoritative-DNS rebinding check
+
+A separate, opt-in GitHub Actions job can query the public `rbndr.us` DNS rebinding test service. The test hostname alternates between `127.0.0.1` and `1.1.1.1`; it uses the real Node DNS resolver and calls `fetchPinned` with a test-only request seam:
+
+- A public answer must be selected and passed to the transport seam as `1.1.1.1`.
+- A private loopback answer must be rejected before the transport seam is called.
+- The test makes DNS queries only. It does not send HTTP requests to either address and does not transmit user URLs or page content.
+- Existing isolated Linux tests remain the evidence for real HTTP/TLS socket peer verification; this opt-in test adds evidence from an external authoritative DNS rebinding service, not a production network socket.
+
+Run the `BOR AI egress transport container validation` workflow manually and set `run_live_dns_rebinding` to `true`. The job is skipped for ordinary pull-request and push runs. The test depends on the third-party DNS service and GitHub Actions runner DNS egress being available; a service outage is an inconclusive infrastructure failure, not evidence that the transport is vulnerable or safe.
 
 ## Cloudflare-specific next gate
 
