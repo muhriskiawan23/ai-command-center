@@ -109,4 +109,6 @@ jobs:
           cache: npm
 
       - name: Run opt-in external DNS rebinding test
+        env:
+          BOR_AI_LIVE_DNS_REBINDING: "1"
         run: node --test tests/egress-proxy-live-dns.test.js
