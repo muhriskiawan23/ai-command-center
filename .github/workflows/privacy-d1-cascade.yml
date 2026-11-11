@@ -20,4 +20,4 @@ jobs:
         with:
           python-version: '3.12'
       - name: Verify synthetic schema cascade and ownership
-        run: python -m unittest discover -s tests -p 'privacy-d1-cascade.test.py' -v
+        run: python tests/privacy-d1-cascade.test.py -v
