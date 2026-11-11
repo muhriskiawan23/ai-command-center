@@ -1,0 +1,36 @@
+name: BOR AI egress transport container validation
+
+on:
+  pull_request:
+    branches:
+      - security/156-node-egress-prototype-review
+    paths:
+      - "tools/egress-proxy/**"
+      - "tests/egress-proxy*.test.js"
+      - ".github/workflows/egress-proxy-container-validation.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: egress-container-validation-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  isolated-linux-container:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Build test image
+        run: docker build --file tools/egress-proxy/containers/Dockerfile --tag bor-ai-egress-transport-test .
+
+      - name: Run tests with container networking disabled
+        run: >-
+          docker run --rm
+          --network none
+          --read-only
+          --tmpfs /tmp:rw,noexec,nosuid,size=64m
+          bor-ai-egress-transport-test
