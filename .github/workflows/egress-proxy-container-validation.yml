@@ -7,6 +7,7 @@ on:
     paths:
       - "tools/egress-proxy/**"
       - "tests/egress-proxy*.test.js"
+      - "docs/security/issue-156-container-runtime-validation.md"
       - ".github/workflows/egress-proxy-container-validation.yml"
   pull_request:
     branches:
