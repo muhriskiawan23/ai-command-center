@@ -149,6 +149,7 @@ export function requestOneHop({
     let settled = false;
     let req;
     let totalTimer;
+    let transportEvidence;
     const finish = (error, value) => {
       if (settled) return;
       settled = true;
@@ -206,13 +207,18 @@ export function requestOneHop({
       });
       res.on("end", () => {
         if (settled) return;
+        if (!transportEvidence) {
+          fail(new Error("peer_verification_missing"));
+          return;
+        }
         finish(null, {
           status: res.statusCode || 502,
           headers: {
             "content-type": res.headers["content-type"] || "application/octet-stream",
             ...(res.headers.location ? { location: res.headers.location } : {})
           },
-          body: Buffer.concat(chunks)
+          body: Buffer.concat(chunks),
+          transport: transportEvidence
         });
       });
       res.on("aborted", () => fail(new Error("response_aborted")));
@@ -231,9 +237,27 @@ export function requestOneHop({
       }
       if (secure && !family) {
         const cert = socket.getPeerCertificate?.();
-        const identityError = cert && tls.checkServerIdentity(host, cert);
-        if (identityError) fail(new Error("tls_identity_mismatch"));
+        if (!cert || Object.keys(cert).length === 0) {
+          fail(new Error("tls_peer_certificate_missing"));
+          return;
+        }
+        const identityError = tls.checkServerIdentity(host, cert);
+        if (identityError) {
+          fail(new Error("tls_identity_mismatch"));
+          return;
+        }
       }
+      transportEvidence = {
+        selectedPeerIp: peerIp,
+        observedPeerIp: socket.remoteAddress,
+        peerIpVerified: true,
+        protocol: secure ? "tls" : "tcp",
+        ...(secure ? {
+          tlsServername: family ? null : host,
+          tlsAuthorized: socket.authorized === true,
+          tlsIdentityVerified: true
+        } : {})
+      };
     };
     req.on("socket", (socket) => {
       if (secure) socket.once("secureConnect", () => verifyPeer(socket));
@@ -384,6 +408,7 @@ export function createEgressProxyHandler({ token, resolver = dns, timeoutMs = 80
         headers: result.headers,
         bodyBase64: result.body.toString("base64"),
         peerIp: result.peerIp,
+        transport: result.transport,
         redirect: result.redirect
       });
       res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" }).end(payload);

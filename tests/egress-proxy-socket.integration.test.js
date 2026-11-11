@@ -33,6 +33,12 @@ test("HTTP socket integration pins the actual peer IP and preserves the original
   assert.equal(observed.host, `fixture.example:${server.address().port}`);
   assert.equal(observed.peer, "127.0.0.1");
   assert.equal(result.headers["content-type"], "text/plain");
+  assert.deepEqual(result.transport, {
+    selectedPeerIp: "127.0.0.1",
+    observedPeerIp: "127.0.0.1",
+    peerIpVerified: true,
+    protocol: "tcp"
+  });
 });
 
 test("HTTP rejects a socket peer that differs from the vetted numeric address", async (t) => {
@@ -86,6 +92,15 @@ test("HTTPS integration pins the socket, sends original SNI, and validates the c
   assert.equal(observed.host, `fixture.example:${server.address().port}`);
   assert.equal(observed.peer, "127.0.0.1");
   assert.equal(observed.sni, "fixture.example");
+  assert.deepEqual(result.transport, {
+    selectedPeerIp: "127.0.0.1",
+    observedPeerIp: "127.0.0.1",
+    peerIpVerified: true,
+    protocol: "tls",
+    tlsServername: "fixture.example",
+    tlsAuthorized: true,
+    tlsIdentityVerified: true
+  });
 
   await assert.rejects(
     requestOneHop({

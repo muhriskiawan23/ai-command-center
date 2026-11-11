@@ -1,0 +1,22 @@
+name: BOR AI hosted egress proof
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  hosted-peer-tls-proof:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '22'
+      - name: Verify hosted selected peer, observed peer and TLS identity
+        env:
+          EGRESS_PROXY_BASE_URL: ${{ secrets.RENDER_EGRESS_BASE_URL }}
+          EGRESS_PROXY_TOKEN: ${{ secrets.RENDER_EGRESS_TOKEN }}
+        run: node tools/egress-proxy/verify-hosted.mjs
