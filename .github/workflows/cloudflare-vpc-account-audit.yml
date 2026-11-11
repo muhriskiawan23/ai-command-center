@@ -108,11 +108,12 @@ jobs:
                   const type = String(item?.type || "unknown");
                   types[type] = (types[type] || 0) + 1;
                 }
-                const pages = Number.isFinite(info.total_pages) ? info.total_pages : 1;
+                const pages = Number.isFinite(info.total_pages) ? info.total_pages : null;
+                const status = pages === 1 ? "AUTHORIZED" : pages > 1 ? "PAGINATION INCOMPLETE" : "PAGINATION UNKNOWN";
                 record(
                   "Workers VPC Connectivity Directory Services",
-                  pages > 1 ? "PAGINATION INCOMPLETE" : "AUTHORIZED",
-                  `returned=${items.length}; reported_total=${Number.isFinite(info.total_count) ? info.total_count : "unknown"}; pages=${pages}; types=${Object.entries(types).map(([key, value]) => key + ":" + value).join(",") || "none"}; service names, hosts, and tunnel identifiers suppressed.`
+                  status,
+                  `returned=${items.length}; reported_total=${Number.isFinite(info.total_count) ? info.total_count : "unknown"}; pages=${pages ?? "unknown"}; types=${Object.entries(types).map(([key, value]) => key + ":" + value).join(",") || "none"}; service names, hosts, and tunnel identifiers suppressed.`
                 );
               }
             );
