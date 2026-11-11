@@ -1,0 +1,23 @@
+name: BOR AI synthetic D1 privacy cascade
+on:
+  push:
+    paths:
+      - 'migrations/**'
+      - 'tests/privacy-d1-cascade.test.py'
+      - '.github/workflows/privacy-d1-cascade.yml'
+  pull_request:
+    paths:
+      - 'migrations/**'
+      - 'tests/privacy-d1-cascade.test.py'
+      - '.github/workflows/privacy-d1-cascade.yml'
+  workflow_dispatch:
+jobs:
+  synthetic-cascade:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify synthetic schema cascade and ownership
+        run: python -m unittest discover -s tests -p 'privacy-d1-cascade.test.py' -v
