@@ -5,6 +5,13 @@ on:
     workflows: ["BOR AI production deploy"]
     types: [completed]
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      run_provider_smoke:
+        description: "Run two live searches and one live chat probe; consumes Tavily and Workers AI quota"
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -12,8 +19,10 @@ permissions:
 jobs:
   tavily-live-smoke:
     if: >-
-      github.event.workflow_run.conclusion == 'success' &&
-      contains(github.event.workflow_run.head_commit.message, '[run-tavily-live-smoke]')
+      (github.event_name == 'workflow_dispatch' && inputs.run_provider_smoke == true) ||
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       contains(github.event.workflow_run.head_commit.message, '[run-tavily-live-smoke]'))
     runs-on: ubuntu-24.04
     timeout-minutes: 8
     environment: production
@@ -21,7 +30,7 @@ jobs:
       - name: Check out released main
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
 
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
@@ -85,7 +94,7 @@ jobs:
 
       - name: Run one live prompt-injection red-team check
         env:
-          RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
+          RELEASE_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
         shell: bash
         run: |
           set -euo pipefail
