@@ -9,7 +9,23 @@ test("real authoritative DNS rebinding answers are pinned or rejected before tra
   skip: process.env.BOR_AI_LIVE_DNS_REBINDING !== "1",
   timeout: 30_000
 }, async () => {
-  const deadline = Date.now() + 25_000;
+  // DNS-only control separates general resolver failures from fixture-specific failure.
+  // Never record resolver addresses or connect to either external destination.
+  const control = new dns.Resolver({ timeout: 1_000, tries: 1 });
+  const controlEvidence = {};
+  try {
+    for (const method of ["resolveCname", "resolve4", "resolve6"]) {
+      try {
+        const answers = await control[method]("example.com");
+        controlEvidence[method] = { outcome: "answered", count: answers.length };
+      } catch (error) {
+        controlEvidence[method] = { outcome: "error", code: /^E[A-Z0-9_]{1,30}$/.test(error?.code || "") ? error.code : "OTHER" };
+      }
+    }
+  } finally { control.cancel(); }
+  console.log("DNS-only control evidence:", JSON.stringify(controlEvidence));
+  const deadline = Date.now() + 23_000;
+  const resolverFailures = {};
   const transientFailures = {};
   let publicAccepted = 0;
   let privateRejected = 0;
@@ -17,7 +33,24 @@ test("real authoritative DNS rebinding answers are pinned or rejected before tra
 
   for (let attempt = 0; attempt < 32 && Date.now() < deadline - 250 && (!publicAccepted || !privateRejected); attempt++) {
     let transportCalls = 0;
-    const resolver = new dns.Resolver({ timeout: 1_000, tries: 1 });
+    const observedAddresses = [];
+    const underlyingResolver = new dns.Resolver({ timeout: 1_000, tries: 1 });
+    const resolver = {};
+    for (const method of ["resolveCname", "resolve4", "resolve6"]) {
+      resolver[method] = async (...args) => {
+        try {
+          const answers = await underlyingResolver[method](...args);
+          if (method === "resolve4" || method === "resolve6") observedAddresses.push(...answers);
+          return answers;
+        }
+        catch (error) {
+          const code = /^E[A-Z0-9_]{1,30}$/.test(error?.code || "") ? error.code : "OTHER";
+          const key = method + ":" + code;
+          resolverFailures[key] = (resolverFailures[key] || 0) + 1;
+          throw error;
+        }
+      };
+    }
     try {
       const result = await fetchPinned("http://" + REBINDING_HOST + "/", {
         resolver,
@@ -37,11 +70,13 @@ test("real authoritative DNS rebinding answers are pinned or rejected before tra
         transientFailures[error.message] = (transientFailures[error.message] || 0) + 1;
       } else {
         if (error?.message !== "dns_unsafe_or_empty") throw error;
+        assert.ok(observedAddresses.includes("127.0.0.1"),
+          "unsafe/empty rejection alone is not proof of the fixture private DNS answer");
         privateRejected++;
         assert.equal(transportCalls, 0, "unsafe DNS answers must be rejected before transport starts");
       }
     } finally {
-      resolver.cancel();
+      underlyingResolver.cancel();
     }
 
     if (!publicAccepted || !privateRejected) {
@@ -49,7 +84,7 @@ test("real authoritative DNS rebinding answers are pinned or rejected before tra
     }
   }
 
-  const evidence = JSON.stringify({ publicAccepted, privateRejected, transientFailures });
+  const evidence = JSON.stringify({ publicAccepted, privateRejected, transientFailures, resolverFailures, controlEvidence });
   console.log("External DNS-only evidence:", evidence);
   assert.ok(publicAccepted > 0, "missing public DNS evidence: " + evidence);
   assert.ok(privateRejected > 0, "missing private DNS evidence: " + evidence);

@@ -33,9 +33,10 @@ async function audit(respond, configured = true) {
 }
 
 function success(url, info = { total_count: 0, total_pages: 1 }) {
+  if (url.includes("/cni/")) return response({ items: [] });
   return { ok: true, status: 200, json: async () => ({
     success: true,
-    result: url.includes("/cni/") ? { items: [], next: null } : [],
+    result: [],
     result_info: info
   }) };
 }
@@ -73,4 +74,75 @@ test("missing credentials and unsupported endpoints never count as passed", asyn
     ? { ok: false, status: 404 } : success(url));
   assert.equal(unsupported.exitCode, 1);
   assert.match(unsupported.summary, /HTTP 404/);
+});
+
+function response(payload) {
+  return { ok: true, status: 200, json: async () => payload };
+}
+
+test("CNI and interconnect use top-level items and walk numeric cursors, including zero", async () => {
+  const result = await audit(url => {
+    if (!url.includes("/cni/")) return success(url);
+    const cursor = new URL(url).searchParams.get("cursor");
+    return response(cursor == null ? { items: [{ name: "private-resource" }], next: 0 } : { items: [] });
+  });
+  assert.equal(result.exitCode, undefined);
+  assert.equal(result.requests.filter(r => r.url.includes("cursor=0")).length, 2);
+  assert.ok(!result.summary.includes("private-resource"));
+  assert.match(result.summary, /returned=1; additional_page=no/);
+});
+
+test("CNI rejects error envelopes, nested legacy shape, invalid and repeating cursors", async () => {
+  for (const payload of [
+    { items: [], success: false }, { items: [], errors: [{ code: 1000 }] },
+    { success: true, result: { items: [] } }, { items: [], next: "untrusted" },
+    { items: [], next: 5 }
+  ]) {
+    const result = await audit(url => url.includes("/cni/") ? response(payload) : success(url));
+    assert.equal(result.exitCode, 1);
+    assert.ok(result.requests.length <= 10);
+  }
+});
+
+test("Directory walks pages without metadata until an explicit empty terminal page", async () => {
+  const result = await audit(url => {
+    if (!url.includes("/directory/services")) return success(url);
+    const page = Number(new URL(url).searchParams.get("page"));
+    return response({ success: true, result: page === 1 ? [{ name: "private-service", type: "http" }] : [] });
+  });
+  assert.equal(result.exitCode, undefined);
+  assert.match(result.summary, /returned=1; completion=empty terminal page/);
+  assert.equal(result.requests.filter(r => r.url.includes("/directory/services")).length, 2);
+  assert.ok(!result.summary.includes("private-service"));
+});
+
+test("Directory follows reported pages and refuses inconsistent or unbounded pagination", async () => {
+  const paged = await audit(url => {
+    if (!url.includes("/directory/services")) return success(url);
+    const page = Number(new URL(url).searchParams.get("page"));
+    return response({ success: true, result: [{ type: "http" }], result_info: { page, total_pages: 2, total_count: 2 } });
+  });
+  assert.equal(paged.exitCode, undefined);
+  assert.match(paged.summary, /completion=reported total_pages/);
+  for (const payload of [
+    { success: true, result: [], result_info: { page: 999 } },
+    { success: true, result: [], result_info: { total_pages: 2, total_count: 1 } },
+    { success: true, result: [{ type: "http" }] },
+    { success: true, result: [], result_info: { total_pages: 0, total_count: 1 } }
+  ]) {
+    const result = await audit(url => url.includes("/directory/services") ? response(payload) : success(url));
+    assert.equal(result.exitCode, 1);
+    assert.ok(result.requests.filter(r => r.url.includes("/directory/services")).length <= 10);
+  }
+});
+
+test("on-ramp 404 preserves numeric diagnostic codes but never response messages", async () => {
+  const result = await audit(url => url.includes("/onramps") ? {
+    ok: false, status: 404,
+    json: async () => ({ errors: [{ code: 7003, message: "private-network-details" }] })
+  } : success(url));
+  assert.equal(result.exitCode, 1);
+  assert.match(result.summary, /HTTP 404; codes=7003/);
+  assert.match(result.summary, /Closed Beta/);
+  assert.ok(!result.summary.includes("private-network-details"));
 });

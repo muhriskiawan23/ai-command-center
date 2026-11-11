@@ -50,46 +50,102 @@ jobs:
             const base = "https://api.cloudflare.com/client/v4/accounts/" + encodeURIComponent(account);
             const headers = { Authorization: "Bearer " + token, Accept: "application/json" };
 
-            async function readCollection(label, path, summarize, extract = (payload) => ({ items: payload?.result, info: payload?.result_info || {}, next: null })) {
-              try {
-                const response = await fetch(base + path, {
-                  method: "GET",
-                  headers,
-                  signal: AbortSignal.timeout(20000)
-                });
+            // These endpoints have different documented response envelopes.
+            function cursorCollection(payload) {
+              return {
+                items: payload?.items,
+                info: {},
+                next: payload?.next,
+                valid: payload?.success !== false &&
+                  (payload?.errors == null || (Array.isArray(payload.errors) && payload.errors.length === 0))
+              };
+            }
 
-                if (response.status === 401 || response.status === 403) {
-                  record(label, "PERMISSION DENIED", `HTTP ${response.status}; this is not an empty result.`);
+            async function readCollection(label, path, summarize, extract = (payload) => ({
+              items: payload?.result, info: payload?.result_info || {}, next: null,
+              valid: payload?.success === true
+            }), pagination = "single") {
+              const items = [];
+              const seen = new Set();
+              let currentPath = path;
+              for (let index = 0; index < 10; index++) {
+                try {
+                  const response = await fetch(base + currentPath, {
+                    method: "GET", headers, signal: AbortSignal.timeout(20000)
+                  });
+                  if (!response.ok) {
+                    // Error messages may contain account/network details. Only numeric codes are safe to emit.
+                    let codes = [];
+                    try {
+                      const error = await response.json();
+                      codes = Array.isArray(error?.errors) ? error.errors.map(e => e?.code).filter(Number.isFinite).slice(0, 5) : [];
+                    } catch {}
+                    const status = [401, 403].includes(response.status) ? "PERMISSION DENIED" : "HTTP ERROR";
+                    const note = response.status === 404 && path === "/magic/cloud/onramps"
+                      ? " Documented Closed Beta endpoint; account availability/entitlement is unverified, not an empty inventory." : "";
+                    record(label, status, `HTTP ${response.status}; codes=${codes.join(",") || "unavailable"}; response body suppressed.${note}`);
+                    return;
+                  }
+                  const payload = await response.json();
+                  const collection = extract(payload);
+                  if (!collection?.valid || !Array.isArray(collection.items)) {
+                    record(label, "API ERROR", "response envelope not verified; response body suppressed.");
+                    return;
+                  }
+                  const info = collection.info || {};
+                  items.push(...collection.items);
+                  const requestUrl = new URL(base + currentPath);
+                  if (pagination === "page") {
+                    const page = Number(requestUrl.searchParams.get("page"));
+                    const size = Number(requestUrl.searchParams.get("per_page"));
+                    if ((info.page != null && info.page !== page) ||
+                        (info.per_page != null && (!Number.isInteger(info.per_page) || info.per_page < 1 || info.per_page > size)) ||
+                        (info.total_pages != null && (!Number.isInteger(info.total_pages) || info.total_pages < 0)) ||
+                        (info.total_count != null && (!Number.isInteger(info.total_count) || info.total_count < items.length))) {
+                      record(label, "API ERROR", "inconsistent pagination metadata; inventory not complete.");
+                      return;
+                    }
+                    // Without total_pages, keep walking until an explicit empty terminal page.
+                    const terminal = Number.isInteger(info.total_pages) ? page >= info.total_pages : collection.items.length === 0;
+                    if (terminal) {
+                      if ((info.total_count != null && info.total_count !== items.length) ||
+                          (collection.items.length === 0 && Number.isInteger(info.total_pages) && page < info.total_pages)) {
+                        record(label, "PAGINATION INCOMPLETE", "reported totals disagree with collected inventory.");
+                        return;
+                      }
+                      summarize(items, { ...info, pages_read: index + 1, completion: Number.isInteger(info.total_pages) ? "reported total_pages" : "empty terminal page" }, null);
+                      return;
+                    }
+                    if (collection.items.length === 0) {
+                      record(label, "PAGINATION INCOMPLETE", "empty page precedes reported final page.");
+                      return;
+                    }
+                    requestUrl.searchParams.set("page", String(page + 1));
+                    currentPath = requestUrl.pathname.slice(new URL(base).pathname.length) + requestUrl.search;
+                  } else if (pagination === "cursor" && collection.next != null) {
+                    if (!Number.isSafeInteger(collection.next) || collection.next < 0 || seen.has(collection.next)) {
+                      record(label, "PAGINATION INCOMPLETE", "invalid or repeated continuation cursor.");
+                      return;
+                    }
+                    seen.add(collection.next);
+                    requestUrl.searchParams.set("cursor", String(collection.next));
+                    currentPath = requestUrl.pathname.slice(new URL(base).pathname.length) + requestUrl.search;
+                  } else {
+                    if ((Number.isFinite(info.total_pages) && info.total_pages > 1) ||
+                        (Number.isFinite(info.total_count) && info.total_count > items.length)) {
+                      record(label, "PAGINATION INCOMPLETE", "additional results exist; first page is not a complete inventory.");
+                      return;
+                    }
+                    summarize(items, info, null);
+                    return;
+                  }
+                } catch (error) {
+                  const name = error?.name === "TimeoutError" || error?.name === "AbortError" ? "TIMEOUT" : "REQUEST ERROR";
+                  record(label, name, "request details suppressed.");
                   return;
                 }
-                if (!response.ok) {
-                  record(label, "HTTP ERROR", `HTTP ${response.status}; response body suppressed.`);
-                  return;
-                }
-
-                const payload = await response.json();
-                const collection = extract(payload);
-                if (payload?.success !== true || !Array.isArray(collection?.items)) {
-                  const codes = Array.isArray(payload?.errors)
-                    ? payload.errors.map((error) => error?.code).filter(Number.isFinite).slice(0, 5)
-                    : [];
-                  record(label, "API ERROR", `response shape not verified; codes=${codes.join(",") || "unavailable"}.`);
-                  return;
-                }
-
-                const info = collection.info || {};
-                const morePages = collection.next != null ||
-                  (Number.isFinite(info.total_pages) && info.total_pages > 1) ||
-                  (Number.isFinite(info.total_count) && info.total_count > collection.items.length);
-                if (morePages) {
-                  record(label, "PAGINATION INCOMPLETE", "additional results exist; first page is not a complete inventory.");
-                  return;
-                }
-                summarize(collection.items, info, collection.next ?? null);
-              } catch (error) {
-                const name = error?.name === "TimeoutError" || error?.name === "AbortError" ? "TIMEOUT" : "REQUEST ERROR";
-                record(label, name, "request details suppressed.");
               }
+              record(label, "PAGINATION INCOMPLETE", "ten-page audit budget exhausted; inventory not complete.");
             }
 
             await readCollection(
@@ -118,14 +174,14 @@ jobs:
                   const type = String(item?.type || "unknown");
                   types[type] = (types[type] || 0) + 1;
                 }
-                const pages = Number.isFinite(info.total_pages) ? info.total_pages : null;
-                const status = pages === 1 ? "AUTHORIZED" : pages > 1 ? "PAGINATION INCOMPLETE" : "PAGINATION UNKNOWN";
+                const pages = info.pages_read;
                 record(
                   "Workers VPC Connectivity Directory Services",
-                  status,
-                  `returned=${items.length}; reported_total=${Number.isFinite(info.total_count) ? info.total_count : "unknown"}; pages=${pages ?? "unknown"}; types=${Object.entries(types).map(([key, value]) => key + ":" + value).join(",") || "none"}; service names, hosts, and tunnel identifiers suppressed.`
+                  "AUTHORIZED",
+                  `returned=${items.length}; completion=${info.completion}; reported_total=${Number.isFinite(info.total_count) ? info.total_count : "unknown"}; pages=${pages ?? "unknown"}; types=${Object.entries(types).map(([key, value]) => key + ":" + value).join(",") || "none"}; service names, hosts, and tunnel identifiers suppressed.`
                 );
-              }
+              },
+              undefined, "page"
             );
 
             await readCollection(
@@ -172,11 +228,7 @@ jobs:
                   `returned=${items.length}; additional_page=${next == null ? "no" : "yes"}; resource identifiers and network details suppressed.`
                 );
               },
-              (payload) => ({
-                items: payload?.result?.items,
-                info: {},
-                next: payload?.result?.next
-              })
+              cursorCollection, "cursor"
             );
 
             await readCollection(
@@ -189,11 +241,7 @@ jobs:
                   `returned=${items.length}; additional_page=${next == null ? "no" : "yes"}; resource identifiers and facility details suppressed.`
                 );
               },
-              (payload) => ({
-                items: payload?.result?.items,
-                info: {},
-                next: payload?.result?.next
-              })
+              cursorCollection, "cursor"
             );
 
             await readCollection(
