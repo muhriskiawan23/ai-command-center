@@ -15,7 +15,7 @@ This validation has two zero-Cloudflare-cost layers:
 
 - Docker-compatible CLI and engine running locally.
 - Node.js/npm available to run Wrangler.
-- Wrangler 4.136.0 or later for local development with the Durable Object scheduling policy; CI pins Wrangler 4.141.0.
+- Wrangler 4.136.0 or later for local development with the Durable Object scheduling policy; CI pins Wrangler 4.160.0.
 
 Cloudflare documents that local Container-enabled Workers run through `wrangler dev` and Docker. The local runtime is useful for compatibility testing but differs from deployed Containers in some Linux/network details.
 
