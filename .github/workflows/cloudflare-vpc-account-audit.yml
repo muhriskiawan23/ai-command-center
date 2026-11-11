@@ -101,7 +101,7 @@ jobs:
 
             await readCollection(
               "Workers VPC Connectivity Directory Services",
-              "/connectivity/directory/services?per_page=100&page=1",
+              "/connectivity/directory/services?per_page=1000&page=1",
               (items, info) => {
                 const types = {};
                 for (const item of items) {
