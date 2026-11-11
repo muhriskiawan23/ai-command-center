@@ -27,6 +27,27 @@ const hostedFetch = (options) => fetch(endpoint, {
 const denied = await hostedFetch(common);
 assert.equal(denied.status, 401, "hosted proxy must deny missing authentication");
 
+const wrongToken = `${token[0] === "A" ? "B" : "A"}${token.slice(1)}`;
+const wrongAuth = await hostedFetch({
+  ...common,
+  headers: { ...common.headers, authorization: `Bearer ${wrongToken}` }
+});
+assert.equal(wrongAuth.status, 401, "hosted proxy must deny incorrect authentication");
+
+for (const [name, url, expectedError] of [
+  ["IPv4 loopback", "http://127.0.0.1/", "unsafe_ip_literal"],
+  ["IPv6 loopback", "https://[::1]/", "unsafe_ip_literal"],
+  ["cloud metadata", "http://169.254.169.254/", "unsafe_ip_literal"]
+]) {
+  const rejected = await hostedFetch({
+    ...common,
+    headers: { ...common.headers, authorization: `Bearer ${token}` },
+    body: JSON.stringify({ url })
+  });
+  assert.equal(rejected.status, 502, `hosted proxy must reject ${name}`);
+  assert.deepEqual(await rejected.json(), { error: expectedError });
+}
+
 const response = await hostedFetch({
   ...common,
   headers: { ...common.headers, authorization: `Bearer ${token}` }
@@ -56,5 +77,7 @@ console.log(JSON.stringify({
   tlsServername,
   tlsAuthorized: true,
   tlsIdentityVerified: true,
+  wrongAuthDenied: true,
+  loopbackAndMetadataRejected: true,
   upstreamStatusClass
 }));
