@@ -5,6 +5,23 @@ Branch audit historis: `bor-ai/stage-06-input-audit` (di atas `bor-ai/stage-05-c
 > **Penting:** Bagian 1–5 dan daftar temuan di bawah mempertahankan hasil audit historis 31 Oktober 2026. Status temuan tersebut tidak otomatis mencerminkan kondisi `main` saat ini. Refresh 9 November di bagian 0 hanya memeriksa ulang pembaca tautan, sumber riset, validasi sitasi, batas kemampuan produk, dan bukti CI yang tersedia. Temuan lain harus direproduksi sebelum dinyatakan masih terbuka atau sudah selesai.
 
 
+## 0.2. Audit menyeluruh dan perbaikan — 11 November 2026
+
+**Baseline:** `main` di `ef75273`. Pemeriksaan statis + `npm test` (392/392 lulus sebelum perubahan, 393/393 sesudah). `npm audit`: 0 kerentanan. Pemindaian pola secret pada berkas dan riwayat git: tidak ada temuan. Branch perbaikan: `bor-ai/audit-fixes`.
+
+| # | Temuan | Status |
+|---|---|---|
+| 1 | Pembaca link nonaktif di production (fail-closed sampai ada egress DNS-pinning) | **Sengaja dibiarkan.** Membukanya tanpa egress teraudit akan mengembalikan risiko SSRF/DNS rebinding. Fitur aktif kembali hanya setelah transport egress teraudit dikonfigurasi (lihat `docs/security/issue-156-egress-architecture.md`). |
+| 2 | CSP: `style-src 'unsafe-inline'` dan `img-src https:` | **Diperbaiki.** `style-src` tanpa inline (atribut `style` tetap diizinkan lewat `style-src-attr`), gaya inline di HTML dipindah ke kelas CSS; `img-src` dibatasi ke `'self' data: blob: https://*.googleusercontent.com` (foto profil Google). Tes ditambahkan. |
+| 3 | Skrip CDN tanpa SRI | **Sebagian.** `pdf.min.js` dan `tesseract.min.js` kini memakai `integrity` sha384 + `crossorigin` (hash dihitung dari paket npm resmi versi yang sama). **Belum:** SheetJS (dimuat dinamis dari `cdn.sheetjs.com`), serta worker/core Tesseract dan data bahasa yang dimuat oleh Tesseract sendiri. Opsi lanjutan: host mandiri berkas tersebut. |
+| 4 | Sesi kedaluwarsa hanya dibersihkan saat login | **Diperbaiki.** Pembersihan oportunistik (peluang 2%) pada `/api/auth/me`, selain pembersihan saat login. |
+| 5 | Aksi GitHub memakai tag; `ubuntu-latest` vs `ubuntu-24.04` | **Diperbaiki.** Semua aksi di-pin ke SHA commit (komentar `# v4`), semua job memakai `ubuntu-24.04`. |
+| 6 | Berkas monolit | **Sebagian, mekanis tanpa perubahan perilaku.** `src/prompts.js` (prompt agen dan aturan), `src/http.js`, `src/daily-limits.js` diekstrak dari `src/index.js` (1.765 → ±1.590 baris). Pemecahan `public/app.js` dan rute auth/percakapan belum dilakukan. |
+| 7 | Pemformat markdown sederhana | Keterbatasan fitur, bukan celah; tidak diubah. |
+| 8 | Dokumen audit campur aduk | Bagian ini menjadi ringkasan terkini; bagian historis di bawahnya tetap sebagai arsip. |
+
+**Belum diverifikasi:** status CI di GitHub, production live, tes browser Playwright (e2e) dan SRI di browser nyata, penetration test, ketahanan prompt-injection pada model asli.
+
 ## 0. Refresh terbatas — 9 November 2026
 
 **Baseline kode (audit historis):** source-page reader and citation flow were initially reviewed on `cee8b2799f51f868fd75770b9f52e85ace2a8329`; subsequent security/release changes include PR #128 (`2d22f13`), PR #130 (`812d020`), provider-neutral adapter PR #129 (`f9a7e98b4a5264eca32eeeea73c4a3d07ab1c5da`), and search diversity PR #133 (`0d0d7d34011137efa3dd8015b5f422bae23de14b`). **This is a historical baseline, not current main.** Current main baseline is recorded in section 0.1 and release updates below.

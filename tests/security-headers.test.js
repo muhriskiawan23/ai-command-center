@@ -9,6 +9,11 @@ test("halaman utama: CSP tanpa 'unsafe-inline' untuk skrip, dan tidak ada skrip 
   const scriptSrc = /script-src ([^;]*)/.exec(csp)?.[1] ?? "";
   assert.ok(scriptSrc.includes("'self'") && scriptSrc.includes("https://accounts.google.com/gsi/client"));
   assert.ok(!scriptSrc.includes("'unsafe-inline'"), `script-src masih mengizinkan inline: ${scriptSrc}`);
+  const styleSrc = /(?:^|;\s*)style-src ([^;]*)/.exec(csp)?.[1] ?? "";
+  assert.ok(!styleSrc.includes("'unsafe-inline'"), `style-src masih mengizinkan inline: ${styleSrc}`);
+  const imgSrc = /img-src ([^;]*)/.exec(csp)?.[1] ?? "";
+  assert.ok(!/(^|\s)https:(\s|$)/.test(imgSrc), `img-src tidak boleh mengizinkan semua https: ${imgSrc}`);
+  assert.ok(imgSrc.includes("https://*.googleusercontent.com"));
   assert.ok(csp.includes("frame-ancestors 'none'") && csp.includes("object-src 'none'"));
   const html = await res.text();
   const inline = [...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)].filter(([, attrs, body]) => !/\bsrc=/.test(attrs) && body.trim());
@@ -28,4 +33,16 @@ test("SQL pembersihan sesi hanya menghapus sesi yang sudah kedaluwarsa (diuji pa
   const left = db.sqlite.prepare("SELECT token_hash FROM sessions").all();
   assert.equal(left.length, 1);
   assert.ok(!["old1", "old2"].includes(left[0].token_hash));
+});
+
+test("skrip CDN statis di index.html memakai SRI + crossorigin", async () => {
+  const app = await startHarness();
+  const html = await (await fetch(app.url + "/")).text();
+  const cdn = [...html.matchAll(/<script\b[^>]*src="https:\/\/cdn\.[^"]+"[^>]*>/gi)].map(m => m[0]);
+  assert.ok(cdn.length >= 2);
+  for (const tag of cdn) {
+    assert.match(tag, /integrity="sha384-[A-Za-z0-9+/=]+"/, tag);
+    assert.match(tag, /crossorigin="anonymous"/, tag);
+  }
+  await app.close();
 });

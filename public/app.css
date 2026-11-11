@@ -455,3 +455,5 @@ html[dir="rtl"] pre, html[dir="rtl"] code, html[dir="rtl"] .message-text pre { d
     max-width:100vw;
   }
 }
+
+.topbar-left{display:flex;align-items:center;gap:10px}
