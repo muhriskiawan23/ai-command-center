@@ -93,10 +93,10 @@ test("CNI and interconnect use top-level items and walk numeric cursors, includi
   assert.match(result.summary, /returned=1; additional_page=no/);
 });
 
-test("CNI rejects error envelopes, nested legacy shape, invalid and repeating cursors", async () => {
+test("CNI rejects error envelopes, malformed nested shapes, invalid and repeating cursors", async () => {
   for (const payload of [
     { items: [], success: false }, { items: [], errors: [{ code: 1000 }] },
-    { success: true, result: { items: [] } }, { items: [], next: "untrusted" },
+    { success: true, result: { entries: [] } }, { items: [], next: "untrusted" },
     { items: [], next: 5 }
   ]) {
     const result = await audit(url => url.includes("/cni/") ? response(payload) : success(url));
@@ -158,4 +158,43 @@ test("optional beta on-ramps are visibly excluded without claiming an empty inve
   assert.match(result.summary, /OUT OF SCOPE \(UNVERIFIED\)/);
   assert.match(result.summary, /COMPLETE FOR CONFIGURED SCOPE \(ON-RAMPS UNVERIFIED\)/);
   assert.equal(result.requests.length, 7);
+});
+
+test("CNI and interconnect accept Cloudflare-wrapped items and exhaust cursor pages", async () => {
+  const result = await audit(url => {
+    if (!url.includes("/cni/")) return success(url);
+    const cursor = new URL(url).searchParams.get("cursor");
+    return response(cursor === null
+      ? { success: true, errors: [], result: { items: [{ id: "private-resource" }], next: 7 } }
+      : { success: true, result: { items: [{ id: "private-resource-2" }] } });
+  });
+  assert.equal(result.exitCode, undefined);
+  assert.equal(result.requests.filter(r => r.url.includes("cursor=7")).length, 2);
+  assert.match(result.summary, /returned=2; additional_page=no/);
+  assert.ok(!result.summary.includes("private-resource"));
+});
+
+test("CNI rejects nested unsuccessful envelopes and never reports partial cursor data as complete", async () => {
+  for (const payload of [
+    { success: false, result: { items: [] } },
+    { success: true, errors: [{ code: 999 }], result: { items: [] } },
+    { success: true, result: { items: [], next: "invalid" } },
+    { success: true, result: [] }
+  ]) {
+    const result = await audit(url => url.includes("/cni/") ? response(payload) : success(url));
+    assert.equal(result.exitCode, 1);
+    assert.match(result.summary, /PARTIAL \/ ACTION REQUIRED/);
+  }
+});
+
+test("Directory metadata pages are all traversed before an inventory is marked complete", async () => {
+  const result = await audit(url => {
+    if (!url.includes("/directory/services")) return success(url);
+    const page = Number(new URL(url).searchParams.get("page"));
+    return response({ success: true, result: page < 3 ? [{ type: "http" }] : [],
+      result_info: { page, total_pages: 3, total_count: 2 } });
+  });
+  assert.equal(result.exitCode, undefined);
+  assert.equal(result.requests.filter(r => r.url.includes("/directory/services")).length, 3);
+  assert.match(result.summary, /pages=3/);
 });
