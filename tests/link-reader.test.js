@@ -188,3 +188,58 @@ test("status tautan gagal tetap dikembalikan ketika AI timeout/error", async () 
   assert.match(body.links[0].reason, /403/);
   await app.close();
 });
+
+
+test("Worker fails closed without LINK_FETCHER and never falls back to global fetch", async () => {
+  const { app, post } = await setup(okPage(), { LINK_FETCHER: null });
+  const originalFetch = globalThis.fetch;
+  const outboundAttempts = [];
+  globalThis.fetch = async (input, init) => {
+    const target = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    if (target.startsWith(app.url + "/")) return originalFetch(input, init);
+    outboundAttempts.push(target);
+    throw new Error("unexpected direct outbound fetch");
+  };
+  try {
+    const response = await post("Baca https://public.example/article?secret=must-not-fetch");
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(body.links.length, 1);
+    assert.equal(body.links[0].ok, false);
+    assert.match(body.links[0].reason, /dinonaktifkan|DNS pinning/i);
+    assert.deepEqual(outboundAttempts, []);
+  } finally {
+    globalThis.fetch = originalFetch;
+    await app.close();
+  }
+});
+
+test("Worker fails closed when LINK_FETCHER exists but errors and never falls back to global fetch", async () => {
+  let adapterCalls = 0;
+  const { app, post } = await setup(okPage(), {
+    LINK_FETCHER: async () => {
+      adapterCalls++;
+      throw new Error("simulated private proxy connection failure");
+    }
+  });
+  const originalFetch = globalThis.fetch;
+  const outboundAttempts = [];
+  globalThis.fetch = async (input, init) => {
+    const target = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    if (target.startsWith(app.url + "/")) return originalFetch(input, init);
+    outboundAttempts.push(target);
+    throw new Error("unexpected direct outbound fetch");
+  };
+  try {
+    const response = await post("Baca https://public.example/article");
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(body.links.length, 1);
+    assert.equal(body.links[0].ok, false);
+    assert.equal(adapterCalls, 1);
+    assert.deepEqual(outboundAttempts, []);
+  } finally {
+    globalThis.fetch = originalFetch;
+    await app.close();
+  }
+});

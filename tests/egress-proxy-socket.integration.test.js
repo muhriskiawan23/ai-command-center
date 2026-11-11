@@ -1,0 +1,260 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import http from "node:http";
+import https from "node:https";
+import os from "node:os";
+import path from "node:path";
+import fs from "node:fs";
+import { execFileSync } from "node:child_process";
+import { requestOneHop } from "../tools/egress-proxy/pinned-transport.js";
+
+const fixture = (protocol, port) => ({
+  url: new URL(`${protocol}://fixture.example:${port}/probe`),
+  host: "fixture.example",
+  family: 0,
+  peerIp: "127.0.0.1",
+  port,
+  timeoutMs: 3000,
+  maxBytes: 128
+});
+
+test("HTTP socket integration pins the actual peer IP and preserves the original Host header", async (t) => {
+  let observed;
+  const server = http.createServer((req, res) => {
+    observed = { host: req.headers.host, peer: req.socket.remoteAddress };
+    res.writeHead(200, { "content-type": "text/plain" }).end("ok");
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+
+  const result = await requestOneHop(fixture("http", server.address().port));
+  assert.equal(result.status, 200);
+  assert.equal(result.body.toString(), "ok");
+  assert.equal(observed.host, `fixture.example:${server.address().port}`);
+  assert.equal(observed.peer, "127.0.0.1");
+  assert.equal(result.headers["content-type"], "text/plain");
+});
+
+test("HTTPS integration pins the socket, sends original SNI, and validates the certificate identity", async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bor-egress-tls-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const keyPath = path.join(dir, "key.pem");
+  const certPath = path.join(dir, "cert.pem");
+  execFileSync("openssl", [
+    "req", "-x509", "-newkey", "rsa:2048", "-nodes",
+    "-keyout", keyPath, "-out", certPath, "-days", "2",
+    "-subj", "/CN=fixture.example",
+    "-addext", "subjectAltName=DNS:fixture.example"
+  ], { stdio: "ignore" });
+  const key = fs.readFileSync(keyPath);
+  const cert = fs.readFileSync(certPath);
+  let observed;
+  const server = https.createServer({ key, cert }, (req, res) => {
+    observed = {
+      host: req.headers.host,
+      peer: req.socket.remoteAddress,
+      sni: req.socket.servername
+    };
+    res.writeHead(200, { "content-type": "text/plain" }).end("secure");
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+
+  const result = await requestOneHop({
+    ...fixture("https", server.address().port),
+    tlsCa: cert
+  });
+  assert.equal(result.status, 200);
+  assert.equal(result.body.toString(), "secure");
+  assert.equal(observed.host, `fixture.example:${server.address().port}`);
+  assert.equal(observed.peer, "127.0.0.1");
+  assert.equal(observed.sni, "fixture.example");
+
+  await assert.rejects(
+    requestOneHop({
+      ...fixture("https", server.address().port),
+      host: "wrong.example",
+      url: new URL(`https://wrong.example:${server.address().port}/probe`),
+      tlsCa: cert
+    }),
+    /certificate|identity|hostname|altname/i
+  );
+
+  await assert.rejects(
+    requestOneHop(fixture("https", server.address().port)),
+    /self.signed|unable to verify|certificate/i
+  );
+});
+
+
+test("HTTPS rejects an expired certificate even when its issuing CA is trusted", async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bor-egress-expired-tls-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const caKey = path.join(dir, "ca-key.pem");
+  const caCertPath = path.join(dir, "ca-cert.pem");
+  const leafKey = path.join(dir, "leaf-key.pem");
+  const csrPath = path.join(dir, "leaf.csr");
+  const certPath = path.join(dir, "expired-cert.pem");
+  const dbPath = path.join(dir, "index.txt");
+  const serialPath = path.join(dir, "serial");
+  const newCertsPath = path.join(dir, "newcerts");
+  const configPath = path.join(dir, "openssl.cnf");
+  fs.mkdirSync(newCertsPath);
+  fs.writeFileSync(dbPath, "");
+  fs.writeFileSync(serialPath, "1000\n");
+  const config = `[ ca ]
+default_ca = CA_default
+[ CA_default ]
+database = ${dbPath}
+serial = ${serialPath}
+new_certs_dir = ${newCertsPath}
+certificate = ${caCertPath}
+private_key = ${caKey}
+default_md = sha256
+policy = policy_any
+x509_extensions = leaf_extensions
+[ policy_any ]
+commonName = supplied
+[ leaf_extensions ]
+basicConstraints = critical,CA:FALSE
+subjectAltName = DNS:fixture.example
+`;
+  fs.writeFileSync(configPath, config);
+  execFileSync("openssl", [
+    "req", "-x509", "-newkey", "rsa:2048", "-nodes",
+    "-keyout", caKey, "-out", caCertPath, "-days", "2",
+    "-subj", "/CN=egress-test-ca",
+    "-addext", "basicConstraints=critical,CA:TRUE",
+    "-addext", "keyUsage=critical,keyCertSign,cRLSign"
+  ], { stdio: "ignore" });
+  execFileSync("openssl", [
+    "req", "-new", "-newkey", "rsa:2048", "-nodes",
+    "-keyout", leafKey, "-out", csrPath,
+    "-subj", "/CN=fixture.example"
+  ], { stdio: "ignore" });
+  execFileSync("openssl", [
+    "ca", "-batch", "-config", configPath,
+    "-in", csrPath, "-out", certPath,
+    "-startdate", "20200101000000Z",
+    "-enddate", "20200102000000Z"
+  ], { stdio: "ignore" });
+  const server = https.createServer({
+    key: fs.readFileSync(leafKey),
+    cert: fs.readFileSync(certPath)
+  }, (_req, res) => res.end("must-not-be-reached"));
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  await assert.rejects(
+    requestOneHop({
+      ...fixture("https", server.address().port),
+      tlsCa: fs.readFileSync(caCertPath)
+    }),
+    /expired|CERT_HAS_EXPIRED/i
+  );
+});
+
+test("HTTPS IP-literal target omits SNI but validates the certificate IP subject alternative name", async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bor-egress-ip-tls-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const keyPath = path.join(dir, "key.pem");
+  const certPath = path.join(dir, "cert.pem");
+  execFileSync("openssl", [
+    "req", "-x509", "-newkey", "rsa:2048", "-nodes",
+    "-keyout", keyPath, "-out", certPath, "-days", "2",
+    "-subj", "/CN=127.0.0.1",
+    "-addext", "subjectAltName=IP:127.0.0.1"
+  ], { stdio: "ignore" });
+  const key = fs.readFileSync(keyPath);
+  const cert = fs.readFileSync(certPath);
+  let observedSni = "not-connected";
+  const server = https.createServer({ key, cert }, (req, res) => {
+    observedSni = req.socket.servername;
+    res.writeHead(200, { "content-type": "text/plain" }).end("ip-secure");
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  const port = server.address().port;
+  const result = await requestOneHop({
+    url: new URL(`https://127.0.0.1:${port}/probe`),
+    host: "127.0.0.1",
+    family: 4,
+    peerIp: "127.0.0.1",
+    port,
+    timeoutMs: 3000,
+    maxBytes: 128,
+    tlsCa: cert
+  });
+  assert.equal(result.status, 200);
+  assert.equal(result.body.toString(), "ip-secure");
+  assert.ok(!observedSni, "IP-literal TLS connection must not send SNI");
+});
+
+test("IPv6 loopback socket verifies the actual peer when IPv6 is available", async (t) => {
+  const server = http.createServer((_req, res) => res.end("v6"));
+  try {
+    await new Promise((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "::1", resolve);
+    });
+  } catch {
+    t.skip("IPv6 loopback is unavailable in this runner");
+    return;
+  }
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  const port = server.address().port;
+  const result = await requestOneHop({
+    url: new URL(`http://[::1]:${port}/probe`),
+    host: "::1",
+    family: 6,
+    peerIp: "::1",
+    port,
+    timeoutMs: 1000,
+    maxBytes: 128
+  });
+  assert.equal(result.status, 200);
+  assert.equal(result.body.toString(), "v6");
+});
+
+test("runtime response-size cap aborts an oversized socket response", async (t) => {
+  const server = http.createServer((_req, res) => {
+    res.writeHead(200, { "content-type": "text/plain" });
+    res.end("x".repeat(4096));
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  await assert.rejects(
+    requestOneHop({ ...fixture("http", server.address().port), maxBytes: 32 }),
+    /response_too_large/
+  );
+});
+
+test("total request timeout aborts a slow response", async (t) => {
+  const server = http.createServer((_req, res) => {
+    res.writeHead(200, { "content-type": "text/plain" });
+    setTimeout(() => res.end("late"), 500);
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  await assert.rejects(
+    requestOneHop({ ...fixture("http", server.address().port), timeoutMs: 50 }),
+    /request_timeout/
+  );
+});
+
+
+test("HTTP protocol upgrades are rejected immediately and the upgraded socket is closed", async (t) => {
+  let serverSocketClosed = false;
+  const server = http.createServer((_req, res) => {
+    res.socket.on("close", () => { serverSocketClosed = true; });
+    res.writeHead(101, { Connection: "Upgrade", Upgrade: "websocket" });
+    res.flushHeaders();
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  await assert.rejects(
+    requestOneHop(fixture("http", server.address().port)),
+    /protocol_upgrade_rejected/
+  );
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(serverSocketClosed, true);
+});
