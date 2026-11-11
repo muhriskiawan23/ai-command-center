@@ -6,6 +6,7 @@ import { fetchPinned } from "../tools/egress-proxy/pinned-transport.js";
 const REBINDING_HOST = "7f000001.01010101.rbndr.us";
 
 test("real authoritative DNS rebinding answers are pinned or rejected before transport", {
+  skip: process.env.BOR_AI_LIVE_DNS_REBINDING !== "1",
   timeout: 30_000
 }, async () => {
   let publicAccepted = 0;
