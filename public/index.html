@@ -14,8 +14,8 @@
 </head>
 <body data-state="initializing">
 <script src="https://accounts.google.com/gsi/client" async defer></script>
-<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/legacy/build/pdf.min.js" defer></script>
-<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/legacy/build/pdf.min.js" integrity="sha384-OemFRmhjDZwhIKuUld0HJozkF2YErsgDaCL41trxGQZt4/WgnopJQqQl2DvDZ07Z" crossorigin="anonymous" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js" integrity="sha384-GJqSu7vueQ9qN0E9yLPb3Wtpd7OrgK8KmYzC8T1IysG1bcvxvIO4qtYR/D3A991F" crossorigin="anonymous" defer></script>
 
 
 <!-- 1. Boot: ditampilkan sampai identitas (akun / guest / belum masuk) diketahui. Tidak ada UI chat atau riwayat di sini. -->
@@ -78,7 +78,7 @@
 </div>
 </aside>
 <main class="workspace" id="workspace">
-<header class="topbar"><div style="display:flex;align-items:center;gap:10px"><button class="mobile-menu" id="menuBtn" type="button" aria-label="Buka menu" aria-controls="sidebar" aria-expanded="false">☰</button><div class="model-label">BOR AI <small>· Multi-agent</small></div></div><div class="topbar-actions"><button class="export-chat" id="exportConversation" type="button" hidden disabled>⇩ Ekspor chat</button><button class="export-chat print-chat" id="printConversation" type="button" hidden disabled>▤ Cetak PDF</button><div class="health"><span class="dot" id="healthDot"></span><span id="healthText">Memeriksa layanan…</span></div></div></header>
+<header class="topbar"><div class="topbar-left"><button class="mobile-menu" id="menuBtn" type="button" aria-label="Buka menu" aria-controls="sidebar" aria-expanded="false">☰</button><div class="model-label">BOR AI <small>· Multi-agent</small></div></div><div class="topbar-actions"><button class="export-chat" id="exportConversation" type="button" hidden disabled>⇩ Ekspor chat</button><button class="export-chat print-chat" id="printConversation" type="button" hidden disabled>▤ Cetak PDF</button><div class="health"><span class="dot" id="healthDot"></span><span id="healthText">Memeriksa layanan…</span></div></div></header>
 <section class="conversation" id="conversation" aria-live="polite">
 <div class="welcome" id="welcome"><p class="welcome-eyebrow">YOUR AI WORKSPACE</p><img class="welcome-logo-img" src="/logo-mark.svg" alt="" width="56" height="56"><h1>Berpikir lebih jernih. Bekerja lebih terarah.</h1><p>Ruang kerja AI terpadu untuk riset, analisis, penulisan, dan pengembangan.</p><div class="suggestions"><button class="suggestion" type="button" data-prompt="Bantu saya menyusun rencana kerja yang realistis berdasarkan tujuan dan sumber daya yang tersedia."><strong>🧭 Perencanaan strategis</strong><span>Susun prioritas dan langkah eksekusi</span></button><button class="suggestion" type="button" data-prompt="Analisis masalah ini secara kritis, pisahkan fakta dan asumsi, lalu berikan rekomendasi."><strong>⌕ Analisis mendalam</strong><span>Evaluasi opsi, risiko, dan trade-off</span></button><button class="suggestion" type="button" data-prompt="Bantu saya mengembangkan ide konten yang relevan, mudah dieksekusi, dan terukur."><strong>✦ Pengembangan ide</strong><span>Ubah gagasan menjadi konsep konkret</span></button><button class="suggestion" type="button" data-prompt="Tinjau kode atau arsitektur aplikasi ini, identifikasi potensi bug, lalu susun rekomendasi perbaikan."><strong>⌘ Engineering & coding</strong><span>Review, debugging, dan solusi teknis</span></button></div></div>
 <div class="messages" id="messages" hidden></div><section class="workflow" id="workflow" hidden><details><summary>Lihat proses multi-agent</summary><div id="workflowItems"></div></details></section>
