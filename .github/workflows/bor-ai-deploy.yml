@@ -1,9 +1,6 @@
 name: BOR AI production deploy
 
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
     inputs:
       run_chat_smoke:
@@ -32,7 +29,7 @@ concurrency:
 jobs:
   deploy:
     name: Provision, migrate, and deploy BOR AI
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     environment: production
     steps:
@@ -46,12 +43,12 @@ jobs:
           fi
 
       - name: Check out the exact triggering commit
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ github.sha }}
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: 22
 

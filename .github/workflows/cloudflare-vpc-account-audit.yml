@@ -5,6 +5,7 @@ on:
     workflows: ["BOR AI production deploy"]
     types: [completed]
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -15,8 +16,8 @@ concurrency:
 
 jobs:
   read-only-account-audit:
-    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' }}
-    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main') }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     env:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -94,6 +95,25 @@ jobs:
                   "Tunnel inventory",
                   "AUTHORIZED",
                   `visible=${Number.isFinite(info.total_count) ? info.total_count : items.length}; returned=${items.length}; types=${Object.entries(counts).map(([key, value]) => key + ":" + value).join(",") || "none"}. This endpoint inventories tunnel resources; it does not by itself prove absence of every separate WAN on-ramp or interconnect resource.`
+                );
+              }
+            );
+
+            await readCollection(
+              "Workers VPC Connectivity Directory Services",
+              "/connectivity/directory/services?per_page=1000&page=1",
+              (items, info) => {
+                const types = {};
+                for (const item of items) {
+                  const type = String(item?.type || "unknown");
+                  types[type] = (types[type] || 0) + 1;
+                }
+                const pages = Number.isFinite(info.total_pages) ? info.total_pages : null;
+                const status = pages === 1 ? "AUTHORIZED" : pages > 1 ? "PAGINATION INCOMPLETE" : "PAGINATION UNKNOWN";
+                record(
+                  "Workers VPC Connectivity Directory Services",
+                  status,
+                  `returned=${items.length}; reported_total=${Number.isFinite(info.total_count) ? info.total_count : "unknown"}; pages=${pages ?? "unknown"}; types=${Object.entries(types).map(([key, value]) => key + ":" + value).join(",") || "none"}; service names, hosts, and tunnel identifiers suppressed.`
                 );
               }
             );
