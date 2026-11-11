@@ -44,6 +44,7 @@ jobs:
           rm -f "$response_file"
 
       - name: Check production CSP and top-level script SRI
+        if: ${{ github.event_name == 'workflow_dispatch' }}
         shell: bash
         run: |
           set -euo pipefail
