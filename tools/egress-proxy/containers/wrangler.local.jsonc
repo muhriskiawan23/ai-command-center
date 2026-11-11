@@ -9,7 +9,8 @@
       "scheduling_policy": "durable_object",
       "images": {
         "base": {
-          "dockerfile": "./Dockerfile.runtime"
+          "dockerfile": "./Dockerfile.runtime",
+          "build_context": "../../.."
         }
       }
     }
