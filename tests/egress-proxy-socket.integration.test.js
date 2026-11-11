@@ -35,6 +35,28 @@ test("HTTP socket integration pins the actual peer IP and preserves the original
   assert.equal(result.headers["content-type"], "text/plain");
 });
 
+test("HTTP rejects a socket peer that differs from the vetted numeric address", async (t) => {
+  let received = 0;
+  const server = http.createServer((_req, res) => {
+    received++;
+    res.end("must-not-be-accepted");
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+
+  // The low-level primitive is intentionally called with a mismatched peer.
+  // The public fetchPinned entry point separately vets all DNS addresses.
+  await assert.rejects(requestOneHop({
+    ...fixture("http", server.address().port),
+    peerIp: "127.0.0.2",
+    // Connect to the controlled loopback fixture while requiring the socket
+    // verification to compare against the different selected peer IP.
+    family: 4,
+    host: "127.0.0.1"
+  }), /peer_ip_mismatch/);
+  assert.equal(received, 0);
+});
+
 test("HTTPS integration pins the socket, sends original SNI, and validates the certificate identity", async (t) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bor-egress-tls-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
