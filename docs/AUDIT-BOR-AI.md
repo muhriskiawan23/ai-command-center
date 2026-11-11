@@ -40,7 +40,7 @@ Cloudflare account audit run `42950898395` selesai menjalankan script tetapi cak
 - Virtual networks: HTTP 403.
 - Gateway policies: HTTP 403.
 
-HTTP 403 adalah permission denied, bukan inventory kosong. Workflow ini juga belum meng-query Workers VPC Connectivity Directory Services. Jangan menyatakan audit egress account-wide sudah selesai.
+HTTP 403 adalah permission denied, bukan inventory kosong. Run `42950898395` pada `main` belum meng-query Workers VPC Connectivity Directory Services. PR #174 Draft menambahkan GET read-only ke `/connectivity/directory/services` dengan status pagination fail-closed; pemeriksaan tersebut baru aktif setelah PR disetujui/merged dan audit dijalankan ulang. Scope yang diperlukan adalah **Connectivity Directory Read**. Jangan menyatakan audit egress account-wide sudah selesai sampai endpoint ini dan semua endpoint 403 berhasil diaudit.
 
 ### Status egress DNS-pinning
 
