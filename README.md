@@ -25,7 +25,7 @@ PowerPoint (.pptx) files up to 5 MB are parsed locally for slide text (maximum 8
 - An Email Draft Generator collects recipient, subject, purpose, key points, tone, and language, then prepares a structured prompt for Writer mode. It does not send email or connect to an email account; users review and send the result manually.
 - Answers and complete conversations can be printed or saved as PDF through the browser print dialog. The print view is generated locally from already-loaded chat content; no PDF service, external API, or additional server upload is used. Choose “Save as PDF” in the browser or system print destination.
 - An on-demand, accessible About BOR AI dialog describing the product, current capabilities, privacy controls, and official repository.
-- Phase 2 research foundation: optional Brave web/news search (server-side secret required), first-party curated BOR AI knowledge retrieval, source provenance and citation validation, stale-result exclusion, and explicit disabled-state messaging. See `docs/PHASE-2-SEARCH-NEWS-CURATED-KNOWLEDGE.md`; live search is not active until `BRAVE_SEARCH_API_KEY` is configured.
+- Phase 2 research foundation: optional Tavily or Brave web/news search (server-side secret required), first-party curated BOR AI knowledge retrieval, source provenance and citation validation, stale-result exclusion, and explicit disabled-state messaging. Provider selection uses `SEARCH_PROVIDER`; absent an override, Tavily is preferred when `TAVILY_API_KEY` exists, otherwise Brave is selected when configured. A stored secret is not proof of a successful live provider request. See `docs/PHASE-2-SEARCH-NEWS-CURATED-KNOWLEDGE.md`.
 - An embeddable BOR AI chat widget and public single-turn chat API with per-site API keys, exact origin allow-lists, per-key daily quotas, and immediate key revocation. API keys are hashed at rest and shown only once at creation. Requires additive migration `0009_public_api_keys.sql`; see `docs/PUBLIC-API.md`.
 - Optional Telegram bot webhook for private text chats, with direct `/start`, `/help`, `/about`, `/status`, and `/agents` commands. It reuses Workers AI, existing rate/daily limits, requires `TELEGRAM_BOT_TOKEN` and `TELEGRAM_WEBHOOK_SECRET` Worker secrets, and does not persist Telegram chat history. See `docs/TELEGRAM-BOT.md`.
 
@@ -84,7 +84,7 @@ The GitHub Actions preview workflow runs this dry-run build on pushes to the har
 
 ## Deployment
 
-Production deployment runs automatically on pushes to `main` through the **BOR AI production deploy** workflow. Manual `workflow_dispatch` is also available; production D1 migrations remain opt-in and are skipped by default.
+Production deployment is **manual-dispatch-only** through **Actions → BOR AI production deploy** on `main`; pushes and pull requests do not deploy production. Production D1 migrations remain opt-in and are skipped by default. The latest verified production deployment is commit `35504be7148014f778834c26faa224563e993d17` (11 November 2026); see `docs/AUDIT-BOR-AI.md` for exact workflow evidence and remaining release checks.
 
 Before running the workflow, add these **repository Actions secrets**:
 
@@ -108,7 +108,7 @@ Do not treat a Wrangler dry run or health check as proof that live AI inference 
 
 ## Current release boundary
 
-The repository is prepared for a controlled deployment after the checks above. No production deployment or pull-request merge is performed automatically by CI.
+BOR AI is deployed to production, but deployment success is not equivalent to a complete release sign-off. Production deployment is manual-only; live AI/search, real-browser sign-in and account isolation, spend limits, and remaining security gates must be verified separately. CI does not merge pull requests or deploy production automatically.
 
 ## Conversation memory and failure behavior
 
