@@ -12,7 +12,7 @@ if (!Number.isInteger(port) || port < 1 || port > 65535) {
 const fetchHandler = createEgressProxyHandler({ token });
 const server = createServer((req, res) => {
   res.setHeader("cache-control", "no-store");
-  if (req.method === "GET" && req.url === "/health") {
+  if (req.method === "GET" && req.url?.split("?", 1)[0] === "/health") {
     res.writeHead(200, { "content-type": "text/plain; charset=utf-8" }).end("ok");
     return;
   }
