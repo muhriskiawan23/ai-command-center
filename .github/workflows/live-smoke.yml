@@ -23,7 +23,7 @@ concurrency:
 jobs:
   smoke-test:
     name: Verify live Worker endpoints
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 3
     steps:
       - name: Check live health endpoint
