@@ -10,7 +10,7 @@ test("real authoritative DNS rebinding answers are pinned or rejected before tra
 }, async () => {
   let publicAccepted = 0;
   let privateRejected = 0;
-  const connectedPeers = new Set();
+  const selectedPeers = new Set();
 
   for (let attempt = 0; attempt < 32 && (!publicAccepted || !privateRejected); attempt++) {
     let transportCalls = 0;
@@ -20,7 +20,7 @@ test("real authoritative DNS rebinding answers are pinned or rejected before tra
         timeoutMs: 5_000,
         request: async ({ peerIp }) => {
           transportCalls++;
-          connectedPeers.add(peerIp);
+          selectedPeers.add(peerIp);
           return { status: 204, headers: {}, body: Buffer.alloc(0) };
         }
       });
@@ -40,5 +40,5 @@ test("real authoritative DNS rebinding answers are pinned or rejected before tra
 
   assert.ok(publicAccepted > 0, "the external rebinding service never returned the public test address");
   assert.ok(privateRejected > 0, "the external rebinding service never returned the private test address");
-  assert.deepEqual([...connectedPeers], ["1.1.1.1"]);
+  assert.deepEqual([...selectedPeers], ["1.1.1.1"]);
 });
