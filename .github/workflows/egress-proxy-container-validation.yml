@@ -1,6 +1,13 @@
 name: BOR AI egress transport container validation
 
 on:
+  push:
+    branches:
+      - test/156-egress-container-runtime
+    paths:
+      - "tools/egress-proxy/**"
+      - "tests/egress-proxy*.test.js"
+      - ".github/workflows/egress-proxy-container-validation.yml"
   pull_request:
     branches:
       - security/156-node-egress-prototype-review
@@ -13,7 +20,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: egress-container-validation-${{ github.event.pull_request.number }}
+  group: egress-container-validation-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
