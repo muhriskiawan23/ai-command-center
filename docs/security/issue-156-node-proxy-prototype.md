@@ -41,3 +41,20 @@ The opt-in `rbndr.us` check performs DNS queries only and is disabled for pull-r
 - A controlled production smoke must independently record the actual connected peer IP and prove original-host TLS verification. It requires explicit production approval and must not be inferred from local or preview tests.
 
 No proxy service, Cloudflare resource, secret, VPC binding, Tunnel, Gateway policy, production setting, or production traffic was created or changed by this prototype.
+
+## Release and follow-up evidence — 11 November 2026
+
+- PR #177 merged as `041c426bdd868708f3f20e5bd47b09734d087498`; superseded PR #170 is closed.
+- Production deploy [#135](https://github.com/muhriskiawan23/ai-command-center/actions/runs/42983042701) passed on that exact commit, including live chat and Tavily web/news checks. D1 migrations were explicitly disabled.
+- [Live smoke #79](https://github.com/muhriskiawan23/ai-command-center/actions/runs/42983320561) passed health, agents, malformed/empty input, CSP, and entry-script SRI checks.
+- [Manual container/DNS run #44](https://github.com/muhriskiawan23/ai-command-center/actions/runs/42983189816) passed isolated Docker and Wrangler local validation. Its external DNS job **failed** with `dns_timeout`; it is not accepted external rebinding evidence.
+- [Account audit #13](https://github.com/muhriskiawan23/ai-command-center/actions/runs/42983236790) remains **PARTIAL / ACTION REQUIRED**. Directory Services, CNI, interconnects, virtual networks, and Gateway policies returned 403. On-ramps returned 404. Authorized Tunnel/Mesh inventories were empty, which does not establish absence of other paths.
+
+The live DNS test now uses a 25-second evidence budget, private cancellable resolvers, and bounded retries for DNS failures. It reports public/private observations and DNS failure counts. Both public and private answers remain mandatory: an unavailable service still fails, and no resolver or timeout error counts as successful evidence. These test-only changes do not relax transport policy.
+
+Next required evidence:
+1. Obtain authorized read-only Cloudflare inventories for the denied APIs and resolve the on-ramp endpoint/entitlement uncertainty. Never interpret denied access as no resources.
+2. Complete an independent privacy/retention review and a concrete hosted architecture/cost/access-control decision.
+3. Validate the selected hosted runtime using synthetic fixtures, including observed numeric peer IP and original-host TLS identity, before enabling the URL reader.
+
+Production deployment of the application does not deploy or approve the standalone proxy. Issue #156 remains open and URL reading remains fail-closed.

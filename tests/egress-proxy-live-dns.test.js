@@ -9,16 +9,19 @@ test("real authoritative DNS rebinding answers are pinned or rejected before tra
   skip: process.env.BOR_AI_LIVE_DNS_REBINDING !== "1",
   timeout: 30_000
 }, async () => {
+  const deadline = Date.now() + 25_000;
+  const transientFailures = {};
   let publicAccepted = 0;
   let privateRejected = 0;
   const selectedPeers = new Set();
 
-  for (let attempt = 0; attempt < 32 && (!publicAccepted || !privateRejected); attempt++) {
+  for (let attempt = 0; attempt < 32 && Date.now() < deadline - 250 && (!publicAccepted || !privateRejected); attempt++) {
     let transportCalls = 0;
+    const resolver = new dns.Resolver({ timeout: 1_000, tries: 1 });
     try {
       const result = await fetchPinned("http://" + REBINDING_HOST + "/", {
-        resolver: dns,
-        timeoutMs: 5_000,
+        resolver,
+        timeoutMs: Math.min(5_000, deadline - Date.now()),
         request: async ({ peerIp }) => {
           transportCalls++;
           selectedPeers.add(peerIp);
@@ -29,9 +32,16 @@ test("real authoritative DNS rebinding answers are pinned or rejected before tra
       assert.equal(result.peerIp, "1.1.1.1");
       assert.equal(transportCalls, 1);
     } catch (error) {
-      if (error?.message !== "dns_unsafe_or_empty") throw error;
-      privateRejected++;
-      assert.equal(transportCalls, 0, "unsafe DNS answers must be rejected before transport starts");
+      if (["dns_timeout", "dns_cname_error", "dns_a_error", "dns_aaaa_error"].includes(error?.message)) {
+        assert.equal(transportCalls, 0, "DNS failures must never reach transport");
+        transientFailures[error.message] = (transientFailures[error.message] || 0) + 1;
+      } else {
+        if (error?.message !== "dns_unsafe_or_empty") throw error;
+        privateRejected++;
+        assert.equal(transportCalls, 0, "unsafe DNS answers must be rejected before transport starts");
+      }
+    } finally {
+      resolver.cancel();
     }
 
     if (!publicAccepted || !privateRejected) {
@@ -39,7 +49,9 @@ test("real authoritative DNS rebinding answers are pinned or rejected before tra
     }
   }
 
-  assert.ok(publicAccepted > 0, "the external rebinding service never returned the public test address");
-  assert.ok(privateRejected > 0, "the external rebinding service never returned the private test address");
+  const evidence = JSON.stringify({ publicAccepted, privateRejected, transientFailures });
+  console.log("External DNS-only evidence:", evidence);
+  assert.ok(publicAccepted > 0, "missing public DNS evidence: " + evidence);
+  assert.ok(privateRejected > 0, "missing private DNS evidence: " + evidence);
   assert.deepEqual([...selectedPeers], ["1.1.1.1"]);
 });
