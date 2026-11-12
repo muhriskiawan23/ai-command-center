@@ -19,3 +19,9 @@ test('application source does not log bare caught errors as objects', () => {
     assert.doesNotMatch(text, /console\.(?:error|warn)\("[^"\n]*",\s*(?:error|err|lookupError|sendError)\s*\)/, file);
   }
 });
+
+test('a changing error-name getter cannot bypass the fixed-name allowlist', () => {
+  let reads = 0;
+  assert.deepEqual(safeError({ get name() { return ++reads === 1 ? 'Error' : 'private-secret'; } }), { name: 'Error' });
+  assert.equal(reads, 1);
+});

@@ -16,7 +16,7 @@ Production URL_READER_ENABLED remains false. This is not a legal compliance opin
 
 ## Current local evidence
 
-Node regression suite: 482 passed, one opt-in live DNS fixture skipped. Four synthetic schema/deletion tests passed. Probe Worker Wrangler dry-run passed. These are local/source facts; hosted results must be linked separately after execution.
+Node regression suite: 483 passed, one opt-in live DNS fixture skipped. Four synthetic schema/deletion tests passed. Probe Worker Wrangler dry-run passed. These are local/source facts; hosted results must be linked separately after execution.
 
 The opt-in external DNS fixture is not silently counted as passed. Existing isolated socket/DNS tests cover mixed answers, CNAME loops, rebinding behavior, TLS identity failures, byte/time limits and cancellation. They are not relabeled as hosted DNS-fixture evidence.
 
