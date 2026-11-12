@@ -7,6 +7,8 @@ on:
       - .github/workflows/private-egress-install-and-prove.yml
       - tools/egress-proxy/runtime/install-and-prove.mjs
       - tools/egress-proxy/runtime/safe-diagnostics.mjs
+      - tools/egress-proxy/runtime/probe-client.mjs
+      - tools/egress-proxy/runtime/probe-worker.js
 permissions:
   contents: read
 concurrency:

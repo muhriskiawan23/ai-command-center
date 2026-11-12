@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import { spawn } from "node:child_process";
 import { summarizeCliFailure } from "./safe-diagnostics.mjs";
+import { waitForProbe, safeProbeError } from "./probe-client.mjs";
 
 const cfg = JSON.parse(fs.readFileSync("wrangler.jsonc", "utf8"));
 const token = process.env.EGRESS_PROXY_TOKEN;
@@ -96,17 +97,22 @@ try {
   probeMayExist = true;
   await cli(["deploy", "--config", probeConfig]);
   await cli(["secret", "put", "EGRESS_PROXY_TOKEN", "--config", probeConfig], token + "\n");
-  stage = "probe_private_path";
+  stage = "probe_endpoint_readiness";
+  try {
+    const tunnel = await api("cfd_tunnel/59f9b74c-4bf7-4f9f-9703-4eb73f6985a9");
+    console.log("tunnel_status=" + (["healthy", "degraded", "down", "inactive"].includes(tunnel.status) ? tunnel.status : "unknown"));
+  } catch { console.log("tunnel_metadata=unavailable"); }
   const subdomain = await api("workers/subdomain");
   requireCheck(/^[a-z0-9-]+$/.test(subdomain.subdomain || ""), "worker_subdomain_unverified");
   const endpoint = `https://${probeName}.${subdomain.subdomain}.workers.dev/run`;
   // A public caller cannot trigger the probe. It never accepts caller-provided targets.
-  const denied = await fetch(endpoint, { method: "POST", signal: AbortSignal.timeout(20000), redirect: "error" });
-  requireCheck(denied.status === 401, "probe_public_access_not_denied");
-  await denied.body?.cancel();
+  await waitForProbe(endpoint, { report: console.log });
+  stage = "probe_private_path";
   const response = await fetch(endpoint, { method: "POST", headers: { authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(90000), redirect: "error" });
+  const proof = await response.json().catch(() => null);
+  console.log("probe_runtime_http_status=" + response.status);
+  if (!response.ok) console.log("probe_runtime_diagnostic=" + JSON.stringify(safeProbeError({ message: proof?.diagnostic?.reason, proxyStatus: proof?.diagnostic?.proxyStatus })));
   requireCheck(response.ok, "private_runtime_probe_failed");
-  const proof = await response.json();
   requireCheck(proof.ok === true && proof.checks?.authenticationDenied === true && proof.checks?.unsafeDestinationsDenied === true && proof.checks?.productionAdapterPeerAndTlsVerified === true, "runtime_evidence_incomplete");
   console.log("worker_vpc_tunnel_proxy_runtime_proof=PASS; auth_denial=PASS; unsafe_ip_denial=PASS; peer_tls=PASS");
   console.log("url_reader=OFF; remaining_hosted_security_and_independent_privacy_gates=OPEN");
