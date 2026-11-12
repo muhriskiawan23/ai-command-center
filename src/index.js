@@ -1,4 +1,5 @@
 import { extractUrls, readLinks, buildPageContext, summarizeLinks } from "./links.js";
+import { createVerifiedLinkFetcher } from "./verified-egress.js";
 import { PDF_MAX_BYTES, PDF_CONTEXT_MAX_CHARS, safePdfName, normalizePdfConversion, buildPdfContext, validatePdfPageCitations, SPREADSHEET_CONTEXT_MAX_CHARS, safeSpreadsheetName, buildSpreadsheetContext, PRESENTATION_CONTEXT_MAX_CHARS, safePresentationName, buildPresentationContext, WORD_CONTEXT_MAX_CHARS, buildWordDocumentContext } from "./documents.js";
 import { validateCitationReferences } from "./citations.js";
 import { detectResearchMode, isSearchProviderConfigured, searchExternal, buildResearchContext, retrieveCuratedKnowledge } from "./research.js";
@@ -1485,7 +1486,7 @@ export default {
       const presentationContext = presentation ? buildPresentationContext(presentation) : "";
       const wordDocumentContext = wordDocument ? buildWordDocumentContext(wordDocument) : "";
       if (found.urls.length) {
-        const results = await readLinks(found.urls, { fetcher: env.LINK_FETCHER || null, ownHost: url.hostname }); // LINK_FETCHER: test hook, unset in production
+        const results = await readLinks(found.urls, { fetcher: createVerifiedLinkFetcher(env) || env.LINK_FETCHER || null, ownHost: url.hostname }); // LINK_FETCHER: test hook, unset in production
         pages = buildPageContext(results);
         links = summarizeLinks(results);
         if (found.ignored) links.push({ ok: false, host: "", reason: `hanya ${found.urls.length} link pertama yang dibaca; ${found.ignored} lainnya diabaikan` });
@@ -1502,7 +1503,7 @@ export default {
         if (pageCandidates.length) {
           try {
             pageResults = await readLinks(pageCandidates.map((item) => item.url), {
-              fetcher: env.LINK_FETCHER || null,
+              fetcher: createVerifiedLinkFetcher(env) || env.LINK_FETCHER || null,
               ownHost: url.hostname
             });
           } catch {
