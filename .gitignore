@@ -16,3 +16,8 @@ Thumbs.db
 # Playwright
 test-results/
 playwright-report/
+
+# Local egress credentials and generated probe configs
+.egress-token
+.bor-ai-keys/
+tools/egress-proxy/runtime/wrangler*.generated.json
