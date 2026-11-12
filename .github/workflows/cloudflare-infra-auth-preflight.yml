@@ -1,0 +1,44 @@
+name: BOR AI Cloudflare infrastructure authorization preflight
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Verify dedicated infrastructure token without disclosing it
+        env:
+          CLOUDFLARE_INFRA_API_TOKEN: ${{ secrets.CLOUDFLARE_INFRA_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${CLOUDFLARE_INFRA_API_TOKEN:-}" || -z "${CLOUDFLARE_ACCOUNT_ID:-}" ]]; then
+            echo "::error::Missing CLOUDFLARE_INFRA_API_TOKEN or CLOUDFLARE_ACCOUNT_ID"
+            exit 1
+          fi
+          echo "::add-mask::$CLOUDFLARE_INFRA_API_TOKEN"
+          verify="$(curl --silent --show-error --max-time 20 --fail-with-body \
+            -H "Authorization: Bearer $CLOUDFLARE_INFRA_API_TOKEN" \
+            https://api.cloudflare.com/client/v4/user/tokens/verify)"
+          printf '%s' "$verify" | node -e '
+            let s="";process.stdin.on("data",c=>s+=c).on("end",()=>{
+              const j=JSON.parse(s);
+              if(j.success!==true || j.result?.status!=="active") process.exit(1);
+              console.log("Cloudflare infrastructure token: active");
+            })'
+          # Read-only capability probe; no token, resource identifiers or response bodies logged.
+          code="$(curl --silent --show-error --max-time 20 -o /dev/null -w '%{http_code}' \
+            -H "Authorization: Bearer $CLOUDFLARE_INFRA_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/cfd_tunnel?per_page=1")"
+          echo "Cloudflare Tunnel inventory HTTP status: $code"
+          if [[ "$code" != "200" ]]; then
+            echo "::error::Tunnel inventory read not authorized or unavailable (HTTP $code). No infrastructure was modified."
+            exit 1
+          fi
+          echo "Read-only Cloudflare authorization preflight passed. No tunnel, VPC service, binding or deployment was created."
