@@ -11,3 +11,7 @@ test('deployment diagnostics return only fixed categories and numeric API codes'
 test('unknown diagnostics never echo arbitrary strings', () => {
   assert.deepEqual(summarizeCliFailure('super-secret-and-a-private-host'),{codes:[],categories:['unknown']});
 });
+
+test('ANSI-styled and JSON API codes are parsed without exposing error text', () => {
+  assert.deepEqual(summarizeCliFailure('[code: \x1b[1m10000\x1b[0m] "code":10021 private.invalid'), {codes:[10000,10021],categories:['unknown']});
+});
