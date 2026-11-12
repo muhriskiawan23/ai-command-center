@@ -1,3 +1,19 @@
+async function startupErrorCode(response) {
+  const reader = response.body?.getReader();
+  if (!reader) return null;
+  let text = "", bytes = 0;
+  const decoder = new TextDecoder();
+  try {
+    while (bytes < 8192) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      text += decoder.decode(value.subarray(0, 8192 - bytes)); bytes += value.length;
+    }
+  } finally { await reader.cancel().catch(() => {}); reader.releaseLock(); }
+  const match = /\bError(?: code)?\s*:?\s*(110[12])\b/i.exec(text.replace(/<[^>]*>/g, " "));
+  return match ? Number(match[1]) : null;
+}
+
 export async function waitForProbe(endpoint, {
   fetcher = fetch, wait = ms => new Promise(resolve => setTimeout(resolve, ms)),
   attempts = 10, report = () => {}
@@ -11,10 +27,15 @@ export async function waitForProbe(endpoint, {
     }
     if (response) {
       const status = response.status;
-      await response.body?.cancel();
+      const code = status === 500 ? await startupErrorCode(response) : null;
+      if (status !== 500) await response.body?.cancel();
       report("probe_readiness_http_status=" + status);
+      if (code) {
+        report("probe_readiness_cf_error_code=" + code);
+        throw Error("probe_worker_startup_exception");
+      }
       if (status === 401) return;
-      if (![404, 502, 503, 530].includes(status)) throw Error("probe_endpoint_unexpected_status");
+      if (![404, 500, 502, 503, 530].includes(status)) throw Error("probe_endpoint_unexpected_status");
     }
     if (attempt + 1 < attempts) await wait(3000);
   }
