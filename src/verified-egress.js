@@ -9,6 +9,8 @@ function decodeBase64(value) {
 }
 
 export function createVerifiedLinkFetcher(env) {
+  // Provisioning credentials must never implicitly activate production URL reading.
+  if (env?.URL_READER_ENABLED !== "true") return null;
   const binding = env?.EGRESS_PROXY;
   const token = env?.EGRESS_PROXY_TOKEN;
   if (!binding || typeof binding.fetch !== "function" || typeof token !== "string" || token.length < 32) return null;

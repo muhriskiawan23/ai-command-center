@@ -46,6 +46,7 @@
     }
   ],
   "vars": {
-    "SEARCH_SHARED_BUDGET_ENABLED": "true"
+    "SEARCH_SHARED_BUDGET_ENABLED": "true",
+    "URL_READER_ENABLED": "false"
   }
 }

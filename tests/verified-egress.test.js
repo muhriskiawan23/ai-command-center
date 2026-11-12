@@ -4,7 +4,7 @@ import { createVerifiedLinkFetcher } from "../src/verified-egress.js";
 
 const token = "a".repeat(48);
 function fakeEnv(handler) {
-  return { EGRESS_PROXY_TOKEN: token, EGRESS_PROXY: { fetch: handler } };
+  return { URL_READER_ENABLED: "true", EGRESS_PROXY_TOKEN: token, EGRESS_PROXY: { fetch: handler } };
 }
 function payload(overrides = {}) {
   return { status: 200, headers: { "content-type": "text/plain" },
@@ -50,5 +50,13 @@ test("proxy 401 and 502 never fall back to global fetch", async () => {
   for (const status of [401, 502]) {
     const fetcher = createVerifiedLinkFetcher(fakeEnv(async () => new Response("", { status })));
     await assert.rejects(() => fetcher("https://example.com/"), /proxy_unavailable/);
+  }
+});
+
+test("configured credentials do not activate reader without explicit opt-in", () => {
+  for (const value of [undefined, false, true, "false", "TRUE", "1"]) {
+    const env = fakeEnv(() => { throw Error("must not contact proxy"); });
+    env.URL_READER_ENABLED = value;
+    assert.equal(createVerifiedLinkFetcher(env), null);
   }
 });
