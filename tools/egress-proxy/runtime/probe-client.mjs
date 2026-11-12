@@ -22,6 +22,9 @@ export async function waitForProbe(endpoint, {
 }
 
 const REASONS = new Set([
+  "fixture_origin_invalid", "controlled_origin_failed", "expired_certificate_not_denied",
+  "wrong_host_certificate_not_denied", "self_signed_certificate_not_denied",
+  "private_redirect_not_denied", "response_limit_not_denied", "request_timeout_not_denied", "caller_abort_not_bounded",
   "authentication_denial_failed", "unsafe_destination_denial_failed", "adapter_unavailable",
   "synthetic_origin_failed", "synthetic_content_failed", "proxy_unavailable",
   "proxy_security_proof_missing", "proxy_body_too_large", "invalid_proxy_body"

@@ -1,3 +1,4 @@
+import { safeError } from "./safe-error.js";
 const GITHUB_API = "https://api.github.com";
 const STATE_COOKIE = "__Host-borai_github_oauth_state";
 const STATE_TTL_SECONDS = 10 * 60;
@@ -121,7 +122,11 @@ async function githubJson(url, token, init = {}) {
       retryAfter: response.headers.get("retry-after") || undefined,
       acceptedPermissions: response.headers.get("x-accepted-github-permissions") || undefined
     };
-    console.warn("GitHub API request failed", diagnostic);
+    console.warn("GitHub API request failed", {
+      status: diagnostic.status, requestId: diagnostic.requestId,
+      rateLimitRemaining: diagnostic.rateLimitRemaining, rateLimitReset: diagnostic.rateLimitReset,
+      retryAfter: diagnostic.retryAfter, acceptedPermissions: diagnostic.acceptedPermissions
+    });
     const status = [401, 403, 404, 429].includes(response.status) ? response.status : 502;
     return { error: safeGitHubError(response.status), status, diagnostic };
   }
@@ -178,7 +183,7 @@ export async function handleGitHubOAuthRoute(request, env, url, { getSession, sa
   if (!configured(env)) return json({ error: "GitHub App belum dikonfigurasi. Admin perlu menambahkan konfigurasi OAuth dan encryption key." }, 503);
   let user;
   try { user = await getSession(request, env); }
-  catch (error) { console.error("GitHub session lookup failed:", error); return json({ error: "Status login tidak dapat diperiksa." }, 503); }
+  catch (error) { console.error("GitHub session lookup failed:", safeError(error)); return json({ error: "Status login tidak dapat diperiksa." }, 503); }
   if (!user) return json({ error: "Masuk ke BOR AI terlebih dahulu untuk menghubungkan GitHub." }, 401);
 
   if (path === "/api/github/connect") {
@@ -271,7 +276,7 @@ export async function handleGitHubOAuthRoute(request, env, url, { getSession, sa
         : "";
       console.error("GitHub OAuth callback failed", {
         stage: callbackStage,
-        errorName: error instanceof Error ? error.name : "UnknownError",
+        errorName: safeError(error).name,
         ...(encryptionCode ? { encryptionCode: encryptionCode.slice(1) } : {})
       });
       return fail("callback_" + callbackStage + encryptionCode);
@@ -309,7 +314,7 @@ export async function handleGitHubOAuthRoute(request, env, url, { getSession, sa
       if (repositories.error) return json({ error: repositories.error }, repositories.status);
       return json({ repositories: (repositories.data.repositories || []).map((item) => ({ id: item.id, fullName: item.full_name, name: item.name, private: item.private, defaultBranch: item.default_branch, permissions: { contents: item.permissions?.contents, pullRequests: item.permissions?.pull_requests, administration: item.permissions?.administration } })) }, 200, { "Cache-Control": "no-store" });
     } catch (error) {
-      console.error("GitHub installation lookup failed:", error);
+      console.error("GitHub installation lookup failed:", safeError(error));
       return json({ error: "Akses GitHub kedaluwarsa atau gagal diverifikasi. Hubungkan ulang akun GitHub." }, 503);
     }
   }

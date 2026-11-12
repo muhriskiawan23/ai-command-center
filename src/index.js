@@ -1,3 +1,4 @@
+import { safeError } from "./safe-error.js";
 import { extractUrls, readLinks, buildPageContext, summarizeLinks } from "./links.js";
 import { createVerifiedLinkFetcher } from "./verified-egress.js";
 import { PDF_MAX_BYTES, PDF_CONTEXT_MAX_CHARS, safePdfName, normalizePdfConversion, buildPdfContext, validatePdfPageCitations, SPREADSHEET_CONTEXT_MAX_CHARS, safeSpreadsheetName, buildSpreadsheetContext, PRESENTATION_CONTEXT_MAX_CHARS, safePresentationName, buildPresentationContext, WORD_CONTEXT_MAX_CHARS, buildWordDocumentContext } from "./documents.js";
@@ -802,7 +803,7 @@ async function handlePdfConversionRoute(request, env) {
 
   let user = null;
   try { user = await getSession(request, env); }
-  catch (error) { console.error("PDF session lookup failed:", error); return json({ error: "Status login tidak dapat diperiksa." }, 503); }
+  catch (error) { console.error("PDF session lookup failed:", safeError(error)); return json({ error: "Status login tidak dapat diperiksa." }, 503); }
 
   if (env.CHAT_LIMITER?.limit) {
     try {
@@ -810,7 +811,7 @@ async function handlePdfConversionRoute(request, env) {
       let rateLimit = await env.CHAT_LIMITER.limit({ key: clientKey });
       if (rateLimit?.success && user) rateLimit = await env.CHAT_LIMITER.limit({ key: "user:" + user.id });
       if (!rateLimit?.success) return json({ error: "Terlalu banyak permintaan. Coba lagi dalam satu menit." }, 429, { "Retry-After": "60" });
-    } catch (error) { console.error("PDF rate limiter failed:", error); return json({ error: "Layanan pembatasan permintaan sedang bermasalah." }, 503); }
+    } catch (error) { console.error("PDF rate limiter failed:", safeError(error)); return json({ error: "Layanan pembatasan permintaan sedang bermasalah." }, 503); }
   }
 
   // Content-Length is only an early rejection hint; enforce the actual streamed body size
@@ -856,7 +857,7 @@ async function handlePdfConversionRoute(request, env) {
     }
     return json({ document: normalized.document });
   } catch (error) {
-    console.error("PDF conversion failed:", error);
+    console.error("PDF conversion failed:", safeError(error));
     await refundUsage(env, usage.day, usage.charges);
     return json({ error: "PDF gagal diproses. Coba file lain atau unggah ulang." }, 502);
   }
@@ -873,7 +874,7 @@ async function handleAuthRoute(request, env, url) {
       const result = await env.CHAT_LIMITER.limit({ key: "auth:" + scope + ":" + ip });
       if (!result?.success) return json({ error: "Terlalu banyak percobaan login. Coba lagi dalam satu menit." }, 429, { "Retry-After": "60" });
     } catch (error) {
-      console.error("Authentication rate limiter failed:", error);
+      console.error("Authentication rate limiter failed:", safeError(error));
       return json({ error: "Pembatasan percobaan login sedang bermasalah." }, 503);
     }
     return null;
@@ -907,7 +908,7 @@ async function handleAuthRoute(request, env, url) {
       if (!user?.id) throw new Error("Unable to create user.");
       // Housekeeping: drop expired sessions on login so the table does not grow forever. Never blocks a login.
       try { await env.DB.prepare("DELETE FROM sessions WHERE expires_at < ?").bind(now).run(); }
-      catch (error) { console.error("Expired session cleanup failed:", error); }
+      catch (error) { console.error("Expired session cleanup failed:", safeError(error)); }
       const sessionToken = randomToken();
       await env.DB.prepare("INSERT INTO sessions (token_hash, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)")
         .bind(await sha256Hex(sessionToken), user.id, now + SESSION_TTL_SECONDS, now).run();
@@ -919,7 +920,7 @@ async function handleAuthRoute(request, env, url) {
         cookieHeader(OAUTH_NONCE_COOKIE, "", 0)
       ] });
     } catch (error) {
-      console.error("Google authentication failed:", error);
+      console.error("Google authentication failed:", safeError(error));
       return json({ error: "Google sign-in gagal diverifikasi. Silakan coba lagi." }, 401, { "Set-Cookie": cookieHeader(OAUTH_NONCE_COOKIE, "", 0) });
     }
   }
@@ -930,11 +931,11 @@ async function handleAuthRoute(request, env, url) {
       if (!user) return json({ authenticated: false }, 200, { "Set-Cookie": cookieHeader(SESSION_COOKIE, "", 0) });
       if (env.DB && Math.random() < 0.02) {
         try { await env.DB.prepare("DELETE FROM sessions WHERE expires_at < ?").bind(Math.floor(Date.now() / 1000)).run(); }
-        catch (error) { console.error("Session cleanup failed:", error); }
+        catch (error) { console.error("Session cleanup failed:", safeError(error)); }
       }
       return json({ authenticated: true, user });
     } catch (error) {
-      console.error("Session lookup failed:", error);
+      console.error("Session lookup failed:", safeError(error));
       return json({ error: "Status login sementara tidak dapat diperiksa." }, 503);
     }
   }
@@ -945,7 +946,7 @@ async function handleAuthRoute(request, env, url) {
       if (token && env.DB) await env.DB.prepare("DELETE FROM sessions WHERE token_hash = ?").bind(await sha256Hex(token)).run();
       return json({ authenticated: false }, 200, { "Set-Cookie": cookieHeader(SESSION_COOKIE, "", 0) });
     } catch (error) {
-      console.error("Logout failed:", error);
+      console.error("Logout failed:", safeError(error));
       return json({ error: "Tidak dapat mengakhiri sesi saat ini." }, 503);
     }
   }
@@ -956,7 +957,7 @@ async function handleConversationRoute(request, env, url) {
   if (["PATCH", "DELETE"].includes(request.method) && !sameOrigin(request)) return json({ error: "Origin tidak valid." }, 403);
   let user;
   try { user = await getSession(request, env); }
-  catch (error) { console.error("Conversation session lookup failed:", error); return json({ error: "Penyimpanan riwayat belum tersedia." }, 503); }
+  catch (error) { console.error("Conversation session lookup failed:", safeError(error)); return json({ error: "Penyimpanan riwayat belum tersedia." }, 503); }
   if (!user) return authRequiredResponse();
   if (!env.DB) return json({ error: "Penyimpanan riwayat belum tersedia." }, 503);
   if (url.pathname === "/api/conversations" && request.method === "GET") {
@@ -1068,7 +1069,7 @@ async function handleMemoryRoute(request, env, url) {
   if (mutation && !sameOrigin(request)) return json({ error: "Origin tidak valid." }, 403);
   let user;
   try { user = await getSession(request, env); }
-  catch (error) { console.error("Memory session lookup failed:", error); return json({ error: "Memori belum tersedia." }, 503); }
+  catch (error) { console.error("Memory session lookup failed:", safeError(error)); return json({ error: "Memori belum tersedia." }, 503); }
   if (!user) return authRequiredResponse();
   if (!env.DB) return json({ error: "Memori belum tersedia." }, 503);
   const state = await getMemoryState(env, user.id);
@@ -1210,7 +1211,7 @@ async function handleFeedbackRoute(request, env, url) {
   if (!env.DB) return json({ error: "Penyimpanan feedback belum tersedia." }, 503);
   let user;
   try { user = await getSession(request, env); }
-  catch (error) { console.error("Feedback session lookup failed:", error); return json({ error: "Status login tidak dapat diperiksa." }, 503); }
+  catch (error) { console.error("Feedback session lookup failed:", safeError(error)); return json({ error: "Status login tidak dapat diperiksa." }, 503); }
   if (!user) return authRequiredResponse();
   const parsed = await readJsonRequest(request, 2048);
   if (parsed.error) return parsed.error;
@@ -1236,7 +1237,7 @@ async function handleFeedbackRoute(request, env, url) {
     return json({ saved: true, responseId, rating, reason });
   } catch (error) {
     if (/no such table/i.test(String(error?.message))) return json({ error: "Fitur feedback belum tersedia. Migrasi database perlu diterapkan.", code: "feedback_unavailable" }, 503);
-    console.error("Feedback save failed:", error);
+    console.error("Feedback save failed:", safeError(error));
     return json({ error: "Feedback gagal disimpan. Coba lagi." }, 503);
   }
 }
@@ -1247,7 +1248,7 @@ async function handleUsageRoute(request, env) {
   if (!env.DB) return json({ error: "Data penggunaan belum tersedia." }, 503, { code: "usage_unavailable" });
   let user;
   try { user = await getSession(request, env); }
-  catch (error) { console.error("Usage session lookup failed:", error); return json({ error: "Data penggunaan belum dapat diperiksa." }, 503); }
+  catch (error) { console.error("Usage session lookup failed:", safeError(error)); return json({ error: "Data penggunaan belum dapat diperiksa." }, 503); }
   const day = usageDay();
   const scope = user ? "user" : "guest";
   try {
@@ -1262,7 +1263,7 @@ async function handleUsageRoute(request, env) {
     return json({ scope, day, used, limit, remaining: Math.max(0, limit - used), resetsAt, unit: "unit penggunaan" });
   } catch (error) {
     if (/no such table/i.test(String(error?.message))) return json({ error: "Data penggunaan belum tersedia. Migrasi database perlu diterapkan saat rilis.", code: "usage_unavailable" }, 503);
-    console.error("Usage lookup failed:", error);
+    console.error("Usage lookup failed:", safeError(error));
     return json({ error: "Data penggunaan gagal dimuat." }, 503);
   }
 }
@@ -1283,8 +1284,8 @@ export default {
         // Keep outer GitHub route failures diagnosable without logging provider payloads,
         // OAuth codes, cookies, tokens, or raw exception messages.
         console.error("GitHub integration request failed", {
-          path: url.pathname,
-          errorName: error instanceof Error ? error.name : "UnknownError"
+          path: url.pathname === "/api/github/callback" ? "/api/github/callback" : "/api/github/*",
+          errorName: safeError(error).name
         });
         if (url.pathname === "/api/github/callback") {
           const destination = new URL("/", url.origin);
@@ -1300,11 +1301,11 @@ export default {
     }
     if (url.pathname === "/api/developer/keys" || url.pathname.startsWith("/api/developer/keys/")) {
       try { return await handleDeveloperKeysRoute(request, env, url, { getSession, sameOrigin, randomToken, sha256Hex, json }); }
-      catch (error) { console.error("Developer key request failed:", error); return json({ error: "Pengelolaan API key gagal diproses." }, 503); }
+      catch (error) { console.error("Developer key request failed:", safeError(error)); return json({ error: "Pengelolaan API key gagal diproses." }, 503); }
     }
     if (url.pathname === "/api/public/chat") {
       try { return await handlePublicChatRoute(request, env, { AGENTS, MODEL, runAgent, withAiDeadline, summarizeModelTrace, json, readJsonRequest, CHAT_LIMITER: env.CHAT_LIMITER }); }
-      catch (error) { console.error("Public API request failed:", error); return json({ error: "Public API gagal diproses." }, 503); }
+      catch (error) { console.error("Public API request failed:", safeError(error)); return json({ error: "Public API gagal diproses." }, 503); }
     }
     if (url.pathname === "/api/integrations/telegram/webhook") {
       try {
@@ -1320,26 +1321,26 @@ export default {
           multiAgentBudgetMs: AI_MULTI_AGENT_BUDGET_DEFAULT_MS
         });
       } catch (error) {
-        console.error("Telegram webhook failed:", error);
+        console.error("Telegram webhook failed:", safeError(error));
         return json({ error: "Webhook Telegram gagal diproses." }, 503);
       }
     }
     if (url.pathname === "/api/feedback") {
       try { return await handleFeedbackRoute(request, env, url); }
-      catch (error) { console.error("Feedback request failed:", error); return json({ error: "Feedback gagal diproses." }, 503); }
+      catch (error) { console.error("Feedback request failed:", safeError(error)); return json({ error: "Feedback gagal diproses." }, 503); }
     }
     if (url.pathname === "/api/usage") {
       try { return await handleUsageRoute(request, env); }
-      catch (error) { console.error("Usage request failed:", error); return json({ error: "Data penggunaan gagal diproses." }, 503); }
+      catch (error) { console.error("Usage request failed:", safeError(error)); return json({ error: "Data penggunaan gagal diproses." }, 503); }
     }
     if (url.pathname === "/api/conversations" || url.pathname.startsWith("/api/conversations/")) {
       if (!["GET", "PATCH", "DELETE"].includes(request.method)) return json({ error: "Metode HTTP tidak didukung untuk endpoint ini." }, 405, { Allow: "GET, PATCH, DELETE" });
       try { return await handleConversationRoute(request, env, url); }
-      catch (error) { console.error("Conversation request failed:", error); return json({ error: "Riwayat chat gagal diproses." }, 503); }
+      catch (error) { console.error("Conversation request failed:", safeError(error)); return json({ error: "Riwayat chat gagal diproses." }, 503); }
     }
     if (url.pathname === "/api/memory" || url.pathname.startsWith("/api/memory/")) {
       try { return await handleMemoryRoute(request, env, url); }
-      catch (error) { console.error("Memory request failed:", error); return json({ error: "Memori gagal diproses." }, 503); }
+      catch (error) { console.error("Memory request failed:", safeError(error)); return json({ error: "Memori gagal diproses." }, 503); }
     }
     if (request.method === "GET" && url.pathname === "/api/health") {
       if (url.searchParams.get("deep") !== "1") return json({ ok: true, service: "BOR AI" });
@@ -1400,7 +1401,7 @@ export default {
       if (clientHistory.error) return json({ error: clientHistory.error }, 400);
       let user = null;
       try { user = await getSession(request, env); }
-      catch (error) { console.error("Chat session lookup failed:", error); return json({ error: "Status login tidak dapat diperiksa. Coba muat ulang halaman." }, 503); }
+      catch (error) { console.error("Chat session lookup failed:", safeError(error)); return json({ error: "Status login tidak dapat diperiksa. Coba muat ulang halaman." }, 503); }
       if (user && !sameOrigin(request)) return json({ error: "Origin tidak valid." }, 403);
       if (user && body.conversationId) {
         const owned = await env.DB.prepare("SELECT id FROM conversations WHERE id = ? AND user_id = ?").bind(body.conversationId, user.id).first();
@@ -1412,7 +1413,7 @@ export default {
           const saved = await findSavedChatRequest(env, user, body.requestId);
           if (saved) return json({ agent: AGENTS[agentId].name, model: MODEL, workflow: "idempotent-replay", response: saved.response, links: saved.links, conversationId: saved.conversationId, responseId: saved.responseId, saved: true, replayed: true });
         } catch (error) {
-          console.error("Chat idempotency lookup failed:", error);
+          console.error("Chat idempotency lookup failed:", safeError(error));
           return json({ error: "Status permintaan sebelumnya tidak dapat diperiksa. Coba muat ulang riwayat chat." }, 503);
         }
       }
@@ -1423,7 +1424,7 @@ export default {
           rateLimit = await env.CHAT_LIMITER.limit({ key: clientKey });
           // Signed-in users are also limited per account, so one account cannot multiply its quota across IPs.
           if (rateLimit?.success && user) rateLimit = await env.CHAT_LIMITER.limit({ key: `user:${user.id}` });
-        } catch (error) { console.error("Chat rate limiter failed:", error); return json({ error: "Layanan pembatasan permintaan sedang bermasalah." }, 503); }
+        } catch (error) { console.error("Chat rate limiter failed:", safeError(error)); return json({ error: "Layanan pembatasan permintaan sedang bermasalah." }, 503); }
         if (!rateLimit?.success) return json({ error: "Terlalu banyak permintaan. Coba lagi dalam satu menit." }, 429, { "Retry-After": "60" });
       }
       const useMultiAgent = agentId === "coordinator" && shouldUseMultiAgent(message);
@@ -1451,7 +1452,7 @@ export default {
           } else {
             history = body.conversationId ? await loadStoredHistory(env, user, body.conversationId) : [];
           }
-        } catch (error) { console.error("Chat history lookup failed:", error); await refundUsage(env, usage.day, usage.charges); return json({ error: "Riwayat chat gagal dimuat. Coba muat ulang." }, 503); }
+        } catch (error) { console.error("Chat history lookup failed:", safeError(error)); await refundUsage(env, usage.day, usage.charges); return json({ error: "Riwayat chat gagal dimuat. Coba muat ulang." }, 503); }
       }
       // Single answers may retry once (2 calls); the multi-agent chain gets its own total budget.
       const perCallMs = positiveMs(env.AI_CALL_TIMEOUT_MS, AI_CALL_TIMEOUT_DEFAULT_MS);
@@ -1473,7 +1474,7 @@ export default {
         } else if (!user && rememberText !== null) {
           memoryNote = localizedChatNotice(language, "memoryGuest");
         }
-      } catch (error) { console.error("Memory handling failed:", error); memoryNote = ""; memoryItems = []; }
+      } catch (error) { console.error("Memory handling failed:", safeError(error)); memoryNote = ""; memoryItems = []; }
       const modelTrace = [];
       const requestEnv = { ...env, MODEL_TRACE: modelTrace };
       const memoryEnv = withSystemExtra(requestEnv, buildMemoryBlock(memoryItems));
@@ -1568,7 +1569,7 @@ export default {
             const saved = await addMemory(env, user.id, pendingRememberText);
             memoryNote = saved.ok ? localizedChatNotice(language, "memorySaved", saved.item.content) : localizedChatNotice(language, saved.code === "memory_rejected" ? "memoryRejected" : "memorySaveFailed");
           } catch (error) {
-            console.error("Memory save failed:", error);
+            console.error("Memory save failed:", safeError(error));
             memoryNote = localizedChatNotice(language, "memorySaveFailed");
           }
         }
@@ -1588,9 +1589,9 @@ export default {
                   await refundUsage(env, usage.day, usage.charges);
                   return json({ agent: AGENTS[agentId].name, model: MODEL, workflow: "idempotent-replay", response: saved.response, links: saved.links, conversationId: saved.conversationId, responseId: saved.responseId, saved: true, replayed: true });
                 }
-              } catch (lookupError) { console.error("Chat idempotency recovery failed:", lookupError); }
+              } catch (lookupError) { console.error("Chat idempotency recovery failed:", safeError(lookupError)); }
             }
-            console.error("Chat persistence failed:", error);
+            console.error("Chat persistence failed:", safeError(error));
             result.saved = false;
             result.saveWarning = localizedChatNotice(language, "saveWarning");
           }
@@ -1602,7 +1603,7 @@ export default {
           await refundUsage(env, usage.day, usage.charges);
           return json({ error: "Generasi dihentikan.", code: "generation_cancelled" }, 499);
         }
-        console.error("AI request failed:", error);
+        console.error("AI request failed:", safeError(error));
         await refundUsage(env, usage.day, usage.charges); // a failed request does not consume the user's daily allowance
         if (error instanceof AiTimeoutError) return json({ error: "AI terlalu lama merespons. Silakan coba lagi, atau pecah permintaan menjadi lebih singkat.", code: "ai_timeout", stage: "ai_generation", links }, 504);
         return json({ error: "AI gagal memproses permintaan. Silakan coba lagi beberapa saat.", code: "ai_error", stage: "ai_generation", links }, 502);

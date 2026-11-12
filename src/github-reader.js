@@ -1,3 +1,4 @@
+import { safeError } from "./safe-error.js";
 const API = "https://api.github.com";
 const MAX_FILE_CHARS = 80_000;
 
@@ -102,7 +103,7 @@ export async function handleGitHubReadRoute(request, env, url, { fetcher = fetch
       const rate = await limiter.limit({ key: `github:${ip}` });
       if (!rate?.success) return json({ error: "Terlalu banyak permintaan GitHub. Coba lagi sebentar." }, 429, { "Retry-After": "60" });
     } catch (error) {
-      console.error("GitHub Reader rate limiter failed:", error);
+      console.error("GitHub Reader rate limiter failed:", safeError(error));
       return json({ error: "Pembatasan permintaan GitHub sedang bermasalah." }, 503);
     }
   }

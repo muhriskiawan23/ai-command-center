@@ -1,3 +1,4 @@
+import { safeError } from "./safe-error.js";
 const MAX_UPDATE_BYTES = 64 * 1024;
 const MAX_MESSAGE_CHARS = 4000;
 const TELEGRAM_TEXT_LIMIT = 3900;
@@ -62,7 +63,7 @@ export async function handleTelegramWebhook(request, env, deps) {
   const text = message.text.trim();
   if (text.length > MAX_MESSAGE_CHARS) {
     try { await sendTelegramMessage(token, chat.id, "Pesan terlalu panjang. Batasnya 4.000 karakter per pesan.", deps.fetcher); }
-    catch (error) { console.error("Telegram reply failed:", error); }
+    catch (error) { console.error("Telegram reply failed:", safeError(error)); }
     return response({ ok: true });
   }
 
@@ -71,14 +72,14 @@ export async function handleTelegramWebhook(request, env, deps) {
     try {
       await sendTelegramMessage(token, chat.id, COMMANDS[command], deps.fetcher);
     } catch (error) {
-      console.error("Telegram command failed:", error);
+      console.error("Telegram command failed:", safeError(error));
       return response({ error: "Pesan Telegram gagal dikirim." }, 502);
     }
     return response({ ok: true, command });
   }
   if (text.startsWith("/")) {
     try { await sendTelegramMessage(token, chat.id, "Perintah tidak dikenal. Gunakan /help untuk melihat daftar perintah BOR AI.", deps.fetcher); }
-    catch (error) { console.error("Telegram unknown-command reply failed:", error); }
+    catch (error) { console.error("Telegram unknown-command reply failed:", safeError(error)); }
     return response({ ok: true, unknownCommand: true });
   }
 
@@ -90,7 +91,7 @@ export async function handleTelegramWebhook(request, env, deps) {
         return response({ ok: true, rateLimited: true });
       }
     } catch (error) {
-      console.error("Telegram rate limiter failed:", error);
+      console.error("Telegram rate limiter failed:", safeError(error));
       return response({ error: "Pembatasan permintaan sedang bermasalah." }, 503);
     }
   }
@@ -105,7 +106,7 @@ export async function handleTelegramWebhook(request, env, deps) {
   if (!usage.ok) {
     const data = await usage.response.json().catch(() => ({}));
     try { await sendTelegramMessage(token, chat.id, data.error || "Batas penggunaan harian tercapai. Coba lagi besok.", deps.fetcher); }
-    catch (error) { console.error("Telegram quota reply failed:", error); }
+    catch (error) { console.error("Telegram quota reply failed:", safeError(error)); }
     return response({ ok: true, quotaLimited: true });
   }
 
@@ -122,9 +123,9 @@ export async function handleTelegramWebhook(request, env, deps) {
     return response({ ok: true });
   } catch (error) {
     await deps.refundUsage(env, usage.day, usage.charges);
-    console.error("Telegram AI request failed:", error);
+    console.error("Telegram AI request failed:", safeError(error));
     try { await sendTelegramMessage(token, chat.id, "Maaf, BOR AI gagal memproses pesan ini. Coba lagi beberapa saat.", deps.fetcher); }
-    catch (sendError) { console.error("Telegram error reply failed:", sendError); }
+    catch (sendError) { console.error("Telegram error reply failed:", safeError(sendError)); }
     return response({ ok: true, generationFailed: true });
   }
 }

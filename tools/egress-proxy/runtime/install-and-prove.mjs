@@ -88,10 +88,13 @@ try {
   stage = "verify_production_secret";
   await verifyProduction(true);
   console.log("production_secret_metadata=present; url_reader=OFF");
+  const subdomain = await api("workers/subdomain");
+  requireCheck(/^[a-z0-9-]+$/.test(subdomain.subdomain || ""), "worker_subdomain_unverified");
+  const fixtureOrigin = `https://${probeName}.${subdomain.subdomain}.workers.dev`;
   fs.writeFileSync(probeConfig, JSON.stringify({
     name: probeName, main: "probe-worker.js", compatibility_date: cfg.compatibility_date,
     compatibility_flags: cfg.compatibility_flags, workers_dev: true,
-    vpc_services: cfg.vpc_services, observability: { enabled: false }
+    vpc_services: cfg.vpc_services, observability: { enabled: false }, vars: { FIXTURE_ORIGIN: fixtureOrigin }
   }));
   stage = "deploy_isolated_probe";
   probeMayExist = true;
@@ -102,9 +105,7 @@ try {
     const tunnel = await api("cfd_tunnel/59f9b74c-4bf7-4f9f-9703-4eb73f6985a9");
     console.log("tunnel_status=" + (["healthy", "degraded", "down", "inactive"].includes(tunnel.status) ? tunnel.status : "unknown"));
   } catch { console.log("tunnel_metadata=unavailable"); }
-  const subdomain = await api("workers/subdomain");
-  requireCheck(/^[a-z0-9-]+$/.test(subdomain.subdomain || ""), "worker_subdomain_unverified");
-  const endpoint = `https://${probeName}.${subdomain.subdomain}.workers.dev/run`;
+  const endpoint = fixtureOrigin + "/run";
   // A public caller cannot trigger the probe. It never accepts caller-provided targets.
   await waitForProbe(endpoint, { report: console.log });
   stage = "probe_private_path";
@@ -114,7 +115,19 @@ try {
   if (!response.ok) console.log("probe_runtime_diagnostic=" + JSON.stringify(safeProbeError({ message: proof?.diagnostic?.reason, proxyStatus: proof?.diagnostic?.proxyStatus })));
   requireCheck(response.ok, "private_runtime_probe_failed");
   requireCheck(proof.ok === true && proof.checks?.authenticationDenied === true && proof.checks?.unsafeDestinationsDenied === true && proof.checks?.productionAdapterPeerAndTlsVerified === true, "runtime_evidence_incomplete");
+  const extended = ["controlledOriginVerified", "expiredTlsDenied", "wrongHostTlsDenied", "selfSignedTlsDenied", "privateRedirectDenied", "responseLimitDenied", "proxyTimeoutDenied", "callerAbortBounded"];
+  requireCheck(extended.every(key => proof.checks[key] === true), "extended_runtime_evidence_incomplete");
+  console.log("hosted_negative_checks=" + JSON.stringify(Object.fromEntries(extended.map(key => [key, true]))));
   console.log("worker_vpc_tunnel_proxy_runtime_proof=PASS; auth_denial=PASS; unsafe_ip_denial=PASS; peer_tls=PASS");
+  stage = "bounded_stability_sampling";
+  for (let sample = 1; sample <= 6; sample++) {
+    if (sample > 1) await new Promise(resolve => setTimeout(resolve, 30000));
+    const sampled = await fetchAuthenticatedProbe(fixtureOrigin + "/sample", token, { attempts: 1, report: console.log });
+    const value = await sampled.json().catch(() => null);
+    requireCheck(sampled.ok && value?.ok === true && value.checks?.authenticationDenied === true && value.checks?.unsafeDestinationsDenied === true && value.checks?.productionAdapterPeerAndTlsVerified === true, "stability_sample_failed");
+    console.log("bounded_stability_sample=" + sample + "/6; result=PASS");
+  }
+  console.log("bounded_stability=PASS; samples=6; minimum_span_seconds=150; long_term_stability=UNVERIFIED");
   console.log("url_reader=OFF; remaining_hosted_security_and_independent_privacy_gates=OPEN");
 } catch {
   console.error(`egress_setup=FAILED; stage=${stage}; url_reader_activation=NOT_PERFORMED`);

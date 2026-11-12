@@ -21,6 +21,10 @@ class PrivacyCascadeTests(unittest.TestCase):
             self.db.execute("INSERT INTO answer_feedback (user_id,conversation_id,message_id,rating,created_at,updated_at) VALUES (?,?,?,'helpful',1,1)", (user, f"{user}-conversation", message_id))
             self.db.execute("INSERT INTO user_memories (id,user_id,content,created_at,updated_at) VALUES (?,?,?,1,1)", (f"{user}-memory", user, "synthetic"))
             self.db.execute("INSERT INTO public_api_keys (id,user_id,key_hash,label,allowed_origins,created_at,updated_at) VALUES (?,?,?,?,?,1,1)", (f"{user}-key", user, f"{user}-hash", "test", "[]"))
+            self.db.execute("INSERT INTO sessions(token_hash,user_id,expires_at,created_at) VALUES (?,?,100,1)", (f"{user}-session",user))
+            self.db.execute("INSERT INTO user_settings(user_id,memory_enabled,updated_at) VALUES (?,1,1)", (user,))
+            self.db.execute("INSERT INTO github_oauth_states(state_hash,user_id,expires_at,created_at) VALUES (?,?,100,1)", (f"{user}-state",user))
+            self.db.execute("INSERT INTO github_connections(user_id,github_user_id,github_login,encrypted_access_token,access_token_expires_at,connected_at,updated_at) VALUES (?,?,?,?,100,1,1)", (user,1 if user=="alice" else 2,f"{user}-test","synthetic-ciphertext"))
         self.db.commit()
 
     def tearDown(self):
@@ -44,7 +48,7 @@ class PrivacyCascadeTests(unittest.TestCase):
 
     def test_user_delete_cascades_owned_records(self):
         self.db.execute("DELETE FROM users WHERE id=?", ("alice",))
-        for table in ("conversations", "messages", "answer_feedback", "user_memories", "public_api_keys"):
+        for table in ("conversations", "messages", "answer_feedback", "user_memories", "public_api_keys", "sessions", "user_settings", "github_oauth_states", "github_connections"):
             self.assertEqual(self.count(table, "alice"), 0, table)
             self.assertEqual(self.count(table, "bob"), 1, table)
 
