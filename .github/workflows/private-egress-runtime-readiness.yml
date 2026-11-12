@@ -1,0 +1,44 @@
+name: BOR AI private egress runtime readiness
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [.github/workflows/private-egress-runtime-readiness.yml]
+permissions:
+  contents: read
+jobs:
+  readiness:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Verify config and Cloudflare runtime secret metadata without deployment
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          const cfg=JSON.parse(fs.readFileSync("wrangler.jsonc","utf8"));
+          const vpc=cfg.vpc_services?.filter(x=>x.binding==="EGRESS_PROXY")||[];
+          if(vpc.length!==1||vpc[0].service_id!=="01a1cefa-5d93-7da2-bfce-91aae9fe11f1") throw Error("Private VPC binding mismatch");
+          console.log("vpc_binding_config=verified");
+          NODE
+          if [[ -z "${CLOUDFLARE_API_TOKEN:-}" || -z "${CLOUDFLARE_ACCOUNT_ID:-}" ]]; then
+            echo "worker_api_credentials=missing"
+            exit 1
+          fi
+          if ! npx --yes wrangler@4 secret list --config wrangler.jsonc --json > /tmp/bor-worker-secret-metadata.json 2>/tmp/bor-worker-secret-error.log; then
+            echo "::error::Worker secret metadata unavailable"
+            exit 1
+          fi
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          const data=JSON.parse(fs.readFileSync("/tmp/bor-worker-secret-metadata.json","utf8"));
+          if(!Array.isArray(data)) throw Error("Unexpected secret metadata shape");
+          const present=data.some(s=>s.name==="EGRESS_PROXY_TOKEN");
+          console.log("egress_proxy_token_secret="+(present?"present":"missing"));
+          if(!present) process.exitCode=1;
+          NODE
