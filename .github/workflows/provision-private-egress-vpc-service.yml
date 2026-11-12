@@ -20,28 +20,15 @@ jobs:
           set -euo pipefail
           test -n "${CLOUDFLARE_API_TOKEN:-}" && test -n "${CLOUDFLARE_ACCOUNT_ID:-}"
           # Wrangler output can include identifiers; only print sanitized status.
-          npx --yes wrangler@latest vpc service list --json > /tmp/bor-vpc-list.json 2>/tmp/bor-vpc-error.log || {
-            echo "::error::Cannot list VPC services (check permissions)"; exit 1;
+          # Wrangler vpc service list does not promise a JSON output flag.
+          # Use its documented default output; refuse to create when a matching name
+          # appears, pending manual reconciliation of its settings.
+          npx --yes wrangler@latest vpc service list > /tmp/bor-vpc-list.txt 2>/tmp/bor-vpc-error.log || {
+            echo "::error::Cannot list VPC services; check CLI compatibility and permissions"; exit 1;
           }
-          node --input-type=module <<'NODE'
-          import fs from "node:fs";
-          const payload=JSON.parse(fs.readFileSync("/tmp/bor-vpc-list.json","utf8"));
-          const list=Array.isArray(payload)?payload:Array.isArray(payload.result)?payload.result:Array.isArray(payload.services)?payload.services:null;
-          if(!list) throw Error("Unknown VPC inventory format; fail closed");
-          const matches=list.filter(s=>s.name==="bor-ai-termux-egress");
-          if(matches.length>1) throw Error("Duplicate service names; manual reconciliation required");
-          if(matches.length===1) {
-            const s=matches[0];
-            if(s.type!=="http" || s.http_port!==10000 || s.host?.ipv4!=="127.0.0.1" || s.host?.network?.tunnel_id!=="59f9b74c-4bf7-4f9f-9703-4eb73f6985a9") {
-              throw Error("Existing service configuration mismatch; refusing to modify");
-            }
-            console.log("Private VPC service already exists and matches expected configuration.");
-            process.exit(0);
-          }
-          NODE
-          # Check again for existence without relying on a success string in CLI output.
-          if node --input-type=module -e 'const fs=await import("node:fs");const p=JSON.parse(fs.readFileSync("/tmp/bor-vpc-list.json"));const a=Array.isArray(p)?p:(p.result??p.services);process.exit(a.some(s=>s.name==="bor-ai-termux-egress")?0:1)'; then
-            exit 0
+          if grep -Fq 'bor-ai-termux-egress' /tmp/bor-vpc-list.txt; then
+            echo "::error::VPC service name already exists; refusing duplicate creation without configuration verification"
+            exit 1
           fi
           if npx --yes wrangler@latest vpc service create bor-ai-termux-egress \
               --type http \
