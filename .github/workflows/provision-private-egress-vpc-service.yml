@@ -40,7 +40,7 @@ jobs:
           }
           NODE
           # Check again for existence without relying on a success string in CLI output.
-          if node --input-type=module -e 'const fs=require("node:fs");const p=JSON.parse(fs.readFileSync("/tmp/bor-vpc-list.json"));const a=Array.isArray(p)?p:(p.result??p.services);process.exit(a.some(s=>s.name==="bor-ai-termux-egress")?0:1)'; then
+          if node --input-type=module -e 'const fs=await import("node:fs");const p=JSON.parse(fs.readFileSync("/tmp/bor-vpc-list.json"));const a=Array.isArray(p)?p:(p.result??p.services);process.exit(a.some(s=>s.name==="bor-ai-termux-egress")?0:1)'; then
             exit 0
           fi
           if npx --yes wrangler@latest vpc service create bor-ai-termux-egress \
