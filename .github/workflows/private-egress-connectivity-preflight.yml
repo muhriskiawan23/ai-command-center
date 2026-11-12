@@ -1,0 +1,47 @@
+name: BOR AI private egress connectivity preflight
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [.github/workflows/private-egress-connectivity-preflight.yml]
+permissions:
+  contents: read
+jobs:
+  preflight:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Read-only Cloudflare Tunnel and VPC readiness checks
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_INFRA_API_TOKEN }}
+          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          const account=process.env.CF_ACCOUNT,token=process.env.CF_TOKEN;
+          if(!account||!token) throw Error("Cloudflare API credentials missing");
+          const tunnel="59f9b74c-4bf7-4f9f-9703-4eb73f6985a9";
+          const base="https://api.cloudflare.com/client/v4/accounts/"+encodeURIComponent(account);
+          const checks=[
+            ["tunnel", "/cfd_tunnel/"+tunnel],
+            ["tunnel_configuration", "/cfd_tunnel/"+tunnel+"/configurations"],
+            ["vpc_services", "/workers/vpc/services"],
+            ["vpc_directory", "/network-interconnects"]
+          ];
+          for(const [name,path] of checks) {
+            try {
+              const res=await fetch(base+path,{headers:{Authorization:"Bearer "+token,Accept:"application/json"},signal:AbortSignal.timeout(12000)});
+              const body=await res.json().catch(()=>null);
+              // Deliberately never log API response bodies, IDs, tokens, hostnames or credentials.
+              console.log(name+": HTTP "+res.status+"; api_success="+(body?.success===true));
+              if(name==="tunnel"&&body?.success===true) {
+                console.log("tunnel_status="+(body.result?.status==="healthy"?"healthy":"not_confirmed_healthy"));
+              }
+              if(name==="tunnel_configuration"&&body?.success===true) {
+                const ingress=body.result?.config?.ingress;
+                console.log("ingress_rules="+(Array.isArray(ingress)?ingress.length:"unknown"));
+              }
+            } catch { console.log(name+": request_failed"); }
+          }
+          NODE
