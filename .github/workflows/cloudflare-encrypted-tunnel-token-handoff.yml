@@ -23,16 +23,16 @@ jobs:
           import { publicEncrypt, constants, createPublicKey } from "node:crypto";
           import { writeFileSync } from "node:fs";
           const publicKey = `-----BEGIN PUBLIC KEY-----
-MIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEA5tQScPR/EjlZo9XTkotY
-dsI5pOvVZVRajTlC/HOj82o7WMKc5NExSDOKHsMAQkEoqMjzlRtBqJ3kGuXlyAM1
-NrkhWxQ5ix+bGPdS7qJzcsnU9JMAUNjgCDrIK9OqESssonJvwqj36TtX7Nj653do
-L8cieuvzKnAO+29UvTBYHQKWU6ntgYT5nkBtvlztrsmLWHdKHvFFCmIRejlWw1/i
-zts0/uvh76TYLQXDccPngxVwq+htsk35Mz6TfUmeqvA8H5JNomjoMupXGSt0ePAI
-RcJtziBij711mLB8cnqCF6AQ7/UvBMWgyPD6KuDWHBWJE5qYT92fj1uJQId+R7BC
-D8CZ+TiO2ITHQw7e8CZnHBuTCjnm7rmosArHOUCsw21m7ijKu5ARYwu22Vho7sAA
-Iczm+1Uh1P//p3oq2KWIImaMtM9+p3Q85U1Yy/IKG3Xr1QljsPZIlHuav8Qov5sT
-ZfIkOLSe/2M/XbfFraxkFKDB+MYdLhcJ3/EIgp326ta3AgMBAAE=
------END PUBLIC KEY-----`;
+          MIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEA5tQScPR/EjlZo9XTkotY
+          dsI5pOvVZVRajTlC/HOj82o7WMKc5NExSDOKHsMAQkEoqMjzlRtBqJ3kGuXlyAM1
+          NrkhWxQ5ix+bGPdS7qJzcsnU9JMAUNjgCDrIK9OqESssonJvwqj36TtX7Nj653do
+          L8cieuvzKnAO+29UvTBYHQKWU6ntgYT5nkBtvlztrsmLWHdKHvFFCmIRejlWw1/i
+          zts0/uvh76TYLQXDccPngxVwq+htsk35Mz6TfUmeqvA8H5JNomjoMupXGSt0ePAI
+          RcJtziBij711mLB8cnqCF6AQ7/UvBMWgyPD6KuDWHBWJE5qYT92fj1uJQId+R7BC
+          D8CZ+TiO2ITHQw7e8CZnHBuTCjnm7rmosArHOUCsw21m7ijKu5ARYwu22Vho7sAA
+          Iczm+1Uh1P//p3oq2KWIImaMtM9+p3Q85U1Yy/IKG3Xr1QljsPZIlHuav8Qov5sT
+          ZfIkOLSe/2M/XbfFraxkFKDB+MYdLhcJ3/EIgp326ta3AgMBAAE=
+          -----END PUBLIC KEY-----`;
           const tunnelId = "59f9b74c-4bf7-4f9f-9703-4eb73f6985a9";
           const account = process.env.CF_ACCOUNT;
           const token = process.env.CF_TOKEN;
