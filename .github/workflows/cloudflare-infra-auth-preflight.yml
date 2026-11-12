@@ -41,4 +41,12 @@ jobs:
             echo "::error::Tunnel inventory read not authorized or unavailable (HTTP $code). No infrastructure was modified."
             exit 1
           fi
-          echo "Read-only Cloudflare authorization preflight passed. No tunnel, VPC service, binding or deployment was created."
+          directory_code="$(curl --silent --show-error --max-time 20 -o /dev/null -w '%{http_code}' \
+            -H "Authorization: Bearer $CLOUDFLARE_INFRA_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/connectivity/directory/services?per_page=1&page=1")"
+          echo "Workers VPC Directory inventory HTTP status: $directory_code"
+          if [[ "$directory_code" != "200" ]]; then
+            echo "::error::Workers VPC Directory read unavailable (HTTP $directory_code). No infrastructure modified."
+            exit 1
+          fi
+          echo "Read-only Cloudflare preflight passed for Tunnel and VPC Directory. Write permissions NOT tested; no infrastructure modified."
