@@ -2,12 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { waitForProbe, safeProbeError, fetchAuthenticatedProbe } from '../tools/egress-proxy/runtime/probe-client.mjs';
 test('new proof endpoint waits for authentication denial, not a successful public request', async () => {
-  const responses = [404, 503, 401]; let count = 0;
+  const responses = [500, 404, 503, 401]; let count = 0;
   await waitForProbe('https://test.invalid/run', { fetcher: async (_url, options) => {
     assert.equal(options.headers, undefined);
     return new Response(null, { status: responses[count++] });
   }, wait: async () => {} });
-  assert.equal(count, 3);
+  assert.equal(count, 4);
 });
 test('proof readiness does not accept an open or persistently unavailable endpoint', async () => {
   await assert.rejects(waitForProbe('https://test.invalid/run', { fetcher: async () => new Response(null, { status: 200 }) }), /unexpected_status/);
@@ -47,4 +47,13 @@ test('authenticated endpoint startup failure stays bounded', async () => {
     attempts: 2, wait: async () => {}, fetcher: async () => { count++; return new Response(null, { status: 503 }); }
   }), /not_ready/);
   assert.equal(count, 2);
+});
+
+test('explicit Cloudflare runtime exceptions are not retried as startup propagation', async () => {
+  let count = 0;
+  await assert.rejects(waitForProbe('https://test.invalid/run', {
+    fetcher: async () => { count++; return new Response('<html>Error 1101: Worker threw exception</html>', {status:500}); },
+    wait: async () => { throw Error('must not retry'); }
+  }), /startup_exception/);
+  assert.equal(count, 1);
 });
