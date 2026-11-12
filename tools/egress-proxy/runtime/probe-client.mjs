@@ -31,3 +31,22 @@ export function safeProbeError(error) {
   const proxyStatus = Number.isInteger(error?.proxyStatus) && error.proxyStatus >= 100 && error.proxyStatus <= 599 ? error.proxyStatus : null;
   return { reason, proxyStatus };
 }
+
+// A newly created Worker can still serve a pre-secret version on another edge.
+// Only retry endpoint startup statuses. A runtime/security 401 or 502 is final.
+export async function fetchAuthenticatedProbe(endpoint, token, {
+  fetcher = fetch, wait = ms => new Promise(resolve => setTimeout(resolve, ms)),
+  attempts = 10, report = () => {}
+} = {}) {
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    const response = await fetcher(endpoint, {
+      method: "POST", headers: { authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(90000), redirect: "error"
+    });
+    report("probe_authenticated_endpoint_http_status=" + response.status);
+    if (![404, 503].includes(response.status)) return response;
+    await response.body?.cancel();
+    if (attempt + 1 < attempts) await wait(3000);
+  }
+  throw Error("probe_authenticated_endpoint_not_ready");
+}

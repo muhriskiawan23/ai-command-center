@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import { spawn } from "node:child_process";
 import { summarizeCliFailure } from "./safe-diagnostics.mjs";
-import { waitForProbe, safeProbeError } from "./probe-client.mjs";
+import { waitForProbe, safeProbeError, fetchAuthenticatedProbe } from "./probe-client.mjs";
 
 const cfg = JSON.parse(fs.readFileSync("wrangler.jsonc", "utf8"));
 const token = process.env.EGRESS_PROXY_TOKEN;
@@ -108,7 +108,7 @@ try {
   // A public caller cannot trigger the probe. It never accepts caller-provided targets.
   await waitForProbe(endpoint, { report: console.log });
   stage = "probe_private_path";
-  const response = await fetch(endpoint, { method: "POST", headers: { authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(90000), redirect: "error" });
+  const response = await fetchAuthenticatedProbe(endpoint, token, { report: console.log });
   const proof = await response.json().catch(() => null);
   console.log("probe_runtime_http_status=" + response.status);
   if (!response.ok) console.log("probe_runtime_diagnostic=" + JSON.stringify(safeProbeError({ message: proof?.diagnostic?.reason, proxyStatus: proof?.diagnostic?.proxyStatus })));
