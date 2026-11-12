@@ -60,8 +60,15 @@ async function verifyProduction(requireSecret) {
 const probeName = `bor-egress-proof-${run}-${attempt}`;
 const probeConfig = "tools/egress-proxy/runtime/wrangler.generated.json";
 let probeMayExist = false;
-let stage = "deploy_off_guard";
+let stage = "verify_infrastructure_access";
 try {
+  // Read-only checks precede any deployment. A successful read is not a claim
+  // of bind/write permission; the real deployment remains the runtime gate.
+  await api("workers/scripts/ai-command-center/settings");
+  console.log("infrastructure_worker_metadata_access=verified");
+  await api("connectivity/directory/services/" + cfg.vpc_services[0].service_id);
+  console.log("infrastructure_vpc_resource_access=verified");
+  stage = "deploy_off_guard";
   await cli(["deploy", "--config", "wrangler.jsonc", "--message", `egress-off-guard:${process.env.GITHUB_SHA}`]);
   stage = "verify_off_guard";
   await verifyProduction(false);
