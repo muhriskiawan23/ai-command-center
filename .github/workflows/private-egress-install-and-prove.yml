@@ -1,6 +1,12 @@
 name: BOR AI install private egress secret and prove runtime
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/private-egress-install-and-prove.yml
+      - tools/egress-proxy/runtime/install-and-prove.mjs
+      - tools/egress-proxy/runtime/safe-diagnostics.mjs
 permissions:
   contents: read
 concurrency:

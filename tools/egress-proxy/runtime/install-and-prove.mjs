@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import { spawn } from "node:child_process";
+import { summarizeCliFailure } from "./safe-diagnostics.mjs";
 
 const cfg = JSON.parse(fs.readFileSync("wrangler.jsonc", "utf8"));
 const token = process.env.EGRESS_PROXY_TOKEN;
@@ -17,13 +18,21 @@ requireCheck(cfg.vpc_services?.length === 1 && cfg.vpc_services[0].binding === "
 // Keep CLI output and API response bodies private, including errors. No artifacts contain secrets.
 async function cli(args, input = "") {
   await new Promise((resolve, reject) => {
+    let output = "";
     const child = spawn("npx", ["--yes", "wrangler@4", ...args], {
-      stdio: ["pipe", "ignore", "ignore"],
+      stdio: ["pipe", "pipe", "pipe"],
       env: { ...process.env, WRANGLER_SEND_METRICS: "false" }
     });
+    const capture = chunk => { output = (output + chunk.toString()).slice(-65536); };
+    child.stdout.on("data", capture);
+    child.stderr.on("data", capture);
     child.on("error", () => reject(Error("wrangler_start_failed")));
     child.stdin.on("error", () => {});
-    child.on("close", code => code === 0 ? resolve() : reject(Error("wrangler_operation_failed")));
+    child.on("close", code => {
+      if (code === 0) return resolve();
+      console.error("wrangler_failure=" + JSON.stringify({ exitCode: code, ...summarizeCliFailure(output, [token, account, apiToken]) }));
+      reject(Error("wrangler_operation_failed"));
+    });
     child.stdin.end(input);
   });
 }
