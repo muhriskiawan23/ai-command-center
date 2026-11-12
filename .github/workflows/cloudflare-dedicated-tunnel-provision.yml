@@ -53,9 +53,19 @@ jobs:
             if(!Array.isArray(payload.result)) throw Error("Unexpected tunnel inventory shape");
             tunnels.push(...payload.result);
             const info=payload.result_info;
-            if (!info || !Number.isInteger(info.total_pages)) throw Error("Missing tunnel pagination metadata");
-            if (page>=info.total_pages) break;
-            if(page===10) throw Error("Tunnel inventory exceeds 10 pages; refusing to create");
+            // Cloudflare may omit result_info for this endpoint. A short page is
+            // terminal; a full page without metadata is ambiguous and fails closed.
+            if (info?.total_pages !== undefined) {
+              if (!Number.isInteger(info.total_pages) || info.total_pages < page) {
+                throw Error("Invalid tunnel pagination metadata");
+              }
+              if (page >= info.total_pages) break;
+            } else if (payload.result.length < 100) {
+              break;
+            } else {
+              throw Error("Full tunnel inventory page without pagination metadata; refusing to create");
+            }
+            if (page===10) throw Error("Tunnel inventory exceeds 10 pages; refusing to create");
           }
           const existing=tunnels.filter(t=>t.name===name);
           if(existing.length>1) throw Error("Multiple tunnels with target name; manual reconciliation required");
