@@ -1,6 +1,6 @@
 # Issue #156 — production URL reader release gate
 
-Status: **BLOCKED — no production activation authorized**. Updated 2026-11-11.
+Status: **BLOCKED — URL Reader OFF; bounded private-path runtime proof PASS; full release gates OPEN**. Updated 2026-11-13.
 
 This is a decision and evidence checklist, not approval to provision infrastructure or turn on the reader.
 
@@ -8,11 +8,12 @@ This is a decision and evidence checklist, not approval to provision infrastruct
 
 - Read-only Cloudflare audit [run 43007188447](https://github.com/muhriskiawan23/ai-command-center/actions/runs/43007188447) succeeded **only for configured scope**; cloud on-ramps remain **unverified/out of scope**.
 - [PR #183](https://github.com/muhriskiawan23/ai-command-center/pull/183) added an isolated socket peer-IP mismatch regression. Container validation [run 43009750420](https://github.com/muhriskiawan23/ai-command-center/actions/runs/43009750420) passed 38/38. This is **not** hosted origin peer-IP or TLS evidence.
-- `src/links.js` fails closed when no explicitly injected transport is present. `wrangler.jsonc` has no VPC Service/proxy binding.
+- The existing VPC Service binding and Worker secret were verified in [runtime run 43305293141, attempt 2](https://github.com/muhriskiawan23/ai-command-center/actions/runs/43305293141/attempts/2). The deployed production switch remains `URL_READER_ENABLED=false`.
+- [13 November runtime evidence](private-egress-runtime-evidence-2026-11-13.md) records the exact commit, bounded checks, successful private path and cleanup. It does not close Gate B or replace Gate C.
 
 ## Gate A — owner-approved infrastructure decision (OPEN)
 
-Record owner approval, operator/provider, deployment region and data jurisdiction, network topology, private ingress, authentication and secret rotation, outbound firewall policy, operating cost ceiling, incident response owner, failure handling, and rollback. No cloud/VPC deployment or secret change before approval.
+The owner authorized the infrastructure setup and bounded synthetic tests in the current session. Record the outstanding operational decisions: operator/provider, deployment region and data jurisdiction, topology, private ingress, authentication and rotation, outbound firewall policy, operating cost ceiling, incident owner, failure handling and rollback. The current Termux connector is not evidence of long-term availability.
 
 ## Gate B — hosted synthetic transport proof (OPEN)
 
@@ -44,6 +45,6 @@ Reviewer must be a named person other than the implementer. Record date, evidenc
 
 ## Gate D — controlled release (OPEN)
 
-Only after A–C pass, obtain separate explicit owner authorization for production rollout. Require narrow allowlisted smoke tests, documented rollback/kill switch, alerting and rate limits, and immediate fail-closed behavior on proxy or policy failure. No automatic activation from a passing CI run.
+The owner has already authorized activation conditional on all required security checks passing. That condition is not met by the bounded run alone. After A–C pass, record the evidence and controlled rollout under that authorization. Require narrow allowlisted smoke tests, documented rollback/kill switch, alerting and rate limits, and immediate fail-closed behavior on proxy or policy failure. No automatic activation from a passing CI run.
 
 **Current decision: NO-GO.** Keep Issue #156 open and URL reader production disabled until all gates are evidenced and approved.

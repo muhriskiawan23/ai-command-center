@@ -49,8 +49,14 @@ body-limit, independent privacy/retention or operational release gates.
 URL Reader stays OFF even after this run passes. Activation is a separate
 reviewed configuration change only after all required evidence exists.
 
-## Evidence at preparation
+## Historical evidence at preparation
 
 Runtime readiness run 43212823228, rerun on 2026-11-12 UTC, still reported
 `vpc_binding_config=verified` and `egress_proxy_token_secret=missing`.
 No end-to-end success or production secret installation is claimed by this document.
+
+## Successful bounded runtime proof — 13 November 2026
+
+[Run 43305293141, attempt 2](https://github.com/muhriskiawan23/ai-command-center/actions/runs/43305293141/attempts/2) succeeded after a single connector was run with IPv4 + HTTP/2. Worker deployment/secret metadata, proxy authentication denial, fixed unsafe-target denial, and production-adapter peer/TLS checks passed. Cleanup succeeded. URL Reader stayed OFF. See [the exact evidence and remaining coverage](private-egress-runtime-evidence-2026-11-13.md).
+
+The setup workflow currently uses the existing infrastructure credential, which has VPC access and was granted Workers Scripts Edit. The routine deployment credential previously failed VPC binding authorization (10196); this bounded setup result does not attest that every other deployment workflow credential has VPC binding permission.
