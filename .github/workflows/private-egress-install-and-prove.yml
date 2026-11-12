@@ -9,6 +9,9 @@ on:
       - tools/egress-proxy/runtime/safe-diagnostics.mjs
       - tools/egress-proxy/runtime/probe-client.mjs
       - tools/egress-proxy/runtime/probe-worker.js
+      - tools/egress-proxy/runtime/extended-proof.js
+      - tools/egress-proxy/runtime/privacy-schema-audit.mjs
+      - tools/egress-proxy/runtime/cleanup-probe.mjs
 permissions:
   contents: read
 concurrency:
@@ -43,9 +46,28 @@ jobs:
         run: |
           npm test
           npm run check
+          python3 tests/privacy-d1-cascade.test.py -v
+      - name: Read-only production D1 schema privacy audit
+        id: privacy_schema
+        continue-on-error: true
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_DB_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: node tools/egress-proxy/runtime/privacy-schema-audit.mjs
       - name: Deploy OFF guard, install secret, verify metadata and private runtime
         env:
           EGRESS_PROXY_TOKEN: ${{ secrets.EGRESS_PROXY_TOKEN }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_INFRA_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: node tools/egress-proxy/runtime/install-and-prove.mjs
+      - name: Require a passing privacy schema audit
+        if: ${{ always() }}
+        env:
+          PRIVACY_SCHEMA_OUTCOME: ${{ steps.privacy_schema.outcome }}
+        run: test "$PRIVACY_SCHEMA_OUTCOME" = success
+      - name: Confirm temporary probe removal even after a failed test
+        if: ${{ always() }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_INFRA_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node tools/egress-proxy/runtime/cleanup-probe.mjs

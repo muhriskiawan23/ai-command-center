@@ -1,3 +1,4 @@
+import { safeError } from "./safe-error.js";
 import { json, sha256Hex } from "./http.js";
 
 // ---- Daily usage limits (cost protection) -------------------------------------------------------------
@@ -30,7 +31,7 @@ export async function refundUsage(env, day, charges) {
   for (const charge of charges) {
     try {
       await env.DB.prepare("UPDATE daily_usage SET units = MAX(units - ?, 0) WHERE day = ? AND subject = ?").bind(charge.units, day, charge.subject).run();
-    } catch (error) { console.error("Usage refund failed:", error); }
+    } catch (error) { console.error("Usage refund failed:", safeError(error)); }
   }
 }
 
@@ -68,7 +69,7 @@ export async function enforceDailyLimits(env, request, user, units) {
     // First consumption of the day: drop counters older than two days so the table stays small.
     if (globalTotal === units) {
       try { await env.DB.prepare("DELETE FROM daily_usage WHERE day < ?").bind(usageDay(new Date(Date.now() - 2 * 86400000))).run(); }
-      catch (error) { console.error("Usage cleanup failed:", error); }
+      catch (error) { console.error("Usage cleanup failed:", safeError(error)); }
     }
     return { ok: true, day, charges };
   } catch (error) {
@@ -78,7 +79,7 @@ export async function enforceDailyLimits(env, request, user, units) {
       console.error("Daily usage limits unavailable; verify and apply D1 migrations before serving chat traffic.");
       return { ok: false, response: json({ error: "Layanan pembatasan pemakaian belum siap. Silakan coba lagi nanti." }, 503) };
     }
-    console.error("Daily usage check failed:", error);
+    console.error("Daily usage check failed:", safeError(error));
     return { ok: false, response: json({ error: "Layanan pembatasan pemakaian sedang bermasalah. Coba lagi nanti." }, 503) };
   }
 }

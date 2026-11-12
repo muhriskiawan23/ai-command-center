@@ -171,6 +171,8 @@ test("callback preserves GitHub 403 and logs safe diagnostic metadata only", asy
     assert.equal(warnings[0][0], "GitHub API request failed");
     const diagnostic = warnings[0][1];
     assert.equal(diagnostic.status, 403);
+    assert.equal(diagnostic.endpoint, undefined);
+    assert.equal(diagnostic.message, undefined);
     assert.equal(diagnostic.requestId, "REQ-123");
     assert.equal(diagnostic.rateLimitRemaining, "0");
     assert.equal(diagnostic.retryAfter, "60");

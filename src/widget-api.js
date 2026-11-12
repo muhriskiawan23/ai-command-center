@@ -1,3 +1,4 @@
+import { safeError } from "./safe-error.js";
 const MAX_ORIGINS = 5;
 const DEFAULT_DAILY_LIMIT = 100;
 const MAX_DAILY_LIMIT = 500;
@@ -157,7 +158,7 @@ export async function handlePublicChatRoute(request, env, deps) {
   } catch (error) {
     for (const subject of charged) await env.DB.prepare("UPDATE daily_usage SET units = MAX(units - ?, 0) WHERE day = ? AND subject = ?").bind(PUBLIC_REQUEST_UNITS, day, subject).run().catch(() => {});
     await env.DB.prepare("UPDATE public_api_keys SET daily_used = MAX(daily_used - 1, 0) WHERE id = ? AND usage_day = ?").bind(row.id, day).run().catch(() => {});
-    console.error("Public API usage accounting failed:", error);
+    console.error("Public API usage accounting failed:", safeError(error));
     return fail("Pembatasan penggunaan belum tersedia. Coba lagi nanti.", 503);
   }
 
@@ -181,7 +182,7 @@ export async function handlePublicChatRoute(request, env, deps) {
   } catch (error) {
     await env.DB.prepare("UPDATE public_api_keys SET daily_used = MAX(daily_used - 1, 0), updated_at = ? WHERE id = ? AND usage_day = ?").bind(now, row.id, day).run().catch(() => {});
     for (const subject of charged) await env.DB.prepare("UPDATE daily_usage SET units = MAX(units - ?, 0) WHERE day = ? AND subject = ?").bind(PUBLIC_REQUEST_UNITS, day, subject).run().catch(() => {});
-    console.error("Widget AI generation failed:", error);
+    console.error("Widget AI generation failed:", safeError(error));
     return fail("AI gagal memproses permintaan. Silakan coba lagi.", 502);
   }
 }

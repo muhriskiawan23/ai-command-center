@@ -1,5 +1,6 @@
 import { createVerifiedLinkFetcher } from "../../../src/verified-egress.js";
 import { safeProbeError } from "./probe-client.mjs";
+import { fixtureResponse, runExtendedProof } from "./extended-proof.js";
 
 export async function verifyProxyDenials(env) {
   const token = env.EGRESS_PROXY_TOKEN;
@@ -45,14 +46,18 @@ export async function runProof(env) {
 
 export default {
   async fetch(request, env) {
-    // No arbitrary target, request body, URL, debug output or proxy response is exposed.
-    if (request.method !== "POST" || new URL(request.url).pathname !== "/run") return new Response(null, { status: 404 });
+    const fixture = await fixtureResponse(request);
+    if (fixture) return fixture;
+    // No arbitrary caller target, request body, debug output or proxy response is exposed.
+    if (request.method !== "POST" || !["/run", "/sample"].includes(new URL(request.url).pathname)) return new Response(null, { status: 404 });
     if (typeof env.EGRESS_PROXY_TOKEN !== "string" || env.EGRESS_PROXY_TOKEN.length < 32) return new Response(null, { status: 503 });
     const supplied = new TextEncoder().encode(request.headers.get("authorization") || "");
     const expected = new TextEncoder().encode(`Bearer ${env.EGRESS_PROXY_TOKEN}`);
     if (supplied.length !== expected.length || !crypto.subtle.timingSafeEqual(supplied, expected)) return new Response(null, { status: 401 });
     try {
-      return Response.json({ ok: true, checks: await runProof(env) }, { headers: { "cache-control": "no-store" } });
+      const checks = await runProof(env);
+      if (new URL(request.url).pathname === "/run") Object.assign(checks, await runExtendedProof(env));
+      return Response.json({ ok: true, checks }, { headers: { "cache-control": "no-store" } });
     } catch (error) {
       return Response.json({ ok: false, error: "runtime_proof_failed", diagnostic: safeProbeError(error) }, { status: 502, headers: { "cache-control": "no-store" } });
     }
