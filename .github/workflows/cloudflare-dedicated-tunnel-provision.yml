@@ -1,0 +1,75 @@
+name: BOR AI provision dedicated Cloudflare Tunnel
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bor-ai-dedicated-tunnel-provision
+  cancel-in-progress: false
+
+jobs:
+  provision:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Create dedicated remotely managed tunnel if absent
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_INFRA_API_TOKEN }}
+          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${CF_TOKEN:-}" || -z "${CF_ACCOUNT:-}" ]]; then
+            echo "::error::Missing infrastructure token or account ID"
+            exit 1
+          fi
+          echo "::add-mask::$CF_TOKEN"
+          # Do not print raw responses, token, connector credentials or tunnel metadata.
+          node --input-type=module <<'NODE'
+          const token = process.env.CF_TOKEN;
+          const account = process.env.CF_ACCOUNT;
+          const name = "bor-ai-private-egress";
+          const base = "https://api.cloudflare.com/client/v4/accounts/" + encodeURIComponent(account);
+          const headers = {Authorization:"Bearer "+token, Accept:"application/json"};
+          async function api(path, options={}) {
+            const res = await fetch(base+path, {
+              ...options, headers:{...headers,...(options.headers||{})},
+              signal:AbortSignal.timeout(20000)
+            });
+            let body;
+            try {body=await res.json()} catch {throw Error("Cloudflare response is not JSON; HTTP "+res.status)}
+            if (!res.ok || body.success !== true) {
+              throw Error("Cloudflare operation failed: HTTP "+res.status+"; no response details logged");
+            }
+            return body;
+          }
+          // Abort on incomplete inventory rather than create a duplicate.
+          const tunnels = [];
+          for(let page=1;page<=10;page++) {
+            const payload=await api("/cfd_tunnel?is_deleted=false&per_page=100&page="+page);
+            if(!Array.isArray(payload.result)) throw Error("Unexpected tunnel inventory shape");
+            tunnels.push(...payload.result);
+            const info=payload.result_info;
+            if (!info || !Number.isInteger(info.total_pages)) throw Error("Missing tunnel pagination metadata");
+            if (page>=info.total_pages) break;
+            if(page===10) throw Error("Tunnel inventory exceeds 10 pages; refusing to create");
+          }
+          const existing=tunnels.filter(t=>t.name===name);
+          if(existing.length>1) throw Error("Multiple tunnels with target name; manual reconciliation required");
+          if(existing.length===1) {
+            console.log("Dedicated tunnel already exists; no creation performed.");
+            console.log("Tunnel ID: "+existing[0].id);
+          } else {
+            const result=await api("/cfd_tunnel",{
+              method:"POST",headers:{"Content-Type":"application/json"},
+              body:JSON.stringify({name,config_src:"cloudflare"})
+            });
+            if(!result.result?.id) throw Error("Tunnel creation response missing ID");
+            console.log("Dedicated remotely managed Tunnel created.");
+            console.log("Tunnel ID: "+result.result.id);
+          }
+          console.log("No connector token printed or transferred. Tunnel will remain disconnected until Railway connector is configured.");
+          NODE
