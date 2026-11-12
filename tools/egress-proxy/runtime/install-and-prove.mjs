@@ -68,6 +68,16 @@ try {
   console.log("infrastructure_worker_metadata_access=verified");
   await api("connectivity/directory/services/" + cfg.vpc_services[0].service_id);
   console.log("infrastructure_vpc_resource_access=verified");
+  stage = "verify_asset_upload_access";
+  const assetAccess = await fetch(`https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(account)}/workers/scripts/ai-command-center/assets-upload-session`, {
+    method: "POST", headers: { authorization: `Bearer ${apiToken}`, "content-type": "application/json" },
+    body: JSON.stringify({ manifest: {} }), signal: AbortSignal.timeout(20000)
+  });
+  const assetResult = await assetAccess.json().catch(() => null);
+  console.log("asset_upload_session_http_status=" + assetAccess.status);
+  console.log("asset_upload_session_api_codes=" + JSON.stringify((assetResult?.errors || []).map(e => e.code).filter(c => Number.isSafeInteger(c)).slice(0, 5)));
+  requireCheck(assetAccess.ok && assetResult?.success === true, "asset_upload_access_denied_or_unavailable");
+  console.log("asset_upload_session_access=verified");
   stage = "deploy_off_guard";
   await cli(["deploy", "--config", "wrangler.jsonc", "--message", `egress-off-guard:${process.env.GITHUB_SHA}`]);
   stage = "verify_off_guard";
