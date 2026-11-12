@@ -1,0 +1,23 @@
+name: BOR AI DNS-only rebinding audit
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [.github/workflows/url-reader-dns-audit.yml]
+permissions:
+  contents: read
+jobs:
+  dns-only:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 22
+      - name: Require both real public and private DNS fixture answers
+        env:
+          BOR_AI_LIVE_DNS_REBINDING: '1'
+        run: node --test tests/egress-proxy-live-dns.test.js
