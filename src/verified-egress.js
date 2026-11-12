@@ -15,7 +15,7 @@ export function createVerifiedLinkFetcher(env) {
   return async (url, { signal } = {}) => {
     const parsed = new URL(url);
     if (!["http:", "https:"].includes(parsed.protocol)) throw Error("invalid_scheme");
-    const response = await binding.fetch("https://egress.internal/fetch", {
+    const response = await binding.fetch("http://egress.internal/fetch", {
       method: "POST",
       headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
       body: JSON.stringify({ url: parsed.toString() }),
