@@ -37,6 +37,19 @@ jobs:
               --http-port 10000 > /tmp/bor-vpc-create.log 2>&1; then
             echo "Private VPC service creation succeeded (no public hostname)."
           else
-            echo "::error::Private VPC service creation failed; check Connectivity Directory Admin role."
+            # Only classify local CLI stderr. Never print raw output or response bodies.
+            node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          const raw=fs.readFileSync("/tmp/bor-vpc-create.log","utf8").toLowerCase();
+          const category =
+            /unknown argument|unknown option|unrecognized option|unknown command|not enough arguments|missing required|invalid option/.test(raw) ? "cli_arguments" :
+            /permission|unauthorized|forbidden|not authorized|403|insufficient scope|access denied/.test(raw) ? "authorization" :
+            /payment|billing|subscription|plan required/.test(raw) ? "account_entitlement" :
+            /not found|404/.test(raw) ? "resource_not_found" :
+            /already exists|duplicate|conflict|409/.test(raw) ? "already_exists" :
+            /timeout|timed out|network|fetch failed/.test(raw) ? "network" : "unknown";
+          console.log("vpc_create_failure_category="+category);
+          NODE
+            echo "::error::Private VPC service creation failed; see sanitized failure category."
             exit 1
           fi
