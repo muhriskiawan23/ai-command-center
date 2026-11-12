@@ -45,3 +45,19 @@ jobs:
             } catch { console.log(name+": request_failed"); }
           }
           NODE
+
+      - name: Check VPC Service access with official Wrangler CLI
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_INFRA_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Capture output privately; report only status, never service names or IDs.
+          if npx --yes wrangler@latest vpc service list > /tmp/vpc-check.log 2>&1; then
+            echo "official_vpc_service_list=success"
+          else
+            echo "official_vpc_service_list=failed"
+            # CLI output may include account metadata; do not echo it.
+            exit 1
+          fi
