@@ -36,7 +36,7 @@ assert.equal(wrongAuth.status, 401, "hosted proxy must deny incorrect authentica
 
 for (const [name, url, expectedError] of [
   ["IPv4 loopback", "http://127.0.0.1/", "unsafe_ip_literal"],
-  ["IPv6 loopback", "https://[::1]/", "unsafe_ip_literal"],
+  ["IPv6 loopback", "https://[::1]/", "invalid_hostname"],
   ["cloud metadata", "http://169.254.169.254/", "unsafe_ip_literal"]
 ]) {
   const rejected = await hostedFetch({

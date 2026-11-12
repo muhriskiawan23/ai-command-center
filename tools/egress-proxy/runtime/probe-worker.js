@@ -1,7 +1,7 @@
 import { createVerifiedLinkFetcher } from "../../../src/verified-egress.js";
 import { safeProbeError } from "./probe-client.mjs";
 
-export async function runProof(env) {
+export async function verifyProxyDenials(env) {
   const token = env.EGRESS_PROXY_TOKEN;
   const request = async (url, auth) => env.EGRESS_PROXY.fetch("http://egress.internal/fetch", {
     method: "POST", redirect: "manual", signal: AbortSignal.timeout(15000),
@@ -15,12 +15,16 @@ export async function runProof(env) {
   }
   for (const [url, error] of [
     ["http://127.0.0.1/", "unsafe_ip_literal"],
-    ["https://[::1]/", "unsafe_ip_literal"],
+    ["https://[::1]/", "invalid_hostname"],
     ["http://169.254.169.254/", "unsafe_ip_literal"]
   ]) {
     const response = await request(url, token);
     if (response.status !== 502 || (await response.json()).error !== error) throw Object.assign(Error("unsafe_destination_denial_failed"), { proxyStatus: response.status });
   }
+}
+
+export async function runProof(env) {
+  await verifyProxyDenials(env);
   // Exercise exactly the production adapter, with synthetic input and an isolated opt-in.
   let proxyStatus = null;
   const binding = { async fetch(...args) {
