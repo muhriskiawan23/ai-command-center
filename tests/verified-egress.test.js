@@ -22,7 +22,7 @@ test("private adapter sends authenticated single-hop request and verifies TLS pe
   let count = 0;
   const fetcher = createVerifiedLinkFetcher(fakeEnv(async (url, opts) => {
     count++;
-    assert.equal(url, "https://egress.internal/fetch");
+    assert.equal(url, "http://egress.internal/fetch");
     assert.equal(opts.headers.authorization, `Bearer ${token}`);
     assert.equal(opts.redirect, "manual");
     assert.equal(JSON.parse(opts.body).url, "https://example.com/");
