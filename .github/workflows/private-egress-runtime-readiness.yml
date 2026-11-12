@@ -30,8 +30,18 @@ jobs:
             echo "worker_api_credentials=missing"
             exit 1
           fi
-          if ! npx --yes wrangler@4 secret list --config wrangler.jsonc --json > /tmp/bor-worker-secret-metadata.json 2>/tmp/bor-worker-secret-error.log; then
-            echo "::error::Worker secret metadata unavailable"
+          if ! npx --yes wrangler@4 secret list --config wrangler.jsonc > /tmp/bor-worker-secret-metadata.json 2>/tmp/bor-worker-secret-error.log; then
+            node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          const raw=fs.readFileSync("/tmp/bor-worker-secret-error.log","utf8").toLowerCase();
+          const category =
+            /unknown argument|unknown option|unrecognized option|unknown command|invalid option/.test(raw) ? "cli_arguments" :
+            /permission|unauthorized|forbidden|not authorized|403|insufficient scope|access denied/.test(raw) ? "authorization" :
+            /not found|404/.test(raw) ? "worker_not_found" :
+            /timeout|timed out|network|fetch failed/.test(raw) ? "network" : "unknown";
+          console.log("worker_secret_metadata_failure_category="+category);
+          NODE
+            echo "::error::Worker secret metadata unavailable; see sanitized failure category"
             exit 1
           fi
           node --input-type=module <<'NODE'
