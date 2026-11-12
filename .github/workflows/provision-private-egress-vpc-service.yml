@@ -1,0 +1,55 @@
+name: BOR AI provision private VPC service
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: bor-ai-private-vpc-service
+  cancel-in-progress: false
+jobs:
+  provision:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    steps:
+      - name: Create private HTTP service only if absent
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_INFRA_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${CLOUDFLARE_API_TOKEN:-}" && test -n "${CLOUDFLARE_ACCOUNT_ID:-}"
+          # Wrangler output can include identifiers; only print sanitized status.
+          npx --yes wrangler@latest vpc service list --json > /tmp/bor-vpc-list.json 2>/tmp/bor-vpc-error.log || {
+            echo "::error::Cannot list VPC services (check permissions)"; exit 1;
+          }
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          const payload=JSON.parse(fs.readFileSync("/tmp/bor-vpc-list.json","utf8"));
+          const list=Array.isArray(payload)?payload:Array.isArray(payload.result)?payload.result:Array.isArray(payload.services)?payload.services:null;
+          if(!list) throw Error("Unknown VPC inventory format; fail closed");
+          const matches=list.filter(s=>s.name==="bor-ai-termux-egress");
+          if(matches.length>1) throw Error("Duplicate service names; manual reconciliation required");
+          if(matches.length===1) {
+            const s=matches[0];
+            if(s.type!=="http" || s.http_port!==10000 || s.host?.ipv4!=="127.0.0.1" || s.host?.network?.tunnel_id!=="59f9b74c-4bf7-4f9f-9703-4eb73f6985a9") {
+              throw Error("Existing service configuration mismatch; refusing to modify");
+            }
+            console.log("Private VPC service already exists and matches expected configuration.");
+            process.exit(0);
+          }
+          NODE
+          # Check again for existence without relying on a success string in CLI output.
+          if node --input-type=module -e 'const fs=require("node:fs");const p=JSON.parse(fs.readFileSync("/tmp/bor-vpc-list.json"));const a=Array.isArray(p)?p:(p.result??p.services);process.exit(a.some(s=>s.name==="bor-ai-termux-egress")?0:1)'; then
+            exit 0
+          fi
+          if npx --yes wrangler@latest vpc service create bor-ai-termux-egress \
+              --type http \
+              --tunnel-id 59f9b74c-4bf7-4f9f-9703-4eb73f6985a9 \
+              --ipv4 127.0.0.1 \
+              --http-port 10000 > /tmp/bor-vpc-create.log 2>&1; then
+            echo "Private VPC service creation succeeded (no public hostname)."
+          else
+            echo "::error::Private VPC service creation failed; check Connectivity Directory Admin role."
+            exit 1
+          fi
