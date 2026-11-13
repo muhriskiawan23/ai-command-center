@@ -127,3 +127,22 @@ test("Tavily global budget atomically rejects requests above the daily limit", a
   assert.equal(await reserveTavilyExtractBudget(env, 2), true);
   assert.equal(await reserveTavilyExtractBudget(env, 1), false);
 });
+
+test("Tavily Extract rejects URLs containing credential-like query parameters", async () => {
+  let calls = 0;
+  const result = await extractWithTavily(["https://example.com/callback?access_token=private"], testEnv(), {
+    fetcher: async () => { calls++; throw Error("must not call"); }
+  });
+  assert.equal(calls, 0);
+  assert.equal(result[0].ok, false);
+  assert.match(result[0].reason, /sensitif/);
+});
+
+test("Tavily Extract strips URL fragments before sending them to provider", async () => {
+  const fetcher = async (_endpoint, options) => {
+    assert.deepEqual(JSON.parse(options.body).urls, ["https://example.com/article"]);
+    return new Response(JSON.stringify({ results: [{ url: "https://example.com/article", raw_content: "A".repeat(100) }] }), { headers: { "content-type": "application/json" } });
+  };
+  const result = await extractWithTavily(["https://example.com/article#private-fragment"], testEnv(), { fetcher });
+  assert.equal(result[0].ok, true);
+});
