@@ -59,3 +59,18 @@ test("Tavily adapter is feature-flagged in both chat URL and research paths", as
   const config = readFileSync(new URL("../wrangler.jsonc", import.meta.url), "utf8");
   assert.match(config, /"URL_READER_ENABLED": "false"/);
 });
+
+test("Tavily Extract deduplicates repeated URLs before charging provider", async () => {
+  let calls = 0;
+  const fetcher = async (_endpoint, options) => {
+    calls++;
+    assert.deepEqual(JSON.parse(options.body).urls, ["https://example.com/a"]);
+    return new Response(JSON.stringify({
+      results: [{ url: "https://example.com/a", raw_content: "A".repeat(100) }]
+    }), { headers: { "content-type": "application/json" } });
+  };
+  const result = await extractWithTavily(["https://example.com/a", "https://example.com/a"], { TAVILY_API_KEY: "test" }, { fetcher });
+  assert.equal(calls, 1);
+  assert.equal(result.length, 2);
+  assert.ok(result.every(x => x.ok));
+});
