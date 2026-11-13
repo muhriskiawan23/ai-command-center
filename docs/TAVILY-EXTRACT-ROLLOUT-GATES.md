@@ -29,3 +29,6 @@ Status: **NOT APPROVED FOR PRODUCTION ACTIVATION**. This checklist records contr
 
 ## Sign-off evidence required
 Record CI run IDs, independent review findings, real-provider smoke test timestamps, budget/alert configuration, privacy disclosure, deployment version, rollback test, and explicit owner approval. **Do not merge or activate solely because CI is green.**
+
+## Implemented global budget (pending CI and live verification)
+The Tavily adapter now reserves an atomic global D1 quota before each provider call: default 30 unique extracted URLs per UTC day, configurable via `TAVILY_EXTRACT_DAILY_URL_LIMIT`. Both chat and research extraction share this counter. Missing D1 fails closed; failed provider calls keep their reserved quota. This is not a per-user quota, does not prove provider credit prices, and requires live validation and billing alerts before enabling.
