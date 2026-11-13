@@ -42,3 +42,29 @@ BEGIN
   INSERT INTO credit_ledger (id, user_id, delta_microcredits, reason, reference_id, created_at)
   VALUES ('reserve:' || NEW.request_id, NEW.user_id, -NEW.reserved_microcredits, 'reserve', NEW.request_id, NEW.created_at);
 END;
+
+-- Prevent bypassing the debit trigger by inserting a pre-finalized reservation.
+CREATE TRIGGER IF NOT EXISTS trg_credit_reservation_insert_status
+BEFORE INSERT ON credit_reservations
+WHEN NEW.status != 'reserved' OR NEW.settled_microcredits IS NOT NULL
+BEGIN
+  SELECT RAISE(ABORT, 'reservation_must_start_reserved');
+END;
+
+-- The reservation's ownership and original amount are immutable.
+CREATE TRIGGER IF NOT EXISTS trg_credit_reservation_immutable
+BEFORE UPDATE ON credit_reservations
+WHEN NEW.request_id != OLD.request_id
+  OR NEW.user_id != OLD.user_id
+  OR NEW.reserved_microcredits != OLD.reserved_microcredits
+  OR NEW.created_at != OLD.created_at
+BEGIN
+  SELECT RAISE(ABORT, 'reservation_identity_immutable');
+END;
+
+-- Deleting a reservation would allow replay of a paid request ID.
+CREATE TRIGGER IF NOT EXISTS trg_credit_reservation_no_delete
+BEFORE DELETE ON credit_reservations
+BEGIN
+  SELECT RAISE(ABORT, 'reservation_delete_forbidden');
+END;
