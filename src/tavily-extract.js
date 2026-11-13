@@ -1,8 +1,23 @@
 import { validateUrl, MAX_PAGE_CHARS, MAX_LINKS } from "./links.js";
+import { consumeUsage, usageDay } from "./daily-limits.js";
 
 // Managed public-URL extraction. No arbitrary Worker fetch or Android tunnel.
 const MAX_RESPONSE_BYTES = 1_000_000;
 const TIMEOUT_MS = 8000;
+const DEFAULT_DAILY_URL_BUDGET = 30;
+
+export async function reserveTavilyExtractBudget(env, urlCount) {
+  // A separate atomic global D1 quota: existing chat units are not Tavily provider credits.
+  if (!env.DB?.prepare) return false;
+  const configured = Number(env.TAVILY_EXTRACT_DAILY_URL_LIMIT);
+  const limit = Number.isSafeInteger(configured) && configured > 0 ? Math.min(configured, 10000) : DEFAULT_DAILY_URL_BUDGET;
+  if (!Number.isSafeInteger(urlCount) || urlCount < 1 || urlCount > MAX_LINKS) return false;
+  try {
+    return (await consumeUsage(env, usageDay(), "provider:tavily-extract:global", urlCount, limit)) !== null;
+  } catch {
+    return false; // Fail closed if D1 is unavailable or migration is missing.
+  }
+}
 const fail = (url, reason) => ({ ok: false, url, requested: url, reason });
 
 export async function extractWithTavily(urls, env = {}, { fetcher = fetch, ownHost = "" } = {}) {
@@ -18,6 +33,7 @@ export async function extractWithTavily(urls, env = {}, { fetcher = fetch, ownHo
   try {
     // Deduplicate URLs to avoid unnecessary provider credits within one extraction batch.
     const uniqueUrls = [...new Set(eligible.map(x => x.check.url.toString()))];
+    if (!(await reserveTavilyExtractBudget(env, uniqueUrls.length))) throw Error("budget_unavailable");
     const response = await fetcher("https://api.tavily.com/extract", {
       method: "POST", redirect: "manual", signal: controller.signal,
       headers: { "Accept": "application/json", "Content-Type": "application/json", "Authorization": "Bearer " + key },
