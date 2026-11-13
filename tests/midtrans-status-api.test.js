@@ -11,17 +11,22 @@ const fake=(payload,code=200)=>async(url,opts)=>{
  return {ok:code===200,text:async()=>JSON.stringify(payload)};
 };
 test("sandbox status verification returns candidate only, never credits",async()=>{
- const result=await checkMidtransSandboxOrder(order,{serverKey:key,fetchImpl:fake(status)});
+ const result=await checkMidtransSandboxOrder(order,{serverKey:key,expectedMerchantId:"M123",fetchImpl:fake(status)});
  assert.deepEqual(result,{classification:{kind:"paid_candidate"},providerTransactionId:"tx-123",merchantId:"M123",verifiedVia:"sandbox_status_api"});
 });
 test("reject mismatched amount, order, currency, merchant identity and status",async()=>{
  for(const patch of [{gross_amount:"36255.00"},{order_id:"other"},{currency:"USD"},{merchant_id:null},{status_code:"404"}])
-  await assert.rejects(()=>checkMidtransSandboxOrder(order,{serverKey:key,fetchImpl:fake({...status,...patch})}));
+  await assert.rejects(()=>checkMidtransSandboxOrder(order,{serverKey:key,expectedMerchantId:"M123",fetchImpl:fake({...status,...patch})}));
 });
 test("reject production orders, invalid keys, upstream errors and unknown state",async()=>{
- await assert.rejects(()=>checkMidtransSandboxOrder({...order,environment:"production"},{serverKey:key,fetchImpl:fake(status)}));
- await assert.rejects(()=>checkMidtransSandboxOrder(order,{serverKey:"live-key",fetchImpl:fake(status)}));
- await assert.rejects(()=>checkMidtransSandboxOrder(order,{serverKey:key,fetchImpl:fake(status,503)}));
- const result=await checkMidtransSandboxOrder(order,{serverKey:key,fetchImpl:fake({...status,transaction_status:"unknown"})});
+ await assert.rejects(()=>checkMidtransSandboxOrder({...order,environment:"production"},{serverKey:key,expectedMerchantId:"M123",fetchImpl:fake(status)}));
+ await assert.rejects(()=>checkMidtransSandboxOrder(order,{serverKey:"live-key",expectedMerchantId:"M123",fetchImpl:fake(status)}));
+ await assert.rejects(()=>checkMidtransSandboxOrder(order,{serverKey:key,expectedMerchantId:"M123",fetchImpl:fake(status,503)}));
+ const result=await checkMidtransSandboxOrder(order,{serverKey:key,expectedMerchantId:"M123",fetchImpl:fake({...status,transaction_status:"unknown"})});
  assert.equal(result.classification.kind,"manual_review");
+});
+
+test("reject wrong or missing configured merchant identity",async()=>{
+ await assert.rejects(()=>checkMidtransSandboxOrder(order,{serverKey:key,fetchImpl:fake(status)}),/merchant ID required/);
+ await assert.rejects(()=>checkMidtransSandboxOrder(order,{serverKey:key,expectedMerchantId:"M999",fetchImpl:fake(status)}),/merchant mismatch/);
 });
