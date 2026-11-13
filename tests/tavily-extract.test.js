@@ -192,3 +192,23 @@ test("production config omits retired VPC egress and keeps URL reader disabled",
   assert.equal(config.vars.URL_READER_ENABLED, "false");
   assert.ok(!config.vpc_services?.some(binding => binding.binding === "EGRESS_PROXY"));
 });
+
+test("Tavily Extract permits benign query keys containing sig-like substrings", async () => {
+  const fetcher = async (_endpoint, options) => {
+    const urls = JSON.parse(options.body).urls;
+    assert.deepEqual(urls, ["https://example.com/article?design=modern&signal=strong"]);
+    return new Response(JSON.stringify({ results: [{ url: urls[0], raw_content: "A".repeat(100) }] }), { headers: { "content-type": "application/json" } });
+  };
+  const result = await extractWithTavily(["https://example.com/article?design=modern&signal=strong"], testEnv(), { fetcher });
+  assert.equal(result[0].ok, true);
+});
+
+test("Tavily Extract blocks camelCase and signed authentication query keys", async () => {
+  let calls = 0;
+  const fetcher = async () => { calls++; throw Error("must not call"); };
+  for (const key of ["authToken", "accessToken", "clientSecret", "apiKey", "X-Amz-Signature", "jwt", "bearer"]) {
+    const result = await extractWithTavily(["https://example.com/article?" + key + "=private"], testEnv(), { fetcher });
+    assert.equal(result[0].ok, false, key);
+  }
+  assert.equal(calls, 0);
+});
