@@ -54,3 +54,18 @@ The Tavily adapter now reserves an atomic global D1 quota before each provider c
 6. Remove legacy VPC/proxy/Termux dependencies only after production replacement has been demonstrated and rollback tested.
 
 Do not run paid Tavily requests or turn on production extraction solely because the user has authorized merge/deploy: those actions require verified provider billing and privacy gates.
+
+
+## Provider policy and pricing desk review (2026-11-13; NOT activation approval)
+
+Official Tavily sources reviewed:
+- Extract API basics: https://help.tavily.com/articles/8721959612-what-is-the-tavily-extract-api — basic extraction is described as 1 API credit per 5 successful extractions, advanced as 2 credits per 5. This is a provider-credit unit, not a verified USD invoice rate; confirm billing/account plan and rounding for batches, failures and retries before making financial commitments.
+- Customer applications: https://help.tavily.com/articles/5880393096-permitted-use-customer-applications — server-side integration into customer-facing commercial SaaS is allowed, but API-key resale/exposure is not; downstream users must comply with the AUP.
+- AUP: https://www.tavily.com/acceptable-use-policy — prohibits submitting credentials and certain sensitive information without appropriate permission. URL path and arbitrary query values may contain secrets even if query-key filtering passes.
+- Privacy policy: https://www.tavily.com/privacy — query data may be shared with third-party index providers; retention depends on purpose and other factors. Do not assume zero retention or single-region processing.
+- EU endpoint: https://www.tavily.com/eu — EU query residency and optional zero-query-retention are described for enabled customers, not the default api.tavily.com endpoint.
+- Provider output storage terms: https://help.tavily.com/articles/1612400809-storing-caching-retaining-output — permission for BOR AI to retain outputs is **not** evidence of Tavily's own input/query deletion schedule.
+
+**Current decision:** KEEP URL_READER_ENABLED=false. The deployed secret presence and CI do not verify provider-side SSRF protections, DNS/redirect behavior, Tavily account billing hard stops, default-region retention, or successful live Extract calls. Existing atomic D1 quota limits attempts, not invoice dollars. No paid/live provider smoke has been authorized or run in this review.
+
+Before opt-in: obtain provider confirmation of redirect/DNS safety, processing/retention and subprocessor handling; inspect Tavily dashboard plan, USD credit cost, usage caps and alerts; add end-user notice that submitted public URLs are sent to Tavily; obtain founder approval for a bounded real-provider smoke and budget. Do not activate based on documentation alone.
