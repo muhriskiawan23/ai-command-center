@@ -5,6 +5,16 @@ import { consumeUsage, usageDay } from "./daily-limits.js";
 const MAX_RESPONSE_BYTES = 1_000_000;
 const TIMEOUT_MS = 8000;
 const DEFAULT_DAILY_URL_BUDGET = 30;
+const SENSITIVE_QUERY_KEY = /(?:^|[_-])(token|secret|password|passwd|passcode|api[_-]?key|access[_-]?key|auth|authorization|session|signature|sig|code)(?:$|[_-])/i;
+
+function checkPublicUrl(raw, ownHost) {
+  const check = validateUrl(raw, ownHost);
+  if (!check.ok) return check;
+  const url = new URL(check.url.toString());
+  if ([...url.searchParams.keys()].some(key => SENSITIVE_QUERY_KEY.test(key))) return { ok: false, reason: "URL berisi parameter autentikasi sensitif" };
+  url.hash = ""; // URL fragments are client-side data and must not be sent to a provider.
+  return { ok: true, url };
+}
 
 export async function reserveTavilyExtractBudget(env, urlCount) {
   // A separate atomic global D1 quota: existing chat units are not Tavily provider credits.
@@ -23,7 +33,7 @@ const fail = (url, reason) => ({ ok: false, url, requested: url, reason });
 export async function extractWithTavily(urls, env = {}, { fetcher = fetch, ownHost = "" } = {}) {
   const input = Array.isArray(urls) ? urls.slice(0, MAX_LINKS) : [];
   const key = typeof env.TAVILY_API_KEY === "string" ? env.TAVILY_API_KEY.trim() : "";
-  const checked = input.map(raw => ({ raw, check: validateUrl(raw, ownHost) }));
+  const checked = input.map(raw => ({ raw, check: checkPublicUrl(raw, ownHost) }));
   if (!key) return checked.map(x => fail(x.raw, x.check.ok ? "Tavily belum dikonfigurasi" : x.check.reason));
   const eligible = checked.filter(x => x.check.ok);
   if (!eligible.length) return checked.map(x => fail(x.raw, x.check.reason));
