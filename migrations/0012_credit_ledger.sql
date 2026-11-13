@@ -26,3 +26,19 @@ CREATE TABLE IF NOT EXISTS credit_reservations (
   CHECK ((status = 'settled' AND settled_microcredits IS NOT NULL) OR (status != 'settled' AND settled_microcredits IS NULL))
 );
 CREATE INDEX IF NOT EXISTS idx_credit_reservations_user_status ON credit_reservations(user_id, status);
+
+-- One INSERT reserves, debits and journals atomically inside SQLite.
+-- RAISE(ABORT) cancels the entire INSERT and all trigger effects on insufficient funds.
+CREATE TRIGGER IF NOT EXISTS trg_credit_reservation_atomic
+BEFORE INSERT ON credit_reservations
+WHEN NEW.status = 'reserved'
+BEGIN
+  UPDATE credit_accounts
+  SET balance_microcredits = balance_microcredits - NEW.reserved_microcredits,
+      updated_at = NEW.created_at
+  WHERE user_id = NEW.user_id
+    AND balance_microcredits >= NEW.reserved_microcredits;
+  SELECT RAISE(ABORT, 'insufficient_credit_balance') WHERE changes() != 1;
+  INSERT INTO credit_ledger (id, user_id, delta_microcredits, reason, reference_id, created_at)
+  VALUES ('reserve:' || NEW.request_id, NEW.user_id, -NEW.reserved_microcredits, 'reserve', NEW.request_id, NEW.created_at);
+END;
