@@ -119,3 +119,25 @@ test("SQLite duplicate settlement across retries refunds at most once", async ()
     assert.equal(count(db,"credit_ledger"),2);
   } finally {db.close();}
 });
+
+test("SQLite user isolation: concurrent requests cannot debit another user's credits", async () => {
+  const db=setup(100);
+  try {
+    db.prepare("INSERT INTO credit_accounts (user_id,balance_microcredits,updated_at) VALUES ('other',200,1)").run();
+    const stmt=db.prepare("INSERT INTO credit_reservations (request_id,user_id,reserved_microcredits,settled_microcredits,status,created_at,updated_at) VALUES (?,?,?,NULL,'reserved',2,2)");
+    const jobs=[
+      ...Array.from({length:20},(_,i)=>({id:"a-"+i,user:"user",amount:30})),
+      ...Array.from({length:2},(_,i)=>({id:"b-"+i,user:"other",amount:50}))
+    ];
+    const outcomes=await Promise.all(jobs.map(async j=>{
+      await Promise.resolve();
+      try {stmt.run(j.id,j.user,j.amount);return j.user;} catch {return null;}
+    }));
+    assert.equal(outcomes.filter(x=>x==="user").length,3);
+    assert.equal(outcomes.filter(x=>x==="other").length,2);
+    assert.equal(balance(db),10);
+    assert.equal(db.prepare("SELECT balance_microcredits AS balance FROM credit_accounts WHERE user_id='other'").get().balance,100);
+    assert.equal(db.prepare("SELECT count(*) AS n FROM credit_reservations WHERE user_id='user'").get().n,3);
+    assert.equal(db.prepare("SELECT count(*) AS n FROM credit_reservations WHERE user_id='other'").get().n,2);
+  } finally {db.close();}
+});
