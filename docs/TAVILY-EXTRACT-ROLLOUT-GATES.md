@@ -38,3 +38,9 @@ The Tavily adapter now reserves an atomic global D1 quota before each provider c
 - Reject URLs with embedded username/password before third-party submission. Sensitive query-key filtering and fragment removal are also in place, but URL paths and unknown query names may still contain private data.
 - The feature flag now guards both Tavily and legacy URL reads. Existing test fixtures explicitly enable the reader where needed.
 - These protections are code-level controls; independent privacy/security review, provider billing verification, and real-provider smoke testing remain open.
+
+## CI and review snapshot (2026-11-13)
+- Commit `e2227a183e3dece08212695acd2baa90ddd805fc`: tests `43361170192` SUCCESS, preview `43361170467` SUCCESS, browser e2e `43361170240` SUCCESS.
+- GitHub PR #224 has no submitted reviews at this snapshot. Passing CI is not independent approval.
+- Repository `wrangler.jsonc` keeps `URL_READER_ENABLED` set to `false` and retains the `EGRESS_PROXY` VPC binding. The live Cloudflare environment has not been verified from this repository inspection.
+- `TAVILY_API_KEY` presence, provider billing caps, real Tavily extraction response, and privacy terms have **not** been verified. Do not activate or remove legacy connectivity until these gates are closed.
