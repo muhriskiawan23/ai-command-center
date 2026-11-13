@@ -55,3 +55,34 @@ test("ledger collision rolls back order and balance",async()=>{
   assert.equal(x.state(),"created");assert.equal(x.balance(),0);assert.equal(x.count(),1)
  }finally{x.sqlite.close()}
 });
+
+test("concurrent duplicate notifications credit exactly once",async()=>{
+ const x=setup();try{
+  const e=evidence();
+  const outcomes=await Promise.all(Array.from({length:12},()=>run(x.db,e)));
+  assert.equal(outcomes.filter(v=>v.kind==="fulfilled").length,1);
+  assert.equal(outcomes.filter(v=>v.kind==="unchanged").length,11);
+  assert.equal(x.balance(),25);assert.equal(x.count(),1);assert.equal(x.state(),"fulfilled");
+ }finally{x.sqlite.close()}
+});
+test("status API outage fails closed with no ledger mutation",async()=>{
+ const x=setup();try{
+  const e=evidence();e.fetchImpl=async()=>{throw new Error("network unavailable")};
+  await assert.rejects(run(x.db,e));
+  assert.equal(x.balance(),0);assert.equal(x.count(),0);assert.equal(x.state(),"created");
+ }finally{x.sqlite.close()}
+});
+test("status API merchant mismatch fails closed",async()=>{
+ const x=setup();try{
+  const e=evidence();e.fetchImpl=async()=>({ok:true,text:async()=>JSON.stringify({...e.payload,merchant_id:"OTHER"})});
+  await assert.rejects(run(x.db,e));
+  assert.equal(x.balance(),0);assert.equal(x.count(),0);assert.equal(x.state(),"created");
+ }finally{x.sqlite.close()}
+});
+test("invalid webhook signature fails closed",async()=>{
+ const x=setup();try{
+  const e=evidence();e.payload.signature_key="invalid";
+  await assert.rejects(run(x.db,e));
+  assert.equal(x.balance(),0);assert.equal(x.count(),0);assert.equal(x.state(),"created");
+ }finally{x.sqlite.close()}
+});
