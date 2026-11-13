@@ -1,0 +1,21 @@
+name: BOR AI isolated D1 payment smoke test
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "docs/sql/payment-orders-review.sql"
+      - "tests/d1/local-smoke.mjs"
+      - ".github/workflows/d1-payment-smoke.yml"
+permissions:
+  contents: read
+jobs:
+  local-d1:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Run isolated local D1 smoke test
+        run: node tests/d1/local-smoke.mjs
