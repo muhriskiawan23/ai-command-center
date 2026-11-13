@@ -19,8 +19,10 @@ test("signed pending does not require paid status confirmation",async()=>{
 test("reject signature tampering, signed wrong merchant, amount, order, currency and missing transaction",async()=>{
  const good=await signed(base);
  await assert.rejects(()=>assess({...good,gross_amount:"1.00"}),/signature/);
- for(const patch of [{merchant_id:"M999"},{gross_amount:"36255.00"},{order_id:"other"},{currency:"USD"},{transaction_id:null}])
-   await assert.rejects(()=>assess(await signed({...base,...patch})));
+ for(const patch of [{merchant_id:"M999"},{gross_amount:"36255.00"},{order_id:"other"},{currency:"USD"},{transaction_id:null}]) {
+   const signedPayload=await signed({...base,...patch});
+   await assert.rejects(()=>assess(signedPayload));
+ }
 });
 test("reject missing merchant config and production order",async()=>{
  const good=await signed(base);
