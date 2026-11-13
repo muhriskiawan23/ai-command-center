@@ -146,3 +146,10 @@ test("Tavily Extract strips URL fragments before sending them to provider", asyn
   const result = await extractWithTavily(["https://example.com/article#private-fragment"], testEnv(), { fetcher });
   assert.equal(result[0].ok, true);
 });
+
+test("URL reader disabled flag prevents both legacy and Tavily reads", async () => {
+  const { readFileSync } = await import("node:fs");
+  const source = readFileSync(new URL("../src/index.js", import.meta.url), "utf8");
+  assert.match(source, /if \(found\.urls\.length && env\.URL_READER_ENABLED === "true"\)/);
+  assert.match(source, /if \(pageCandidates\.length && env\.URL_READER_ENABLED === "true"\)/);
+});
