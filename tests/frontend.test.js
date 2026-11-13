@@ -137,3 +137,11 @@ test("Word DOCX upload is locally extracted and sent as an untrusted word docume
   assert.match(appJs, /function appendWordDocumentSource/);
   assert.match(appJs, /wordDocument:activeCsv\?\.kind==="word-document"/);
 });
+
+test("appendWordDocumentSource does not shadow the browser document", () => {
+  const match = appJs.match(/function appendWordDocumentSource\(([^)]*)\)/);
+  assert.ok(match, "DOCX source rendering function exists");
+  assert.notEqual(match[1].trim(), "document");
+  assert.match(appJs, /function appendWordDocumentSource\(doc\)/);
+  assert.match(appJs, /const box=document\.createElement\("div"\)/);
+});

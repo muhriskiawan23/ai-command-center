@@ -812,12 +812,12 @@ function appendSpreadsheetSource(spreadsheet){
   box.append(item);body.append(box);
 }
 function appendPresentationSource(p){const row=messagesEl.lastElementChild,body=row&&row.querySelector(".message-body");if(!body||!p)return;const box=document.createElement("div");box.className="sources presentation-source";const h=document.createElement("strong");h.textContent="Presentasi yang dianalisis:";const item=document.createElement("div");item.className="source ok";item.textContent="✓ "+String(p.name||"presentation.pptx")+(Number.isSafeInteger(p.slideCount)?" · "+p.slideCount+" slide":"")+(p.truncated?" · teks dibatasi":"");box.append(h,item);body.append(box)}
-function appendWordDocumentSource(document){
-  const row=messagesEl.lastElementChild;const body=row&&row.querySelector(".message-body");if(!body||!document)return;
+function appendWordDocumentSource(doc){
+  const row=messagesEl.lastElementChild;const body=row&&row.querySelector(".message-body");if(!body||!doc)return;
   const box=document.createElement("div");box.className="sources word-document-source";
   const head=document.createElement("strong");head.textContent="Dokumen Word yang dianalisis:";box.append(head);
   const item=document.createElement("div");item.className="source ok";
-  item.textContent="✓ "+String(document.name||"document.docx")+(Number.isSafeInteger(document.paragraphCount)?" · "+document.paragraphCount.toLocaleString("id-ID")+" paragraf":"")+(document.truncated?" · teks dibatasi":"");
+  item.textContent="✓ "+String(doc.name||"document.docx")+(Number.isSafeInteger(doc.paragraphCount)?" · "+doc.paragraphCount.toLocaleString("id-ID")+" paragraf":"")+(doc.truncated?" · teks dibatasi":"");
   box.append(item);body.append(box);
 }
 function renderCsvAttachment(){
