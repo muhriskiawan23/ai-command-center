@@ -44,3 +44,13 @@ The Tavily adapter now reserves an atomic global D1 quota before each provider c
 - GitHub PR #224 has no submitted reviews at this snapshot. Passing CI is not independent approval.
 - Repository `wrangler.jsonc` keeps `URL_READER_ENABLED` set to `false` and retains the `EGRESS_PROXY` VPC binding. The live Cloudflare environment has not been verified from this repository inspection.
 - `TAVILY_API_KEY` presence, provider billing caps, real Tavily extraction response, and privacy terms have **not** been verified. Do not activate or remove legacy connectivity until these gates are closed.
+
+## Controlled merge/deploy procedure
+1. Require all three CI workflows on the exact merge candidate commit to pass. Review the actual diff and verify no raw URL, page content, or API key is written to logs.
+2. Merge with the repository default URL Reader flag **OFF**. A merge alone is not permission to turn on paid extraction.
+3. Verify the deployed Worker environment independently: URL Reader disabled, no unexpected external extraction, chat and research still usable. Repository configuration is not evidence of live runtime variables.
+4. Confirm provider contract, retention, processing location, DNS/redirect safeguards, pricing and billing cap. Configure the secret and daily budget through approved secret/config management without displaying secret values.
+5. After explicit spending authorization and a successful controlled public-URL smoke test, enable only in the intended environment; observe quota and failure responses. Disable immediately on unexpected behavior.
+6. Remove legacy VPC/proxy/Termux dependencies only after production replacement has been demonstrated and rollback tested.
+
+Do not run paid Tavily requests or turn on production extraction solely because the user has authorized merge/deploy: those actions require verified provider billing and privacy gates.
