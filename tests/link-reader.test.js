@@ -8,7 +8,7 @@ const okPage = (body = PAGE) => async () => new Response(body, { headers: { "con
 
 async function setup(fetcher, extraEnv = {}) {
   const calls = [];
-  const app = await startHarness({ extraEnv: { LINK_FETCHER: async (url, init) => { calls.push(url); return fetcher(url, init); }, ...extraEnv } });
+  const app = await startHarness({ extraEnv: { URL_READER_ENABLED: "true", LINK_FETCHER: async (url, init) => { calls.push(url); return fetcher(url, init); }, ...extraEnv } });
   const post = (message, { cookie } = {}) => fetch(app.url + "/api/chat", { method: "POST", headers: { "Content-Type": "application/json", Origin: app.url, ...(cookie ? { Cookie: `__Host-borai_session=${cookie}` } : {}) }, body: JSON.stringify({ message }) });
   const turns = (call) => call.messages.filter((m) => m.role !== "system").map((m) => m.content).join("\n");
   return { app, post, calls, turns };
