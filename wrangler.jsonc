@@ -38,13 +38,6 @@
       "migrations_dir": "migrations"
     }
   ],
-  "vpc_services": [
-    {
-      "binding": "EGRESS_PROXY",
-      "service_id": "01a1cefa-5d93-7da2-bfce-91aae9fe11f1",
-      "remote": true
-    }
-  ],
   "vars": {
     "SEARCH_SHARED_BUDGET_ENABLED": "true",
     "URL_READER_ENABLED": "false"
