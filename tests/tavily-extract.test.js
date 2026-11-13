@@ -74,3 +74,33 @@ test("Tavily Extract deduplicates repeated URLs before charging provider", async
   assert.equal(result.length, 2);
   assert.ok(result.every(x => x.ok));
 });
+
+test("Tavily Extract fails closed on provider redirect", async () => {
+  const fetcher = async (_url, options) => {
+    assert.equal(options.redirect, "manual");
+    return new Response(null, { status: 302, headers: { location: "http://127.0.0.1/admin" } });
+  };
+  const result = await extractWithTavily(["https://example.com/article"], { TAVILY_API_KEY: "test" }, { fetcher });
+  assert.equal(result[0].ok, false);
+});
+
+test("Tavily Extract fails closed on provider error without exposing API key", async () => {
+  const secret = "super-private-tavily-key";
+  const fetcher = async (_url, options) => {
+    assert.equal(options.headers.Authorization, "Bearer " + secret);
+    return new Response(JSON.stringify({ error: secret }), { status: 429, headers: { "content-type": "application/json" } });
+  };
+  const result = await extractWithTavily(["https://example.com/article"], { TAVILY_API_KEY: secret }, { fetcher });
+  assert.equal(result[0].ok, false);
+  assert.doesNotMatch(JSON.stringify(result), /super-private-tavily-key/);
+});
+
+test("Tavily Extract does not send private URLs in a mixed batch", async () => {
+  const fetcher = async (_url, options) => {
+    assert.deepEqual(JSON.parse(options.body).urls, ["https://example.com/article"]);
+    return new Response(JSON.stringify({ results: [{ url: "https://example.com/article", raw_content: "X".repeat(100) }] }), { headers: { "content-type": "application/json" } });
+  };
+  const result = await extractWithTavily(["http://127.0.0.1/admin", "https://example.com/article"], { TAVILY_API_KEY: "test" }, { fetcher });
+  assert.equal(result[0].ok, false);
+  assert.equal(result[1].ok, true);
+});
