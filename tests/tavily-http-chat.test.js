@@ -64,3 +64,32 @@ test("HTTP chat quota exhaustion blocks further Tavily requests", async () => {
   assert.equal((await chat(env, "Ringkas https://example.com/two")).status, 200);
   assert.deepEqual(calls, [["https://example.com/one"]]);
 });
+
+test("HTTP chat does not leak Tavily provider errors or credentials", async () => {
+  const { env } = setup();
+  env.TAVILY_EXTRACT_FETCHER = async () => {
+    throw new Error("upstream private-key mock-key internal-provider-failure");
+  };
+  const result = await chat(env, "Ringkas https://example.com/unavailable");
+  assert.ok([200, 502].includes(result.status));
+  assert.doesNotMatch(JSON.stringify(result.body), /private-key|mock-key|internal-provider-failure/);
+});
+
+test("HTTP chat does not treat malformed Tavily response as successful page extraction", async () => {
+  const { env, prompts } = setup();
+  env.TAVILY_EXTRACT_FETCHER = async () => new Response("{not-json", {
+    headers: { "Content-Type": "application/json" }
+  });
+  const result = await chat(env, "Ringkas https://example.com/malformed");
+  assert.ok([200, 502].includes(result.status));
+  assert.ok(prompts.every(prompt => !prompt.includes("This is public page content")));
+  assert.doesNotMatch(JSON.stringify(result.body), /mock-key/);
+});
+
+test("HTTP chat refuses Tavily extraction when the explicit budget is absent", async () => {
+  const { env, calls } = setup();
+  delete env.TAVILY_EXTRACT_DAILY_URL_LIMIT;
+  const result = await chat(env, "Ringkas https://example.com/budget");
+  assert.ok([200, 502].includes(result.status));
+  assert.equal(calls.length, 0);
+});
