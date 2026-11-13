@@ -67,3 +67,11 @@ BEFORE UPDATE OF provider_transaction_id ON payment_orders
 WHEN OLD.provider_transaction_id IS NOT NULL AND
  (NEW.provider_transaction_id IS NULL OR NEW.provider_transaction_id != OLD.provider_transaction_id)
 BEGIN SELECT RAISE(ABORT,'payment_provider_transaction_immutable'); END;
+
+-- A paid or fulfilled order must retain a nonempty provider transaction identity.
+-- This is an integrity constraint, not proof of provider authentication.
+CREATE TRIGGER IF NOT EXISTS trg_payment_order_paid_identity_required
+BEFORE UPDATE ON payment_orders
+WHEN NEW.state IN ('paid_unfulfilled','fulfilled')
+ AND (NEW.provider_transaction_id IS NULL OR length(trim(NEW.provider_transaction_id)) = 0)
+BEGIN SELECT RAISE(ABORT,'payment_provider_transaction_required'); END;
