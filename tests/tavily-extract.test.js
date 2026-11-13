@@ -226,3 +226,53 @@ test("Tavily privacy gate rejects innocuous query names with secret values", asy
     assert.match(result[0].reason, /privasi/);
   }
 });
+
+test("Tavily provider failures never expose secrets or page content", async () => {
+  const key = "private-provider-secret";
+  for (const status of [400, 401, 429, 500, 503]) {
+    const result = await extractWithTavily(["https://example.com/article"], testEnv(key), {
+      fetcher: async () => new Response(JSON.stringify({ error: key, detail: "private-page-text" }), { status })
+    });
+    assert.equal(result[0].ok, false, String(status));
+    assert.doesNotMatch(JSON.stringify(result), /private-provider-secret|private-page-text/);
+  }
+});
+
+test("Tavily rejects malformed JSON, missing results and short content", async () => {
+  for (const body of ["{", "{}", '{"results":{}}', '{"results":[{"url":"https://example.com/article","raw_content":"short"}]}']) {
+    const result = await extractWithTavily(["https://example.com/article"], testEnv(), {
+      fetcher: async () => new Response(body, { headers: { "content-type": "application/json" } })
+    });
+    assert.equal(result[0].ok, false);
+  }
+});
+
+test("Tavily never sends a request after daily extraction quota is exhausted", async () => {
+  const env = testEnv("test", 1);
+  let calls = 0;
+  const fetcher = async () => {
+    calls++;
+    return new Response(JSON.stringify({ results: [{ url: "https://example.com/article", raw_content: "A".repeat(100) }] }));
+  };
+  assert.equal((await extractWithTavily(["https://example.com/article"], env, { fetcher }))[0].ok, true);
+  assert.equal((await extractWithTavily(["https://example.com/article"], env, { fetcher }))[0].ok, false);
+  assert.equal(calls, 1);
+});
+
+test("Tavily rejects response claiming more bytes than the configured limit", async () => {
+  const result = await extractWithTavily(["https://example.com/article"], testEnv(), {
+    fetcher: async () => new Response("small", { headers: { "content-length": "1000001" } })
+  });
+  assert.equal(result[0].ok, false);
+});
+
+test("Tavily rejects unsupported private and non-HTTP schemes before contacting provider", async () => {
+  for (const url of ["http://169.254.169.254/latest/meta-data", "http://10.0.0.1", "file:///etc/passwd", "https://localhost/private"]) {
+    let calls = 0;
+    const result = await extractWithTavily([url], testEnv(), {
+      fetcher: async () => { calls++; throw Error("unexpected provider call"); }
+    });
+    assert.equal(calls, 0, url);
+    assert.equal(result[0].ok, false, url);
+  }
+});
