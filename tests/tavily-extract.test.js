@@ -212,3 +212,17 @@ test("Tavily Extract blocks camelCase and signed authentication query keys", asy
   }
   assert.equal(calls, 0);
 });
+
+test("Tavily privacy gate rejects innocuous query names with secret values", async () => {
+  for (const url of [
+    "https://example.com/article?data=eyJhbGciOiJIUzI1NiJ9.payload.signature",
+    "https://example.com/article?design=private-credential",
+    "https://example.com/article?redirect=https%3A%2F%2Fexample.com%2Fprivate"
+  ]) {
+    let calls = 0;
+    const result = await extractWithTavily([url], testEnv(), { fetcher: async () => { calls++; throw Error("unexpected provider call"); } });
+    assert.equal(calls, 0, url);
+    assert.equal(result[0].ok, false, url);
+    assert.match(result[0].reason, /privasi/);
+  }
+});
