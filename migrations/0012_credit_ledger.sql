@@ -68,3 +68,39 @@ BEFORE DELETE ON credit_reservations
 BEGIN
   SELECT RAISE(ABORT, 'reservation_delete_forbidden');
 END;
+
+-- Finalization is a one-way transition. No re-settlement, re-release or amount edits.
+CREATE TRIGGER IF NOT EXISTS trg_credit_reservation_finalize_guard
+BEFORE UPDATE ON credit_reservations
+WHEN OLD.status != 'reserved'
+  OR NEW.status NOT IN ('settled', 'released')
+  OR (NEW.status = 'released' AND NEW.settled_microcredits IS NOT NULL)
+  OR (NEW.status = 'settled' AND (NEW.settled_microcredits IS NULL
+    OR NEW.settled_microcredits > OLD.reserved_microcredits))
+BEGIN
+  SELECT RAISE(ABORT, 'invalid_reservation_transition');
+END;
+
+-- The original reservation already debited the full maximum. Refund only the unused
+-- amount on settlement, or the full amount on release. Ledger and refund are atomic.
+CREATE TRIGGER IF NOT EXISTS trg_credit_reservation_finalize_refund
+AFTER UPDATE OF status ON credit_reservations
+WHEN OLD.status = 'reserved' AND NEW.status IN ('settled', 'released')
+BEGIN
+  UPDATE credit_accounts
+  SET balance_microcredits = balance_microcredits +
+    CASE WHEN NEW.status = 'released' THEN OLD.reserved_microcredits
+      ELSE OLD.reserved_microcredits - NEW.settled_microcredits END,
+    updated_at = NEW.updated_at
+  WHERE user_id = OLD.user_id
+    AND balance_microcredits <= 9007199254740991 -
+      CASE WHEN NEW.status = 'released' THEN OLD.reserved_microcredits
+        ELSE OLD.reserved_microcredits - NEW.settled_microcredits END;
+  SELECT RAISE(ABORT, 'refund_account_missing_or_overflow') WHERE changes() != 1;
+  INSERT INTO credit_ledger (id, user_id, delta_microcredits, reason, reference_id, created_at)
+  SELECT 'refund:' || NEW.request_id, NEW.user_id,
+    CASE WHEN NEW.status = 'released' THEN OLD.reserved_microcredits
+      ELSE OLD.reserved_microcredits - NEW.settled_microcredits END,
+    'refund', NEW.request_id, NEW.updated_at
+  WHERE NEW.status = 'released' OR NEW.settled_microcredits < OLD.reserved_microcredits;
+END;
