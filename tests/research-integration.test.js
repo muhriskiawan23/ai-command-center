@@ -80,6 +80,7 @@ test("chat keeps search citations but clearly labels results when destination pa
         description: "Cuplikan hasil pencarian yang tersedia.",
         page_age: new Date().toISOString()
       }] }), { headers: { "content-type": "application/json" } }),
+      URL_READER_ENABLED: "true",
       LINK_FETCHER: async () => new Response("unavailable", { status: 503 })
     }
   });
