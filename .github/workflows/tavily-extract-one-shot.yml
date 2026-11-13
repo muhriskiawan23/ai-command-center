@@ -1,0 +1,71 @@
+name: BOR AI one-shot Tavily Extract verification
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_one_credit_test:
+        description: "I approve one public URL Tavily Extract request, possibly consuming provider credits"
+        type: boolean
+        required: true
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bor-ai-one-shot-tavily-extract
+  cancel-in-progress: false
+
+jobs:
+  extract:
+    if: ${{ inputs.confirm_one_credit_test == true }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    environment: production
+    steps:
+      - name: One controlled Tavily Extract call
+        env:
+          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${TAVILY_API_KEY:-}" ]]; then
+            echo "::error::TAVILY_API_KEY is missing from GitHub production secrets. The Worker secret cannot be read from GitHub Actions."
+            exit 1
+          fi
+          node --input-type=module <<'NODE'
+          const key = process.env.TAVILY_API_KEY;
+          const url = "https://example.com/";
+          const controller = new AbortController();
+          const timer = setTimeout(() => controller.abort(), 8000);
+          try {
+            const response = await fetch("https://api.tavily.com/extract", {
+              method: "POST",
+              redirect: "manual",
+              signal: controller.signal,
+              headers: { authorization: "Bearer " + key, "content-type": "application/json", accept: "application/json" },
+              body: JSON.stringify({ urls: [url], extract_depth: "basic" })
+            });
+            if (!response.ok) throw new Error("Tavily Extract returned HTTP " + response.status);
+            const reader = response.body?.getReader();
+            if (!reader) throw new Error("No response stream");
+            const chunks = [];
+            let bytes = 0;
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              bytes += value.byteLength;
+              if (bytes > 1000000) { await reader.cancel(); throw new Error("Response exceeds 1 MB"); }
+              chunks.push(value);
+            }
+            const data = JSON.parse(new TextDecoder().decode(Buffer.concat(chunks.map(x => Buffer.from(x)))));
+            const match = data.results?.find(x => x?.url === url && typeof x.raw_content === "string" && x.raw_content.trim().length >= 40);
+            if (!match) throw new Error("No valid exact-URL extraction returned");
+            console.log("One-shot Tavily Extract passed; exact public URL match; text chars:", match.raw_content.length);
+          } catch (error) {
+            console.error("One-shot Tavily Extract failed:", error.name === "AbortError" ? "timeout" : String(error.message).slice(0, 120));
+            process.exitCode = 1;
+          } finally {
+            clearTimeout(timer);
+          }
+          NODE
