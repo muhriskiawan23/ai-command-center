@@ -5,7 +5,7 @@ import { consumeUsage, usageDay } from "./daily-limits.js";
 const MAX_RESPONSE_BYTES = 1_000_000;
 const TIMEOUT_MS = 8000;
 const DEFAULT_DAILY_URL_BUDGET = 30;
-const SENSITIVE_QUERY_KEY = /(?:^|[_-])(token|secret|password|passwd|passcode|api[_-]?key|access[_-]?key|auth|authorization|session|signature|sig|code)(?:$|[_-])/i;
+const SENSITIVE_QUERY_KEY = /(?:token|secret|password|passwd|passcode|api[_-]?key|access[_-]?key|auth|authorization|session|signature|credential|client[_-]?secret|jwt|bearer|signed|sig|(?:^|[_-])code(?:$|[_-]))/i;
 
 function checkPublicUrl(raw, ownHost) {
   const check = validateUrl(raw, ownHost);
