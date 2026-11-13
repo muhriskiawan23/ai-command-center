@@ -4,11 +4,13 @@ import { assertMidtransPaymentMatchesOrder } from "./midtrans-amount.js";
 import { classifyMidtransStatus } from "./midtrans-status.js";
 const BASE = "https://api.sandbox.midtrans.com";
 const ORDER_ID = /^[A-Za-z0-9_-]{1,100}$/;
-export async function checkMidtransSandboxOrder(order, { serverKey, fetchImpl = fetch, signal } = {}) {
+export async function checkMidtransSandboxOrder(order, { serverKey, expectedMerchantId, fetchImpl = fetch, signal } = {}) {
   if (!order || order.environment !== "sandbox" || !ORDER_ID.test(order.orderId || ""))
     throw new TypeError("Sandbox order with safe ID required");
   if (typeof serverKey !== "string" || !serverKey.startsWith("SB-Mid-server-"))
     throw new TypeError("Sandbox server key required");
+  if (typeof expectedMerchantId !== "string" || !expectedMerchantId.trim())
+    throw new TypeError("Expected Midtrans sandbox merchant ID required");
   const authorization = "Basic " + btoa(serverKey + ":");
   const response = await fetchImpl(BASE + "/v2/" + encodeURIComponent(order.orderId) + "/status", {
     method: "GET", headers: { Accept: "application/json", Authorization: authorization },
@@ -25,8 +27,9 @@ export async function checkMidtransSandboxOrder(order, { serverKey, fetchImpl = 
   if (typeof status.transaction_id !== "string" || !status.transaction_id ||
       typeof status.merchant_id !== "string" || !status.merchant_id)
     throw new Error("Midtrans transaction identity missing");
+  if (status.merchant_id !== expectedMerchantId) throw new Error("Midtrans merchant mismatch");
   return { classification: classifyMidtransStatus(status), providerTransactionId:status.transaction_id,
     merchantId:status.merchant_id, verifiedVia:"sandbox_status_api" };
 }
-// Merchant ID comparison and DB order ownership checks must be enforced by the
-// caller before any state transition. This module never credits users.
+// DB order ownership and atomic fulfillment must still be enforced by the caller.
+// This module never credits users.
