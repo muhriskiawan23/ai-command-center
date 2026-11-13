@@ -30,3 +30,23 @@ test("Tavily Extract fails closed without secret", async () => {
   const result = await extractWithTavily(["https://example.com"], {});
   assert.equal(result[0].ok, false);
 });
+
+test("Tavily Extract preserves blocked URL reason without API key", async () => {
+  const result = await extractWithTavily(["http://127.0.0.1/admin"], {});
+  assert.equal(result[0].ok, false);
+  assert.match(result[0].reason, /non-publik/);
+});
+
+test("Tavily Extract never accepts a substituted URL returned by provider", async () => {
+  const fetcher = async () => new Response(JSON.stringify({
+    results: [{ url: "https://other.example.net/secret", raw_content: "X".repeat(100) }]
+  }), { headers: { "content-type": "application/json" } });
+  const result = await extractWithTavily(["https://example.com/article"], { TAVILY_API_KEY: "test" }, { fetcher });
+  assert.equal(result[0].ok, false);
+});
+
+test("Tavily Extract rejects oversized responses", async () => {
+  const fetcher = async () => new Response("X".repeat(1000001), { headers: { "content-type": "application/json" } });
+  const result = await extractWithTavily(["https://example.com/article"], { TAVILY_API_KEY: "test" }, { fetcher });
+  assert.equal(result[0].ok, false);
+});
