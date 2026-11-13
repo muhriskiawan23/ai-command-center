@@ -87,12 +87,23 @@ test("invalid webhook signature fails closed",async()=>{
  }finally{x.sqlite.close()}
 });
 
-test("production order cannot be fulfilled by sandbox adapter",async()=>{
+test("sandbox order environment cannot be changed to production",()=>{
  const x=setup();try{
-  x.sqlite.prepare("UPDATE payment_orders SET environment='production' WHERE order_id=?").run(id);
- }catch(error){
-  // Identity guard intentionally prevents changing an existing sandbox order.
-  assert.match(String(error),/payment_order_identity_immutable/);
+  assert.throws(
+   ()=>x.sqlite.prepare("UPDATE payment_orders SET environment='production' WHERE order_id=?").run(id),
+   /payment_order_identity_immutable/
+  );
+  assert.equal(x.sqlite.prepare("SELECT environment FROM payment_orders WHERE order_id=?").get(id).environment,"sandbox");
+  assert.equal(x.balance(),0);assert.equal(x.count(),0);
+ }finally{x.sqlite.close()}
+});
+test("production orders cannot receive sandbox fulfillment",async()=>{
+ const x=setup();try{
+  x.sqlite.prepare("INSERT INTO payment_orders(order_id,user_id,sku,environment,currency,amount_idr,grant_microcredits,state,created_at,updated_at) VALUES ('production1','u','basic','production','IDR',100,25,'created',1,1)").run();
+  const result=await fulfillVerifiedSandboxPayment({db:x.db,orderId:"production1",payload:evidence().payload,serverKey:key,expectedMerchantId:merchant});
+  assert.equal(result.kind,"not_confirmed");
+  assert.equal(x.sqlite.prepare("SELECT state FROM payment_orders WHERE order_id='production1'").get().state,"created");
+  assert.equal(x.balance(),0);assert.equal(x.count(),0);
  }finally{x.sqlite.close()}
 });
 test("unsafe order ID is rejected before any database access",async()=>{
