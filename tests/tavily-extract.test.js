@@ -1,10 +1,19 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { extractWithTavily } from "../src/tavily-extract.js";
+import { extractWithTavily, reserveTavilyExtractBudget } from "../src/tavily-extract.js";
+function testEnv(key = "test", limit = 30) {
+  let used = 0;
+  return { TAVILY_API_KEY: key, TAVILY_EXTRACT_DAILY_URL_LIMIT: limit, DB: {
+    prepare() { return { bind(_day, _subject, units, _timestamp, ceiling) { return {
+      async first() { if (used + units > ceiling) return null; used += units; return { units: used }; }
+    }; } }; }
+  } };
+}
+
 
 test("Tavily Extract refuses private URLs before contacting provider", async () => {
   let calls = 0;
-  const result = await extractWithTavily(["http://127.0.0.1/admin"], { TAVILY_API_KEY: "test" }, {
+  const result = await extractWithTavily(["http://127.0.0.1/admin"], testEnv(), {
     fetcher: async () => { calls++; throw Error("must not fetch"); }
   });
   assert.equal(calls, 0);
@@ -19,7 +28,7 @@ test("Tavily Extract returns bounded untrusted page text", async () => {
     assert.deepEqual(JSON.parse(options.body).urls, ["https://example.com/article"]);
     return new Response(JSON.stringify({ results: [{ url: "https://example.com/article", raw_content: "A".repeat(17000) }] }), { headers: { "content-type": "application/json" } });
   };
-  const result = await extractWithTavily(["https://example.com/article"], { TAVILY_API_KEY: "test" }, { fetcher });
+  const result = await extractWithTavily(["https://example.com/article"], testEnv(), { fetcher });
   assert.equal(endpoint, "https://api.tavily.com/extract");
   assert.equal(result[0].ok, true);
   assert.equal(result[0].text.length, 16000);
@@ -41,13 +50,13 @@ test("Tavily Extract never accepts a substituted URL returned by provider", asyn
   const fetcher = async () => new Response(JSON.stringify({
     results: [{ url: "https://other.example.net/secret", raw_content: "X".repeat(100) }]
   }), { headers: { "content-type": "application/json" } });
-  const result = await extractWithTavily(["https://example.com/article"], { TAVILY_API_KEY: "test" }, { fetcher });
+  const result = await extractWithTavily(["https://example.com/article"], testEnv(), { fetcher });
   assert.equal(result[0].ok, false);
 });
 
 test("Tavily Extract rejects oversized responses", async () => {
   const fetcher = async () => new Response("X".repeat(1000001), { headers: { "content-type": "application/json" } });
-  const result = await extractWithTavily(["https://example.com/article"], { TAVILY_API_KEY: "test" }, { fetcher });
+  const result = await extractWithTavily(["https://example.com/article"], testEnv(), { fetcher });
   assert.equal(result[0].ok, false);
 });
 
@@ -69,7 +78,7 @@ test("Tavily Extract deduplicates repeated URLs before charging provider", async
       results: [{ url: "https://example.com/a", raw_content: "A".repeat(100) }]
     }), { headers: { "content-type": "application/json" } });
   };
-  const result = await extractWithTavily(["https://example.com/a", "https://example.com/a"], { TAVILY_API_KEY: "test" }, { fetcher });
+  const result = await extractWithTavily(["https://example.com/a", "https://example.com/a"], testEnv(), { fetcher });
   assert.equal(calls, 1);
   assert.equal(result.length, 2);
   assert.ok(result.every(x => x.ok));
@@ -80,7 +89,7 @@ test("Tavily Extract fails closed on provider redirect", async () => {
     assert.equal(options.redirect, "manual");
     return new Response(null, { status: 302, headers: { location: "http://127.0.0.1/admin" } });
   };
-  const result = await extractWithTavily(["https://example.com/article"], { TAVILY_API_KEY: "test" }, { fetcher });
+  const result = await extractWithTavily(["https://example.com/article"], testEnv(), { fetcher });
   assert.equal(result[0].ok, false);
 });
 
@@ -90,7 +99,7 @@ test("Tavily Extract fails closed on provider error without exposing API key", a
     assert.equal(options.headers.Authorization, "Bearer " + secret);
     return new Response(JSON.stringify({ error: secret }), { status: 429, headers: { "content-type": "application/json" } });
   };
-  const result = await extractWithTavily(["https://example.com/article"], { TAVILY_API_KEY: secret }, { fetcher });
+  const result = await extractWithTavily(["https://example.com/article"], testEnv(secret), { fetcher });
   assert.equal(result[0].ok, false);
   assert.doesNotMatch(JSON.stringify(result), /super-private-tavily-key/);
 });
@@ -100,7 +109,21 @@ test("Tavily Extract does not send private URLs in a mixed batch", async () => {
     assert.deepEqual(JSON.parse(options.body).urls, ["https://example.com/article"]);
     return new Response(JSON.stringify({ results: [{ url: "https://example.com/article", raw_content: "X".repeat(100) }] }), { headers: { "content-type": "application/json" } });
   };
-  const result = await extractWithTavily(["http://127.0.0.1/admin", "https://example.com/article"], { TAVILY_API_KEY: "test" }, { fetcher });
+  const result = await extractWithTavily(["http://127.0.0.1/admin", "https://example.com/article"], testEnv(), { fetcher });
   assert.equal(result[0].ok, false);
   assert.equal(result[1].ok, true);
+});
+
+test("Tavily budget rejects requests when DB is unavailable", async () => {
+  assert.equal(await reserveTavilyExtractBudget({}, 1), false);
+  let calls = 0;
+  const result = await extractWithTavily(["https://example.com/article"], { TAVILY_API_KEY: "test" }, { fetcher: async () => { calls++; throw Error("must not call"); } });
+  assert.equal(calls, 0);
+  assert.equal(result[0].ok, false);
+});
+
+test("Tavily global budget atomically rejects requests above the daily limit", async () => {
+  const env = testEnv("test", 2);
+  assert.equal(await reserveTavilyExtractBudget(env, 2), true);
+  assert.equal(await reserveTavilyExtractBudget(env, 1), false);
 });
