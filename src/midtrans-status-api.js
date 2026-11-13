@@ -20,6 +20,7 @@ export async function checkMidtransSandboxOrder(order, { serverKey, fetchImpl = 
   let status;
   try { status = JSON.parse(body); } catch { throw new Error("Invalid Midtrans JSON"); }
   if (status.status_code !== "200") throw new Error("Midtrans status not confirmed");
+  if (status.currency !== undefined && status.currency !== "IDR") throw new Error("Midtrans currency mismatch");
   assertMidtransPaymentMatchesOrder(order,status,"sandbox");
   if (typeof status.transaction_id !== "string" || !status.transaction_id ||
       typeof status.merchant_id !== "string" || !status.merchant_id)
