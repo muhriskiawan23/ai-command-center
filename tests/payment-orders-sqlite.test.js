@@ -72,3 +72,13 @@ test("account overflow rolls back fulfillment, ledger and order state",()=>{
   assert.equal(x.db.prepare("SELECT count(*) AS n FROM credit_ledger").get().n,0);
  }finally{x.db.close()}
 });
+
+test("paid states require a nonempty provider transaction ID",()=>{
+ const x=setup();try{
+  x.db.prepare("INSERT INTO payment_orders(order_id,user_id,sku,environment,currency,amount_idr,grant_microcredits,state,created_at,updated_at) VALUES ('o1','u','basic','sandbox','IDR',100,10,'created',1,1)").run();
+  assert.throws(()=>x.db.prepare("UPDATE payment_orders SET state='paid_unfulfilled' WHERE order_id='o1'").run(),/payment_provider_transaction_required/);
+  assert.throws(()=>x.db.prepare("UPDATE payment_orders SET state='paid_unfulfilled',provider_transaction_id='' WHERE order_id='o1'").run(),/payment_provider_transaction_required/);
+  assert.equal(x.db.prepare("SELECT state FROM payment_orders WHERE order_id='o1'").get().state,"created");
+  assert.equal(x.db.prepare("SELECT count(*) AS n FROM credit_ledger").get().n,0);
+ }finally{x.db.close()}
+});
