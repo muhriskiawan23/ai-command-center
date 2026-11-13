@@ -9,7 +9,7 @@ export async function extractWithTavily(urls, env = {}, { fetcher = fetch, ownHo
   const input = Array.isArray(urls) ? urls.slice(0, MAX_LINKS) : [];
   const key = typeof env.TAVILY_API_KEY === "string" ? env.TAVILY_API_KEY.trim() : "";
   const checked = input.map(raw => ({ raw, check: validateUrl(raw, ownHost) }));
-  if (!key) return input.map(url => fail(url, "Tavily belum dikonfigurasi"));
+  if (!key) return checked.map(x => fail(x.raw, x.check.ok ? "Tavily belum dikonfigurasi" : x.check.reason));
   const eligible = checked.filter(x => x.check.ok);
   if (!eligible.length) return checked.map(x => fail(x.raw, x.check.reason));
   const controller = new AbortController();
@@ -21,9 +21,9 @@ export async function extractWithTavily(urls, env = {}, { fetcher = fetch, ownHo
       headers: { "Accept": "application/json", "Content-Type": "application/json", "Authorization": "Bearer " + key },
       body: JSON.stringify({ urls: eligible.map(x => x.check.url.toString()), extract_depth: "basic" })
     });
-    if (!response.ok || response.status >= 300) throw Error("provider_failure");
+    if (!response.ok || response.status >= 300) { try { await response.body?.cancel(); } catch {} throw Error("provider_failure"); }
     const size = Number(response.headers?.get?.("content-length"));
-    if (Number.isFinite(size) && size > MAX_RESPONSE_BYTES) throw Error("oversize");
+    if (Number.isFinite(size) && size > MAX_RESPONSE_BYTES) { try { await response.body?.cancel(); } catch {} throw Error("oversize"); }
     // Bound actual bytes too; Content-Length is not always provided.
     const reader = response.body?.getReader();
     if (!reader) throw Error("empty_response");
@@ -41,7 +41,8 @@ export async function extractWithTavily(urls, env = {}, { fetcher = fetch, ownHo
     for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
     const payload = JSON.parse(new TextDecoder().decode(bytes));
     if (!Array.isArray(payload?.results)) throw Error("invalid_response");
-    extracted = new Map(payload.results.filter(x => typeof x?.url === "string").map(x => [x.url, x]));
+    const allowed = new Set(eligible.map(x => x.check.url.toString()));
+    extracted = new Map(payload.results.filter(x => typeof x?.url === "string" && allowed.has(x.url)).map(x => [x.url, x]));
   } catch {
     return checked.map(x => fail(x.raw, x.check.ok ? "Tavily tidak dapat membaca URL" : x.check.reason));
   } finally {
