@@ -5,14 +5,19 @@ import { consumeUsage, usageDay } from "./daily-limits.js";
 const MAX_RESPONSE_BYTES = 1_000_000;
 const TIMEOUT_MS = 8000;
 const DEFAULT_DAILY_URL_BUDGET = 30;
-const SENSITIVE_QUERY_KEY = /(?:token|secret|password|passwd|passcode|api[_-]?key|access[_-]?key|auth|authorization|session|signature|credential|client[_-]?secret|jwt|bearer|signed|sig|(?:^|[_-])code(?:$|[_-]))/i;
+// Normalize camelCase, snake_case and kebab-case without blocking unrelated keys (e.g. design).
+const SENSITIVE_QUERY_KEY = /(?:^|_)(?:token|secret|password|passwd|passcode|api_key|access_key|auth|authorization|session|signature|credential|client_secret|jwt|bearer|signed|sig|code)(?:_|$)/;
+function isSensitiveQueryKey(key) {
+  const normalized = key.replace(/([a-z0-9])([A-Z])/g, "$1_$2").replace(/[-\\s]+/g, "_").toLowerCase();
+  return SENSITIVE_QUERY_KEY.test(normalized);
+}
 
 function checkPublicUrl(raw, ownHost) {
   const check = validateUrl(raw, ownHost);
   if (!check.ok) return check;
   const url = new URL(check.url.toString());
   if (url.username || url.password) return { ok: false, reason: "URL berisi kredensial" };
-  if ([...url.searchParams.keys()].some(key => SENSITIVE_QUERY_KEY.test(key))) return { ok: false, reason: "URL berisi parameter autentikasi sensitif" };
+  if ([...url.searchParams.keys()].some(key => isSensitiveQueryKey(key))) return { ok: false, reason: "URL berisi parameter autentikasi sensitif" };
   url.hash = ""; // URL fragments are client-side data and must not be sent to a provider.
   return { ok: true, url };
 }
