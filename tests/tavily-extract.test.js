@@ -342,3 +342,17 @@ test("mocked mixed URL batch never includes blocked URLs in page extraction requ
   assert.equal(calls, 1);
   assert.deepEqual(results.map(x => x.ok), [true, false, false]);
 });
+
+test("Tavily spending fails closed without an explicit daily quota", async () => {
+  for (const configured of [undefined, null, ""]) {
+    const env = testEnv();
+    if (configured === undefined) delete env.TAVILY_EXTRACT_DAILY_URL_LIMIT;
+    else env.TAVILY_EXTRACT_DAILY_URL_LIMIT = configured;
+    let calls = 0;
+    const result = await extractWithTavily(["https://example.com/article"], env, {
+      fetcher: async () => { calls++; throw Error("must not spend"); }
+    });
+    assert.equal(calls, 0);
+    assert.equal(result[0].ok, false);
+  }
+});
