@@ -53,3 +53,22 @@ test("provider transaction identity is immutable once bound",()=>{
  assert.equal(x.db.prepare("SELECT provider_transaction_id AS tx FROM payment_orders WHERE order_id='o1'").get().tx,"tx:o1");
  }finally{x.db.close();}
 });
+
+test("same provider transaction cannot be bound to two orders",()=>{
+ const x=setup();try{
+  x.insert("o1");x.insert("o2");
+  assert.throws(()=>x.db.prepare("UPDATE payment_orders SET provider_transaction_id=? WHERE order_id=?").run("tx:o1","o2"));
+  assert.equal(x.db.prepare("SELECT provider_transaction_id AS tx FROM payment_orders WHERE order_id='o2'").get().tx,"tx:o2");
+  assert.equal(x.balance("user-a"),0);
+ }finally{x.db.close()}
+});
+test("account overflow rolls back fulfillment, ledger and order state",()=>{
+ const x=setup();try{
+  x.insert("o1");
+  x.db.prepare("INSERT INTO credit_accounts(user_id,balance_microcredits,updated_at) VALUES(?,?,1)").run("user-a",9007199254740991);
+  assert.throws(()=>x.fulfill("o1"));
+  assert.equal(x.db.prepare("SELECT balance_microcredits AS balance FROM credit_accounts WHERE user_id='user-a'").get().balance,9007199254740991);
+  assert.equal(x.db.prepare("SELECT state FROM payment_orders WHERE order_id='o1'").get().state,"paid_unfulfilled");
+  assert.equal(x.db.prepare("SELECT count(*) AS n FROM credit_ledger").get().n,0);
+ }finally{x.db.close()}
+});
