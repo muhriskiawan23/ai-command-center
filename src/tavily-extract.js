@@ -11,6 +11,7 @@ function checkPublicUrl(raw, ownHost) {
   const check = validateUrl(raw, ownHost);
   if (!check.ok) return check;
   const url = new URL(check.url.toString());
+  if (url.username || url.password) return { ok: false, reason: "URL berisi kredensial" };
   if ([...url.searchParams.keys()].some(key => SENSITIVE_QUERY_KEY.test(key))) return { ok: false, reason: "URL berisi parameter autentikasi sensitif" };
   url.hash = ""; // URL fragments are client-side data and must not be sent to a provider.
   return { ok: true, url };
@@ -19,8 +20,11 @@ function checkPublicUrl(raw, ownHost) {
 export async function reserveTavilyExtractBudget(env, urlCount) {
   // A separate atomic global D1 quota: existing chat units are not Tavily provider credits.
   if (!env.DB?.prepare) return false;
-  const configured = Number(env.TAVILY_EXTRACT_DAILY_URL_LIMIT);
-  const limit = Number.isSafeInteger(configured) && configured > 0 ? Math.min(configured, 10000) : DEFAULT_DAILY_URL_BUDGET;
+  const rawLimit = env.TAVILY_EXTRACT_DAILY_URL_LIMIT;
+  const configured = rawLimit === undefined || rawLimit === null ? DEFAULT_DAILY_URL_BUDGET : Number(rawLimit);
+  // Explicit zero disables paid extraction; malformed limits fail closed instead of silently enabling spending.
+  if (!Number.isSafeInteger(configured) || configured < 1 || configured > 10000) return false;
+  const limit = configured;
   if (!Number.isSafeInteger(urlCount) || urlCount < 1 || urlCount > MAX_LINKS) return false;
   try {
     return (await consumeUsage(env, usageDay(), "provider:tavily-extract:global", urlCount, limit)) !== null;
