@@ -225,7 +225,7 @@ test.describe("batas harian", () => {
 
 test.describe("pembaca link", () => {
   const PAGE = '<html><head><title>Judul &lt;img src=x onerror=window.__xss=1&gt; Aman</title></head><body><p>Isi halaman yang cukup panjang supaya dianggap berisi teks yang berguna oleh pembaca link.</p></body></html>';
-  test.use({ harnessOptions: { extraEnv: { LINK_FETCHER: async (url) => url.includes("rusak") ? new Response("x", { status: 500 }) : new Response(PAGE, { headers: { "content-type": "text/html" } }) } } });
+  test.use({ harnessOptions: { extraEnv: { URL_READER_ENABLED: "true", LINK_FETCHER: async (url) => url.includes("rusak") ? new Response("x", { status: 500 }) : new Response(PAGE, { headers: { "content-type": "text/html" } }) } } });
 
   test("jawaban menampilkan tautan yang berhasil dan yang gagal beserta alasannya; judul berbahaya tampil sebagai teks", async ({ page, app }) => {
     await page.goto(app.url);
