@@ -32,3 +32,9 @@ Record CI run IDs, independent review findings, real-provider smoke test timesta
 
 ## Implemented global budget (pending CI and live verification)
 The Tavily adapter now reserves an atomic global D1 quota before each provider call: default 30 unique extracted URLs per UTC day, configurable via `TAVILY_EXTRACT_DAILY_URL_LIMIT`. Both chat and research extraction share this counter. Missing D1 fails closed; failed provider calls keep their reserved quota. This is not a per-user quota, does not prove provider credit prices, and requires live validation and billing alerts before enabling.
+
+## Additional hardening (pending latest CI)
+- `TAVILY_EXTRACT_DAILY_URL_LIMIT=0` disables provider extraction; negative, empty, noninteger, or over-10,000 values fail closed rather than silently reverting to the default.
+- Reject URLs with embedded username/password before third-party submission. Sensitive query-key filtering and fragment removal are also in place, but URL paths and unknown query names may still contain private data.
+- The feature flag now guards both Tavily and legacy URL reads. Existing test fixtures explicitly enable the reader where needed.
+- These protections are code-level controls; independent privacy/security review, provider billing verification, and real-provider smoke testing remain open.
