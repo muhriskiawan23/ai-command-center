@@ -35,14 +35,16 @@ export async function reserveCredits(env, { userId, requestId, amountMicrocredit
   // The debit is conditional; a trigger-like guard statement aborts the batch if it did not debit exactly one row.
   // SELECT's result alone cannot abort a D1 transaction, so use a CHECK constraint sentinel.
   try {
-    await db.batch([
+    const results = await db.batch([
       db.prepare("UPDATE credit_accounts SET balance_microcredits = balance_microcredits - ?, updated_at = ? WHERE user_id = ? AND balance_microcredits >= ?").bind(amount, now, userId, amount),
       db.prepare("INSERT INTO credit_reservations (request_id, user_id, reserved_microcredits, settled_microcredits, status, created_at, updated_at) SELECT ?, ?, ?, NULL, 'reserved', ?, ? WHERE (SELECT changes()) = 1").bind(requestId, userId, amount, now, now),
-      db.prepare("INSERT INTO credit_ledger (id, user_id, delta_microcredits, reason, reference_id, created_at) VALUES (?, ?, ?, 'reserve', ?, ?)").bind(`reserve:${requestId}`, userId, -amount, requestId, now)
+      db.prepare("INSERT INTO credit_ledger (id, user_id, delta_microcredits, reason, reference_id, created_at) SELECT ?, ?, ?, 'reserve', ?, ? WHERE EXISTS (SELECT 1 FROM credit_reservations WHERE request_id = ? AND user_id = ? AND status = 'reserved')").bind(`reserve:${requestId}`, userId, -amount, requestId, now, requestId, userId)
     ]);
+    if (results[0]?.meta?.changes !== 1 || results[1]?.meta?.changes !== 1 || results[2]?.meta?.changes !== 1) throw new Error("Credit reservation did not commit all expected rows");
     return { ok: true, reservedMicrocredits: amountMicrocredits };
   } catch (error) {
     // Insufficient funds, duplicate request and DB failure all deny provider invocation.
+    // This prototype is NOT safe for production integration until atomicity tests are completed.
     return { ok: false, reason: "reservation_rejected" };
   }
 }
