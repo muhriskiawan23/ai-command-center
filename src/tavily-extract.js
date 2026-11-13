@@ -18,6 +18,9 @@ function checkPublicUrl(raw, ownHost) {
   const url = new URL(check.url.toString());
   if (url.username || url.password) return { ok: false, reason: "URL berisi kredensial" };
   if ([...url.searchParams.keys()].some(key => isSensitiveQueryKey(key))) return { ok: false, reason: "URL berisi parameter autentikasi sensitif" };
+  // Initial privacy rollout: query values can embed credentials under innocuous names (e.g. ?data=JWT).
+  // Until consent and value-redaction are designed, do not transmit ANY query string to a third-party provider.
+  if (url.search) return { ok: false, reason: "URL dengan parameter query belum didukung demi privasi" };
   url.hash = ""; // URL fragments are client-side data and must not be sent to a provider.
   return { ok: true, url };
 }

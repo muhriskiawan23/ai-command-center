@@ -193,14 +193,14 @@ test("production config omits retired VPC egress and keeps URL reader disabled",
   assert.ok(!config.vpc_services?.some(binding => binding.binding === "EGRESS_PROXY"));
 });
 
-test("Tavily Extract permits benign query keys containing sig-like substrings", async () => {
-  const fetcher = async (_endpoint, options) => {
-    const urls = JSON.parse(options.body).urls;
-    assert.deepEqual(urls, ["https://example.com/article?design=modern&signal=strong"]);
-    return new Response(JSON.stringify({ results: [{ url: urls[0], raw_content: "A".repeat(100) }] }), { headers: { "content-type": "application/json" } });
-  };
-  const result = await extractWithTavily(["https://example.com/article?design=modern&signal=strong"], testEnv(), { fetcher });
-  assert.equal(result[0].ok, true);
+test("Tavily Extract blocks benign query keys too under strict privacy policy", async () => {
+  let calls = 0;
+  const result = await extractWithTavily(["https://example.com/article?design=modern&signal=strong"], testEnv(), {
+    fetcher: async () => { calls++; throw Error("must not send query strings"); }
+  });
+  assert.equal(calls, 0);
+  assert.equal(result[0].ok, false);
+  assert.match(result[0].reason, /privasi/);
 });
 
 test("Tavily Extract blocks camelCase and signed authentication query keys", async () => {
@@ -211,4 +211,18 @@ test("Tavily Extract blocks camelCase and signed authentication query keys", asy
     assert.equal(result[0].ok, false, key);
   }
   assert.equal(calls, 0);
+});
+
+test("Tavily privacy gate rejects innocuous query names with secret values", async () => {
+  for (const url of [
+    "https://example.com/article?data=eyJhbGciOiJIUzI1NiJ9.payload.signature",
+    "https://example.com/article?design=private-credential",
+    "https://example.com/article?redirect=https%3A%2F%2Fexample.com%2Fprivate"
+  ]) {
+    let calls = 0;
+    const result = await extractWithTavily([url], testEnv(), { fetcher: async () => { calls++; throw Error("unexpected provider call"); } });
+    assert.equal(calls, 0, url);
+    assert.equal(result[0].ok, false, url);
+    assert.match(result[0].reason, /privasi/);
+  }
 });
