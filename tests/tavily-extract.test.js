@@ -356,3 +356,44 @@ test("Tavily spending fails closed without an explicit daily quota", async () =>
     assert.equal(result[0].ok, false);
   }
 });
+
+test("Tavily extraction never contacts provider when quota storage throws", async () => {
+  const env = {
+    TAVILY_API_KEY: "test-key",
+    TAVILY_EXTRACT_DAILY_URL_LIMIT: 2,
+    DB: { prepare() { throw new Error("database unavailable with secret"); } }
+  };
+  let calls = 0;
+  const result = await extractWithTavily(["https://example.com/guide"], env, {
+    fetcher: async () => { calls++; throw new Error("provider should not be contacted"); }
+  });
+  assert.equal(calls, 0);
+  assert.equal(result[0].ok, false);
+  assert.doesNotMatch(JSON.stringify(result), /database unavailable|test-key/);
+});
+
+test("Tavily extraction rejects noninteger and unsafe budget limits", async () => {
+  for (const limit of [0.5, "1.5", Infinity, "Infinity", "NaN", "0x10", 10001, Number.MAX_SAFE_INTEGER]) {
+    const env = testEnv("test-key", limit);
+    let calls = 0;
+    const result = await extractWithTavily(["https://example.com/guide"], env, {
+      fetcher: async () => { calls++; throw new Error("provider should not be contacted"); }
+    });
+    assert.equal(calls, 0, String(limit));
+    assert.equal(result[0].ok, false, String(limit));
+  }
+});
+
+test("Tavily extraction never accepts an unrequested URL in provider results", async () => {
+  const result = await extractWithTavily(["https://example.com/public"], testEnv(), {
+    fetcher: async () => new Response(JSON.stringify({
+      results: [
+        { url: "https://example.com/private", raw_content: "SECRET".repeat(20) },
+        { url: "https://example.com/public", raw_content: "PUBLIC".repeat(20) }
+      ]
+    }))
+  });
+  assert.equal(result.length, 1);
+  assert.equal(result[0].ok, true);
+  assert.doesNotMatch(JSON.stringify(result), /SECRET|\/private/);
+});

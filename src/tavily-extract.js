@@ -29,7 +29,7 @@ export async function reserveTavilyExtractBudget(env, urlCount) {
   // A separate atomic global D1 quota: existing chat units are not Tavily provider credits.
   if (!env.DB?.prepare) return false;
   const rawLimit = env.TAVILY_EXTRACT_DAILY_URL_LIMIT;
-  const configured = rawLimit === undefined || rawLimit === null ? DEFAULT_DAILY_URL_BUDGET : (typeof rawLimit === "string" && rawLimit.trim() === "" ? NaN : Number(rawLimit));
+  const configured = rawLimit === undefined || rawLimit === null ? DEFAULT_DAILY_URL_BUDGET : (typeof rawLimit === "string" && !/^[0-9]+$/.test(rawLimit.trim()) ? NaN : Number(rawLimit));
   // Explicit zero disables paid extraction; malformed limits fail closed instead of silently enabling spending.
   if (!Number.isSafeInteger(configured) || configured < 1 || configured > 10000) return false;
   const limit = configured;
