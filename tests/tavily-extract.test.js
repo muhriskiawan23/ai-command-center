@@ -153,3 +153,24 @@ test("URL reader disabled flag prevents both legacy and Tavily reads", async () 
   assert.match(source, /if \(found\.urls\.length && env\.URL_READER_ENABLED === "true"\)/);
   assert.match(source, /if \(pageCandidates\.length && env\.URL_READER_ENABLED === "true"\)/);
 });
+
+test("Tavily budget explicit zero and malformed values block provider spending", async () => {
+  for (const limit of [0, -1, "invalid", "", 10001]) {
+    const env = testEnv("test", limit);
+    let calls = 0;
+    const result = await extractWithTavily(["https://example.com/article"], env, {
+      fetcher: async () => { calls++; throw Error("must not call provider"); }
+    });
+    assert.equal(calls, 0, "limit " + String(limit));
+    assert.equal(result[0].ok, false);
+  }
+});
+
+test("Tavily rejects embedded URL credentials before provider request", async () => {
+  let calls = 0;
+  const result = await extractWithTavily(["https://alice:password@example.com/article"], testEnv(), {
+    fetcher: async () => { calls++; throw Error("must not call"); }
+  });
+  assert.equal(calls, 0);
+  assert.equal(result[0].ok, false);
+});
