@@ -86,3 +86,18 @@ test("invalid webhook signature fails closed",async()=>{
   assert.equal(x.balance(),0);assert.equal(x.count(),0);assert.equal(x.state(),"created");
  }finally{x.sqlite.close()}
 });
+
+test("production order cannot be fulfilled by sandbox adapter",async()=>{
+ const x=setup();try{
+  x.sqlite.prepare("UPDATE payment_orders SET environment='production' WHERE order_id=?").run(id);
+ }catch(error){
+  // Identity guard intentionally prevents changing an existing sandbox order.
+  assert.match(String(error),/payment_order_identity_immutable/);
+ }finally{x.sqlite.close()}
+});
+test("unsafe order ID is rejected before any database access",async()=>{
+ const x=setup();try{
+  await assert.rejects(fulfillVerifiedSandboxPayment({db:x.db,orderId:"../order1",payload:evidence().payload,serverKey:key,expectedMerchantId:merchant}),/Safe order ID/);
+  assert.equal(x.balance(),0);assert.equal(x.count(),0);assert.equal(x.state(),"created");
+ }finally{x.sqlite.close()}
+});
