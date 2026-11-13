@@ -16,10 +16,12 @@ export async function extractWithTavily(urls, env = {}, { fetcher = fetch, ownHo
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   let extracted = new Map();
   try {
+    // Deduplicate URLs to avoid unnecessary provider credits within one extraction batch.
+    const uniqueUrls = [...new Set(eligible.map(x => x.check.url.toString()))];
     const response = await fetcher("https://api.tavily.com/extract", {
       method: "POST", redirect: "manual", signal: controller.signal,
       headers: { "Accept": "application/json", "Content-Type": "application/json", "Authorization": "Bearer " + key },
-      body: JSON.stringify({ urls: eligible.map(x => x.check.url.toString()), extract_depth: "basic" })
+      body: JSON.stringify({ urls: uniqueUrls, extract_depth: "basic" })
     });
     if (!response.ok || response.status >= 300) { try { await response.body?.cancel(); } catch {} throw Error("provider_failure"); }
     const size = Number(response.headers?.get?.("content-length"));
