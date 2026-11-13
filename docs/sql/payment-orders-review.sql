@@ -55,3 +55,15 @@ WHEN (OLD.state = 'fulfilled' AND NEW.state NOT IN ('fulfilled','refunded','disp
  OR (OLD.state = 'created' AND NEW.state NOT IN ('created','pending','paid_unfulfilled','failed','expired','cancelled'))
  OR (OLD.state = 'pending' AND NEW.state NOT IN ('pending','paid_unfulfilled','failed','expired','cancelled'))
 BEGIN SELECT RAISE(ABORT,'payment_order_state_invalid'); END;
+
+-- Never permit pre-paid or fulfilled orders to be inserted directly.
+CREATE TRIGGER IF NOT EXISTS trg_payment_order_insert_guard
+BEFORE INSERT ON payment_orders
+WHEN NEW.state != 'created' OR NEW.provider_transaction_id IS NOT NULL
+BEGIN SELECT RAISE(ABORT,'payment_order_must_start_unpaid'); END;
+-- Once a provider transaction ID is bound, it cannot be replaced or cleared.
+CREATE TRIGGER IF NOT EXISTS trg_payment_order_provider_identity_guard
+BEFORE UPDATE OF provider_transaction_id ON payment_orders
+WHEN OLD.provider_transaction_id IS NOT NULL AND
+ (NEW.provider_transaction_id IS NULL OR NEW.provider_transaction_id != OLD.provider_transaction_id)
+BEGIN SELECT RAISE(ABORT,'payment_provider_transaction_immutable'); END;
