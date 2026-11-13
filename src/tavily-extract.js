@@ -4,7 +4,7 @@ import { consumeUsage, usageDay } from "./daily-limits.js";
 // Managed public-URL extraction. No arbitrary Worker fetch or Android tunnel.
 const MAX_RESPONSE_BYTES = 1_000_000;
 const TIMEOUT_MS = 8000;
-const DEFAULT_DAILY_URL_BUDGET = 30;
+const DEFAULT_DAILY_URL_BUDGET = 0; // Fail closed until owner explicitly configures an extraction-attempt ceiling.
 // Normalize camelCase, snake_case and kebab-case without blocking unrelated keys (e.g. design).
 const SENSITIVE_QUERY_KEY = /(?:^|_)(?:token|secret|password|passwd|passcode|api_key|access_key|auth|authorization|session|signature|credential|client_secret|jwt|bearer|signed|sig|code)(?:_|$)/;
 function isSensitiveQueryKey(key) {
@@ -29,7 +29,7 @@ export async function reserveTavilyExtractBudget(env, urlCount) {
   // A separate atomic global D1 quota: existing chat units are not Tavily provider credits.
   if (!env.DB?.prepare) return false;
   const rawLimit = env.TAVILY_EXTRACT_DAILY_URL_LIMIT;
-  const configured = rawLimit === undefined || rawLimit === null ? DEFAULT_DAILY_URL_BUDGET : Number(rawLimit);
+  const configured = rawLimit === undefined || rawLimit === null ? DEFAULT_DAILY_URL_BUDGET : (typeof rawLimit === "string" && rawLimit.trim() === "" ? NaN : Number(rawLimit));
   // Explicit zero disables paid extraction; malformed limits fail closed instead of silently enabling spending.
   if (!Number.isSafeInteger(configured) || configured < 1 || configured > 10000) return false;
   const limit = configured;
