@@ -1487,7 +1487,7 @@ export default {
       const spreadsheetContext = spreadsheet ? buildSpreadsheetContext(spreadsheet) : "";
       const presentationContext = presentation ? buildPresentationContext(presentation) : "";
       const wordDocumentContext = wordDocument ? buildWordDocumentContext(wordDocument) : "";
-      if (found.urls.length) {
+      if (found.urls.length && env.URL_READER_ENABLED === "true") {
         const results = env.URL_READER_ENABLED === "true" && env.URL_READER_PROVIDER === "tavily"
           ? await extractWithTavily(found.urls, env, { ownHost: url.hostname, fetcher: env.TAVILY_EXTRACT_FETCHER || fetch })
           : await readLinks(found.urls, { fetcher: createVerifiedLinkFetcher(env) || env.LINK_FETCHER || null, ownHost: url.hostname }); // LINK_FETCHER: test hook, unset in production
@@ -1504,7 +1504,7 @@ export default {
         // Keep the Brave result as a citable source even when the destination page cannot be read.
         const pageCandidates = search.results.filter((item) => item?.ok && typeof item.url === "string").slice(0, 3);
         let pageResults = [];
-        if (pageCandidates.length) {
+        if (pageCandidates.length && env.URL_READER_ENABLED === "true") {
           try {
             pageResults = env.URL_READER_ENABLED === "true" && env.URL_READER_PROVIDER === "tavily"
               ? await extractWithTavily(pageCandidates.map((item) => item.url), env, { ownHost: url.hostname, fetcher: env.TAVILY_EXTRACT_FETCHER || fetch })
