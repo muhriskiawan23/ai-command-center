@@ -6,7 +6,7 @@ import { startHarness, seedSession, seedConversation } from "./e2e/harness.js";
 const ALICE = { id: "sub-alice", email: "alice@example.com" };
 
 async function setup(options) {
-  const app = await startHarness(options);
+  const app = await startHarness({ ...options, extraEnv: { URL_READER_ENABLED: "true", ...(options?.extraEnv || {}) } });
   const token = seedSession(app.db, ALICE);
   const post = (body, { cookie = token, ip } = {}) => fetch(app.url + "/api/chat", {
     method: "POST",
