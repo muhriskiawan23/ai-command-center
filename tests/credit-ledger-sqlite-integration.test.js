@@ -76,3 +76,46 @@ test("SQLite real transaction: cannot bypass debit with direct settled insertion
     assert.equal(count(db,"credit_ledger"),0);
   } finally {db.close();}
 });
+
+test("SQLite competing reservations cannot overspend the same account", async () => {
+  const db=setup(100);
+  try {
+    const ids=Array.from({length:20},(_,i)=>"competing-"+i);
+    const results=await Promise.all(ids.map(async id=>{
+      await Promise.resolve();
+      try {reserve(db,id,30);return true;} catch {return false;}
+    }));
+    assert.equal(results.filter(Boolean).length,3);
+    assert.equal(balance(db),10);
+    assert.equal(count(db,"credit_reservations"),3);
+    assert.equal(count(db,"credit_ledger"),3);
+    assert.equal(db.prepare("SELECT sum(delta_microcredits) AS total FROM credit_ledger").get().total,-90);
+  } finally {db.close();}
+});
+test("SQLite failed finalize cannot partially refund or journal", () => {
+  const db=setup(100);
+  try {
+    reserve(db,"partial",80);
+    assert.equal(balance(db),20);
+    assert.throws(()=>finish(db,"partial","settled",81));
+    assert.equal(balance(db),20);
+    assert.equal(count(db,"credit_ledger"),1);
+    assert.equal(db.prepare("SELECT status FROM credit_reservations WHERE request_id='partial'").get().status,"reserved");
+    assert.equal(finish(db,"partial","released",null).changes,1);
+    assert.equal(balance(db),100);
+    assert.equal(count(db,"credit_ledger"),2);
+  } finally {db.close();}
+});
+test("SQLite duplicate settlement across retries refunds at most once", async () => {
+  const db=setup(100);
+  try {
+    reserve(db,"retry",70);
+    const outcomes=await Promise.all(Array.from({length:12},async()=>{
+      await Promise.resolve();
+      return finish(db,"retry","settled",20).changes;
+    }));
+    assert.equal(outcomes.reduce((a,b)=>a+b,0),1);
+    assert.equal(balance(db),80);
+    assert.equal(count(db,"credit_ledger"),2);
+  } finally {db.close();}
+});
