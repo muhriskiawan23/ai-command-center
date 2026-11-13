@@ -174,3 +174,14 @@ test("Tavily rejects embedded URL credentials before provider request", async ()
   assert.equal(calls, 0);
   assert.equal(result[0].ok, false);
 });
+
+test("Tavily blocks camelCase and signed URL credential query keys", async () => {
+  for (const key of ["authToken", "accessToken", "clientSecret", "apiKey", "X-Amz-Signature", "jwt", "bearer"]) {
+    let calls = 0;
+    const result = await extractWithTavily(["https://example.com/article?" + key + "=private"], testEnv(), {
+      fetcher: async () => { calls++; throw Error("must not call"); }
+    });
+    assert.equal(calls, 0, key);
+    assert.equal(result[0].ok, false, key);
+  }
+});
