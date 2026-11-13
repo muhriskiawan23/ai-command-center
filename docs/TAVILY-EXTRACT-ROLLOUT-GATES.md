@@ -69,3 +69,22 @@ Official Tavily sources reviewed:
 **Current decision:** KEEP URL_READER_ENABLED=false. The deployed secret presence and CI do not verify provider-side SSRF protections, DNS/redirect behavior, Tavily account billing hard stops, default-region retention, or successful live Extract calls. Existing atomic D1 quota limits attempts, not invoice dollars. No paid/live provider smoke has been authorized or run in this review.
 
 Before opt-in: obtain provider confirmation of redirect/DNS safety, processing/retention and subprocessor handling; inspect Tavily dashboard plan, USD credit cost, usage caps and alerts; add end-user notice that submitted public URLs are sent to Tavily; obtain founder approval for a bounded real-provider smoke and budget. Do not activate based on documentation alone.
+
+
+## Verified follow-up evidence (2026-11-13; URL Reader remains OFF)
+
+- One authorized real Tavily Extract request succeeded: GitHub Actions run [43381839005](https://github.com/muhriskiawan23/ai-command-center/actions/runs/43381839005). The returned URL exactly matched the requested public URL and extracted 156 text characters. This is a provider connectivity smoke test, **not** end-to-end application verification.
+- Privacy hardening merged in [PR #229](https://github.com/muhriskiawan23/ai-command-center/pull/229), merge SHA `ca29b2c8883826bc03b2802b7eb2b6f8ef1808a5`. The Tavily adapter now rejects **all URL query strings**, including innocuous parameter names whose values could contain secrets. URL fragments are stripped. URL paths can still embed sensitive data, so this is not a complete privacy solution.
+- CI on the fix SHA `d3cf57c9`: tests [43382466109](https://github.com/muhriskiawan23/ai-command-center/actions/runs/43382466109), browser E2E [43382466118](https://github.com/muhriskiawan23/ai-command-center/actions/runs/43382466118), preview build [43382466365](https://github.com/muhriskiawan23/ai-command-center/actions/runs/43382466365), all SUCCESS.
+- Production deploy [43383882696](https://github.com/muhriskiawan23/ai-command-center/actions/runs/43383882696) succeeded on `ca29b2c`, Worker Version `4e507f46-f43f-4c50-919d-3e5f0a62767b`. Deep health and endpoints passed; `TAVILY_API_KEY` Worker secret presence was verified without exposing its value. Production traffic audit [43383992602](https://github.com/muhriskiawan23/ai-command-center/actions/runs/43383992602) and Cloudflare VPC audit [43383992809](https://github.com/muhriskiawan23/ai-command-center/actions/runs/43383992809) passed. Optional live Tavily smoke was skipped.
+- `wrangler.jsonc` still sets `URL_READER_ENABLED=false`. This is repository configuration; verify live runtime flags independently before activation.
+- Source review: `src/index.js` routes both user-provided links and **research-result URLs** through Tavily when enabled. A single global D1 URL-attempt quota is shared across both paths. Enabling URL Reader can therefore transmit URLs discovered through third-party search to Tavily, not only URLs typed directly by users.
+- `src/links.js` wraps extracted text as untrusted page context, neutralizes angle brackets and instructs the model not to obey web-page instructions. This is defense in depth, not proof against prompt injection.
+
+### Remaining release blockers (explicitly NOT cleared)
+1. Obtain and record provider-side DNS/redirect/private-network protection evidence, retention and regional/subprocessor terms, and a user-facing disclosure/consent policy. Public-looking URL **paths** can contain private tokens; query rejection alone is insufficient.
+2. Verify actual Tavily account plan, credits, billing limits, alerting and failure/retry charging. The D1 daily quota is a **request-attempt ceiling, not a guaranteed USD hard stop**.
+3. Run end-to-end tests of chat and research URL handling with **mocked Tavily responses** and confirm feature-off paths; test prompt injection, failures, 429, oversized bodies, timeouts, and D1 quota exhaustion. No further paid calls without renewed authorization.
+4. Verify live Cloudflare environment variables and a safe, documented rollback. Obtain explicit owner approval before any production activation.
+
+**Decision: NO-GO for URL Reader activation.** The successful provider smoke and production deployment do not clear these blockers.
