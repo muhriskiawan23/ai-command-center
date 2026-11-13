@@ -27,6 +27,7 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          EXPECTED_MAIN_SHA: ${{ github.sha }}
         run: |
           node --input-type=module <<'NODE'
           const account = process.env.CLOUDFLARE_ACCOUNT_ID;
@@ -41,7 +42,8 @@ jobs:
             return payload.result;
           }
           const deployments = await get("/deployments?per_page=1");
-          const active = deployments?.deployments?.[0]?.versions?.filter(v => v.percentage > 0);
+          const deployment = deployments?.deployments?.[0];
+          const active = deployment?.versions?.filter(v => v.percentage > 0);
           if (active?.length !== 1 || active[0].percentage !== 100 || !active[0].version_id) throw new Error("Expected one active Worker version with 100% traffic");
           const version = await get("/versions/" + encodeURIComponent(active[0].version_id));
           const bindings = version?.resources?.bindings;
@@ -51,6 +53,14 @@ jobs:
           if (flag.length !== 1 || flag[0].type !== "plain_text" || flag[0].text !== "false") throw new Error("Active Worker URL Reader is not verifiably OFF");
           const limit = named("TAVILY_EXTRACT_DAILY_URL_LIMIT");
           if (limit.length && (limit.length !== 1 || limit[0].type !== "plain_text" || !/^(?:0+)$/.test(limit[0].text || ""))) throw new Error("Active Worker Tavily daily extraction quota is not verifiably zero");
+          const releaseMessage = deployment?.annotations?.["workers/message"];
+          const expected = "github-sha:" + process.env.EXPECTED_MAIN_SHA;
+          if (releaseMessage !== expected) {
+            console.log("::warning::Production release differs from audited main commit (or release annotation is missing). Deployment is a separate approval step.");
+            console.log("Production release synchronization: PENDING");
+          } else {
+            console.log("Production release synchronization: MATCHED");
+          }
           console.log("Active Worker URL Reader: OFF");
           console.log("Active Worker Tavily Extract daily quota: absent or zero");
           console.log("Binding names and secret values are not printed");
