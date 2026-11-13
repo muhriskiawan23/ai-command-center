@@ -185,3 +185,10 @@ test("Tavily blocks camelCase and signed URL credential query keys", async () =>
     assert.equal(result[0].ok, false, key);
   }
 });
+
+test("production config omits retired VPC egress and keeps URL reader disabled", async () => {
+  const { readFileSync } = await import("node:fs");
+  const config = JSON.parse(readFileSync(new URL("../wrangler.jsonc", import.meta.url), "utf8"));
+  assert.equal(config.vars.URL_READER_ENABLED, "false");
+  assert.ok(!config.vpc_services?.some(binding => binding.binding === "EGRESS_PROXY"));
+});
