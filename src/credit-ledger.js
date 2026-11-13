@@ -23,8 +23,7 @@ export async function readCreditBalance(env, userId) {
   if (!Number.isSafeInteger(balance) || balance < 0) throw new Error("Invalid credit balance");
   return BigInt(balance);
 }
-// Atomic conditional debit; only one request can reserve a given request ID.
-// Changes are committed together by D1 batch, and duplicate request IDs fail closed.
+// A unique request ID and database trigger protect the reservation debit.
 export async function reserveCredits(env, { userId, requestId, amountMicrocredits, now = Math.floor(Date.now()/1000) }) {
   const db = requireDb(env);
   identifier(userId, "userId"); identifier(requestId, "requestId");
@@ -44,6 +43,26 @@ export async function reserveCredits(env, { userId, requestId, amountMicrocredit
     return { ok: false, reason: "reservation_rejected" };
   }
 }
-// Finalization is intentionally NOT implemented until transactional D1 concurrency tests
-// verify refund/release semantics. A reservation must never be considered spendable.
+// A single conditional UPDATE invokes an atomic database refund trigger.
+// A second finalize attempt changes no rows; it must never refund twice.
+export async function finalizeCredits(env, { userId, requestId, settledMicrocredits = null, now = Math.floor(Date.now()/1000) }) {
+  const db = requireDb(env);
+  identifier(userId, "userId"); identifier(requestId, "requestId");
+  if (!Number.isSafeInteger(now) || now < 0) throw new TypeError("Invalid timestamp");
+  const settled = settledMicrocredits === null ? null : positiveOrZero(settledMicrocredits);
+  const status = settled === null ? "released" : "settled";
+  try {
+    const result = await db.prepare(
+      "UPDATE credit_reservations SET status = ?, settled_microcredits = ?, updated_at = ? WHERE request_id = ? AND user_id = ? AND status = 'reserved'"
+    ).bind(status, settled, now, requestId, userId).run();
+    return result?.meta?.changes === 1 ? { ok: true, status } : { ok: false, reason: "finalization_rejected" };
+  } catch {
+    return { ok: false, reason: "finalization_rejected" };
+  }
+}
+function positiveOrZero(value) {
+  if (typeof value !== "bigint" || value < 0n || value > MAX) throw new TypeError("settledMicrocredits must be a non-negative safe bigint");
+  return Number(value);
+}
+// Do not call from production routes until D1 integration/concurrency tests pass.
 export { calculateRemainingCredits };
