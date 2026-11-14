@@ -57,5 +57,15 @@ try{
  const overflow=run("SELECT (SELECT balance_microcredits FROM credit_accounts WHERE user_id='overflow') AS balance,(SELECT state FROM payment_orders WHERE order_id='order3') AS state,(SELECT count(*) FROM credit_ledger WHERE reference_id='order3') AS grants;");
  assert.deepEqual(overflow[0]?.results?.[0],{balance:9007199254740990,state:"paid_unfulfilled",grants:0});
  console.log("PASS: local D1 atomic rollback on ledger conflict and credit overflow");
+ // One provider transaction cannot fund two orders in the same environment.
+ run("INSERT INTO payment_orders(order_id,user_id,sku,environment,currency,amount_idr,grant_microcredits,state,created_at,updated_at) VALUES ('order4','u','basic','sandbox','IDR',100,9,'created',8,8);");
+ run("UPDATE payment_orders SET state='paid_unfulfilled',provider_transaction_id='tx1' WHERE order_id='order4';",/UNIQUE constraint failed/);
+ const duplicate=run("SELECT state,provider_transaction_id FROM payment_orders WHERE order_id='order4';");
+ assert.deepEqual(duplicate[0]?.results?.[0],{state:"created",provider_transaction_id:null});
+ // An already bound transaction identity must never be replaced.
+ run("UPDATE payment_orders SET provider_transaction_id='tx-changed' WHERE order_id='order1';",/payment_provider_transaction_immutable/);
+ const original=run("SELECT state,provider_transaction_id FROM payment_orders WHERE order_id='order1';");
+ assert.deepEqual(original[0]?.results?.[0],{state:"fulfilled",provider_transaction_id:"tx1"});
+ console.log("PASS: local D1 provider transaction uniqueness and immutable identity");
  console.log("PASS: local Cloudflare D1 paid-state guard, atomic credit and duplicate idempotency");
 }finally{rmSync(temp,{recursive:true,force:true})}
