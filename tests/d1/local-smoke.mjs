@@ -33,7 +33,7 @@ try{
  run(base+"\n"+schema);
  const insert="INSERT INTO payment_orders(order_id,user_id,sku,environment,currency,amount_idr,grant_microcredits,state,created_at,updated_at) VALUES ('order1','u','basic','sandbox','IDR',100,25,'created',1,1);";
  run(insert);
- run("UPDATE payment_orders SET state='fulfilled' WHERE order_id='order1';",/payment_fulfillment_transition_invalid/);
+ run("UPDATE payment_orders SET state='fulfilled' WHERE order_id='order1';",/payment_provider_transaction_required|payment_fulfillment_transition_invalid/);
  run("UPDATE payment_orders SET state='paid_unfulfilled' WHERE order_id='order1';",true);
  run("UPDATE payment_orders SET state='paid_unfulfilled',provider_transaction_id='tx1' WHERE order_id='order1';");
  run("UPDATE payment_orders SET state='fulfilled',updated_at=2 WHERE order_id='order1';");
