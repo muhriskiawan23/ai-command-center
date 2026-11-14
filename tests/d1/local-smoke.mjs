@@ -42,5 +42,20 @@ try{
  const out=run("SELECT (SELECT balance_microcredits FROM credit_accounts WHERE user_id='u') AS balance,(SELECT count(*) FROM credit_ledger) AS grants,(SELECT state FROM payment_orders WHERE order_id='order1') AS state;");
  const row=out[0]?.results?.[0];
  assert.deepEqual({balance:row?.balance,grants:row?.grants,state:row?.state},{balance:25,grants:1,state:"fulfilled"});
+ // A ledger uniqueness conflict must roll back the balance increment and state transition.
+ run("INSERT INTO payment_orders(order_id,user_id,sku,environment,currency,amount_idr,grant_microcredits,state,created_at,updated_at) VALUES ('order2','u','basic','sandbox','IDR',100,17,'created',4,4);");
+ run("UPDATE payment_orders SET state='paid_unfulfilled',provider_transaction_id='tx2' WHERE order_id='order2';");
+ run("INSERT INTO credit_ledger(id,user_id,delta_microcredits,reason,reference_id,created_at) VALUES ('payment:order2','u',1,'test_conflict','collision',4);");
+ run("UPDATE payment_orders SET state='fulfilled',updated_at=5 WHERE order_id='order2';",/SQLITE_CONSTRAINT/);
+ const rollback=run("SELECT (SELECT balance_microcredits FROM credit_accounts WHERE user_id='u') AS balance,(SELECT state FROM payment_orders WHERE order_id='order2') AS state,(SELECT count(*) FROM credit_ledger WHERE id='payment:order2') AS conflicting_rows;");
+ assert.deepEqual(rollback[0]?.results?.[0],{balance:25,state:"paid_unfulfilled",conflicting_rows:1});
+ // A credit overflow must not partially fulfill an order.
+ run("INSERT INTO credit_accounts(user_id,balance_microcredits,updated_at) VALUES ('overflow',9007199254740990,6);");
+ run("INSERT INTO payment_orders(order_id,user_id,sku,environment,currency,amount_idr,grant_microcredits,state,created_at,updated_at) VALUES ('order3','overflow','basic','sandbox','IDR',100,25,'created',6,6);");
+ run("UPDATE payment_orders SET state='paid_unfulfilled',provider_transaction_id='tx3' WHERE order_id='order3';");
+ run("UPDATE payment_orders SET state='fulfilled',updated_at=7 WHERE order_id='order3';",/payment_grant_account_missing_or_overflow/);
+ const overflow=run("SELECT (SELECT balance_microcredits FROM credit_accounts WHERE user_id='overflow') AS balance,(SELECT state FROM payment_orders WHERE order_id='order3') AS state,(SELECT count(*) FROM credit_ledger WHERE reference_id='order3') AS grants;");
+ assert.deepEqual(overflow[0]?.results?.[0],{balance:9007199254740990,state:"paid_unfulfilled",grants:0});
+ console.log("PASS: local D1 atomic rollback on ledger conflict and credit overflow");
  console.log("PASS: local Cloudflare D1 paid-state guard, atomic credit and duplicate idempotency");
 }finally{rmSync(temp,{recursive:true,force:true})}
