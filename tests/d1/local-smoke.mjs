@@ -34,10 +34,11 @@ try{
  const insert="INSERT INTO payment_orders(order_id,user_id,sku,environment,currency,amount_idr,grant_microcredits,state,created_at,updated_at) VALUES ('order1','u','basic','sandbox','IDR',100,25,'created',1,1);";
  run(insert);
  run("UPDATE payment_orders SET state='fulfilled' WHERE order_id='order1';",/payment_provider_transaction_required|payment_fulfillment_transition_invalid/);
- run("UPDATE payment_orders SET state='paid_unfulfilled' WHERE order_id='order1';",true);
+ run("UPDATE payment_orders SET state='paid_unfulfilled' WHERE order_id='order1';",/payment_provider_transaction_required/);
  run("UPDATE payment_orders SET state='paid_unfulfilled',provider_transaction_id='tx1' WHERE order_id='order1';");
  run("UPDATE payment_orders SET state='fulfilled',updated_at=2 WHERE order_id='order1';");
- run("UPDATE payment_orders SET state='fulfilled',updated_at=3 WHERE order_id='order1';");
+ run("UPDATE payment_orders SET state='fulfilled',updated_at=3 WHERE order_id='order1' AND state='paid_unfulfilled';");
+ run("UPDATE payment_orders SET state='fulfilled',updated_at=3 WHERE order_id='order1';",/payment_fulfillment_transition_invalid/);
  const out=run("SELECT (SELECT balance_microcredits FROM credit_accounts WHERE user_id='u') AS balance,(SELECT count(*) FROM credit_ledger) AS grants,(SELECT state FROM payment_orders WHERE order_id='order1') AS state;");
  const row=out[0]?.results?.[0];
  assert.deepEqual({balance:row?.balance,grants:row?.grants,state:row?.state},{balance:25,grants:1,state:"fulfilled"});
