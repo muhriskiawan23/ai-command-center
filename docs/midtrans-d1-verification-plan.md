@@ -71,10 +71,11 @@ npx --yes wrangler@4 d1 execute bor-ai-midtrans-sandbox --config "$sandbox_confi
 npx --yes wrangler@4 deploy --config "$sandbox_config"
 npx --yes wrangler@4 secret put MIDTRANS_SANDBOX_SERVER_KEY --config "$sandbox_config"
 npx --yes wrangler@4 secret put MIDTRANS_SANDBOX_MERCHANT_ID --config "$sandbox_config"
+npx --yes wrangler@4 secret put MIDTRANS_SANDBOX_SIGNATURE_SECRET_KEY --config "$sandbox_config"
 npx --yes wrangler@4 secret put SANDBOX_OPERATOR_TOKEN --config "$sandbox_config"
 ```
 
-Use the Sandbox Server Key and Merchant ID from the Midtrans dashboard, and a
+Use the Sandbox Server Key, Merchant ID, and separate Signature Secret Key from the Midtrans dashboard, and a
 random operator token of at least 32 characters. Enter secret values only at
 the CLI prompts or in Cloudflare's secret settings. Register the deployed
 Worker URL with `/webhook` appended as the Payment Notification URL in the

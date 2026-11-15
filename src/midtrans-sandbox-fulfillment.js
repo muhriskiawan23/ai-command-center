@@ -4,7 +4,7 @@ import {assessMidtransSandboxNotification} from "./midtrans-webhook-assessment.j
 import {checkMidtransSandboxOrder} from "./midtrans-status-api.js";
 import {decideSandboxPaymentConfirmation} from "./midtrans-sandbox-payment-decision.js";
 const SAFE_ID=/^[A-Za-z0-9_-]{1,100}$/;
-export async function fulfillVerifiedSandboxPayment({db,orderId,payload,serverKey,expectedMerchantId,fetchImpl,now=Date.now}) {
+export async function fulfillVerifiedSandboxPayment({db,orderId,payload,serverKey,signatureKey,expectedMerchantId,fetchImpl,now=Date.now}) {
   if (!db || typeof db.prepare!=="function" || typeof db.batch!=="function")
     throw new TypeError("Transactional D1 adapter required");
   if (typeof orderId!=="string" || !SAFE_ID.test(orderId)) throw new TypeError("Safe order ID required");
@@ -14,7 +14,7 @@ export async function fulfillVerifiedSandboxPayment({db,orderId,payload,serverKe
     return {kind:"not_confirmed",reason:"order_not_eligible"};
   const order={orderId:row.order_id,amountIdr:row.amount_idr,currency:row.currency,environment:row.environment};
   // Never take the assessment or status-API proof from request body.
-  const webhook=await assessMidtransSandboxNotification(order,payload,{serverKey,expectedMerchantId});
+  const webhook=await assessMidtransSandboxNotification(order,payload,{serverKey,signatureKey,expectedMerchantId});
   const statusApi=await checkMidtransSandboxOrder(order,{serverKey,expectedMerchantId,fetchImpl});
   const decision=decideSandboxPaymentConfirmation(order,webhook,statusApi);
   if(decision.kind!=="verified_paid_candidate") return decision;

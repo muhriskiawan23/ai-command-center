@@ -3,13 +3,13 @@
 import { verifyMidtransNotificationSignature } from "./midtrans-signature.js";
 import { assertMidtransPaymentMatchesOrder } from "./midtrans-amount.js";
 import { classifyMidtransStatus } from "./midtrans-status.js";
-export async function assessMidtransSandboxNotification(order, payload, {serverKey,expectedMerchantId}={}) {
+export async function assessMidtransSandboxNotification(order, payload, {serverKey,expectedMerchantId,signatureKey=serverKey}={}) {
   if (!order || order.environment !== "sandbox") throw new TypeError("Sandbox order required");
   if (typeof serverKey !== "string" || !serverKey.startsWith("SB-Mid-server-"))
     throw new TypeError("Sandbox server key required");
   if (typeof expectedMerchantId !== "string" || !expectedMerchantId.trim())
     throw new TypeError("Configured merchant ID required");
-  if (!await verifyMidtransNotificationSignature(payload,serverKey))
+  if (!await verifyMidtransNotificationSignature(payload,signatureKey))
     throw new Error("Midtrans signature invalid");
   if (payload.currency !== undefined && payload.currency !== "IDR")
     throw new Error("Midtrans notification currency mismatch");

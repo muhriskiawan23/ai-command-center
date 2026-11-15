@@ -82,6 +82,8 @@ async function checkout(request, env, providerFetch) {
 }
 
 async function webhook(request, env, providerFetch) {
+  const signatureKey = env.MIDTRANS_SANDBOX_SIGNATURE_SECRET_KEY;
+  if (!signatureKey?.trim()) return json(503, { error: "Sandbox webhook signing key not configured" });
   let payload;
   try {
     payload = await parseJson(request);
@@ -95,7 +97,7 @@ async function webhook(request, env, providerFetch) {
     return json(400, { error: "Invalid sandbox notification" });
   const serverKey = env.MIDTRANS_SANDBOX_SERVER_KEY;
   if (payload.merchant_id !== env.MIDTRANS_SANDBOX_MERCHANT_ID ||
-      !await verifyMidtransNotificationSignature(payload, serverKey))
+      !await verifyMidtransNotificationSignature(payload, signatureKey))
     return json(401, { error: "Invalid notification signature" });
   if (classifyMidtransStatus(payload).kind !== "paid_candidate")
     return json(200, { outcome: "not_confirmed" });
@@ -105,6 +107,7 @@ async function webhook(request, env, providerFetch) {
     orderId: payload.order_id,
     payload,
     serverKey,
+    signatureKey,
     expectedMerchantId: env.MIDTRANS_SANDBOX_MERCHANT_ID,
     fetchImpl: (url, options) => providerFetch(url, { ...options, signal: AbortSignal.timeout(8000) }),
   });

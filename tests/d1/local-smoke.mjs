@@ -81,6 +81,7 @@ try{
  const transactionId="concurrent-transaction";
  const serverKey="SB-Mid-server-synthetic-fixture";
  const merchantId="synthetic-merchant";
+ const signatureKey="distinct-synthetic-webhook-key";
  const payload={
   order_id:orderId,
   gross_amount:"10000.00",
@@ -89,7 +90,7 @@ try{
   merchant_id:merchantId,
   status_code:"200",
   currency:"IDR",
-  signature_key:createHash("sha512").update(orderId+"200"+"10000.00"+serverKey).digest("hex"),
+  signature_key:createHash("sha512").update(orderId+"200"+"10000.00"+signatureKey).digest("hex"),
  };
  const {getPlatformProxy}=createRequire(join(temp,"package.json"))("wrangler");
  // The CLI appends v3 to --persist-to; the proxy takes the versioned path.
@@ -102,6 +103,7 @@ try{
   const env={
    SANDBOX_DB:db,PAYMENT_SANDBOX_ENABLED:"true",SANDBOX_OPERATOR_TOKEN:operatorToken,
    MIDTRANS_SANDBOX_SERVER_KEY:serverKey,MIDTRANS_SANDBOX_MERCHANT_ID:merchantId,
+   MIDTRANS_SANDBOX_SIGNATURE_SECRET_KEY:signatureKey,
   };
   let checkoutCalls=0;
   let statusCalls=0;
@@ -141,6 +143,8 @@ try{
    method:"POST",body:JSON.stringify(body),headers:{"Content-Type":"application/json"},
   }),env,providerFetch);
   assert.equal((await callback({...payload,signature_key:"invalid"})).status,401);
+  const serverSignature=createHash("sha512").update(orderId+"200"+"10000.00"+serverKey).digest("hex");
+  assert.equal((await callback({...payload,signature_key:serverSignature})).status,401);
   const pending=await callback({...payload,transaction_status:"pending"});
   assert.equal(pending.status,200);
   assert.deepEqual(await pending.json(),{outcome:"not_confirmed"});
