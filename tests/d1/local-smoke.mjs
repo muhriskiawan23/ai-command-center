@@ -120,19 +120,43 @@ try{
    assert.equal(url,"https://api.sandbox.midtrans.com/v2/"+orderId+"/status");
    return Response.json({...payload,transaction_status:providerStatus});
   };
-  const checkout=(token,config=env)=>handleSandboxPayment(new Request("https://local.test/checkout",{
-   method:"POST",headers:{"Authorization":"Bearer "+token,"Idempotency-Key":key},
-  }),config,providerFetch);
+  const checkout=(token,config=env,checkoutKey=key,fetcher=providerFetch)=>handleSandboxPayment(new Request("https://local.test/checkout",{
+   method:"POST",headers:{"Authorization":"Bearer "+token,"Idempotency-Key":checkoutKey},
+  }),config,fetcher);
   assert.equal((await checkout(operatorToken,{...env,PAYMENT_SANDBOX_ENABLED:"false"})).status,404);
   assert.equal((await checkout("invalid")).status,401);
   assert.equal(checkoutCalls,0);
   const checkouts=await Promise.all([checkout(operatorToken),checkout(operatorToken)]);
-  assert.deepEqual(checkouts.map(response=>response.status).sort(),[201,409]);
+  assert.equal(checkouts.filter(response=>response.status===201).length,1);
+  assert.ok(checkouts.every(response=>[200,201,409].includes(response.status)));
   assert.equal(checkoutCalls,1);
   const receipt=await checkouts.find(response=>response.status===201).json();
   assert.equal(receipt.orderId,orderId);
   assert.equal(receipt.amountIdr,10000);
   assert.equal(receipt.redirectUrl,"https://app.sandbox.midtrans.com/snap/v4/redirection/11111111-1111-4111-8111-111111111111");
+  const repeated=await checkout(operatorToken);
+  assert.equal(repeated.status,200);
+  assert.deepEqual(await repeated.json(),receipt);
+  assert.equal(checkoutCalls,1);
+
+  const lostKey="33333333-3333-4333-8333-333333333333";
+  const lostOrderId="bor-sbx-"+lostKey;
+  let attempts=0;
+  const lossThenSuccess=async(_url,options)=>{
+   assert.equal(JSON.parse(options.body).transaction_details.order_id,lostOrderId);
+   if(++attempts===1) throw Error("simulated lost response after Snap created checkout");
+   return Response.json({redirect_url:receipt.redirectUrl},{status:201});
+  };
+  assert.equal((await checkout(operatorToken,env,lostKey,lossThenSuccess)).status,502);
+  assert.equal((await checkout(operatorToken,env,lostKey,lossThenSuccess)).status,409);
+  await db.prepare("UPDATE sandbox_checkout_receipts SET retry_at=0 WHERE order_id=?").bind(lostOrderId).run();
+  const recovered=await checkout(operatorToken,env,lostKey,lossThenSuccess);
+  assert.equal(recovered.status,201);
+  assert.equal((await recovered.json()).orderId,lostOrderId);
+  assert.equal((await checkout(operatorToken,env,lostKey,lossThenSuccess)).status,200);
+  assert.equal(attempts,2);
+  assert.equal(await db.prepare("SELECT count(*) AS n FROM payment_orders WHERE order_id=?").bind(lostOrderId).first("n"),1);
+  assert.equal(await db.prepare("SELECT count(*) AS n FROM credit_ledger WHERE reference_id=?").bind(lostOrderId).first("n"),0);
   const rejectedCheckout=await handleSandboxPayment(new Request("https://local.test/checkout",{
    method:"POST",headers:{"Authorization":"Bearer "+operatorToken,"Idempotency-Key":"22222222-2222-4222-8222-222222222222"},
   }),env,async()=>Response.json({error_messages:["private provider details"]},{status:401}));
@@ -176,6 +200,19 @@ try{
   const reconciliation=await reconcile(operatorToken);
   assert.equal(reconciliation.status,200);
   assert.deepEqual(await reconciliation.json(),{orderId,outcome:"unchanged"});
+  const recoveredPayload={...payload,order_id:lostOrderId,transaction_id:"recovered-transaction"};
+  recoveredPayload.signature_key=createHash("sha512").update(lostOrderId+"200"+"10000.00"+signatureKey).digest("hex");
+  const recoveredCallback=()=>handleSandboxPayment(new Request("https://local.test/webhook",{
+   method:"POST",body:JSON.stringify(recoveredPayload),
+  }),env,async()=>Response.json(recoveredPayload));
+  const recoveredOutcomes=await Promise.all([recoveredCallback(),recoveredCallback()]);
+  assert.ok(recoveredOutcomes.every(response=>response.status===200));
+  assert.deepEqual((await Promise.all(recoveredOutcomes.map(response=>response.json()))).map(reply=>reply.outcome).sort(),["fulfilled","unchanged"]);
+  const recoveredLedger=await db.prepare("SELECT delta_microcredits FROM credit_ledger WHERE reference_id=?").bind(lostOrderId).all();
+  assert.deepEqual(recoveredLedger.results.map(row=>row.delta_microcredits),[25]);
+  assert.equal((await checkout(operatorToken,env,lostKey,lossThenSuccess)).status,409);
+  assert.equal(attempts,2);
+  console.log("PASS: interrupted and cached checkout retries preserve one order and one credit grant");
   console.log("PASS: pending Status API retries without mutations, then concurrent callbacks and reconciliation grant credit once in D1");
  }finally{await platform.dispose()}
 }finally{rmSync(temp,{recursive:true,force:true})}

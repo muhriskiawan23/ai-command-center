@@ -88,9 +88,15 @@ Midtrans Sandbox environment.
    microcredits, and the payment ledger has exactly one entry referencing the order.
 4. Re-send the notification through the sandbox and confirm the same ledger count
    and balance. Keep the order ID and redacted evidence.
-5. If checkout returns 502, reconcile the returned order ID in Midtrans Sandbox
-   before creating another order. Retrying the same key returns 409 and avoids
-   submitting the same order to Snap again.
+5. If checkout returns 502, wait 30 seconds and retry with the same
+   idempotency key. A saved checkout URL is returned with 200. If the
+   response was lost before the URL could be saved, the Worker retries
+   Snap using the original order ID. An in-flight attempt returns 409.
+   If Snap says the order is already in use, reconcile the same order
+   before generating any new key.
+6. For an existing Sandbox database, reapply the review SQL before
+   deploying this version to add `sandbox_checkout_receipts`. Keep Snap
+   links private and out of logs, and discard the Sandbox database after use.
 
 ### Operator reconciliation for an existing order
 

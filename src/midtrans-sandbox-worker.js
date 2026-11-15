@@ -38,11 +38,22 @@ async function checkout(request, env, providerFetch) {
 
   const orderId = ORDER_PREFIX + key;
   const now = Date.now();
-  const inserted = await env.SANDBOX_DB.prepare(
-    "INSERT INTO payment_orders (order_id,user_id,sku,environment,currency,amount_idr,grant_microcredits,state,created_at,updated_at) VALUES (?,?,?,'sandbox','IDR',?,?,'created',?,?) ON CONFLICT(order_id) DO NOTHING RETURNING order_id"
-  ).bind(orderId, FIXTURE.user, FIXTURE.sku, FIXTURE.amount, FIXTURE.credits, now, now).first();
-  // An ambiguous provider response needs reconciliation before another attempt.
-  if (!inserted) return json(409, { orderId, error: "Order already submitted" });
+  const db = env.SANDBOX_DB;
+  await db.prepare(
+    "INSERT INTO payment_orders (order_id,user_id,sku,environment,currency,amount_idr,grant_microcredits,state,created_at,updated_at) VALUES (?,?,?,'sandbox','IDR',?,?,'created',?,?) ON CONFLICT(order_id) DO NOTHING"
+  ).bind(orderId, FIXTURE.user, FIXTURE.sku, FIXTURE.amount, FIXTURE.credits, now, now).run();
+  const order = await db.prepare(
+    "SELECT p.state,p.amount_idr,r.redirect_url FROM payment_orders p LEFT JOIN sandbox_checkout_receipts r ON r.order_id=p.order_id WHERE p.order_id=? AND p.environment='sandbox' AND p.user_id=? AND p.sku=?"
+  ).bind(orderId, FIXTURE.user, FIXTURE.sku).first();
+  if (order?.state !== "created") return json(409, { orderId, error: "Order no longer open for checkout" });
+  const receiptResponse = (status, redirectUrl) => json(status, { orderId, amountIdr: order.amount_idr, redirectUrl });
+  if (order.redirect_url) return receiptResponse(200, order.redirect_url);
+
+  const attemptId = crypto.randomUUID();
+  const acquired = await db.prepare(
+    "INSERT INTO sandbox_checkout_receipts (order_id,attempt_id,retry_at) SELECT order_id,?,? FROM payment_orders WHERE order_id=? AND environment='sandbox' AND state='created' ON CONFLICT(order_id) DO UPDATE SET attempt_id=excluded.attempt_id,retry_at=excluded.retry_at WHERE sandbox_checkout_receipts.redirect_url IS NULL AND sandbox_checkout_receipts.retry_at<=? RETURNING attempt_id"
+  ).bind(attemptId, now + 30_000, orderId, now).first();
+  if (!acquired) return json(409, { orderId, error: "Checkout attempt in progress", retryWithSameKey: true });
 
   const failure = (diagnostic) => json(502, { orderId, error: "Sandbox checkout unavailable", diagnostic });
   const signal = AbortSignal.timeout(8000);
@@ -57,7 +68,7 @@ async function checkout(request, env, providerFetch) {
         "Content-Type": "application/json",
         Accept: "application/json",
       },
-      body: JSON.stringify({ transaction_details: { order_id: orderId, gross_amount: FIXTURE.amount } }),
+      body: JSON.stringify({ transaction_details: { order_id: orderId, gross_amount: order.amount_idr } }),
     });
   } catch {
     return failure(signal.aborted ? "snap_timeout" : "snap_connection_failed");
@@ -76,7 +87,11 @@ async function checkout(request, env, providerFetch) {
   if (!destination || destination.origin !== SNAP_ORIGIN || destination.username || destination.password)
     return failure("snap_invalid_redirect_origin");
   if (!SNAP_CHECKOUT_PATH.test(destination.pathname)) return failure("snap_invalid_redirect_path");
-  return json(201, { orderId, amountIdr: FIXTURE.amount, redirectUrl: destination.href });
+  const saved = await db.prepare(
+    "UPDATE sandbox_checkout_receipts SET redirect_url=? WHERE order_id=? AND attempt_id=? AND EXISTS (SELECT 1 FROM payment_orders WHERE order_id=? AND environment='sandbox' AND state='created') RETURNING order_id"
+  ).bind(destination.href, orderId, attemptId, orderId).first();
+  if (!saved) return json(409, { orderId, error: "Checkout attempt superseded", retryWithSameKey: true });
+  return receiptResponse(201, destination.href);
 }
 
 function isSandboxOrderId(value) {

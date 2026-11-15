@@ -13,6 +13,14 @@ CREATE TABLE IF NOT EXISTS payment_orders (
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 );
+-- Sandbox-only checkout recovery. The authenticated operator can recover a saved
+-- Snap link. An in-flight attempt has a bounded lease to avoid parallel issuance.
+CREATE TABLE IF NOT EXISTS sandbox_checkout_receipts (
+  order_id TEXT PRIMARY KEY REFERENCES payment_orders(order_id),
+  attempt_id TEXT NOT NULL,
+  retry_at INTEGER NOT NULL,
+  redirect_url TEXT
+);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_payment_orders_provider_tx ON payment_orders(environment,provider_transaction_id) WHERE provider_transaction_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_payment_orders_user ON payment_orders(user_id,created_at DESC);
 -- Only a verified server-side handler may mark an order paid_unfulfilled.
