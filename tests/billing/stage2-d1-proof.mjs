@@ -150,8 +150,13 @@ try {
   sql(budget("one",day,8610,now));
   sql(wallet("one","fixture",8610,now));
   assert.equal(state(day).balance,16390);
+  // Raise caps only inside this fresh disposable database so BEFORE INSERT
+  // cap triggers do not mask the UNIQUE replay guard we intend to prove.
+  sql("UPDATE provider_budget_limits SET daily_cap_micro_usd=20000");
   denied(budget("one",day,8610,now),"UNIQUE","Duplicate budget");
   denied(wallet("one","fixture",8610,now),"UNIQUE","Duplicate wallet");
+  assert.equal(state(day).reserved,8610,"Duplicate insert must roll back its trigger effects");
+  sql("UPDATE provider_budget_limits SET daily_cap_micro_usd=9000");
 
   sql("UPDATE provider_budget_reservations SET status='settled', actual_micro_usd=519 WHERE id='ai:one' AND status='reserved'");
   sql("UPDATE credit_reservations SET status='settled',settled_microcredits=519 WHERE request_id='one' AND status='reserved'");
