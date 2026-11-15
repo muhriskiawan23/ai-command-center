@@ -13,10 +13,10 @@ function setup(){
  sqlite.exec(schema);
  sqlite.prepare("INSERT INTO payment_orders(order_id,user_id,sku,environment,currency,amount_idr,grant_microcredits,state,created_at,updated_at) VALUES (?, 'u','basic','sandbox','IDR',100,25,'created',1,1)").run(id);
  const db={
-  prepare(sql){const stmt=sqlite.prepare(sql);return {bind(...params){return {first:async()=>stmt.get(...params),_run:()=>stmt.run(...params)}}}},
+  prepare(sql){const stmt=sqlite.prepare(sql);return {bind(...params){return {first:async()=>stmt.get(...params),_all:()=>stmt.all(...params)}}}},
   async batch(statements){
    sqlite.exec("BEGIN IMMEDIATE");
-   try{const out=statements.map(s=>({meta:{changes:s._run().changes}}));sqlite.exec("COMMIT");return out}
+   try{const out=statements.map(s=>({results:s._all()}));sqlite.exec("COMMIT");return out}
    catch(e){sqlite.exec("ROLLBACK");throw e}
   }
  };

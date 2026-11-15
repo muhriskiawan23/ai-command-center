@@ -26,12 +26,14 @@ export async function fulfillVerifiedSandboxPayment({db,orderId,payload,serverKe
   // D1 batch is atomic; the SQL trigger grants the ledger credit on fulfillment.
   const statements=[
     db.prepare("UPDATE payment_orders SET state='paid_unfulfilled',provider_transaction_id=?,updated_at=? WHERE order_id=? AND environment='sandbox' AND state IN ('created','pending') AND (provider_transaction_id IS NULL OR provider_transaction_id=?)").bind(decision.providerTransactionId,timestamp,orderId,decision.providerTransactionId),
-    db.prepare("UPDATE payment_orders SET state='fulfilled',updated_at=? WHERE order_id=? AND environment='sandbox' AND state='paid_unfulfilled' AND provider_transaction_id=?").bind(timestamp,orderId,decision.providerTransactionId)
+    db.prepare("UPDATE payment_orders SET state='fulfilled',updated_at=? WHERE order_id=? AND environment='sandbox' AND state='paid_unfulfilled' AND provider_transaction_id=? RETURNING order_id").bind(timestamp,orderId,decision.providerTransactionId)
   ];
   // Do not retry failed batches blindly. Re-read DB after errors.
   const result=await db.batch(statements);
-  const updated=result?.[1]?.meta?.changes;
-  if(updated===1) return {kind:"fulfilled",orderId,providerTransactionId:decision.providerTransactionId};
-  if(updated===0) return {kind:"unchanged",orderId};
+  // D1's change count can include trigger writes to the account and ledger.
+  const orders=result?.[1]?.results;
+  if(Array.isArray(orders) && orders.length===1 && orders[0]?.order_id===orderId)
+    return {kind:"fulfilled",orderId,providerTransactionId:decision.providerTransactionId};
+  if(Array.isArray(orders) && orders.length===0) return {kind:"unchanged",orderId};
   throw new Error("Unexpected D1 batch result");
 }

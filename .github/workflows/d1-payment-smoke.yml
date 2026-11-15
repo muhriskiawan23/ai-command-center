@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - "docs/sql/payment-orders-review.sql"
+      - "src/midtrans-*.js"
+      - "src/payment-order-state.js"
       - "tests/d1/local-smoke.mjs"
       - ".github/workflows/d1-payment-smoke.yml"
 permissions:

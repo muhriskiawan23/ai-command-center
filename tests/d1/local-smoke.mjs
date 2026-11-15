@@ -1,12 +1,18 @@
 // Explicitly opt-in local Cloudflare D1 smoke test. Never targets a remote database.
-// Run: node tests/d1/local-smoke.mjs (requires Node.js and npx).
+// Run: node tests/d1/local-smoke.mjs (requires Node.js and npm).
 import assert from "node:assert/strict";
 import {execFileSync} from "node:child_process";
+import {createHash} from "node:crypto";
 import {mkdtempSync,writeFileSync,rmSync,readFileSync} from "node:fs";
+import {createRequire} from "node:module";
 import {tmpdir} from "node:os";
 import {join,resolve} from "node:path";
+import {fulfillVerifiedSandboxPayment} from "../../src/midtrans-sandbox-fulfillment.js";
+// The platform proxy runs local D1 only. The provider response is a test fixture.
+process.env.WRANGLER_SEND_METRICS="false";
 const temp=mkdtempSync(join(tmpdir(),"bor-ai-d1-"));
 const config=join(temp,"wrangler.jsonc");
+const persistencePath=join(temp,"state");
 const dbName="bor-ai-payment-test";
 const schema=readFileSync(new URL("../../docs/sql/payment-orders-review.sql",import.meta.url),"utf8");
 const base="CREATE TABLE credit_accounts(user_id TEXT PRIMARY KEY,balance_microcredits INTEGER NOT NULL CHECK(balance_microcredits>=0),updated_at INTEGER NOT NULL); CREATE TABLE credit_ledger(id TEXT PRIMARY KEY,user_id TEXT NOT NULL,delta_microcredits INTEGER NOT NULL,reason TEXT NOT NULL,reference_id TEXT NOT NULL,created_at INTEGER NOT NULL,UNIQUE(user_id,reason,reference_id));";
@@ -15,7 +21,7 @@ const run=(sql,expectedError=null)=>{
  const file=join(temp,"query.sql");writeFileSync(file,sql);
  let output="",exitError=null;
  try{
-  output=execFileSync("npx",["--yes","wrangler@4","d1","execute",dbName,"--local","--config",config,"--persist-to",join(temp,"state"),"--file",file,"--json"],{encoding:"utf8",timeout:120000,stdio:["ignore","pipe","pipe"]});
+  output=execFileSync(process.execPath,[join(temp,"node_modules","wrangler","bin","wrangler.js"),"d1","execute",dbName,"--local","--config",config,"--persist-to",persistencePath,"--file",file,"--json"],{encoding:"utf8",timeout:120000,stdio:["ignore","pipe","pipe"]});
  }catch(e){exitError=e;output=String(e.stdout||"");}
  let parsed;
  try{parsed=JSON.parse(output.trim())}catch{
@@ -30,6 +36,7 @@ const run=(sql,expectedError=null)=>{
  return parsed;
 };
 try{
+ execFileSync("npm",["install","--prefix",temp,"--no-save","--no-package-lock","--no-audit","--no-fund","wrangler@4"],{stdio:"inherit",timeout:180000});
  run(base+"\n"+schema);
  const insert="INSERT INTO payment_orders(order_id,user_id,sku,environment,currency,amount_idr,grant_microcredits,state,created_at,updated_at) VALUES ('order1','u','basic','sandbox','IDR',100,25,'created',1,1);";
  run(insert);
@@ -68,4 +75,42 @@ try{
  assert.deepEqual(original[0]?.results?.[0],{state:"fulfilled",provider_transaction_id:"tx1"});
  console.log("PASS: local D1 provider transaction uniqueness and immutable identity");
  console.log("PASS: local Cloudflare D1 paid-state guard, atomic credit and duplicate idempotency");
+
+ const orderId="concurrent-order";
+ const transactionId="concurrent-transaction";
+ const serverKey="SB-Mid-server-synthetic-fixture";
+ const merchantId="synthetic-merchant";
+ const payload={
+  order_id:orderId,
+  gross_amount:"100.00",
+  transaction_status:"settlement",
+  transaction_id:transactionId,
+  merchant_id:merchantId,
+  status_code:"200",
+  currency:"IDR",
+  signature_key:createHash("sha512").update(orderId+"200"+"100.00"+serverKey).digest("hex"),
+ };
+ run("INSERT INTO payment_orders(order_id,user_id,sku,environment,currency,amount_idr,grant_microcredits,state,created_at,updated_at) VALUES ('concurrent-order','concurrent-user','basic','sandbox','IDR',100,25,'created',1,1);");
+ const {getPlatformProxy}=createRequire(join(temp,"package.json"))("wrangler");
+ // The CLI appends v3 to --persist-to; the proxy takes the versioned path.
+ const platform=await getPlatformProxy({
+  configPath:config,remoteBindings:false,persist:{path:join(persistencePath,"v3")},
+ });
+ try{
+  const db=platform.env.DB;
+  const fulfill=()=>fulfillVerifiedSandboxPayment({
+   db,orderId,payload,serverKey,expectedMerchantId:merchantId,
+   fetchImpl:async()=>Response.json(payload),
+  });
+  const results=await Promise.all(Array.from({length:20},fulfill));
+  assert.equal(results.filter(result=>result.kind==="fulfilled").length,1);
+  assert.equal(results.filter(result=>result.kind==="unchanged").length,19);
+  const order=await db.prepare("SELECT state,provider_transaction_id FROM payment_orders WHERE order_id=?").bind(orderId).first();
+  assert.deepEqual({...order},{state:"fulfilled",provider_transaction_id:transactionId});
+  const account=await db.prepare("SELECT balance_microcredits FROM credit_accounts WHERE user_id=?").bind("concurrent-user").first();
+  assert.equal(account?.balance_microcredits,25);
+  const ledger=await db.prepare("SELECT delta_microcredits FROM credit_ledger WHERE reference_id=?").bind(orderId).all();
+  assert.deepEqual(ledger.results.map(row=>row.delta_microcredits),[25]);
+  console.log("PASS: 20 concurrent synthetic callbacks grant credit once through local D1.batch()");
+ }finally{await platform.dispose()}
 }finally{rmSync(temp,{recursive:true,force:true})}
