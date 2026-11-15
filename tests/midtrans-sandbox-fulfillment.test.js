@@ -112,3 +112,19 @@ test("unsafe order ID is rejected before any database access",async()=>{
   assert.equal(x.balance(),0);assert.equal(x.count(),0);assert.equal(x.state(),"created");
  }finally{x.sqlite.close()}
 });
+
+test("concurrent conflicting transaction IDs never grant twice",async()=>{
+ const x=setup();try{
+  const first=evidence("settlement","tx-first");
+  const second=evidence("settlement","tx-second");
+  const outcomes=await Promise.all(Array.from({length:12},(_,i)=>run(x.db,i%2?second:first)));
+  assert.equal(outcomes.filter(v=>v.kind==="fulfilled").length,1);
+  assert.equal(outcomes.filter(v=>v.kind==="unchanged").length,11);
+  assert.equal(x.balance(),25);assert.equal(x.count(),1);assert.equal(x.state(),"fulfilled");
+  const transaction=x.sqlite.prepare("SELECT provider_transaction_id FROM payment_orders WHERE order_id=?").get(id).provider_transaction_id;
+  assert.ok(["tx-first","tx-second"].includes(transaction));
+  const conflicting=transaction==="tx-first"?second:first;
+  assert.equal((await run(x.db,conflicting)).kind,"not_confirmed");
+  assert.equal(x.balance(),25);assert.equal(x.count(),1);
+ }finally{x.sqlite.close()}
+});
