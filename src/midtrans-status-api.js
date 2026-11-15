@@ -11,7 +11,7 @@ const MAX_STATUS_BYTES = 32768;
 async function readBoundedStatusBody(response) {
   const advertised = response.headers?.get?.("Content-Length");
   if (advertised !== undefined && advertised !== null &&
-      /^\\d+$/.test(advertised) && BigInt(advertised) > BigInt(MAX_STATUS_BYTES)) {
+      /^\d+$/.test(advertised) && BigInt(advertised) > BigInt(MAX_STATUS_BYTES)) {
     await response.body?.cancel?.().catch(() => {});
     throw new Error("Midtrans response too large");
   }
