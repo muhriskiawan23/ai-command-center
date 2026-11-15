@@ -32,10 +32,15 @@ export async function reserveCredits(env, { userId, requestId, amountMicrocredit
   // A single INSERT invokes the database trigger, which atomically checks balance,
   // debits the account and journals the reservation. UNIQUE(request_id) rejects replay.
   try {
-    const result = await db.prepare(
-      "INSERT INTO credit_reservations (request_id, user_id, reserved_microcredits, settled_microcredits, status, created_at, updated_at) VALUES (?, ?, ?, NULL, 'reserved', ?, ?)"
-    ).bind(requestId, userId, amount, now, now).run();
-    if (result?.meta?.changes !== 1) throw new Error("Reservation was not inserted");
+    // INSERT ... RETURNING reports the affected row, regardless of whether D1
+    // counts trigger side effects in meta.changes. The statement and debit
+    // trigger commit atomically or roll back together.
+    const inserted = await db.prepare(
+      "INSERT INTO credit_reservations (request_id, user_id, reserved_microcredits, settled_microcredits, status, created_at, updated_at) VALUES (?, ?, ?, NULL, 'reserved', ?, ?) RETURNING request_id, user_id, reserved_microcredits, status"
+    ).bind(requestId, userId, amount, now, now).first();
+    if (inserted?.request_id !== requestId || inserted?.user_id !== userId ||
+        inserted?.reserved_microcredits !== amount || inserted?.status !== "reserved")
+      throw new Error("Reservation result not confirmed");
     return { ok: true, reservedMicrocredits: amountMicrocredits };
   } catch {
     // Fail closed on duplicate, insufficient balance, schema or database failure.
@@ -52,10 +57,15 @@ export async function finalizeCredits(env, { userId, requestId, settledMicrocred
   const settled = settledMicrocredits === null ? null : positiveOrZero(settledMicrocredits);
   const status = settled === null ? "released" : "settled";
   try {
-    const result = await db.prepare(
-      "UPDATE credit_reservations SET status = ?, settled_microcredits = ?, updated_at = ? WHERE request_id = ? AND user_id = ? AND status = 'reserved'"
-    ).bind(status, settled, now, requestId, userId).run();
-    return result?.meta?.changes === 1 ? { ok: true, status } : { ok: false, reason: "finalization_rejected" };
+    // The AFTER UPDATE refund trigger shares the same statement transaction.
+    // RETURNING avoids mistaking trigger-inclusive change counts for the
+    // number of reservation rows finalized.
+    const finalized = await db.prepare(
+      "UPDATE credit_reservations SET status = ?, settled_microcredits = ?, updated_at = ? WHERE request_id = ? AND user_id = ? AND status = 'reserved' RETURNING request_id, user_id, status, settled_microcredits"
+    ).bind(status, settled, now, requestId, userId).first();
+    return finalized?.request_id === requestId && finalized?.user_id === userId &&
+      finalized?.status === status && finalized?.settled_microcredits === settled
+      ? { ok: true, status } : { ok: false, reason: "finalization_rejected" };
   } catch {
     return { ok: false, reason: "finalization_rejected" };
   }
