@@ -6,7 +6,7 @@ const key="SB-Mid-server-FAKE-TEST-KEY";
 const status={status_code:"200",order_id:"bor-123",gross_amount:"36254.00",currency:"IDR",transaction_status:"settlement",transaction_id:"tx-123",merchant_id:"M123"};
 const fake=(payload,code=200)=>async(url,opts)=>{
  assert.equal(url,"https://api.sandbox.midtrans.com/v2/bor-123/status");
- assert.equal(opts.method,"GET");assert.equal(opts.redirect,"error");
+ assert.equal(opts.method,"GET");assert.equal(opts.redirect,"manual");
  assert.equal(opts.headers.Authorization,"Basic "+btoa(key+":"));
  return {ok:code===200,text:async()=>JSON.stringify(payload)};
 };

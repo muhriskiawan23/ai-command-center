@@ -51,7 +51,7 @@ async function checkout(request, env, providerFetch) {
   try {
     response = await providerFetch(SNAP_ORIGIN + "/snap/v1/transactions", {
       method: "POST",
-      redirect: "error",
+      redirect: "manual",
       signal,
       headers: {
         Authorization: "Basic " + btoa(env.MIDTRANS_SANDBOX_SERVER_KEY + ":"),

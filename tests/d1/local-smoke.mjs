@@ -106,6 +106,7 @@ try{
   let checkoutCalls=0;
   let statusCalls=0;
   const providerFetch=async (url,options)=>{
+   assert.equal(options.redirect,"manual");
    if (options.method==="POST") {
     checkoutCalls++;
     assert.equal(url,"https://app.sandbox.midtrans.com/snap/v1/transactions");

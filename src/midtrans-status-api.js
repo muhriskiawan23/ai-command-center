@@ -14,7 +14,7 @@ export async function checkMidtransSandboxOrder(order, { serverKey, expectedMerc
   const authorization = "Basic " + btoa(serverKey + ":");
   const response = await fetchImpl(BASE + "/v2/" + encodeURIComponent(order.orderId) + "/status", {
     method: "GET", headers: { Accept: "application/json", Authorization: authorization },
-    redirect: "error", signal
+    redirect: "manual", signal
   });
   if (!response.ok) throw new Error("Midtrans sandbox status unavailable");
   const body = await response.text();
