@@ -1,0 +1,31 @@
+name: BOR AI Sandbox egress proof
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sandbox-proof:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: egress-proof-sandbox
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.SANDBOX_EGRESS_CF_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.SANDBOX_EGRESS_CF_API_TOKEN }}
+      EGRESS_PROXY_TOKEN: ${{ secrets.SANDBOX_EGRESS_PROXY_TOKEN }}
+      SANDBOX_EGRESS_VPC_SERVICE_ID: ${{ vars.SANDBOX_EGRESS_VPC_SERVICE_ID }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 22
+      - name: Run the temporary sandbox probe
+        run: node tools/egress-proxy/runtime/sandbox-proof.mjs
+      - name: Confirm temporary probe cleanup
+        if: always()
+        run: node tools/egress-proxy/runtime/cleanup-probe.mjs
