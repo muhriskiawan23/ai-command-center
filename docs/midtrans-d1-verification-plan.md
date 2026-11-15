@@ -108,3 +108,18 @@ A successful reconciliation returns `fulfilled`; `unchanged` means the
 conditional D1 update did not grant any additional credit. Verify the order
 and its ledger row in D1 after either result. This operation does not test
 webhook delivery. Do not expose the operator token in logs or chat.
+
+### Reversal review fixtures
+
+Run `node --test tests/midtrans-reversal-review.test.js` for the disposable
+SQLite simulation. The review SQL is separate from the Worker deployment
+and production migrations. It tests independently verified full refund or
+chargeback evidence using a synthetic provider identity. A reversal debits
+the original grant once when balance is sufficient. If credit was spent
+and balance is insufficient, the order records the refund or dispute and
+the reversal requires review. No negative balance or automatic collection.
+
+Before wiring real events, define handling for partial or mixed reversals
+and spent-credit resolution. A verified expired, canceled, or failed
+unpaid order should close without a credit grant. Keep payment events and
+compensating ledger entries for later reconciliation.
