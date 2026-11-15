@@ -96,6 +96,8 @@ test("complete atomic budget+credit settlement has no reconciliation exceptions"
  assert.equal(report.mismatchedDailyCounters,0);
  assert.equal(report.creditFinalizationPending,0);
  assert.equal(report.reviewRequired,false);
+ assert.equal(report.mismatchedWalletJournals,0);
+ assert.equal(report.dailyCountersOverCurrentCap,0);
 });
 test("detect budget settled while customer credit is still reserved",async t=>{
  const x=setup(t);
@@ -173,4 +175,42 @@ test("missing schema fails closed instead of claiming clean financial status",as
  await assert.rejects(inspectDraftBillingReconciliation(env),/no such table/);
  await assert.rejects(inspectDraftBillingReconciliation({DB:null}),/D1 binding required/);
  await assert.rejects(inspectDraftBillingReconciliation(env,{staleAfterSeconds:0}),/minimum 60-second/);
+});
+
+test("detect credit ledger debit corruption even if both financial states are settled",async t=>{
+ const x=setup(t);
+ await x.reserveBudget("tampered");
+ await x.reserveWallet("tampered");
+ await x.finalizeBudget("tampered");
+ await x.finalizeWallet("tampered");
+ assert.equal((await x.report()).mismatchedWalletJournals,0);
+ x.sqlite.exec("UPDATE credit_ledger SET delta_microcredits=-1 WHERE reason='reserve' AND reference_id='tampered'");
+ const report=await x.report();
+ assert.equal(report.bothSettled,1);
+ assert.equal(report.mismatchedWalletJournals,1);
+ assert.equal(report.reviewRequired,true);
+});
+test("detect missing credit reservation journal and impossible refund",async t=>{
+ const x=setup(t);
+ await x.reserveWallet("lost-entry");
+ x.sqlite.exec("DELETE FROM credit_ledger WHERE reason='reserve' AND reference_id='lost-entry'");
+ let report=await x.report();
+ assert.equal(report.mismatchedWalletJournals,1);
+ assert.equal(report.reviewRequired,true);
+});
+test("reject current budget overrun even when journal aggregates agree",async t=>{
+ const x=setup(t);
+ await x.reserveBudget("over-new-cap");
+ x.sqlite.exec("UPDATE provider_budget_limits SET daily_cap_micro_usd=100 WHERE provider='__global__'");
+ const report=await x.report();
+ assert.equal(report.mismatchedDailyCounters,0);
+ assert.equal(report.dailyCountersOverCurrentCap,1);
+ assert.equal(report.reviewRequired,true);
+});
+test("read-only audit fails on incomplete transaction batch rather than reporting clean",async t=>{
+ const x=setup(t);
+ const broken={DB:{prepare:x.env.DB.prepare,batch:async()=>[{success:true,results:[]}]}};
+ await assert.rejects(inspectDraftBillingReconciliation(broken),/snapshot unavailable/);
+ const failed={DB:{prepare:x.env.DB.prepare,batch:async()=>Array.from({length:7},()=>({success:false,results:[{}]}))}};
+ await assert.rejects(inspectDraftBillingReconciliation(failed),/result incomplete/);
 });
