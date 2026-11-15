@@ -160,6 +160,13 @@ try{
   assert.equal(account?.balance_microcredits,25);
   const ledger=await db.prepare("SELECT delta_microcredits FROM credit_ledger WHERE reference_id=?").bind(orderId).all();
   assert.deepEqual(ledger.results.map(row=>row.delta_microcredits),[25]);
-  console.log("PASS: synthetic Snap checkout and 20 concurrent webhook callbacks grant credit once in D1");
+  const reconcile=(token)=>handleSandboxPayment(new Request("https://local.test/reconcile",{
+   method:"POST",headers:{"Authorization":"Bearer "+token},body:JSON.stringify({orderId}),
+  }),env,providerFetch);
+  assert.equal((await reconcile("invalid")).status,401);
+  const reconciliation=await reconcile(operatorToken);
+  assert.equal(reconciliation.status,200);
+  assert.deepEqual(await reconciliation.json(),{orderId,outcome:"unchanged"});
+  console.log("PASS: synthetic Snap checkout, concurrent webhook callbacks, and operator reconciliation grant credit once in D1");
  }finally{await platform.dispose()}
 }finally{rmSync(temp,{recursive:true,force:true})}

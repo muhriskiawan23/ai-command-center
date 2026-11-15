@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
 import {DatabaseSync} from "node:sqlite";
-import {fulfillVerifiedSandboxPayment} from "../src/midtrans-sandbox-fulfillment.js";
+import {fulfillVerifiedSandboxPayment,reconcileSandboxPayment} from "../src/midtrans-sandbox-fulfillment.js";
 import {createHash} from "node:crypto";
 const schema=readFileSync(new URL("../docs/sql/payment-orders-review.sql",import.meta.url),"utf8");
 const key="SB-Mid-server-test",merchant="M123",id="order1";
@@ -127,4 +127,34 @@ test("concurrent conflicting transaction IDs never grant twice",async()=>{
   assert.equal((await run(x.db,conflicting)).kind,"not_confirmed");
   assert.equal(x.balance(),25);assert.equal(x.count(),1);
  }finally{x.sqlite.close()}
+});
+
+test("Status API reconciliation and subsequent webhook share one credit grant", async () => {
+ const x=setup();
+ try {
+  const e=evidence();
+  const reconcile=()=>reconcileSandboxPayment({db:x.db,orderId:id,serverKey:key,expectedMerchantId:merchant,fetchImpl:e.fetchImpl});
+  const outcomes=await Promise.all([reconcile(),reconcile()]);
+  assert.deepEqual(outcomes.map(result=>result.kind).sort(),["fulfilled","unchanged"]);
+  assert.equal((await run(x.db,e)).kind,"unchanged");
+  assert.equal(x.state(),"fulfilled");
+  assert.equal(x.balance(),25);
+  assert.equal(x.count(),1);
+ } finally {x.sqlite.close();}
+});
+
+test("reconciliation requires paid status and explicit matching currency", async () => {
+ const x=setup();
+ try {
+  const pending=evidence("pending");
+  const options={db:x.db,orderId:id,serverKey:key,expectedMerchantId:merchant};
+  assert.equal((await reconcileSandboxPayment({...options,fetchImpl:pending.fetchImpl})).kind,"not_confirmed");
+  await assert.rejects(reconcileSandboxPayment({
+   ...options,
+   fetchImpl:async()=>Response.json(evidence().payload),
+  }),/currency mismatch/);
+  assert.equal(x.state(),"created");
+  assert.equal(x.balance(),0);
+  assert.equal(x.count(),0);
+ } finally {x.sqlite.close();}
 });

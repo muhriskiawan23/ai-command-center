@@ -4,7 +4,7 @@ import { assertMidtransPaymentMatchesOrder } from "./midtrans-amount.js";
 import { classifyMidtransStatus } from "./midtrans-status.js";
 const BASE = "https://api.sandbox.midtrans.com";
 const ORDER_ID = /^[A-Za-z0-9_-]{1,100}$/;
-export async function checkMidtransSandboxOrder(order, { serverKey, expectedMerchantId, fetchImpl = fetch, signal } = {}) {
+export async function checkMidtransSandboxOrder(order, { serverKey, expectedMerchantId, fetchImpl = fetch, signal, requireCurrency = false } = {}) {
   if (!order || order.environment !== "sandbox" || !ORDER_ID.test(order.orderId || ""))
     throw new TypeError("Sandbox order with safe ID required");
   if (typeof serverKey !== "string" || !serverKey.startsWith("SB-Mid-server-"))
@@ -22,7 +22,7 @@ export async function checkMidtransSandboxOrder(order, { serverKey, expectedMerc
   let status;
   try { status = JSON.parse(body); } catch { throw new Error("Invalid Midtrans JSON"); }
   if (status.status_code !== "200") throw new Error("Midtrans status not confirmed");
-  if (status.currency !== undefined && status.currency !== "IDR") throw new Error("Midtrans currency mismatch");
+  if ((requireCurrency || status.currency !== undefined) && status.currency !== "IDR") throw new Error("Midtrans currency mismatch");
   assertMidtransPaymentMatchesOrder(order,status,"sandbox");
   if (typeof status.transaction_id !== "string" || !status.transaction_id ||
       typeof status.merchant_id !== "string" || !status.merchant_id)

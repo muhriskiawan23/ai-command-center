@@ -91,3 +91,14 @@ Midtrans Sandbox environment.
 5. If checkout returns 502, reconcile the returned order ID in Midtrans Sandbox
    before creating another order. Retrying the same key returns 409 and avoids
    submitting the same order to Snap again.
+
+### Operator reconciliation for an existing order
+
+Send `POST /reconcile` to the isolated Worker using the sandbox operator bearer
+token and a JSON body containing only `orderId`. The Worker obtains payment
+status from Midtrans Sandbox using its server key. It requires the expected
+merchant, order, amount, explicit IDR currency, and a verified paid status.
+A successful reconciliation returns `fulfilled`; `unchanged` means the
+conditional D1 update did not grant any additional credit. Verify the order
+and its ledger row in D1 after either result. This operation does not test
+webhook delivery. Do not expose the operator token in logs or chat.

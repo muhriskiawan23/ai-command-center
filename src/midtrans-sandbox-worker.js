@@ -1,4 +1,4 @@
-import { fulfillVerifiedSandboxPayment } from "./midtrans-sandbox-fulfillment.js";
+import { fulfillVerifiedSandboxPayment, reconcileSandboxPayment } from "./midtrans-sandbox-fulfillment.js";
 import { verifyMidtransNotificationSignature } from "./midtrans-signature.js";
 import { classifyMidtransStatus } from "./midtrans-status.js";
 
@@ -33,8 +33,6 @@ async function parseJson(message) {
 }
 
 async function checkout(request, env, providerFetch) {
-  if (request.headers.get("Authorization") !== "Bearer " + env.SANDBOX_OPERATOR_TOKEN)
-    return json(401, { error: "Unauthorized" });
   const key = request.headers.get("Idempotency-Key");
   if (!UUID.test(key ?? "")) return json(400, { error: "Provide a UUID v4 Idempotency-Key" });
 
@@ -81,6 +79,29 @@ async function checkout(request, env, providerFetch) {
   return json(201, { orderId, amountIdr: FIXTURE.amount, redirectUrl: destination.href });
 }
 
+function isSandboxOrderId(value) {
+  return typeof value === "string" && value.startsWith(ORDER_PREFIX) &&
+    UUID.test(value.slice(ORDER_PREFIX.length));
+}
+
+async function reconcile(request, env, providerFetch) {
+  let input;
+  try {
+    input = await parseJson(request);
+  } catch {
+    return json(400, { error: "Invalid JSON" });
+  }
+  if (!isSandboxOrderId(input?.orderId)) return json(400, { error: "Invalid sandbox order" });
+  const result = await reconcileSandboxPayment({
+    db: env.SANDBOX_DB,
+    orderId: input.orderId,
+    serverKey: env.MIDTRANS_SANDBOX_SERVER_KEY,
+    expectedMerchantId: env.MIDTRANS_SANDBOX_MERCHANT_ID,
+    fetchImpl: (url, options) => providerFetch(url, { ...options, signal: AbortSignal.timeout(8000) }),
+  });
+  return json(200, { orderId: input.orderId, outcome: result.kind, reason: result.reason });
+}
+
 async function webhook(request, env, providerFetch) {
   const signatureKey = env.MIDTRANS_SANDBOX_SIGNATURE_SECRET_KEY;
   if (!signatureKey?.trim()) return json(503, { error: "Sandbox webhook signing key not configured" });
@@ -90,8 +111,7 @@ async function webhook(request, env, providerFetch) {
   } catch {
     return json(400, { error: "Invalid JSON notification" });
   }
-  if (typeof payload?.order_id !== "string" || !payload.order_id.startsWith(ORDER_PREFIX) ||
-      !UUID.test(payload.order_id.slice(ORDER_PREFIX.length)) ||
+  if (!isSandboxOrderId(payload?.order_id) ||
       typeof payload.status_code !== "string" || !payload.status_code ||
       typeof payload.gross_amount !== "string" || !payload.gross_amount)
     return json(400, { error: "Invalid sandbox notification" });
@@ -122,10 +142,14 @@ export async function handleSandboxPayment(request, env, providerFetch = fetch) 
     return json(404, { error: "Sandbox unavailable" });
 
   const path = new URL(request.url).pathname;
-  if (path !== "/checkout" && path !== "/webhook") return json(404, { error: "Not found" });
+  if (!["/checkout", "/webhook", "/reconcile"].includes(path)) return json(404, { error: "Not found" });
   if (request.method !== "POST") return json(405, { error: "Method not allowed" });
+  if (path !== "/webhook" && request.headers.get("Authorization") !== "Bearer " + env.SANDBOX_OPERATOR_TOKEN)
+    return json(401, { error: "Unauthorized" });
   try {
-    return await (path === "/checkout" ? checkout(request, env, providerFetch) : webhook(request, env, providerFetch));
+    if (path === "/checkout") return await checkout(request, env, providerFetch);
+    if (path === "/reconcile") return await reconcile(request, env, providerFetch);
+    return await webhook(request, env, providerFetch);
   } catch {
     return json(503, { error: "Sandbox temporarily unavailable" });
   }
