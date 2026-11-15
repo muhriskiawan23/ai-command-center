@@ -15,7 +15,7 @@ const config=join(temp,"wrangler.jsonc");
 const persistencePath=join(temp,"state");
 const dbName="bor-ai-payment-test";
 const schema=readFileSync(new URL("../../docs/sql/payment-orders-review.sql",import.meta.url),"utf8");
-const base="CREATE TABLE credit_accounts(user_id TEXT PRIMARY KEY,balance_microcredits INTEGER NOT NULL CHECK(balance_microcredits>=0),updated_at INTEGER NOT NULL); CREATE TABLE credit_ledger(id TEXT PRIMARY KEY,user_id TEXT NOT NULL,delta_microcredits INTEGER NOT NULL,reason TEXT NOT NULL,reference_id TEXT NOT NULL,created_at INTEGER NOT NULL,UNIQUE(user_id,reason,reference_id));";
+const base=readFileSync(new URL("../../tools/midtrans-sandbox/credit-fixture.sql",import.meta.url),"utf8");
 writeFileSync(config,JSON.stringify({name:"bor-ai-payment-d1-local-test",main:resolve("src/index.js"),compatibility_date:"2026-10-28",d1_databases:[{binding:"DB",database_name:dbName,database_id:"00000000-0000-4000-8000-000000000001"}]}));
 const run=(sql,expectedError=null)=>{
  const file=join(temp,"query.sql");writeFileSync(file,sql);

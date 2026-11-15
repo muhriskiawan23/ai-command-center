@@ -7,6 +7,7 @@ on:
       - "src/midtrans-*.js"
       - "src/payment-order-state.js"
       - "tests/d1/local-smoke.mjs"
+      - "tools/midtrans-sandbox/**"
       - ".github/workflows/d1-payment-smoke.yml"
 permissions:
   contents: read

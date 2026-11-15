@@ -52,14 +52,33 @@ The isolated D1 smoke test exercises the sandbox Worker handler with fixture res
 for Snap and the Status API. Its fixed test order is Rp10,000 for 25 microcredits under
 a synthetic account. These values are test fixtures with no customer pricing role.
 
-For a provider-backed test, use a separate Worker with
-`src/midtrans-sandbox-worker.js` as its entry point and a disposable D1 database
-bound as `SANDBOX_DB`. Initialize that database with the two fixture credit tables
-from `tests/d1/local-smoke.mjs`, followed by `docs/sql/payment-orders-review.sql`.
-Store `MIDTRANS_SANDBOX_SERVER_KEY`, `MIDTRANS_SANDBOX_MERCHANT_ID`, and a
-random `SANDBOX_OPERATOR_TOKEN` of at least 32 characters in the test Worker's
-configuration. Set `PAYMENT_SANDBOX_ENABLED=true` there and register its HTTPS
-`/webhook` URL in the Midtrans Sandbox environment.
+For a provider-backed test, sign in to the Cloudflare account that will host
+the isolated sandbox. From the repository root, create a dedicated database:
+
+```sh
+npx --yes wrangler@4 d1 create bor-ai-midtrans-sandbox
+cp tools/midtrans-sandbox/wrangler.example.json tools/midtrans-sandbox/wrangler.local.json
+```
+
+Replace the example database UUID in `wrangler.local.json` with the new database UUID.
+Leave the database and Worker names as `bor-ai-midtrans-sandbox`. Run the
+following commands from the repository root using that explicit config:
+
+```sh
+sandbox_config=tools/midtrans-sandbox/wrangler.local.json
+npx --yes wrangler@4 d1 execute bor-ai-midtrans-sandbox --config "$sandbox_config" --remote --file tools/midtrans-sandbox/credit-fixture.sql
+npx --yes wrangler@4 d1 execute bor-ai-midtrans-sandbox --config "$sandbox_config" --remote --file docs/sql/payment-orders-review.sql
+npx --yes wrangler@4 deploy --config "$sandbox_config"
+npx --yes wrangler@4 secret put MIDTRANS_SANDBOX_SERVER_KEY --config "$sandbox_config"
+npx --yes wrangler@4 secret put MIDTRANS_SANDBOX_MERCHANT_ID --config "$sandbox_config"
+npx --yes wrangler@4 secret put SANDBOX_OPERATOR_TOKEN --config "$sandbox_config"
+```
+
+Use the Sandbox Server Key and Merchant ID from the Midtrans dashboard, and a
+random operator token of at least 32 characters. Enter secret values only at
+the CLI prompts or in Cloudflare's secret settings. Register the deployed
+Worker URL with `/webhook` appended as the Payment Notification URL in the
+Midtrans Sandbox environment.
 
 1. Send `POST /checkout` with the operator bearer token and a fresh UUID v4 in
    `Idempotency-Key`. Expect HTTP 201 and a Snap sandbox redirect URL.
