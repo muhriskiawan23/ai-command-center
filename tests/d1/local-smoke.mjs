@@ -129,6 +129,13 @@ try{
   assert.equal(receipt.orderId,orderId);
   assert.equal(receipt.amountIdr,10000);
   assert.equal(receipt.redirectUrl,"https://app.sandbox.midtrans.com/snap/v3/redirection/test");
+  const rejectedCheckout=await handleSandboxPayment(new Request("https://local.test/checkout",{
+   method:"POST",headers:{"Authorization":"Bearer "+operatorToken,"Idempotency-Key":"22222222-2222-4222-8222-222222222222"},
+  }),env,async()=>Response.json({error_messages:["private provider details"]},{status:401}));
+  assert.equal(rejectedCheckout.status,502);
+  assert.deepEqual(await rejectedCheckout.json(),{
+   orderId:"bor-sbx-22222222-2222-4222-8222-222222222222",error:"Sandbox checkout unavailable",diagnostic:"snap_http_401",
+  });
   const callback=(body)=>handleSandboxPayment(new Request("https://local.test/webhook",{
    method:"POST",body:JSON.stringify(body),headers:{"Content-Type":"application/json"},
   }),env,providerFetch);

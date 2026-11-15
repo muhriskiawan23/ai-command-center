@@ -45,11 +45,14 @@ async function checkout(request, env, providerFetch) {
   // An ambiguous provider response needs reconciliation before another attempt.
   if (!inserted) return json(409, { orderId, error: "Order already submitted" });
 
+  const failure = (diagnostic) => json(502, { orderId, error: "Sandbox checkout unavailable", diagnostic });
+  const signal = AbortSignal.timeout(8000);
+  let response;
   try {
-    const response = await providerFetch(SNAP_ORIGIN + "/snap/v1/transactions", {
+    response = await providerFetch(SNAP_ORIGIN + "/snap/v1/transactions", {
       method: "POST",
       redirect: "error",
-      signal: AbortSignal.timeout(8000),
+      signal,
       headers: {
         Authorization: "Basic " + btoa(env.MIDTRANS_SANDBOX_SERVER_KEY + ":"),
         "Content-Type": "application/json",
@@ -57,14 +60,20 @@ async function checkout(request, env, providerFetch) {
       },
       body: JSON.stringify({ transaction_details: { order_id: orderId, gross_amount: FIXTURE.amount } }),
     });
-    if (response.status !== 201) throw new Error("Snap checkout unavailable");
+  } catch {
+    return failure(signal.aborted ? "snap_timeout" : "snap_connection_failed");
+  }
+  // Report the HTTP status to the authenticated operator without returning
+  // Midtrans response bodies, request headers, or credentials.
+  if (response.status !== 201) return failure("snap_http_" + response.status);
+  try {
     const receipt = await parseJson(response);
     const destination = new URL(receipt.redirect_url);
     if (destination.origin !== SNAP_ORIGIN || destination.username || destination.password ||
         !destination.pathname.startsWith("/snap/v3/redirection/")) throw new Error("Invalid Snap redirect");
     return json(201, { orderId, amountIdr: FIXTURE.amount, redirectUrl: destination.href });
   } catch {
-    return json(502, { orderId, error: "Sandbox checkout unavailable" });
+    return failure(signal.aborted ? "snap_timeout" : "snap_invalid_response");
   }
 }
 
