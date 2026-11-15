@@ -2,8 +2,9 @@
 // Does not grant, debit, release, settle, write logs or expose customer IDs.
 // Operational triage only: it is NOT a provider invoice reconciliation.
 function validateInputs(env, nowMs, staleAfterSeconds) {
-  if (!env?.DB?.prepare || typeof env.DB.prepare !== "function")
-    throw new TypeError("D1 binding required");
+  if (!env?.DB?.prepare || typeof env.DB.prepare !== "function" ||
+      typeof env.DB.batch !== "function")
+    throw new TypeError("Transactional D1 binding required");
   if (!Number.isSafeInteger(nowMs) || nowMs < 0 ||
       !Number.isSafeInteger(staleAfterSeconds) || staleAfterSeconds < 60)
     throw new TypeError("Valid timestamp and minimum 60-second stale window required");
@@ -67,14 +68,25 @@ export async function inspectDraftBillingReconciliation(env, {
   validateInputs(env, nowMs, staleAfterSeconds);
   const db = env.DB;
   const threshold = Math.floor(nowMs / 1000) - staleAfterSeconds;
-  // Deliberately do not catch missing-table or D1 errors: fail closed.
-  const [pairs, unpaired, counters, missing, caps] = await Promise.all([
-    db.prepare(budgetCasesSql).bind(threshold,threshold).first(),
-    db.prepare(unpairedCreditSql).first(),
-    db.prepare(counterMismatchSql).first(),
-    db.prepare(missingCountersSql).first(),
-    db.prepare(missingCapsSql).first()
+  // D1 executes batch statements sequentially within one transaction.
+  // Separate parallel SELECTs could see different snapshots while billing
+  // writes happen concurrently and produce false "clean" audit results.
+  // Deliberately do not catch missing-table, transaction or D1 errors.
+  const results = await db.batch([
+    db.prepare(budgetCasesSql).bind(threshold,threshold),
+    db.prepare(unpairedCreditSql),
+    db.prepare(counterMismatchSql),
+    db.prepare(missingCountersSql),
+    db.prepare(missingCapsSql)
   ]);
+  if (!Array.isArray(results) || results.length !== 5)
+    throw new Error("Billing reconciliation snapshot unavailable");
+  const exactlyOne = (part) => {
+    if (part?.success === false || !Array.isArray(part?.results) || part.results.length !== 1)
+      throw new Error("Billing reconciliation result incomplete");
+    return part.results[0];
+  };
+  const [pairs, unpaired, counters, missing, caps] = results.map(exactlyOne);
   const report = {
     budgetOrders: integer(pairs,"budget_orders"),
     bothSettled: integer(pairs,"both_settled"),
