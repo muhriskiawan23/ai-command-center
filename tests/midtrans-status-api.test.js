@@ -30,3 +30,38 @@ test("reject wrong or missing configured merchant identity",async()=>{
  await assert.rejects(()=>checkMidtransSandboxOrder(order,{serverKey:key,fetchImpl:fake(status)}),/merchant ID required/);
  await assert.rejects(()=>checkMidtransSandboxOrder(order,{serverKey:key,expectedMerchantId:"M999",fetchImpl:fake(status)}),/merchant mismatch/);
 });
+
+test("reject oversized streamed Midtrans status before buffering the full body", async () => {
+ const stream = new ReadableStream({
+   start(controller) {
+     controller.enqueue(new Uint8Array(32000));
+     controller.enqueue(new Uint8Array(1024));
+     controller.close();
+   }
+ });
+ await assert.rejects(
+   checkMidtransSandboxOrder(order, {
+     serverKey:key, expectedMerchantId:"M123",
+     fetchImpl:async()=>new Response(stream, {status:200}),
+   }),
+   /response too large/
+ );
+});
+
+test("reject oversized advertised Content-Length without consuming status", async () => {
+ const fetchImpl=async()=>new Response(JSON.stringify(status), {
+   status:200, headers:{"Content-Length":"32769"},
+ });
+ await assert.rejects(
+   checkMidtransSandboxOrder(order, {serverKey:key,expectedMerchantId:"M123",fetchImpl}),
+   /response too large/
+ );
+});
+
+test("reject malformed streamed UTF-8 instead of silently replacing bytes", async () => {
+ const fetchImpl=async()=>new Response(new Uint8Array([0xc3, 0x28]), {status:200});
+ await assert.rejects(
+   checkMidtransSandboxOrder(order, {serverKey:key,expectedMerchantId:"M123",fetchImpl}),
+   /encoded|UTF-8|valid/i
+ );
+});
