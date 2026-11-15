@@ -84,6 +84,15 @@ async function parallelSql(s) {
     throw new Error("D1 concurrent attempt unavailable or rejected for an unexpected reason");
   }
 }
+// Multiple independent CLI processes contending for one local SQLite file can
+// fail with SQLITE_BUSY before any financial trigger is reached. Verify local
+// invariants sequentially; only --remote is a genuine concurrent D1 test.
+async function runAttempts(statements) {
+  if (isRemote) return Promise.all(statements.map(parallelSql));
+  const out = [];
+  for (const statement of statements) out.push(await parallelSql(statement));
+  return out;
+}
 function denied(s,expected,label) {
   try { sql(s); } catch(e) {
     const out=String(e?.stderr||"")+"\n"+String(e?.stdout||"");
@@ -190,10 +199,10 @@ try {
   // simultaneous 600-microUSD reservations may fit remaining global budget.
   sql("UPDATE provider_budget_limits SET daily_cap_micro_usd=3500 WHERE provider='__global__'");
   const budgetAttempts=Array.from({length:8},(_,i)=>budget("parallel-budget-"+i,day,600,now));
-  const results=await Promise.all(budgetAttempts.map(parallelSql));
+  const results=await runAttempts(budgetAttempts);
   assert.equal(results.filter(Boolean).length,4,"Remote D1 global cap must be atomic across requests");
   const walletAttempts=Array.from({length:8},(_,i)=>wallet("parallel-wallet-"+i,"parallel",3000,now));
-  const wallets=await Promise.all(walletAttempts.map(parallelSql));
+  const wallets=await runAttempts(walletAttempts);
   assert.equal(wallets.filter(Boolean).length,3,"Remote D1 wallet debit must be atomic");
 
   const final=state(day);
@@ -217,6 +226,7 @@ try {
     checks:["fresh_db_guard","duplicate_replay","measured_settlement","refund_once",
       "insufficient_funds","unknown_timeout_holds","parallel_budget_cap",
       "parallel_wallet_debit","credit_journal_reconciliation"],
+    requestExecution:isRemote?"concurrent_remote":"sequential_local",
     parallelBudgetAllowed:results.filter(Boolean).length,
     parallelWalletAllowed:wallets.filter(Boolean).length,
     simulatedProviderCalls:0,
