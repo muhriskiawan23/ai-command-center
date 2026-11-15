@@ -7,6 +7,7 @@ on:
     paths:
       - '.github/workflows/bor-ai-isolated-billing-d1.yml'
       - 'tests/billing/isolated-d1-smoke.mjs'
+      - 'tests/billing/stage2-d1-proof.mjs'
       - 'migrations/0012_credit_ledger.sql'
       - 'migrations/0013_provider_spend_budget.sql'
       - 'src/credit-ledger.js'
@@ -22,7 +23,7 @@ jobs:
   isolated-local-d1:
     name: Disposable Wrangler local-D1 billing SQL smoke
     runs-on: ubuntu-24.04
-    timeout-minutes: 12
+    timeout-minutes: 25
     env:
       CI: 'true'
       # No production environment/secrets, no Cloudflare identity or account.
@@ -37,3 +38,5 @@ jobs:
         run: npm ci
       - name: Test D1 migrations, global budget and ledger with isolated local Wrangler state
         run: node tests/billing/isolated-d1-smoke.mjs
+      - name: Stage 2 multi-request local D1 atomicity and timeout/refund proof
+        run: node tests/billing/stage2-d1-proof.mjs --local
