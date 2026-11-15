@@ -13,7 +13,7 @@ The local D1 CI proof is real evidence but **not** proof against remote Cloudfla
 
 ## Prepared entry points
 
-- `tests/billing/stage2-d1-proof.mjs --local`: exercises the **same** scenarios against isolated Wrangler local D1. The existing PR workflow `.github/workflows/bor-ai-isolated-billing-d1.yml` invokes it in CI, without secrets.
+- `tests/billing/stage2-d1-proof.mjs --local`: exercises the same financial invariants against isolated Wrangler local D1 **sequentially**. Local Wrangler processes sharing one SQLite file do not produce reliable remote concurrency evidence. The existing PR workflow `.github/workflows/bor-ai-isolated-billing-d1.yml` invokes it in CI, without secrets.
 - `tests/billing/stage2-d1-proof.mjs --remote`: same scenarios on a dedicated pre-existing **remote** D1. It refuses to execute unless four explicit sandbox variables are provided: `BOR_AI_D1_SANDBOX_DB_NAME`, `BOR_AI_D1_SANDBOX_DB_ID`, `BOR_AI_D1_SANDBOX_ACCOUNT_ID`, `BOR_AI_D1_SANDBOX_TOKEN`. This runner requires the Cloudflare account's D1 inventory to confirm the named database and UUID match.
 - `.github/workflows/bor-ai-remote-billing-sandbox.yml`: **manual-only** `workflow_dispatch` GitHub Actions entry point. It uses `billing-sandbox` environment variables/secret, has read-only GitHub permissions and has **no PR/push/schedule trigger**. The workflow is not runnable by dispatch until reviewed and present on GitHub's default branch (or subsequently released through the approved process); no production merge is authorized by this document.
 
@@ -33,8 +33,8 @@ If the operator uses GitHub Actions after an approved release, configure a dedic
 - A normal simulated model call reserves maximum exposure and settles measured synthetic cost of 519 micro-units; refund of unused reserved credit is exact.
 - Insufficient credit balance is rejected without deduction; a pre-dispatch cancellation returns its full credit exactly once.
 - A simulated uncertain provider timeout **retains** both reservations and causes no automatic refund; the audit must flag it for manual reconciliation.
-- Eight independent concurrent global-provider budget reservations at 600 micro-USD each admit exactly four under the configured global cap; reject others without partial budget increments.
-- Eight independent concurrent wallet reservations of 3000 microcredits admit exactly three against a 10000-microcredit wallet; no negative balances or duplicate credit issuance.
+- Eight independent **remote** concurrent global-provider budget reservations at 600 micro-USD each admit exactly four under the configured global cap; reject others without partial budget increments.
+- Eight independent **remote** concurrent wallet reservations of 3000 microcredits admit exactly three against a 10000-microcredit wallet; no negative balances or duplicate credit issuance.
 - Journal checks prove a 519 net debit on normal settlement and a zero net debit on verified pre-dispatch release.
 - **Green local CI is necessary but insufficient.** Cloudflare D1 remote latency, concurrency, transient failures, auth scope and retry behavior must be assessed from the remote run; no real provider costs or payments are tested.
 
