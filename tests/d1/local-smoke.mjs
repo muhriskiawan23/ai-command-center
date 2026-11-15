@@ -7,7 +7,7 @@ import {mkdtempSync,writeFileSync,rmSync,readFileSync} from "node:fs";
 import {createRequire} from "node:module";
 import {tmpdir} from "node:os";
 import {join,resolve} from "node:path";
-import {fulfillVerifiedSandboxPayment} from "../../src/midtrans-sandbox-fulfillment.js";
+import {handleSandboxPayment} from "../../src/midtrans-sandbox-worker.js";
 // The platform proxy runs local D1 only. The provider response is a test fixture.
 process.env.WRANGLER_SEND_METRICS="false";
 const temp=mkdtempSync(join(tmpdir(),"bor-ai-d1-"));
@@ -76,21 +76,21 @@ try{
  console.log("PASS: local D1 provider transaction uniqueness and immutable identity");
  console.log("PASS: local Cloudflare D1 paid-state guard, atomic credit and duplicate idempotency");
 
- const orderId="concurrent-order";
+ const key="11111111-1111-4111-8111-111111111111";
+ const orderId="bor-sbx-"+key;
  const transactionId="concurrent-transaction";
  const serverKey="SB-Mid-server-synthetic-fixture";
  const merchantId="synthetic-merchant";
  const payload={
   order_id:orderId,
-  gross_amount:"100.00",
+  gross_amount:"10000.00",
   transaction_status:"settlement",
   transaction_id:transactionId,
   merchant_id:merchantId,
   status_code:"200",
   currency:"IDR",
-  signature_key:createHash("sha512").update(orderId+"200"+"100.00"+serverKey).digest("hex"),
+  signature_key:createHash("sha512").update(orderId+"200"+"10000.00"+serverKey).digest("hex"),
  };
- run("INSERT INTO payment_orders(order_id,user_id,sku,environment,currency,amount_idr,grant_microcredits,state,created_at,updated_at) VALUES ('concurrent-order','concurrent-user','basic','sandbox','IDR',100,25,'created',1,1);");
  const {getPlatformProxy}=createRequire(join(temp,"package.json"))("wrangler");
  // The CLI appends v3 to --persist-to; the proxy takes the versioned path.
  const platform=await getPlatformProxy({
@@ -98,19 +98,56 @@ try{
  });
  try{
   const db=platform.env.DB;
-  const fulfill=()=>fulfillVerifiedSandboxPayment({
-   db,orderId,payload,serverKey,expectedMerchantId:merchantId,
-   fetchImpl:async()=>Response.json(payload),
-  });
-  const results=await Promise.all(Array.from({length:20},fulfill));
-  assert.equal(results.filter(result=>result.kind==="fulfilled").length,1);
-  assert.equal(results.filter(result=>result.kind==="unchanged").length,19);
+  const operatorToken="local-synthetic-operator-token-0000";
+  const env={
+   SANDBOX_DB:db,PAYMENT_SANDBOX_ENABLED:"true",SANDBOX_OPERATOR_TOKEN:operatorToken,
+   MIDTRANS_SANDBOX_SERVER_KEY:serverKey,MIDTRANS_SANDBOX_MERCHANT_ID:merchantId,
+  };
+  let checkoutCalls=0;
+  let statusCalls=0;
+  const providerFetch=async (url,options)=>{
+   if (options.method==="POST") {
+    checkoutCalls++;
+    assert.equal(url,"https://app.sandbox.midtrans.com/snap/v1/transactions");
+    assert.deepEqual(JSON.parse(options.body),{transaction_details:{order_id:orderId,gross_amount:10000}});
+    return Response.json({redirect_url:"https://app.sandbox.midtrans.com/snap/v3/redirection/test"},{status:201});
+   }
+   statusCalls++;
+   assert.equal(url,"https://api.sandbox.midtrans.com/v2/"+orderId+"/status");
+   return Response.json(payload);
+  };
+  const checkout=(token,config=env)=>handleSandboxPayment(new Request("https://local.test/checkout",{
+   method:"POST",headers:{"Authorization":"Bearer "+token,"Idempotency-Key":key},
+  }),config,providerFetch);
+  assert.equal((await checkout(operatorToken,{...env,PAYMENT_SANDBOX_ENABLED:"false"})).status,404);
+  assert.equal((await checkout("invalid")).status,401);
+  assert.equal(checkoutCalls,0);
+  const checkouts=await Promise.all([checkout(operatorToken),checkout(operatorToken)]);
+  assert.deepEqual(checkouts.map(response=>response.status).sort(),[201,409]);
+  assert.equal(checkoutCalls,1);
+  const receipt=await checkouts.find(response=>response.status===201).json();
+  assert.equal(receipt.orderId,orderId);
+  assert.equal(receipt.amountIdr,10000);
+  assert.equal(receipt.redirectUrl,"https://app.sandbox.midtrans.com/snap/v3/redirection/test");
+  const callback=(body)=>handleSandboxPayment(new Request("https://local.test/webhook",{
+   method:"POST",body:JSON.stringify(body),headers:{"Content-Type":"application/json"},
+  }),env,providerFetch);
+  assert.equal((await callback({...payload,signature_key:"invalid"})).status,401);
+  const pending=await callback({...payload,transaction_status:"pending"});
+  assert.equal(pending.status,200);
+  assert.deepEqual(await pending.json(),{outcome:"not_confirmed"});
+  assert.equal(statusCalls,0);
+  const responses=await Promise.all(Array.from({length:20},()=>callback(payload)));
+  assert.ok(responses.every(response=>response.status===200));
+  const results=await Promise.all(responses.map(response=>response.json()));
+  assert.equal(results.filter(result=>result.outcome==="fulfilled").length,1);
+  assert.equal(results.filter(result=>result.outcome==="unchanged").length,19);
   const order=await db.prepare("SELECT state,provider_transaction_id FROM payment_orders WHERE order_id=?").bind(orderId).first();
   assert.deepEqual({...order},{state:"fulfilled",provider_transaction_id:transactionId});
-  const account=await db.prepare("SELECT balance_microcredits FROM credit_accounts WHERE user_id=?").bind("concurrent-user").first();
+  const account=await db.prepare("SELECT balance_microcredits FROM credit_accounts WHERE user_id=?").bind("midtrans-sandbox-test").first();
   assert.equal(account?.balance_microcredits,25);
   const ledger=await db.prepare("SELECT delta_microcredits FROM credit_ledger WHERE reference_id=?").bind(orderId).all();
   assert.deepEqual(ledger.results.map(row=>row.delta_microcredits),[25]);
-  console.log("PASS: 20 concurrent synthetic callbacks grant credit once through local D1.batch()");
+  console.log("PASS: synthetic Snap checkout and 20 concurrent webhook callbacks grant credit once in D1");
  }finally{await platform.dispose()}
 }finally{rmSync(temp,{recursive:true,force:true})}

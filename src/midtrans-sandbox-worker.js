@@ -1,0 +1,118 @@
+import { fulfillVerifiedSandboxPayment } from "./midtrans-sandbox-fulfillment.js";
+import { verifyMidtransNotificationSignature } from "./midtrans-signature.js";
+import { classifyMidtransStatus } from "./midtrans-status.js";
+
+const SNAP_ORIGIN = "https://app.sandbox.midtrans.com";
+const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
+const ORDER_PREFIX = "bor-sbx-";
+const FIXTURE = { user: "midtrans-sandbox-test", sku: "sandbox-credit-test", amount: 10000, credits: 25 };
+
+function json(status, body) {
+  return Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
+}
+
+async function parseJson(message) {
+  const reader = message.body?.getReader();
+  if (!reader) throw new Error("Missing body");
+  const decoder = new TextDecoder("utf-8", { fatal: true });
+  let bytes = 0;
+  let text = "";
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) return JSON.parse(text + decoder.decode());
+      bytes += value.byteLength;
+      if (bytes > 16384) throw new Error("Body exceeds limit");
+      text += decoder.decode(value, { stream: true });
+    }
+  } finally {
+    await reader.cancel().catch(() => {});
+    reader.releaseLock();
+  }
+}
+
+async function checkout(request, env, providerFetch) {
+  if (request.headers.get("Authorization") !== "Bearer " + env.SANDBOX_OPERATOR_TOKEN)
+    return json(401, { error: "Unauthorized" });
+  const key = request.headers.get("Idempotency-Key");
+  if (!UUID.test(key ?? "")) return json(400, { error: "Provide a UUID v4 Idempotency-Key" });
+
+  const orderId = ORDER_PREFIX + key;
+  const now = Date.now();
+  const inserted = await env.SANDBOX_DB.prepare(
+    "INSERT INTO payment_orders (order_id,user_id,sku,environment,currency,amount_idr,grant_microcredits,state,created_at,updated_at) VALUES (?,?,?,'sandbox','IDR',?,?,'created',?,?) ON CONFLICT(order_id) DO NOTHING RETURNING order_id"
+  ).bind(orderId, FIXTURE.user, FIXTURE.sku, FIXTURE.amount, FIXTURE.credits, now, now).first();
+  // An ambiguous provider response needs reconciliation before another attempt.
+  if (!inserted) return json(409, { orderId, error: "Order already submitted" });
+
+  try {
+    const response = await providerFetch(SNAP_ORIGIN + "/snap/v1/transactions", {
+      method: "POST",
+      redirect: "error",
+      signal: AbortSignal.timeout(8000),
+      headers: {
+        Authorization: "Basic " + btoa(env.MIDTRANS_SANDBOX_SERVER_KEY + ":"),
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({ transaction_details: { order_id: orderId, gross_amount: FIXTURE.amount } }),
+    });
+    if (response.status !== 201) throw new Error("Snap checkout unavailable");
+    const receipt = await parseJson(response);
+    const destination = new URL(receipt.redirect_url);
+    if (destination.origin !== SNAP_ORIGIN || destination.username || destination.password ||
+        !destination.pathname.startsWith("/snap/v3/redirection/")) throw new Error("Invalid Snap redirect");
+    return json(201, { orderId, amountIdr: FIXTURE.amount, redirectUrl: destination.href });
+  } catch {
+    return json(502, { orderId, error: "Sandbox checkout unavailable" });
+  }
+}
+
+async function webhook(request, env, providerFetch) {
+  let payload;
+  try {
+    payload = await parseJson(request);
+  } catch {
+    return json(400, { error: "Invalid JSON notification" });
+  }
+  if (typeof payload?.order_id !== "string" || !payload.order_id.startsWith(ORDER_PREFIX) ||
+      !UUID.test(payload.order_id.slice(ORDER_PREFIX.length)) ||
+      typeof payload.status_code !== "string" || !payload.status_code ||
+      typeof payload.gross_amount !== "string" || !payload.gross_amount)
+    return json(400, { error: "Invalid sandbox notification" });
+  const serverKey = env.MIDTRANS_SANDBOX_SERVER_KEY;
+  if (payload.merchant_id !== env.MIDTRANS_SANDBOX_MERCHANT_ID ||
+      !await verifyMidtransNotificationSignature(payload, serverKey))
+    return json(401, { error: "Invalid notification signature" });
+  if (classifyMidtransStatus(payload).kind !== "paid_candidate")
+    return json(200, { outcome: "not_confirmed" });
+
+  const result = await fulfillVerifiedSandboxPayment({
+    db: env.SANDBOX_DB,
+    orderId: payload.order_id,
+    payload,
+    serverKey,
+    expectedMerchantId: env.MIDTRANS_SANDBOX_MERCHANT_ID,
+    fetchImpl: (url, options) => providerFetch(url, { ...options, signal: AbortSignal.timeout(8000) }),
+  });
+  return json(200, { outcome: result.kind });
+}
+
+// Separate Worker entry point for a disposable sandbox account and database.
+export async function handleSandboxPayment(request, env, providerFetch = fetch) {
+  if (env.PAYMENT_SANDBOX_ENABLED !== "true" || !env.SANDBOX_DB ||
+      !env.MIDTRANS_SANDBOX_SERVER_KEY?.startsWith("SB-Mid-server-") ||
+      !env.MIDTRANS_SANDBOX_MERCHANT_ID?.trim() || !(env.SANDBOX_OPERATOR_TOKEN?.length >= 32))
+    return json(404, { error: "Sandbox unavailable" });
+
+  const path = new URL(request.url).pathname;
+  if (path !== "/checkout" && path !== "/webhook") return json(404, { error: "Not found" });
+  if (request.method !== "POST") return json(405, { error: "Method not allowed" });
+  try {
+    return await (path === "/checkout" ? checkout(request, env, providerFetch) : webhook(request, env, providerFetch));
+  } catch {
+    return json(503, { error: "Sandbox temporarily unavailable" });
+  }
+}
+
+export default { fetch: (request, env) => handleSandboxPayment(request, env) };

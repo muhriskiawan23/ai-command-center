@@ -45,3 +45,29 @@ For each case inspect `payment_orders`, `credit_accounts`, and `credit_ledger` t
 ## Release blockers
 
 No merge or production activation until local D1 concurrency/failure evidence is captured, endpoint trust boundaries are reviewed, and an independent security review is completed. CI passing with SQLite is not a substitute for this evidence.
+
+## Isolated Snap checkout and webhook
+
+The isolated D1 smoke test exercises the sandbox Worker handler with fixture responses
+for Snap and the Status API. Its fixed test order is Rp10,000 for 25 microcredits under
+a synthetic account. These values are test fixtures with no customer pricing role.
+
+For a provider-backed test, use a separate Worker with
+`src/midtrans-sandbox-worker.js` as its entry point and a disposable D1 database
+bound as `SANDBOX_DB`. Initialize that database with the two fixture credit tables
+from `tests/d1/local-smoke.mjs`, followed by `docs/sql/payment-orders-review.sql`.
+Store `MIDTRANS_SANDBOX_SERVER_KEY`, `MIDTRANS_SANDBOX_MERCHANT_ID`, and a
+random `SANDBOX_OPERATOR_TOKEN` of at least 32 characters in the test Worker's
+configuration. Set `PAYMENT_SANDBOX_ENABLED=true` there and register its HTTPS
+`/webhook` URL in the Midtrans Sandbox environment.
+
+1. Send `POST /checkout` with the operator bearer token and a fresh UUID v4 in
+   `Idempotency-Key`. Expect HTTP 201 and a Snap sandbox redirect URL.
+2. Open the redirect and complete payment using a Midtrans sandbox test method.
+3. Confirm the order became `fulfilled`, its sandbox account increased by 25
+   microcredits, and the payment ledger has exactly one entry referencing the order.
+4. Re-send the notification through the sandbox and confirm the same ledger count
+   and balance. Keep the order ID and redacted evidence.
+5. If checkout returns 502, reconcile the returned order ID in Midtrans Sandbox
+   before creating another order. Retrying the same key returns 409 and avoids
+   submitting the same order to Snap again.
