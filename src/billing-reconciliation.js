@@ -56,6 +56,41 @@ LEFT JOIN provider_budget_limits l ON d.provider=l.provider
 WHERE l.provider IS NULL
 `;
 
+
+const walletJournalMismatchSql = `
+SELECT COUNT(*) AS mismatched_wallet_journals
+FROM credit_reservations c
+LEFT JOIN (
+ SELECT user_id,reference_id,
+   SUM(CASE WHEN reason='reserve' THEN 1 ELSE 0 END) AS reserve_count,
+   SUM(CASE WHEN reason='reserve' THEN delta_microcredits ELSE 0 END) AS reserve_delta,
+   SUM(CASE WHEN reason='refund' THEN 1 ELSE 0 END) AS refund_count,
+   SUM(CASE WHEN reason='refund' THEN delta_microcredits ELSE 0 END) AS refund_delta
+ FROM credit_ledger WHERE reason IN ('reserve','refund')
+ GROUP BY user_id,reference_id
+) j ON j.user_id=c.user_id AND j.reference_id=c.request_id
+WHERE COALESCE(j.reserve_count,0) != 1
+  OR COALESCE(j.reserve_delta,0) != -c.reserved_microcredits
+  OR (c.status='reserved' AND COALESCE(j.refund_count,0) != 0)
+  OR (c.status='released' AND (
+    COALESCE(j.refund_count,0) != 1
+    OR COALESCE(j.refund_delta,0) != c.reserved_microcredits
+  ))
+  OR (c.status='settled' AND (
+    (c.settled_microcredits = c.reserved_microcredits AND COALESCE(j.refund_count,0) != 0)
+    OR (c.settled_microcredits < c.reserved_microcredits AND (
+       COALESCE(j.refund_count,0) != 1
+       OR COALESCE(j.refund_delta,0) != c.reserved_microcredits - c.settled_microcredits
+    ))
+  ))
+`;
+const currentCapExceededSql = `
+SELECT COUNT(*) AS daily_counters_over_current_cap
+FROM provider_budget_daily d
+JOIN provider_budget_limits l ON d.provider=l.provider
+WHERE d.reserved_micro_usd > l.daily_cap_micro_usd - d.spent_micro_usd
+`;
+
 function integer(row, key) {
   const value = row?.[key];
   if (!Number.isSafeInteger(value) || value < 0)
@@ -77,16 +112,18 @@ export async function inspectDraftBillingReconciliation(env, {
     db.prepare(unpairedCreditSql),
     db.prepare(counterMismatchSql),
     db.prepare(missingCountersSql),
-    db.prepare(missingCapsSql)
+    db.prepare(missingCapsSql),
+    db.prepare(walletJournalMismatchSql),
+    db.prepare(currentCapExceededSql)
   ]);
-  if (!Array.isArray(results) || results.length !== 5)
+  if (!Array.isArray(results) || results.length !== 7)
     throw new Error("Billing reconciliation snapshot unavailable");
   const exactlyOne = (part) => {
     if (part?.success === false || !Array.isArray(part?.results) || part.results.length !== 1)
       throw new Error("Billing reconciliation result incomplete");
     return part.results[0];
   };
-  const [pairs, unpaired, counters, missing, caps] = results.map(exactlyOne);
+  const [pairs, unpaired, counters, missing, caps, journals, ceilings] = results.map(exactlyOne);
   const report = {
     budgetOrders: integer(pairs,"budget_orders"),
     bothSettled: integer(pairs,"both_settled"),
@@ -99,13 +136,16 @@ export async function inspectDraftBillingReconciliation(env, {
     paidProviderWithoutCreditDebit: integer(pairs,"paid_provider_without_credit_debit"),
     mismatchedDailyCounters: integer(counters,"mismatched_daily_counters"),
     reservationsWithoutDailyCounters: integer(missing,"reservations_without_daily_counters"),
-    counterRowsWithoutCurrentCap: integer(caps,"counter_rows_without_current_cap")
+    counterRowsWithoutCurrentCap: integer(caps,"counter_rows_without_current_cap"),
+    mismatchedWalletJournals: integer(journals,"mismatched_wallet_journals"),
+    dailyCountersOverCurrentCap: integer(ceilings,"daily_counters_over_current_cap")
   };
   const reviewFields = [
     "staleBudgetHolds","unmatchedBudgetHolds","unpairedReservedCredit",
     "creditFinalizationPending","providerFinalizationPending",
     "paidProviderWithoutCreditDebit","mismatchedDailyCounters",
-    "reservationsWithoutDailyCounters","counterRowsWithoutCurrentCap"
+    "reservationsWithoutDailyCounters","counterRowsWithoutCurrentCap",
+    "mismatchedWalletJournals","dailyCountersOverCurrentCap"
   ];
   return {
     ...report,
