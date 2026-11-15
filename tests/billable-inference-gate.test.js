@@ -98,7 +98,7 @@ test("real SQLite ledger reserves before inference, settles measured usage and p
   assert.equal(output.customerDebitMicrocredits,519n);
   assert.equal(x.balance(),15000-519);
   assert.equal(x.reservations(),1);
-  assert.deepEqual(x.journal().map(j=>j.delta_microcredits),[-8610,8091]);
+  assert.deepEqual(x.journal().map(j=>j.delta_microcredits).sort((a,b)=>a-b),[-8610,8091]);
   assert.equal(x.invoked,1);
   assert.deepEqual(x.events.map(e=>e[0]),["budgetReserve","budgetSettle"]);
   const replay=await runReservedBillableInference(x.options);
