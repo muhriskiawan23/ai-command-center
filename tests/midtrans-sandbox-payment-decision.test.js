@@ -20,3 +20,10 @@ test("fail closed for pending, missing, inconsistent and unverified evidence",()
 test("reject production order",()=>{
  assert.throws(()=>decideSandboxPaymentConfirmation({...order,environment:"production"},webhook,api));
 });
+
+test("retry only when verified pending status matches the signed paid event",()=>{
+ const pending={...api,classification:{kind:"pending"}};
+ assert.deepEqual(decideSandboxPaymentConfirmation(order,webhook,pending),{kind:"retry",reason:"status_api_pending"});
+ assert.equal(decideSandboxPaymentConfirmation(order,webhook,{...pending,providerTransactionId:"tx2"}).kind,"not_confirmed");
+ assert.equal(decideSandboxPaymentConfirmation(order,webhook,{...pending,verifiedVia:"webhook"}).kind,"not_confirmed");
+});

@@ -6,7 +6,6 @@ export function decideSandboxPaymentConfirmation(order, webhook, statusApi) {
     throw new TypeError("Valid sandbox order required");
   if (!webhook || !statusApi || webhook.classification?.kind !== "paid_candidate" ||
       webhook.requiresStatusApiConfirmation !== true ||
-      statusApi.classification?.kind !== "paid_candidate" ||
       statusApi.verifiedVia !== "sandbox_status_api")
     return {kind:"not_confirmed",reason:"independent_paid_confirmation_required"};
   if (typeof webhook.providerTransactionId !== "string" || !webhook.providerTransactionId ||
@@ -14,6 +13,10 @@ export function decideSandboxPaymentConfirmation(order, webhook, statusApi) {
     return {kind:"not_confirmed",reason:"provider_transaction_mismatch"};
   if (typeof statusApi.merchantId !== "string" || !statusApi.merchantId)
     return {kind:"not_confirmed",reason:"merchant_identity_missing"};
+  if (statusApi.classification?.kind === "pending")
+    return {kind:"retry",reason:"status_api_pending"};
+  if (statusApi.classification?.kind !== "paid_candidate")
+    return {kind:"not_confirmed",reason:"independent_paid_confirmation_required"};
   // The status API adapter already validates order ID, amount, currency and
   // configured merchant ID. Never accept arbitrary untrusted objects here:
   // only invoke this function with results of the two trusted adapters.

@@ -107,6 +107,7 @@ try{
   };
   let checkoutCalls=0;
   let statusCalls=0;
+  let providerStatus="settlement";
   const providerFetch=async (url,options)=>{
    assert.equal(options.redirect,"manual");
    if (options.method==="POST") {
@@ -117,7 +118,7 @@ try{
    }
    statusCalls++;
    assert.equal(url,"https://api.sandbox.midtrans.com/v2/"+orderId+"/status");
-   return Response.json(payload);
+   return Response.json({...payload,transaction_status:providerStatus});
   };
   const checkout=(token,config=env)=>handleSandboxPayment(new Request("https://local.test/checkout",{
    method:"POST",headers:{"Authorization":"Bearer "+token,"Idempotency-Key":key},
@@ -149,6 +150,14 @@ try{
   assert.equal(pending.status,200);
   assert.deepEqual(await pending.json(),{outcome:"not_confirmed"});
   assert.equal(statusCalls,0);
+  providerStatus="pending";
+  const delayed=await callback(payload);
+  assert.equal(delayed.status,503);
+  assert.deepEqual(await delayed.json(),{outcome:"retry",reason:"status_api_pending"});
+  const waitingOrder=await db.prepare("SELECT state, provider_transaction_id FROM payment_orders WHERE order_id=?").bind(orderId).first();
+  assert.deepEqual({...waitingOrder},{state:"created",provider_transaction_id:null});
+  assert.equal(await db.prepare("SELECT count(*) AS n FROM credit_ledger WHERE reference_id=?").bind(orderId).first("n"),0);
+  providerStatus="settlement";
   const responses=await Promise.all(Array.from({length:20},()=>callback(payload)));
   assert.ok(responses.every(response=>response.status===200));
   const results=await Promise.all(responses.map(response=>response.json()));
@@ -167,6 +176,6 @@ try{
   const reconciliation=await reconcile(operatorToken);
   assert.equal(reconciliation.status,200);
   assert.deepEqual(await reconciliation.json(),{orderId,outcome:"unchanged"});
-  console.log("PASS: synthetic Snap checkout, concurrent webhook callbacks, and operator reconciliation grant credit once in D1");
+  console.log("PASS: pending Status API retries without mutations, then concurrent callbacks and reconciliation grant credit once in D1");
  }finally{await platform.dispose()}
 }finally{rmSync(temp,{recursive:true,force:true})}

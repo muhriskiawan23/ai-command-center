@@ -131,6 +131,7 @@ async function webhook(request, env, providerFetch) {
     expectedMerchantId: env.MIDTRANS_SANDBOX_MERCHANT_ID,
     fetchImpl: (url, options) => providerFetch(url, { ...options, signal: AbortSignal.timeout(8000) }),
   });
+  if (result.kind === "retry") return json(503, { outcome: result.kind, reason: result.reason });
   return json(200, { outcome: result.kind });
 }
 
