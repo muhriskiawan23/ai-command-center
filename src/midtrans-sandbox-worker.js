@@ -3,6 +3,7 @@ import { verifyMidtransNotificationSignature } from "./midtrans-signature.js";
 import { classifyMidtransStatus } from "./midtrans-status.js";
 
 const SNAP_ORIGIN = "https://app.sandbox.midtrans.com";
+const SNAP_CHECKOUT_PATH = /^\/snap\/(?:v2\/vtweb|v[34]\/redirection)\/[a-f0-9-]{36}$/i;
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 const ORDER_PREFIX = "bor-sbx-";
 const FIXTURE = { user: "midtrans-sandbox-test", sku: "sandbox-credit-test", amount: 10000, credits: 25 };
@@ -66,15 +67,18 @@ async function checkout(request, env, providerFetch) {
   // Report the HTTP status to the authenticated operator without returning
   // Midtrans response bodies, request headers, or credentials.
   if (response.status !== 201) return failure("snap_http_" + response.status);
+  let receipt;
   try {
-    const receipt = await parseJson(response);
-    const destination = new URL(receipt.redirect_url);
-    if (destination.origin !== SNAP_ORIGIN || destination.username || destination.password ||
-        !destination.pathname.startsWith("/snap/v3/redirection/")) throw new Error("Invalid Snap redirect");
-    return json(201, { orderId, amountIdr: FIXTURE.amount, redirectUrl: destination.href });
+    receipt = await parseJson(response);
   } catch {
-    return failure(signal.aborted ? "snap_timeout" : "snap_invalid_response");
+    return failure(signal.aborted ? "snap_timeout" : "snap_invalid_json");
   }
+  const destination = typeof receipt?.redirect_url === "string" && URL.canParse(receipt.redirect_url)
+    ? new URL(receipt.redirect_url) : null;
+  if (!destination || destination.origin !== SNAP_ORIGIN || destination.username || destination.password)
+    return failure("snap_invalid_redirect_origin");
+  if (!SNAP_CHECKOUT_PATH.test(destination.pathname)) return failure("snap_invalid_redirect_path");
+  return json(201, { orderId, amountIdr: FIXTURE.amount, redirectUrl: destination.href });
 }
 
 async function webhook(request, env, providerFetch) {

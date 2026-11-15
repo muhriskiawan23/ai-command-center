@@ -111,7 +111,7 @@ try{
     checkoutCalls++;
     assert.equal(url,"https://app.sandbox.midtrans.com/snap/v1/transactions");
     assert.deepEqual(JSON.parse(options.body),{transaction_details:{order_id:orderId,gross_amount:10000}});
-    return Response.json({redirect_url:"https://app.sandbox.midtrans.com/snap/v3/redirection/test"},{status:201});
+    return Response.json({redirect_url:"https://app.sandbox.midtrans.com/snap/v4/redirection/11111111-1111-4111-8111-111111111111"},{status:201});
    }
    statusCalls++;
    assert.equal(url,"https://api.sandbox.midtrans.com/v2/"+orderId+"/status");
@@ -129,7 +129,7 @@ try{
   const receipt=await checkouts.find(response=>response.status===201).json();
   assert.equal(receipt.orderId,orderId);
   assert.equal(receipt.amountIdr,10000);
-  assert.equal(receipt.redirectUrl,"https://app.sandbox.midtrans.com/snap/v3/redirection/test");
+  assert.equal(receipt.redirectUrl,"https://app.sandbox.midtrans.com/snap/v4/redirection/11111111-1111-4111-8111-111111111111");
   const rejectedCheckout=await handleSandboxPayment(new Request("https://local.test/checkout",{
    method:"POST",headers:{"Authorization":"Bearer "+operatorToken,"Idempotency-Key":"22222222-2222-4222-8222-222222222222"},
   }),env,async()=>Response.json({error_messages:["private provider details"]},{status:401}));
