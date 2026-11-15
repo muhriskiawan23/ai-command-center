@@ -14,6 +14,13 @@ Updated: 2026-11-15. This is a development-only component on PR #245. It is **no
 - Holds the reservation (without declaring a successful charge or exposing a paid answer) if provider outcome is unknown, token usage is missing/inconsistent, the measured total exceeds caps or settlement fails.
 - On successful settlement, returns actual provider cost, customer debit, policy version and the AI result. This single-call guard is **not** a multi-agent billing integration.
 
+## Additional verification: 15 November 2026
+
+- [Isolated Wrangler local D1 billing proof — run 43704785853](https://github.com/muhriskiawan23/ai-command-center/actions/runs/43704785853) passed using a fresh temporary D1 instance via Wrangler `--local`. It exercises both proposed migrations, reservation, measured synthetic settlement, duplicate rejection, cross-provider spending caps, failed-reservation rollback and prevention of a double credit refund.
+- `.github/workflows/bor-ai-isolated-billing-d1.yml` uses no Cloudflare credentials, no `--remote`, no production database binding and no persistent customer data. The local state is discarded after the run. **This is local D1, not a remote disposable D1 concurrency test.**
+- `src/billing-reconciliation.js` provides a **read-only, transactional D1-batch snapshot** of stalled reservations, mismatched budget counters, missing provider caps, wallet journal discrepancies and caps exceeded. Reports contain aggregate counts only, no customer identifiers or request contents. No automatic refund/release is performed.
+- Aggregate reconciliation **does not verify Cloudflare invoices, source usage authenticity, package margin, foreign exchange or refund legality**; it cannot substitute provider-ledger reconciliation or a named financial/security signoff. Held reservations require explicit, independently evidenced resolution.
+
 ## Release blockers — all must be closed separately
 
 1. **Authoritative token accounting:** verify the actual `env.AI.run` response usage shape and billing for the configured model with a bounded staging request; compare Cloudflare invoice/dashboard readings. The public model documentation mentions `usage` but does not guarantee every response provides complete counters. Unknown usage stays fail-closed. Provider errors or timeouts might still incur charges.
