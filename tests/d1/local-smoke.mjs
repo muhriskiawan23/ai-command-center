@@ -15,6 +15,7 @@ const config=join(temp,"wrangler.jsonc");
 const persistencePath=join(temp,"state");
 const dbName="bor-ai-payment-test";
 const schema=readFileSync(new URL("../../docs/sql/payment-orders-review.sql",import.meta.url),"utf8");
+const reversalSchema=readFileSync(new URL("../../docs/sql/payment-reversals-review.sql",import.meta.url),"utf8");
 const base=readFileSync(new URL("../../tools/midtrans-sandbox/credit-fixture.sql",import.meta.url),"utf8");
 writeFileSync(config,JSON.stringify({name:"bor-ai-payment-d1-local-test",main:resolve("src/index.js"),compatibility_date:"2026-10-28",d1_databases:[{binding:"DB",database_name:dbName,database_id:"00000000-0000-4000-8000-000000000001"}]}));
 const run=(sql,expectedError=null)=>{
@@ -37,7 +38,7 @@ const run=(sql,expectedError=null)=>{
 };
 try{
  execFileSync("npm",["install","--prefix",temp,"--no-save","--no-package-lock","--no-audit","--no-fund","wrangler@4"],{stdio:"inherit",timeout:180000});
- run(base+"\n"+schema);
+ run(base+"\n"+schema+"\n"+reversalSchema);
  const insert="INSERT INTO payment_orders(order_id,user_id,sku,environment,currency,amount_idr,grant_microcredits,state,created_at,updated_at) VALUES ('order1','u','basic','sandbox','IDR',100,25,'created',1,1);";
  run(insert);
  run("UPDATE payment_orders SET state='fulfilled' WHERE order_id='order1';",/payment_provider_transaction_required|payment_fulfillment_transition_invalid/);
@@ -212,6 +213,27 @@ try{
   assert.deepEqual(recoveredLedger.results.map(row=>row.delta_microcredits),[25]);
   assert.equal((await checkout(operatorToken,env,lostKey,lossThenSuccess)).status,409);
   assert.equal(attempts,2);
+  const reversalCallback=(event,verified)=>handleSandboxPayment(new Request("https://local.test/webhook",{
+   method:"POST",body:JSON.stringify(event),
+  }),env,async()=>Response.json(verified));
+  const disputed={...payload,transaction_status:"partial_chargeback"};
+  const review=await reversalCallback(disputed,disputed);
+  assert.equal(review.status,200);
+  assert.deepEqual(await review.json(),{outcome:"review_required"});
+  const fullRefund={...recoveredPayload,transaction_status:"refund",refund_amount:"10000.00",
+   refunds:[{refund_chargeback_id:1,refund_amount:"10000.00",bank_confirmed_at:"2026-11-15 12:00:00"}]};
+  const notYet=await reversalCallback(fullRefund,recoveredPayload);
+  assert.equal(notYet.status,503);
+  const unconfirmed={...fullRefund,refunds:[{...fullRefund.refunds[0],bank_confirmed_at:""}]};
+  assert.deepEqual(await (await reversalCallback(fullRefund,unconfirmed)).json(),{outcome:"review_required"});
+  const refundResults=await Promise.all([reversalCallback(fullRefund,fullRefund),reversalCallback(fullRefund,fullRefund)]);
+  assert.ok(refundResults.every(response=>response.status===200));
+  assert.deepEqual((await Promise.all(refundResults.map(response=>response.json()))).map(reply=>reply.outcome).sort(),["reversed","unchanged"]);
+  const refundLedger=await db.prepare("SELECT delta_microcredits FROM credit_ledger WHERE reference_id=? ORDER BY delta_microcredits").bind(lostOrderId).all();
+  assert.deepEqual(refundLedger.results.map(row=>row.delta_microcredits),[-25,25]);
+  assert.equal(await db.prepare("SELECT state FROM payment_orders WHERE order_id=?").bind(lostOrderId).first("state"),"refunded");
+  assert.equal(await db.prepare("SELECT balance_microcredits FROM credit_accounts WHERE user_id=?").bind("midtrans-sandbox-test").first("balance_microcredits"),25);
+  console.log("PASS: confirmed Sandbox refund reverses once, unconfirmed refunds and disputes require review");
   console.log("PASS: interrupted and cached checkout retries preserve one order and one credit grant");
   console.log("PASS: pending Status API retries without mutations, then concurrent callbacks and reconciliation grant credit once in D1");
  }finally{await platform.dispose()}

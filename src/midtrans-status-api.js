@@ -4,7 +4,7 @@ import { assertMidtransPaymentMatchesOrder } from "./midtrans-amount.js";
 import { classifyMidtransStatus } from "./midtrans-status.js";
 const BASE = "https://api.sandbox.midtrans.com";
 const ORDER_ID = /^[A-Za-z0-9_-]{1,100}$/;
-export async function checkMidtransSandboxOrder(order, { serverKey, expectedMerchantId, fetchImpl = fetch, signal, requireCurrency = false } = {}) {
+export async function readVerifiedSandboxStatus(order, { serverKey, expectedMerchantId, fetchImpl = fetch, signal, requireCurrency = false } = {}) {
   if (!order || order.environment !== "sandbox" || !ORDER_ID.test(order.orderId || ""))
     throw new TypeError("Sandbox order with safe ID required");
   if (typeof serverKey !== "string" || !serverKey.startsWith("SB-Mid-server-"))
@@ -28,6 +28,11 @@ export async function checkMidtransSandboxOrder(order, { serverKey, expectedMerc
       typeof status.merchant_id !== "string" || !status.merchant_id)
     throw new Error("Midtrans transaction identity missing");
   if (status.merchant_id !== expectedMerchantId) throw new Error("Midtrans merchant mismatch");
+  return status;
+}
+
+export async function checkMidtransSandboxOrder(order, options) {
+  const status = await readVerifiedSandboxStatus(order, options);
   return { classification: classifyMidtransStatus(status), providerTransactionId:status.transaction_id,
     merchantId:status.merchant_id, verifiedVia:"sandbox_status_api" };
 }

@@ -119,7 +119,14 @@ the original grant once when balance is sufficient. If credit was spent
 and balance is insufficient, the order records the refund or dispute and
 the reversal requires review. No negative balance or automatic collection.
 
-Before wiring real events, define handling for partial or mixed reversals
-and spent-credit resolution. A verified expired, canceled, or failed
-unpaid order should close without a credit grant. Keep payment events and
-compensating ledger entries for later reconciliation.
+The Sandbox Worker applies this SQL only after a signed notification and a
+matching independent Status API response. Apply
+`docs/sql/payment-reversals-review.sql` to the disposable database before
+deploying the reversal-enabled Sandbox Worker. A full refund requires an
+explicit cumulative amount equal to the order and unique refund records
+whose bank-confirmed amounts sum to it. Partial refunds, chargebacks,
+unconfirmed full refunds, and conflicting reversal history go to review.
+The Worker only reconciles events. It does not call the provider refund API.
+
+Automated closing of unpaid expired, canceled, and failed orders and the
+final policy for manual reversals remain outside this Sandbox slice.

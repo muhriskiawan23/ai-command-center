@@ -1,3 +1,4 @@
+import { handleSandboxReversal, isSandboxReversalStatus } from "./midtrans-sandbox-reversal.js";
 import { fulfillVerifiedSandboxPayment, reconcileSandboxPayment } from "./midtrans-sandbox-fulfillment.js";
 import { verifyMidtransNotificationSignature } from "./midtrans-signature.js";
 import { classifyMidtransStatus } from "./midtrans-status.js";
@@ -134,6 +135,16 @@ async function webhook(request, env, providerFetch) {
   if (payload.merchant_id !== env.MIDTRANS_SANDBOX_MERCHANT_ID ||
       !await verifyMidtransNotificationSignature(payload, signatureKey))
     return json(401, { error: "Invalid notification signature" });
+  if (isSandboxReversalStatus(payload.transaction_status)) {
+    const outcome = await handleSandboxReversal({
+      db: env.SANDBOX_DB,
+      payload,
+      serverKey,
+      expectedMerchantId: env.MIDTRANS_SANDBOX_MERCHANT_ID,
+      fetchImpl: (url, options) => providerFetch(url, { ...options, signal: AbortSignal.timeout(8000) }),
+    });
+    return json(outcome === "retry" ? 503 : 200, { outcome });
+  }
   if (classifyMidtransStatus(payload).kind !== "paid_candidate")
     return json(200, { outcome: "not_confirmed" });
 

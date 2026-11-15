@@ -19,7 +19,7 @@ export function classifyMidtransStatus(payload) {
   }
   if (status === "pending") return { kind:"pending" };
   if (FINAL_FAILURES.has(status)) return { kind:"failed_candidate", providerStatus:status };
-  if (status === "refund" || status === "partial_refund" || status === "chargeback")
+  if (status === "refund" || status === "partial_refund" || status === "chargeback" || status === "partial_chargeback")
     return { kind:"manual_review", reason:"reversal_requires_reconciliation" };
   return { kind:"manual_review", reason:"unknown_provider_status" };
 }
