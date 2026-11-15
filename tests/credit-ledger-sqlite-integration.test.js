@@ -148,13 +148,13 @@ test("SQLite RETURNING confirms the debit and finalization despite trigger side 
     const issued=db.prepare(
       "INSERT INTO credit_reservations (request_id,user_id,reserved_microcredits,settled_microcredits,status,created_at,updated_at) VALUES (?, ?, ?, NULL, 'reserved', 2, 2) RETURNING request_id,user_id,reserved_microcredits,status"
     ).get("returning-one","user",80);
-    assert.deepEqual(issued,{request_id:"returning-one",user_id:"user",reserved_microcredits:80,status:"reserved"});
+    assert.deepEqual({...issued},{request_id:"returning-one",user_id:"user",reserved_microcredits:80,status:"reserved"});
     assert.equal(balance(db),20);
     assert.equal(count(db,"credit_ledger"),1);
     const settled=db.prepare(
       "UPDATE credit_reservations SET status = ?, settled_microcredits = ?, updated_at = 3 WHERE request_id = ? AND user_id = ? AND status = 'reserved' RETURNING request_id,user_id,status,settled_microcredits"
     ).get("settled",30,"returning-one","user");
-    assert.deepEqual(settled,{request_id:"returning-one",user_id:"user",status:"settled",settled_microcredits:30});
+    assert.deepEqual({...settled},{request_id:"returning-one",user_id:"user",status:"settled",settled_microcredits:30});
     assert.equal(balance(db),70);
     assert.equal(count(db,"credit_ledger"),2);
     assert.equal(db.prepare(
