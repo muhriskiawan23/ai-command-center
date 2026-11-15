@@ -23,10 +23,34 @@ function setup(t) {
  sqlite.exec("INSERT INTO credit_accounts VALUES ('user',50000,1)");
  sqlite.exec("INSERT INTO provider_budget_limits VALUES ('cloudflare-workers-ai',1000000,1)");
  sqlite.exec("INSERT INTO provider_budget_limits VALUES ('__global__',1000000,1)");
- const DB={prepare(sql){const statement=sqlite.prepare(sql);return {bind(...values){return{
-   first:async()=>statement.get(...values),
-   run:async()=>({meta:{changes:statement.run(...values).changes}})
- }},first:async()=>statement.get()}}};
+ const DB={
+   prepare(sql) {
+     const statement=sqlite.prepare(sql);
+     return {
+       sql,params:[],
+       bind(...values) {
+         return {sql,params:values,
+           first:async()=>statement.get(...values),
+           run:async()=>({meta:{changes:statement.run(...values).changes}})};
+       },
+       first:async()=>statement.get()
+     };
+   },
+   async batch(statements) {
+     sqlite.exec("BEGIN");
+     try {
+       const result=statements.map(statement=>({
+         success:true,
+         results:sqlite.prepare(statement.sql).all(...statement.params)
+       }));
+       sqlite.exec("COMMIT");
+       return result;
+     } catch(error) {
+       sqlite.exec("ROLLBACK");
+       throw error;
+     }
+   }
+ };
  const env={DB};
  const report=(nowMs=Date.now(),staleAfterSeconds=3600)=>
    inspectDraftBillingReconciliation(env,{nowMs,staleAfterSeconds});
@@ -142,7 +166,10 @@ test("missing daily counter for a reservation is reported",async t=>{
 test("missing schema fails closed instead of claiming clean financial status",async t=>{
  const db=new DatabaseSync(":memory:");
  t.after(()=>db.close());
- const env={DB:{prepare(sql){return {bind(){return{first:async()=>db.prepare(sql).get()}},first:async()=>db.prepare(sql).get()}}}};
+ const env={DB:{
+   prepare(sql){return {sql,params:[],bind(...params){return{sql,params}}};},
+   async batch(statements){return statements.map(s=>({results:db.prepare(s.sql).all(...s.params)}));}
+ }};
  await assert.rejects(inspectDraftBillingReconciliation(env),/no such table/);
  await assert.rejects(inspectDraftBillingReconciliation({DB:null}),/D1 binding required/);
  await assert.rejects(inspectDraftBillingReconciliation(env,{staleAfterSeconds:0}),/minimum 60-second/);
