@@ -4,6 +4,42 @@ import { assertMidtransPaymentMatchesOrder } from "./midtrans-amount.js";
 import { classifyMidtransStatus } from "./midtrans-status.js";
 const BASE = "https://api.sandbox.midtrans.com";
 const ORDER_ID = /^[A-Za-z0-9_-]{1,100}$/;
+const MAX_STATUS_BYTES = 32768;
+
+// Enforce the limit while streaming: a Content-Length check alone does not
+// protect against oversized/chunked responses from the payment provider.
+async function readBoundedStatusBody(response) {
+  const advertised = response.headers?.get?.("Content-Length");
+  if (advertised !== undefined && advertised !== null &&
+      /^\\d+$/.test(advertised) && BigInt(advertised) > BigInt(MAX_STATUS_BYTES)) {
+    await response.body?.cancel?.().catch(() => {});
+    throw new Error("Midtrans response too large");
+  }
+  const reader = response.body?.getReader?.();
+  // Minimal provider mocks in unit tests expose text() rather than a stream.
+  // Real fetch Responses always use the bounded streaming branch.
+  if (!reader) {
+    const body = await response.text();
+    if (new TextEncoder().encode(body).byteLength > MAX_STATUS_BYTES)
+      throw new Error("Midtrans response too large");
+    return body;
+  }
+  const decoder = new TextDecoder("utf-8", { fatal: true });
+  let size = 0;
+  let text = "";
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) return text + decoder.decode();
+      size += value.byteLength;
+      if (size > MAX_STATUS_BYTES) throw new Error("Midtrans response too large");
+      text += decoder.decode(value, { stream: true });
+    }
+  } finally {
+    await reader.cancel().catch(() => {});
+    reader.releaseLock();
+  }
+}
 export async function readVerifiedSandboxStatus(order, { serverKey, expectedMerchantId, fetchImpl = fetch, signal, requireCurrency = false } = {}) {
   if (!order || order.environment !== "sandbox" || !ORDER_ID.test(order.orderId || ""))
     throw new TypeError("Sandbox order with safe ID required");
@@ -17,8 +53,7 @@ export async function readVerifiedSandboxStatus(order, { serverKey, expectedMerc
     redirect: "manual", signal
   });
   if (!response.ok) throw new Error("Midtrans sandbox status unavailable");
-  const body = await response.text();
-  if (body.length > 32768) throw new Error("Midtrans response too large");
+  const body = await readBoundedStatusBody(response);
   let status;
   try { status = JSON.parse(body); } catch { throw new Error("Invalid Midtrans JSON"); }
   if (status.status_code !== "200") throw new Error("Midtrans status not confirmed");
