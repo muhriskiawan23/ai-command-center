@@ -23,10 +23,10 @@ jobs:
       - name: Checkout pinned, reviewed Stage 2 test code (not production main)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: 76a13bc9239e84a8dc6bb2f140b0c26baad03d54
+          ref: 042b26c98275ebf62507ab224213c74da6399729
           persist-credentials: false
       - name: Assert exact reviewed test commit
-        run: test "$(git rev-parse HEAD)" = "76a13bc9239e84a8dc6bb2f140b0c26baad03d54"
+        run: test "$(git rev-parse HEAD)" = "042b26c98275ebf62507ab224213c74da6399729"
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: 22
