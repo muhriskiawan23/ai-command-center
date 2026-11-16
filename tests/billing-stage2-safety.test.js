@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { assertFreshSandboxTables } from "./billing/stage2-schema-guard.mjs";
 
 const prod = JSON.parse(readFileSync(new URL("../wrangler.jsonc",import.meta.url),"utf8"));
 const existing = prod.d1_databases?.[0];
@@ -27,6 +28,23 @@ const sandbox={
   BOR_AI_D1_SANDBOX_TOKEN:"synthetic-never-valid-token-000000",
   BOR_AI_D1_SANDBOX_ACCOUNT_ID:"0123456789abcdef0123456789abcdef"
 };
+
+test("remote empty D1 accepts only Cloudflare reserved metadata, never application tables",()=>{
+  assert.doesNotThrow(()=>assertFreshSandboxTables([],true));
+  assert.doesNotThrow(()=>assertFreshSandboxTables([{name:"_cf_KV"}],true));
+  for(const names of [
+    [{name:"users"}],
+    [{name:"_cf_KV"},{name:"credit_accounts"}],
+    [{name:"_cf_KV"},{name:"d1_migrations"}],
+    [{name:"_cf_KV"},{name:"_cf_kv"}],
+    [{name:"_cf_KV"},{}]
+  ]) {
+    assert.throws(()=>assertFreshSandboxTables(names,true),
+      /NEW EMPTY sandbox database/);
+  }
+  assert.throws(()=>assertFreshSandboxTables([{name:"_cf_KV"}],false),
+    /NEW EMPTY sandbox database/);
+});
 
 test("stage 2 proof refuses implicit mode or unknown arguments",()=>{
   for(const args of [[],["--unknown"],["--remote","--local"]]){
