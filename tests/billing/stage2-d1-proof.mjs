@@ -11,7 +11,9 @@ import { randomUUID } from "node:crypto";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { assertFreshSandboxTables } from "./stage2-schema-guard.mjs";
+import {
+  classifyStage2SandboxSchema, stage2KnownTableNames
+} from "./stage2-schema-guard.mjs";
 
 const execAsync = promisify(execFile);
 const mode = process.argv[2];
@@ -125,11 +127,28 @@ function wallet(request,user,amount,timestamp) {
     (request_id,user_id,reserved_microcredits,status,created_at,updated_at)
     VALUES ('${request}','${user}',${amount},'reserved',${timestamp},${timestamp})`;
 }
-function ensureFreshTarget() {
-  // D1 remote always has the reserved _cf_KV metadata table. Its presence
-  // is not an application schema; everything else must be rejected.
-  const existing=sql("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name");
-  assertFreshSandboxTables(existing,isRemote);
+function schemaInventory() {
+  return sql("SELECT type,name,sql FROM sqlite_master " +
+    "WHERE name NOT LIKE 'sqlite_%' ORDER BY type,name");
+}
+function assertEmptyStage2Tables(stage) {
+  // Names are a local hard-coded allowlist; never interpolate remote data.
+  const names=stage === "credit_migrated" ? stage2KnownTableNames.slice(0,3)
+    : stage === "both_migrated" ? stage2KnownTableNames : [];
+  for(const name of names) {
+    const count=single(`SELECT COUNT(*) AS n FROM "${name}"`);
+    assert.equal(count.n,0,
+      "Stage 2 migration-only sandbox must contain zero records before proof");
+  }
+}
+function verifiedInitialStage() {
+  const stage=classifyStage2SandboxSchema(schemaInventory(),isRemote);
+  // Local proof must start from a clean new SQLite database.
+  if(!isRemote) assert.equal(stage,"empty","Local D1 proof must be fresh");
+  // Remote tests may resume ONLY from exact empty migration schemas
+  // left by a prior successful --file import, NEVER from fixture/app data.
+  assertEmptyStage2Tables(stage);
+  return stage;
 }
 function verifyRemoteIdentity() {
   const raw=run(["--yes","wrangler@4","d1","list","--json"]);
@@ -149,11 +168,24 @@ try {
       database_id:databaseId,...(!isRemote?{preview_database_id:"stage2-only-local"}:{})}]
   }),{mode:0o600});
   if(isRemote)verifyRemoteIdentity();
-  ensureFreshTarget();
+  const initialStage=verifiedInitialStage();
   const day=new Date().toISOString().slice(0,10);
   const now=Math.floor(Date.now()/1000);
-  resultOf(run(args("--file",resolve("migrations/0012_credit_ledger.sql"))));
-  resultOf(run(args("--file",resolve("migrations/0013_provider_spend_budget.sql"))));
+  // Wrangler --file prints upload/progress lines before its JSON. The
+  // successful process exit is checked by execFileSync; validate the exact
+  // resulting schema instead of interpreting progress text as JSON.
+  if(initialStage === "empty") {
+    run(args("--file",resolve("migrations/0012_credit_ledger.sql")));
+    assert.equal(classifyStage2SandboxSchema(schemaInventory(),isRemote),
+      "credit_migrated","First migration must apply the exact credit schema");
+    assertEmptyStage2Tables("credit_migrated");
+  }
+  if(initialStage !== "both_migrated") {
+    run(args("--file",resolve("migrations/0013_provider_spend_budget.sql")));
+    assert.equal(classifyStage2SandboxSchema(schemaInventory(),isRemote),
+      "both_migrated","Second migration must apply the exact provider budget schema");
+  }
+  assertEmptyStage2Tables("both_migrated");
   sql(`INSERT INTO credit_accounts VALUES ('fixture',25000,${now});
     INSERT INTO credit_accounts VALUES ('parallel',10000,${now});
     INSERT INTO provider_budget_limits VALUES ('cloudflare-workers-ai',9000,${now});
