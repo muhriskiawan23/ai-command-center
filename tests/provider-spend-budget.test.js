@@ -126,7 +126,7 @@ test("budget adapter composes with the real credit ledger and measured AI respon
   const recordedDay=x.sqlite.prepare(
     "SELECT day FROM provider_budget_reservations WHERE id='ai:bill-one'"
   ).get()?.day;
-  assert.match(recordedDay,/^\\d{4}-\\d{2}-\\d{2}$/);
+  assert.match(recordedDay,/^\d{4}-\d{2}-\d{2}$/);
   assert.deepEqual({...x.state("__global__",recordedDay)},{reserved:0,spent:519});
   const repeat=await runReservedBillableInference({
     env:x.env,userId:"u",requestId:"bill-one",tariff,maxInputTokens:24000,maxOutputTokens:700,
