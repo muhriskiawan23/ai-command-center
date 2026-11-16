@@ -121,7 +121,13 @@ test("budget adapter composes with the real credit ledger and measured AI respon
   assert.equal(result.providerCostMicroUsd,519n);
   assert.equal(x.balance(),15000-519);
   assert.deepEqual(x.ledger(),[-8610,8091]);
-  assert.deepEqual({...x.state("__global__")},{reserved:0,spent:519});
+  // The billable gate records the real UTC day; do not assume the test's
+  // fixed fixture day when the CI clock advances to a later date.
+  const recordedDay=x.sqlite.prepare(
+    "SELECT day FROM provider_budget_reservations WHERE id='ai:bill-one'"
+  ).get()?.day;
+  assert.match(recordedDay,/^\\d{4}-\\d{2}-\\d{2}$/);
+  assert.deepEqual({...x.state("__global__",recordedDay)},{reserved:0,spent:519});
   const repeat=await runReservedBillableInference({
     env:x.env,userId:"u",requestId:"bill-one",tariff,maxInputTokens:24000,maxOutputTokens:700,
     providerBudget:providerSpendBudget(x.env),invokeModel:async()=>{invoked++;}
