@@ -2,7 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { assertFreshSandboxTables } from "./billing/stage2-schema-guard.mjs";
+import { DatabaseSync } from "node:sqlite";
+import { assertFreshSandboxTables, classifyStage2SandboxSchema } from "./billing/stage2-schema-guard.mjs";
 
 const prod = JSON.parse(readFileSync(new URL("../wrangler.jsonc",import.meta.url),"utf8"));
 const existing = prod.d1_databases?.[0];
@@ -44,6 +45,43 @@ test("remote empty D1 accepts only Cloudflare reserved metadata, never applicati
   }
   assert.throws(()=>assertFreshSandboxTables([{name:"_cf_KV"}],false),
     /NEW EMPTY sandbox database/);
+});
+
+test("Stage 2 resumes only exact migration-only schema, rejects any added schema",()=>{
+  const db=new DatabaseSync(":memory:");
+  try {
+    const inventory=()=>db.prepare(
+      "SELECT type,name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type,name"
+    ).all();
+    assert.equal(classifyStage2SandboxSchema(inventory(),true),"empty");
+    db.exec(readFileSync(new URL("../migrations/0012_credit_ledger.sql",import.meta.url),"utf8"));
+    assert.equal(classifyStage2SandboxSchema(inventory(),true),"credit_migrated");
+    db.exec(readFileSync(new URL("../migrations/0013_provider_spend_budget.sql",import.meta.url),"utf8"));
+    assert.equal(classifyStage2SandboxSchema(inventory(),true),"both_migrated");
+    db.exec("CREATE TABLE unrelated_app_data(id TEXT)");
+    assert.throws(()=>classifyStage2SandboxSchema(inventory(),true),/differs from exact Stage 2/);
+  } finally { db.close(); }
+});
+
+test("Stage 2 schema guard rejects tampered migration definitions",()=>{
+  const db=new DatabaseSync(":memory:");
+  try {
+    const inventory=()=>db.prepare(
+      "SELECT type,name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type,name"
+    ).all();
+    db.exec(readFileSync(new URL("../migrations/0012_credit_ledger.sql",import.meta.url),"utf8"));
+    db.exec("ALTER TABLE credit_accounts ADD COLUMN unexpected TEXT");
+    assert.throws(()=>classifyStage2SandboxSchema(inventory(),true),/differs from exact Stage 2/);
+  } finally { db.close(); }
+});
+
+test("Stage 2 ignores only exact remote protected D1 system table",()=>{
+  const system={type:"table",name:"_cf_KV",sql:"CREATE TABLE _cf_KV(key TEXT)"};
+  assert.equal(classifyStage2SandboxSchema([system],true),"empty");
+  assert.throws(()=>classifyStage2SandboxSchema([system],false),/Unexpected reserved D1 metadata schema/);
+  assert.throws(()=>classifyStage2SandboxSchema([
+    system,{type:"table",name:"_cf_kv",sql:"CREATE TABLE _cf_kv(key TEXT)"}
+  ],true),/differs from exact Stage 2/);
 });
 
 test("stage 2 proof refuses implicit mode or unknown arguments",()=>{
