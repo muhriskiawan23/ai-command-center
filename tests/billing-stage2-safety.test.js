@@ -43,6 +43,15 @@ test("remote D1 proof rejects missing dedicated credentials before remote calls"
   assert.notEqual(result.status,0);
   assert.match(result.stderr,/separate, narrowly scoped sandbox credential/);
 });
+test("remote D1 proof accepts a six-character sandbox suffix before credential checks",()=>{
+  const result=attempt(["--remote"],{
+    BOR_AI_D1_SANDBOX_DB_NAME:"bor-ai-billing-sbx-stage2",
+    BOR_AI_D1_SANDBOX_DB_ID:sandbox.BOR_AI_D1_SANDBOX_DB_ID
+  });
+  assert.notEqual(result.status,0);
+  assert.match(result.stderr,/separate, narrowly scoped sandbox credential/);
+  assert.doesNotMatch(result.stderr,/Dedicated remote sandbox database name required/);
+});
 test("remote D1 proof refuses production database identity",()=>{
   for(const dimensions of [
     {BOR_AI_D1_SANDBOX_DB_NAME:existing.database_name},
