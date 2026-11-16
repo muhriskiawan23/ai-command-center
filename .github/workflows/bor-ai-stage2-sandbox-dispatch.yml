@@ -1,0 +1,42 @@
+name: BOR AI Stage 2 remote D1 sandbox (manual only)
+
+# Standalone dispatcher on default branch; never runs on push, PR, or schedule.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  remote-d1-sandbox:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    environment: billing-sandbox
+    env:
+      CI: 'true'
+      CLOUDFLARE_SEND_METRICS: 'false'
+      BOR_AI_D1_SANDBOX_TOKEN: ${{ secrets.BOR_AI_D1_SANDBOX_TOKEN }}
+      BOR_AI_D1_SANDBOX_ACCOUNT_ID: ${{ vars.BOR_AI_D1_SANDBOX_ACCOUNT_ID }}
+      BOR_AI_D1_SANDBOX_DB_NAME: ${{ vars.BOR_AI_D1_SANDBOX_DB_NAME }}
+      BOR_AI_D1_SANDBOX_DB_ID: ${{ vars.BOR_AI_D1_SANDBOX_DB_ID }}
+    steps:
+      - name: Checkout pinned, reviewed Stage 2 test code (not production main)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: e81cbfca8bc98cc2e1c377d3fd68a719e9ede1f4
+          persist-credentials: false
+      - name: Assert exact reviewed test commit
+        run: test "$(git rev-parse HEAD)" = "e81cbfca8bc98cc2e1c377d3fd68a719e9ede1f4"
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Verify remote isolated D1 SQL financial invariants
+        run: node tests/billing/stage2-d1-proof.mjs --remote
+      - name: Classify evidence
+        if: success()
+        run: |
+          echo "Remote sandbox D1 invariants verified on pinned Stage 2 code."
+          echo "No production migrations, Worker deploys, paid inference or payments."
