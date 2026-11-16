@@ -11,6 +11,7 @@ import { randomUUID } from "node:crypto";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { assertFreshSandboxTables } from "./stage2-schema-guard.mjs";
 
 const execAsync = promisify(execFile);
 const mode = process.argv[2];
@@ -125,8 +126,10 @@ function wallet(request,user,amount,timestamp) {
     VALUES ('${request}','${user}',${amount},'reserved',${timestamp},${timestamp})`;
 }
 function ensureFreshTarget() {
+  // D1 remote always has the reserved _cf_KV metadata table. Its presence
+  // is not an application schema; everything else must be rejected.
   const existing=sql("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name");
-  assert.equal(existing.length,0,"Proof requires a NEW EMPTY sandbox database, never an existing app database");
+  assertFreshSandboxTables(existing,isRemote);
 }
 function verifyRemoteIdentity() {
   const raw=run(["--yes","wrangler@4","d1","list","--json"]);
