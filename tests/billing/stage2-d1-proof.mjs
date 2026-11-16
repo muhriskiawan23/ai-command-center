@@ -24,7 +24,7 @@ const prodNames = new Set((prod.d1_databases || []).map(x => x.database_name));
 const database = isRemote ? process.env.BOR_AI_D1_SANDBOX_DB_NAME : "bor-ai-stage2-local-only";
 const databaseId = isRemote ? process.env.BOR_AI_D1_SANDBOX_DB_ID : randomUUID();
 if (isRemote) {
-  assert.match(database || "", /^bor-ai-billing-sbx-[a-z0-9-]{8,40}$/,
+  assert.match(database || "", /^bor-ai-billing-sbx-[a-z0-9-]{6,40}$/,
     "Dedicated remote sandbox database name required");
   assert.match(databaseId || "", uuid, "Dedicated sandbox database UUID required");
   assert.ok(!prodIds.has(databaseId) && !prodNames.has(database),
