@@ -15,10 +15,21 @@ WITH journal AS (
  SELECT request_id,
    SUM(CASE WHEN event_kind='dispatched' THEN 1 ELSE 0 END) AS dispatched_count,
    SUM(CASE WHEN event_kind='usage_measured' THEN 1 ELSE 0 END) AS measured_count,
-   SUM(CASE WHEN event_kind='outcome_unknown' THEN 1 ELSE 0 END) AS unknown_count,
-   SUM(CASE WHEN event_kind='usage_unverified' THEN 1 ELSE 0 END) AS unverified_count,
+   -- Count unresolved failures per ATTEMPT, not all historical error events
+   -- in the request. A measured retry must not hide a different unknown
+   -- attempt; a later measured event on the SAME attempt resolves its flag.
+   SUM(CASE WHEN event_kind='outcome_unknown' AND NOT EXISTS (
+      SELECT 1 FROM provider_usage_events measured
+      WHERE measured.attempt_id=events.attempt_id
+        AND measured.event_kind='usage_measured'
+   ) THEN 1 ELSE 0 END) AS unknown_count,
+   SUM(CASE WHEN event_kind='usage_unverified' AND NOT EXISTS (
+      SELECT 1 FROM provider_usage_events measured
+      WHERE measured.attempt_id=events.attempt_id
+        AND measured.event_kind='usage_measured'
+   ) THEN 1 ELSE 0 END) AS unverified_count,
    COALESCE(SUM(CASE WHEN event_kind='usage_measured' THEN provider_cost_micro_usd ELSE 0 END),0) AS measured_cost
- FROM provider_usage_events GROUP BY request_id
+ FROM provider_usage_events events GROUP BY request_id
 ),
 unresolved_dispatch AS (
  SELECT dispatch.request_id, COUNT(*) AS stale_dispatch_count
@@ -50,9 +61,9 @@ SELECT COUNT(*) AS budget_reservations,
    AND dispatched_count=0 AND created_at <= ? THEN 1 ELSE 0 END),0) AS stale_pre_dispatch_dual_holds,
  COALESCE(SUM(stale_dispatch_count),0) AS stale_dispatches_without_outcome,
  COALESCE(SUM(CASE WHEN provider_status='reserved' AND wallet_status='reserved'
-   AND unknown_count>0 AND measured_count=0 THEN 1 ELSE 0 END),0) AS unknown_provider_holds,
+   AND unknown_count>0 THEN 1 ELSE 0 END),0) AS unknown_provider_holds,
  COALESCE(SUM(CASE WHEN provider_status='reserved' AND wallet_status='reserved'
-   AND unverified_count>0 AND measured_count=0 THEN 1 ELSE 0 END),0) AS unverified_usage_holds,
+   AND unverified_count>0 THEN 1 ELSE 0 END),0) AS unverified_usage_holds,
  COALESCE(SUM(CASE WHEN provider_status='reserved'
    AND measured_count>0 THEN 1 ELSE 0 END),0) AS measured_pending_provider_settlement,
  COALESCE(SUM(CASE WHEN provider_status='settled' AND wallet_status='reserved'
