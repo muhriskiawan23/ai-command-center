@@ -195,6 +195,17 @@ The list-price estimate is **17 micro-USD** when rounded up per request.
 The sandbox request was within the free allowance. An overage invoice and
 paid-plan billing remain unverified.
 
+### Live sandbox settlement
+
+The [settlement proof](https://github.com/muhriskiawan23/ai-command-center/actions/runs/44107564777)
+ran one real Workers AI request through the journal, budget and wallet on a
+separate sandbox D1. The provider reported 42 input and 2 output tokens. The
+budget and test wallet each reserved 7,069 units in their respective ledgers
+and settled 17 at the model's published tariff. The test wallet ended at 7,052
+microcredits. D1 recorded one dispatch, one measured event and one reservation
+per ledger. The repeated request was refused before invoking the provider again.
+The workflow verified that Worker routing was disabled after the proof.
+
 ## Safety and privacy
 
 - No migrations against production or the Stage 2 disposable remote test DB.
