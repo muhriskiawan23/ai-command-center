@@ -237,7 +237,7 @@ function setState(next,notice=""){
   if(!inChatView()){closeMemoryDom(false);closeDrawerDom(false)}
   syncInert();renderAuth();
   if(inChatView())void refreshPlanView();
-  else {planRequestSeq++;}
+  else {planRequestSeq++;clearTimeout(planRefreshTimer);}
 }
 function resetChatView(){
   navSeq++;loadingChat=false;activePdf=null;activeCsv=null;renderPdfAttachment();renderCsvAttachment();lockComposer();
@@ -275,9 +275,12 @@ function renderAuth(){
 // Display the server-verified active subscription. There is no app mode
 // selector: a Pro member is always Pro until renewal/expiry/revocation.
 let planRequestSeq=0;
+let planRefreshTimer=null;
 const TIER_LABELS={free:"Free",basic:"Basic",pro:"Pro"};
 async function refreshPlanView(){
+  clearTimeout(planRefreshTimer);
   const sequence=++planRequestSeq;
+  let refreshSeconds=60;
   const notice=$("planStatus"),badge=$("planBadge");
   badge.textContent="Memeriksa…";
   notice.textContent="Status paket sedang diverifikasi server.";
@@ -287,6 +290,8 @@ async function refreshPlanView(){
     const plan=result.plan;
     if(!plan || !Object.hasOwn(TIER_LABELS,plan.plan))
       throw new Error("Paket tidak valid");
+    if(Number.isSafeInteger(plan.recheckAfterSeconds)&&plan.recheckAfterSeconds>=1)
+      refreshSeconds=Math.min(60,plan.recheckAfterSeconds);
     badge.textContent=TIER_LABELS[plan.plan];
     notice.textContent=plan.plan==="pro"
       ?"Pro aktif: otomatis termasuk seluruh fitur Basic dan Free sesuai kuota."
@@ -297,8 +302,20 @@ async function refreshPlanView(){
     if(sequence!==planRequestSeq||!inChatView())return;
     badge.textContent="Belum terverifikasi";
     notice.textContent="Status paket tidak dapat diperiksa. Fitur berbayar tetap terkunci.";
+  }finally{
+    if(sequence===planRequestSeq&&inChatView()&&!document.hidden)
+      planRefreshTimer=setTimeout(()=>void refreshPlanView(),refreshSeconds*1000);
   }
 }
+function refreshPlanOnResume(){
+  clearTimeout(planRefreshTimer);
+  if(inChatView()&&!document.hidden)
+    planRefreshTimer=setTimeout(()=>void refreshPlanView(),100);
+}
+document.addEventListener("visibilitychange",refreshPlanOnResume);
+window.addEventListener("focus",refreshPlanOnResume);
+window.addEventListener("pageshow",refreshPlanOnResume);
+window.addEventListener("pagehide",()=>{clearTimeout(planRefreshTimer);planRequestSeq++;});
 let githubConnection=null;
 let githubConnectionLoading=false;
 let githubConnectionRequest=0;

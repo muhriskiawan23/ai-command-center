@@ -57,3 +57,18 @@ test("failed entitlement lookup never displays an invented paid subscription",as
   await expect(page.locator("#planBadge")).toHaveText("Belum terverifikasi");
   await expect(page.locator("#planStatus")).toContainText("tetap terkunci");
 });
+test("returning to the tab rechecks a refunded subscription without a page reload",async({page,context,app})=>{
+  await loginAs(context,app,USER);seedPaid(app,"pro");
+  await page.goto(app.url);await reveal(page);
+  await expect(page.locator("#planBadge")).toHaveText("Pro");
+  app.db.sqlite.prepare("UPDATE verified_plan_payments SET verification_status='refunded'").run();
+  await page.evaluate(()=>window.dispatchEvent(new Event("focus")));
+  await expect(page.locator("#planBadge")).toHaveText("Free");
+});
+test("an open tab rechecks the package when the server entitlement expires",async({page,context,app})=>{
+  await loginAs(context,app,USER);seedPaid(app,"pro");
+  app.db.sqlite.prepare("UPDATE plan_entitlements SET ends_at=?").run(Math.floor(Date.now()/1000)+3);
+  await page.goto(app.url);await reveal(page);
+  await expect(page.locator("#planBadge")).toHaveText("Pro");
+  await expect(page.locator("#planBadge")).toHaveText("Free",{timeout:8000});
+});

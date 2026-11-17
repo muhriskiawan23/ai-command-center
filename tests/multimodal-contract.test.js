@@ -7,12 +7,7 @@ import {
   buildImageUnderstandingRequest,buildImageGenerationRequest,
   buildVideoFrameAnalysisPlan
 } from "../src/multimodal-contract.js";
-function png({width=64,height=64,extra=0}={}){
-  const a=new Uint8Array(Math.max(24,24+extra));
-  a.set([137,80,78,71,13,10,26,10]);a.set([73,72,68,82],12);
-  const view=new DataView(a.buffer);view.setUint32(16,width);view.setUint32(20,height);
-  return "data:image/png;base64,"+Buffer.from(a).toString("base64");
-}
+import { pngDataUri as png } from "./helpers/media-fixtures.js";
 const sample=png();
 test("vision request matches Cloudflare Moondream and does not leak photos as text prompts",()=>{
   const q=buildImageUnderstandingRequest({imageDataUri:sample,question:"Apa yang terlihat?"});

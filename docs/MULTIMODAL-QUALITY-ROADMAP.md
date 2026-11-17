@@ -52,6 +52,29 @@ send every video frame to paid model calls.
   `tests/e2e/media-lab.spec.js` cover upload limits, spoofing,
   Cloudflare multipart, timestamps, local editing and media privacy.
 
+### Media and subscription hardening (18 Nov 2026)
+- Shared browser/Worker `public/media-validation.js` rejects header-only
+  files, incomplete containers, bad PNG chunk checksums, mismatched WebP
+  sizes/canvas, invalid JPEG segments, animation and trailing PNG/WebP data.
+  Preflight runs before browser photo decompression. This is **container
+  validation**, not a full compressed-bitstream decoder or content moderation;
+  a bounded server decoder/re-encode remains a paid-dispatch release gate.
+- A video request's frame bundle is capped at 12 MiB in aggregate, in addition
+  to the existing 4 MiB/frame, 12-frame and 120-second limits.
+- Local video extraction waits for decoded data, cancels on source changes,
+  cleans listeners/URLs on cancellation, and never appends stale frames from
+  an older job. Re-selecting the same file works. Synthetic WebM E2E tests
+  cover five-frame extraction, cancellation and zero media uploads.
+- The HTML security policy explicitly permits same-origin/blob media;
+  external media hosts remain blocked. Tabs support arrow/Home/End keys.
+- The plan API returns server-derived expiry/recheck timing. Visible tabs
+  recheck at expiry or within 60 seconds, and on focus/visibility resume.
+  Server authorization remains authoritative on each protected request;
+  polling never grants credits or extends a subscription.
+- Specification references for the container checks:
+  https://www.w3.org/TR/png-3/ and
+  https://developers.google.com/speed/webp/docs/riff_container .
+
 ## Provider evidence (recheck before deployment)
 Official Cloudflare Workers AI:
 - Moondream 3.1 (image-to-text, image data URI, question/answer, pricing):

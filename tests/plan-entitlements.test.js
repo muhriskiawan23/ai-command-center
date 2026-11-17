@@ -79,6 +79,8 @@ test("Basic subscriber is Basic automatically; retains Free but cannot use Pro",
   assert.equal(plan.plan,"basic");
   assert.equal(plan.effectiveTier,"basic");
   assert.equal(plan.paidTier,"basic");
+  assert.equal(plan.expiresAt,NOW+3600);
+  assert.equal(plan.recheckAfterSeconds,60);
   assert.ok(plan.accessibleFeatures.includes("multi_agent"));
   assert.ok(plan.accessibleFeatures.includes("image_understanding"));
   assert.ok(!plan.accessibleFeatures.includes("advanced_video_analysis"));

@@ -20,7 +20,7 @@
     </section>
     <div class="tabs" role="tablist" aria-label="Alat Media Lab">
       <button id="photoTab" type="button" role="tab" aria-selected="true" aria-controls="photoWorkspace">Efek foto</button>
-      <button id="videoTab" type="button" role="tab" aria-selected="false" aria-controls="videoWorkspace">Cuplikan video</button>
+      <button id="videoTab" type="button" role="tab" aria-selected="false" aria-controls="videoWorkspace" tabindex="-1">Cuplikan video</button>
     </div>
     <section id="photoWorkspace" class="workspace" role="tabpanel" aria-labelledby="photoTab">
       <div class="panel">
@@ -73,6 +73,6 @@
     </section>
   </main>
   <footer><a href="/">BOR AI</a> · Pratinjau lokal, bukan fitur AI berbayar yang aktif.</footer>
-  <script src="/media-lab.js" defer></script>
+  <script type="module" src="/media-lab.js"></script>
 </body>
 </html>

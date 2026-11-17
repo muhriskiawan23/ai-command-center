@@ -47,12 +47,13 @@ export function featuresForTier(t){
   if(tier(t)===null)throw new TypeError("Invalid plan tier");
   return Object.freeze(Object.keys(PLAN_FEATURE_LEVELS).filter(feature=>tierAllows(t,feature)));
 }
-function snapshot(t,reason){
+function snapshot(t,reason,{endsAt=null,nowSec=null}={}){
   return Object.freeze({
     plan:t,effectiveTier:t,paidTier:t==="free"?null:t,
     accessibleFeatures:featuresForTier(t),
     paidCheckoutLive:false,creditsGranted:false,
-    reason,source:"server"
+    reason,source:"server",expiresAt:endsAt,
+    recheckAfterSeconds:endsAt===null?60:Math.max(1,Math.min(60,endsAt-nowSec))
   });
 }
 export async function resolvePlanAccess(env,userId,{nowSec=Math.floor(Date.now()/1000)}={}){
@@ -79,7 +80,7 @@ export async function resolvePlanAccess(env,userId,{nowSec=Math.floor(Date.now()
   if(row.entitlement_status!=="active"||row.payment_status!=="verified_paid"||
     row.verified_at>nowSec||row.starts_at>nowSec||row.ends_at<=nowSec)
     return snapshot("free","inactive_or_expired_payment");
-  return snapshot(row.paid_tier,"verified_paid_entitlement");
+  return snapshot(row.paid_tier,"verified_paid_entitlement",{endsAt:row.ends_at,nowSec});
 }
 export async function authorizePlanFeature(env,userId,feature,options={}){
   const requiredTier=minimumPlanForFeature(feature);
