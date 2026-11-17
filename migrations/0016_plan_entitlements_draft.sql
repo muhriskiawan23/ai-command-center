@@ -8,7 +8,7 @@
 
 CREATE TABLE IF NOT EXISTS verified_plan_payments (
   order_id TEXT PRIMARY KEY NOT NULL,
-  user_id TEXT NOT NULL REFERENCES users(id),
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   purchased_tier TEXT NOT NULL CHECK (purchased_tier IN ('basic','pro')),
   verification_status TEXT NOT NULL CHECK (
     verification_status IN ('verified_paid','refunded','chargeback','revoked')
@@ -24,7 +24,7 @@ CREATE INDEX IF NOT EXISTS idx_verified_plan_payments_user
 -- original payment reference with one newly verified order, never duplicate
 -- entitlements or stack credits from Pro + Basic.
 CREATE TABLE IF NOT EXISTS plan_entitlements (
-  user_id TEXT PRIMARY KEY NOT NULL REFERENCES users(id),
+  user_id TEXT PRIMARY KEY NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   paid_tier TEXT NOT NULL CHECK (paid_tier IN ('basic','pro')),
   payment_order_id TEXT NOT NULL UNIQUE,
   status TEXT NOT NULL CHECK (status IN (
@@ -44,7 +44,7 @@ CREATE TABLE IF NOT EXISTS plan_entitlements (
 -- Server must atomically verify paid eligibility on each upgrade and recheck
 -- before every protected request. This table alone NEVER grants paid access.
 CREATE TABLE IF NOT EXISTS plan_selections (
-  user_id TEXT PRIMARY KEY NOT NULL REFERENCES users(id),
+  user_id TEXT PRIMARY KEY NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   selected_tier TEXT NOT NULL CHECK (selected_tier IN ('free','basic','pro')),
   updated_at INTEGER NOT NULL CHECK (updated_at >= 0)
 );
@@ -52,3 +52,8 @@ CREATE TABLE IF NOT EXISTS plan_selections (
 -- Prevent reusing the same provider order for two different accounts/tiers.
 -- The composite FKs protect cross-account entitlement assignment when D1 FK
 -- enforcement is enabled. The runtime also explicitly validates the JOIN.
+
+-- These are *ephemeral eligibility proofs*, not statutory invoice/settlement
+-- archives. On verified account erasure, delete linked selection and paid
+-- access rows via FK CASCADE; any lawfully retained financial invoice evidence
+-- must use a separately reviewed, minimized retention system.
