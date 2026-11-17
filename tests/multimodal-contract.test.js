@@ -35,14 +35,18 @@ test("text to image and wallpaper requests create Cloudflare multipart schema",a
   assert.match(bytes,/name="width"/);
   assert.match(bytes,/1024/);
   const wall=buildImageGenerationRequest({prompt:"Wallpaper malam sinematik.",width:1920,height:1080,wallpaper:true});
-  assert.equal(wall.requiredFeature,"wallpaper_creation");
+  assert.equal(wall.requiredFeature,"high_detail_image_generation");
+  const basicWall=buildImageGenerationRequest({prompt:"Wallpaper lembut.",width:1024,height:1024,wallpaper:true});
+  assert.equal(basicWall.requiredFeature,"wallpaper_creation");
 });
 test("reference image edits use indexed input_image fields and bounded blobs",async()=>{
   const r=buildImageGenerationRequest({
     prompt:"Ganti gaya foto menjadi ilustrasi akvarel.",
     references:[png(),png({width:128,height:128})]
   });
-  assert.equal(r.requiredFeature,"image_editing");
+  assert.equal(r.requiredFeature,"multi_reference_image_editing");
+  const single=buildImageGenerationRequest({prompt:"Buat efek cat air.",references:[sample]});
+  assert.equal(single.requiredFeature,"image_editing");
   assert.equal(r.referenceCount,2);
   const buf=await new Response(r.payload.multipart.body).arrayBuffer();
   const s=new TextDecoder().decode(buf);
@@ -62,7 +66,7 @@ test("invalid size, MIME spoofing and oversized input rejected BEFORE any model 
     imageDataUri:img,question:"Jelaskan ini"
   }),/image|PNG|JPEG|dimensions|URI|byte|file|base64/i);
   assert.throws(()=>buildImageGenerationRequest({prompt:"abc",width:2048}),/dimensions/);
-  assert.throws(()=>buildImageGenerationRequest({prompt:"abc",references:[png({width:600})]}),/dimensions/);
+  assert.throws(()=>buildImageGenerationRequest({prompt:"abc",references:[png({width:512})]}),/dimensions/);
   assert.throws(()=>buildImageGenerationRequest({prompt:"abc",references:Array(5).fill(sample)}),/four/);
   assert.throws(()=>buildImageGenerationRequest({prompt:"a"}),/prompt/);
   assert.throws(()=>buildImageUnderstandingRequest({imageDataUri:sample,question:"a"}),/prompt/);
