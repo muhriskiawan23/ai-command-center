@@ -1,0 +1,12 @@
+{
+  "name": "bor-ai-stage3-d1-proof-wrangler",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Isolated audited Wrangler CLI for manual Stage 3 sandbox proof, no production usage",
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "wrangler": "4.160.0"
+  }
+}
