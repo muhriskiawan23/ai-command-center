@@ -52,11 +52,13 @@ jobs:
           cache: npm
       - name: Install locked dependencies
         run: npm ci
-      - name: Prepare fixed Wrangler CLI BEFORE sandbox credentials are available
+      - name: Install audited integrity-locked Wrangler CLI BEFORE sandbox credentials are available
         shell: bash
         run: |
           set -euo pipefail
-          npm install --prefix "$RUNNER_TEMP/stage3-wrangler" --no-save --ignore-scripts --no-audit --no-fund --save-exact wrangler@4.160.0
+          mkdir -p "$RUNNER_TEMP/stage3-wrangler"
+          cp tests/billing/stage3-wrangler-lock/package.json tests/billing/stage3-wrangler-lock/package-lock.json "$RUNNER_TEMP/stage3-wrangler/"
+          npm ci --prefix "$RUNNER_TEMP/stage3-wrangler" --ignore-scripts --no-audit --no-fund
           "$RUNNER_TEMP/stage3-wrangler/node_modules/.bin/wrangler" --version
       - name: Verify exact NEW remote Stage 3 database and synthetic financial invariants
         # Secrets exist ONLY during this audited test step. In particular,
