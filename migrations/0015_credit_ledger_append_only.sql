@@ -19,3 +19,20 @@ BEFORE DELETE ON credit_ledger
 BEGIN
   SELECT RAISE(ABORT,'credit_ledger_append_only_delete_forbidden');
 END;
+
+-- SQLite INSERT OR REPLACE can delete a conflicting row internally without
+-- invoking DELETE triggers if recursive_triggers is OFF. Prevent that bypass
+-- at the BEFORE INSERT stage as well. A repeated id or canonical financial
+-- reference is never an authorization to replace a financial history event.
+CREATE TRIGGER IF NOT EXISTS trg_credit_ledger_no_replace
+BEFORE INSERT ON credit_ledger
+WHEN EXISTS (
+  SELECT 1 FROM credit_ledger old
+  WHERE old.id = NEW.id
+     OR (old.user_id = NEW.user_id
+         AND old.reason = NEW.reason
+         AND old.reference_id = NEW.reference_id)
+)
+BEGIN
+  SELECT RAISE(ABORT,'credit_ledger_duplicate_or_replace_forbidden');
+END;
