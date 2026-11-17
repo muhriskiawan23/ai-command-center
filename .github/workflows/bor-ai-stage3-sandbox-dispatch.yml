@@ -21,7 +21,7 @@ jobs:
     env:
       CI: 'true'
       CLOUDFLARE_SEND_METRICS: 'false'
-      PINNED_TEST_SHA: '2c9903278ebbdbe92dcd99d595554e608ca53ee6'
+      PINNED_TEST_SHA: '7a2c34bba59d81f372ec6ed8ee062538324c9665'
     steps:
       - name: Refuse manual dispatch from any branch other than main
         shell: bash
@@ -34,7 +34,7 @@ jobs:
       - name: Checkout pinned reviewed unmerged test SHA, NOT production main
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: 2c9903278ebbdbe92dcd99d595554e608ca53ee6
+          ref: 7a2c34bba59d81f372ec6ed8ee062538324c9665
           persist-credentials: false
       - name: Refuse unreviewed or changed test commit
         shell: bash
