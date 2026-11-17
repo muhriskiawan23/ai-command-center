@@ -33,7 +33,10 @@ node tests/billing/stage3-staging-smoke.mjs
 
 The smoke runs four application paths on disposable local D1 and checks the
 settled wallet, the journal, concurrent replay, authentication, and unknown
-usage holds. Provider invoices and remote staging deployment remain separate.
+usage holds. The [remote sandbox proof](https://github.com/muhriskiawan23/ai-command-center/actions/runs/44102929468)
+reproduced these checks on Cloudflare. It recorded seven synthetic settlements
+and one hold in each ledger. The workflow disabled Worker routing after the
+run. No live AI usage occurred during that proof.
 
 The prototype demonstrates this mandatory sequence:
 
@@ -162,6 +165,35 @@ test tariff nor a calculated micro-USD event establishes actual invoice
 cost, consumption of the shared free allocation, account-specific
 eligibility or billable usage. Compare a separately operator-approved
 bounded staging call with provider dashboard/invoice before finance signoff.
+
+For the first live metering check, record the sandbox account's Workers plan
+and same-day Workers AI neuron total before running a single non-streaming
+request with fixed synthetic input and a 16-token output cap. Keep the UTC time,
+model ID and returned input/output counters, and compare the recorded neuron
+total after usage reporting catches up. Use the same UTC day for both readings.
+The published Llama 3.3 rates are 26,668 neurons per million input tokens and
+204,805 per million output tokens. Using the 24,000-token context as a
+conservative input bound, a single probe with at most 16 output tokens has a
+published-rate estimate of about 643.31 neurons, or $0.007069 before any free
+allocation. If the aggregate has other traffic, it cannot attribute the entire
+delta to the probe. A matched usage delta checks metering. Invoice
+reconciliation still requires Cloudflare's billable usage for the billing period.
+
+### Observed Workers Free sandbox metering
+
+The [live metering run](https://github.com/muhriskiawan23/ai-command-center/actions/runs/44105707860)
+sent one request at `2026-11-17T14:40:53.803Z` and received 42 prompt tokens,
+2 completion tokens, and 44 total tokens. A durable request claim prevented
+replay. The workflow verified that the Worker route was disabled at the end.
+The owner confirmed the sandbox was on Workers Free and reported the dashboard
+value **Neurons used today: 1.53/10k** after the request. The published rates
+yield **1.529666 neurons**, which rounds to the observed daily dashboard total.
+The per-model chart showed no data for its selected range. This comparison
+uses the daily total and has no numeric pre-run baseline.
+
+The list-price estimate is **17 micro-USD** when rounded up per request.
+The sandbox request was within the free allowance. An overage invoice and
+paid-plan billing remain unverified.
 
 ## Safety and privacy
 
