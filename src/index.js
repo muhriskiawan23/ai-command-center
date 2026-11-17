@@ -1418,6 +1418,10 @@ export default {
           return json({ error: "Status permintaan sebelumnya tidak dapat diperiksa. Coba muat ulang riwayat chat." }, 503);
         }
       }
+      if (typeof env.STAGE3_AUTHORIZE_INFERENCE === "function") {
+        const denial = await env.STAGE3_AUTHORIZE_INFERENCE({ channel: "chat", userId: user?.id, logicalId: body.requestId });
+        if (denial) return denial;
+      }
       if (env.CHAT_LIMITER?.limit) {
         let rateLimit;
         try {

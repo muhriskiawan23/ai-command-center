@@ -20,9 +20,13 @@ D1 financial ledger).
 `staging/stage3-worker.js` is a separate entry point that wraps the application
 Worker with the D1 budget, wallet and journal adapters. It requires the staging
 operator key and a D1 binding initialized with a staging-only request claim
-table. A repeated request ID is rejected before the application can dispatch a
-second model call. The entry point uses a fixed synthetic wallet and model
-response. It has no live AI binding and stubs Telegram delivery.
+table. Chat uses a valid application session and the chat request UUID. Public
+chat uses the API key owner and the staging request header. Telegram uses a
+separate webhook secret, a linked sender, and the Telegram update ID. Billing
+claims are scoped to the authenticated account and route before inference.
+Repeated requests either return a saved response where supported or are refused
+before another debit is reserved. The entry point uses synthetic account wallets
+and model responses. It has no live AI binding and stubs Telegram delivery.
 
 Run the workerd smoke with the existing Wrangler lockfile:
 

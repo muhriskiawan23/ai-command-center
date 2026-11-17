@@ -83,6 +83,10 @@ export async function handleTelegramWebhook(request, env, deps) {
     return response({ ok: true, unknownCommand: true });
   }
 
+  if (typeof env.STAGE3_AUTHORIZE_INFERENCE === "function") {
+    const denial = await env.STAGE3_AUTHORIZE_INFERENCE({ channel: "telegram", telegramId: sender.id, logicalId: update.update_id });
+    if (denial) return denial;
+  }
   if (env.CHAT_LIMITER?.limit) {
     try {
       const limited = await env.CHAT_LIMITER.limit({ key: `telegram:${sender.id}` });
