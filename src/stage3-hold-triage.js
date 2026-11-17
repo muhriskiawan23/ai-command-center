@@ -5,7 +5,7 @@ const COUNTS = Object.freeze([
   "budgetReservations", "staleBudgetHolds", "stalePreDispatchDualHolds",
   "unknownProviderHolds", "unverifiedUsageHolds",
   "measuredPendingProviderSettlement", "creditFinalizationPending",
-  "providerFinalizationPending", "settledWithoutMeasuredUsage",
+  "providerFinalizationPending", "walletSettledWithoutMeasuredUsage", "settledWithoutMeasuredUsage",
   "settledMeasuredCostMismatch", "orphanWalletHolds",
   "orphanProviderBudgetHolds", "orphanJournalDispatches"
 ]);
@@ -46,6 +46,8 @@ SELECT COUNT(*) AS budget_reservations,
    THEN 1 ELSE 0 END),0) AS credit_finalization_pending,
  COALESCE(SUM(CASE WHEN provider_status='reserved' AND wallet_status IN ('settled','released')
    THEN 1 ELSE 0 END),0) AS provider_finalization_pending,
+ COALESCE(SUM(CASE WHEN wallet_status='settled' AND measured_count=0
+   THEN 1 ELSE 0 END),0) AS wallet_settled_without_measured_usage,
  COALESCE(SUM(CASE WHEN provider_status='settled' AND actual_micro_usd>0
    AND measured_count=0 THEN 1 ELSE 0 END),0) AS settled_without_measured_usage,
  COALESCE(SUM(CASE WHEN provider_status='settled' AND actual_micro_usd IS NOT NULL
