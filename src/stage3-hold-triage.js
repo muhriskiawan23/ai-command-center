@@ -4,6 +4,7 @@
 const COUNTS = Object.freeze([
   "budgetReservations", "staleBudgetHolds", "stalePreDispatchDualHolds",
   "staleDispatchesWithoutOutcome", "unknownProviderHolds", "unverifiedUsageHolds",
+  "unresolvedUnknownAttempts", "unresolvedUnverifiedAttempts",
   "measuredPendingProviderSettlement", "creditFinalizationPending",
   "providerFinalizationPending", "walletSettledWithoutMeasuredUsage", "settledWithoutMeasuredUsage",
   "settledMeasuredCostMismatch", "orphanWalletHolds",
@@ -60,6 +61,10 @@ SELECT COUNT(*) AS budget_reservations,
  COALESCE(SUM(CASE WHEN provider_status='reserved' AND wallet_status='reserved'
    AND dispatched_count=0 AND created_at <= ? THEN 1 ELSE 0 END),0) AS stale_pre_dispatch_dual_holds,
  COALESCE(SUM(stale_dispatch_count),0) AS stale_dispatches_without_outcome,
+ -- Global incident exposure: a finalized request can still have a second
+ -- unresolved upstream attempt, even when there are no active financial holds.
+ COALESCE(SUM(unknown_count),0) AS unresolved_unknown_attempts,
+ COALESCE(SUM(unverified_count),0) AS unresolved_unverified_attempts,
  COALESCE(SUM(CASE WHEN provider_status='reserved' AND wallet_status='reserved'
    AND unknown_count>0 THEN 1 ELSE 0 END),0) AS unknown_provider_holds,
  COALESCE(SUM(CASE WHEN provider_status='reserved' AND wallet_status='reserved'
