@@ -80,6 +80,7 @@ export function buildImageGenerationRequest({
       }
     },
     requiredFeature:feature,width,height,referenceCount:images.length,
+    referenceDimensions:Object.freeze(images.map(({width,height})=>Object.freeze({width,height}))),
     // Output is a new generated file; it must not be confused with a raw
     // photograph or silently replace the original source asset.
     provenance:"AI-generated-or-edited; awaiting independent provider validation"
@@ -88,7 +89,9 @@ export function buildImageGenerationRequest({
 export function buildVideoFrameAnalysisPlan({
   frames,durationSeconds,question="Ringkas video berdasarkan frame yang terlihat."
 }={}){
-  const q=assertPrompt(question,1200);
+  // Leave room for the server's timestamp/instruction prefix in the vision
+  // model's 1200-character question bound.
+  const q=assertPrompt(question,1000);
   if(!Number.isFinite(durationSeconds)||durationSeconds<=0||
     durationSeconds>MAX_VIDEO_SECONDS)
     throw new RangeError("Video length outside short-video preview bounds");

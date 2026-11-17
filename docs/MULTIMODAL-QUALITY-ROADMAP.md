@@ -34,6 +34,12 @@ finalize, slow-queue timeouts and cancellation recovery. Never silently
 send every video frame to paid model calls.
 
 ## Technical prototypes added
+- `src/multimodal-inference.js` and `multimodal-metering.js` connect model
+  contracts to actual entitlement/budget/credit adapters with per-attempt
+  append-only media usage evidence, bounded provider deadlines and held-funds
+  failure handling. Integrated SQLite tests use synthetic provider receipts;
+  no live adapter/production route is installed. See
+  [Multimodal billing integration](MULTIMODAL-BILLING-INTEGRATION.md).
 - `src/multimodal-contract.js`: strict data URI-only PNG/JPEG/WebP
   input, byte/image-dimension bounds, prompt and output dimension
   validation, supported feature labels and model-specific request builders.
