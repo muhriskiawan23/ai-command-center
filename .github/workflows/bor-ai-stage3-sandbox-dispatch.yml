@@ -59,6 +59,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/stage3-wrangler"
           cp tests/billing/stage3-wrangler-lock/package.json tests/billing/stage3-wrangler-lock/package-lock.json "$RUNNER_TEMP/stage3-wrangler/"
           npm ci --prefix "$RUNNER_TEMP/stage3-wrangler" --ignore-scripts --no-audit --no-fund
+          npm audit --prefix "$RUNNER_TEMP/stage3-wrangler" --audit-level=high --no-fund
           "$RUNNER_TEMP/stage3-wrangler/node_modules/.bin/wrangler" --version
       - name: Verify exact NEW remote Stage 3 database and synthetic financial invariants
         # Secrets exist ONLY during this audited test step. In particular,
