@@ -42,6 +42,21 @@ Example with one model call of 2,000 input + 500 output tokens using the Cloudfl
 
 Estimated **remaining revenue before other expenses** if credits are completely consumed: Basic $1.69, Pro $5.49. These are **not margins or profit** and must not be promoted as such; subtract payment processing, FX, taxes, refunds, Workers/DB/other infrastructure, fraud and support costs as applicable.
 
+## Reproducible fee and cost sanity checks (offline only)
+
+The pure, integer-only, fail-closed scenario functions in `evaluation/bor-ai-credit-scenarios.js` and `tests/bor-ai-credit-scenarios.test.js` test the above token-cost arithmetic without a Worker, credentials, billable AI calls, gateway activity or access to production data.
+
+Midtrans's public pricing (https://midtrans.com/id/biaya) advertises **Rp4,000 for bank virtual account**, **0.7% QRIS**, and **2% GoPay**. These may be different for specific digital-product merchants or under an individual merchant agreement. Additional taxes (including VAT on gateway fees), FX spread and other costs are **not included**. Example conversion uses **Rp18,260 per USD only to match the public catalog's 17 Nov 2026 illustration**; it is not a live quote.
+
+| Illustrative scenario | Gross IDR | Midtrans fee IDR | Proposed maximum AI/search cost IDR | Remainder before other costs |
+|---|---:|---:|---:|---:|
+| Basic / bank VA | Rp36,338 | Rp4,000 | Rp5,478 | Rp26,860 |
+| Pro / QRIS | Rp127,638 | Rp894 | Rp27,390 | Rp99,354 |
+
+**These figures are NOT net profit, an approved price quotation, a guaranteed margin, or evidence of actual customer/provider usage.** They model 100% consumption of each proposed credit allowance, before other costs. A full merchant fee quote, actual provider billing, refunds, disputes, taxes, Cloudflare/Workers/D1 charges and product operations can change the result.
+
+The helper rejects missing/invalid token counts and unsupported payment methods. Live billable inference must separately reject *unmeasured* token usage and unknown provider pricing. Do not turn the offline helper into a production billing authorization.
+
 ## Mandatory before finalizing credit allocations
 
 1. Confirm provider-account plan/rates and capture trustworthy input and output token usage for every real model call, including multi-agent, failed calls and retry attempts. Validate against Cloudflare's invoice/usage reporting.
