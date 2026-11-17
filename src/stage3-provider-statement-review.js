@@ -3,6 +3,7 @@
 // certify actual Cloudflare neurons, invoices, payment or commercial pricing.
 const MAX_MICRO = Number.MAX_SAFE_INTEGER;
 const ID = /^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,199}$/;
+const MODEL_ID = /^[A-Za-z0-9@][A-Za-z0-9._:@/-]{0,199}$/;
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 const SQL = `
 SELECT date(d.created_at,'unixepoch') AS utc_day,
@@ -40,7 +41,7 @@ function validIdentity(row){
   return row && typeof row==="object" &&
     typeof row.utcDay==="string" && DAY.test(row.utcDay) &&
     typeof row.provider==="string" && ID.test(row.provider) &&
-    typeof row.model==="string" && ID.test(row.model);
+    typeof row.model==="string" && MODEL_ID.test(row.model);
 }
 function checkInternalRow(row){
   if(!validIdentity(row)||
