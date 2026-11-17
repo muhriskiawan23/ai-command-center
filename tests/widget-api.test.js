@@ -187,3 +187,21 @@ test("public chat retains compatibility with object-shaped model adapters", asyn
   assert.equal(response.status, 200);
   assert.equal((await response.json()).response, "Respons object adapter");
 });
+
+test("public API ignores no fake Basic/Pro entitlement: explicit plan or credit fields are rejected",async()=>{
+  for(const override of [{tier:"pro"},{plan:"basic"},{paidTier:"pro"},{credits:999999}]){
+    const DB=makeDb({key:validKey});
+    let invoked=false;
+    const request=new Request("https://api.example/api/public/chat",{
+      method:"POST",
+      headers:{Origin:"https://shop.example",Authorization:"Bearer "+secret,"Content-Type":"application/json"},
+      body:JSON.stringify({message:"Halo",...override})
+    });
+    const response=await handlePublicChatRoute(request,{DB},{
+      ...deps,runAgent:async()=>{invoked=true;return{response:"must not be called"};}
+    });
+    assert.equal(response.status,400);
+    assert.equal(invoked,false);
+    assert.equal(DB.calls.some(call=>call.sql.includes("UPDATE public_api_keys")),false);
+  }
+});
