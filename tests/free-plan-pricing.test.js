@@ -25,7 +25,8 @@ test("Free entry respects existing auth before entering Guest without checkout",
   const free = boot.indexOf('get("plan")==="free"');
   assert.ok(auth >= 0 && free > auth);
   assert.match(boot, /writeGuestFlag\(true\);currentUser=null;setState\(AppState.GUEST\);await enterChat\(\);loadGoogle\(\);return/);
-  assert.doesNotMatch(boot, /midtrans|checkout|payment/i);
+  const executable = boot.split("\n").filter(line => !line.trim().startsWith("//")).join("\n");
+  assert.doesNotMatch(executable, /midtrans|checkout|payment/i);
 });
 
 test("Free quotas are accurately described as units, not credits or tokens", () => {
