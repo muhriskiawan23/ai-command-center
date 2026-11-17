@@ -116,9 +116,15 @@ export function buildImageGenerationRequest({
   if(!Array.isArray(references)||references.length>4)
     throw new TypeError("At most four bounded image references supported");
   const images=references.map(uri=>decodeImage(uri,{
-    maxBytes:2*1024*1024,maxWidth:512,maxHeight:512
+    maxBytes:2*1024*1024,maxWidth:511,maxHeight:511
   }));
-  const feature=images.length?"image_editing":
+  // Tier must be bound to the *actual* operation at the server, never to a
+  // browser-declared "Basic" operation. Large output and multi-reference
+  // edits are Pro-only even when the prompt is labeled "wallpaper".
+  const highDetail=width>1024||height>1024;
+  const feature=images.length>1?"multi_reference_image_editing":
+    highDetail?"high_detail_image_generation":
+    images.length===1?"image_editing":
     wallpaper?"wallpaper_creation":"image_generation";
   const form=new FormData();
   form.append("prompt",text);
