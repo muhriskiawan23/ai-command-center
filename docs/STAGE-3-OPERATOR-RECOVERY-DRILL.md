@@ -84,6 +84,38 @@ providerInvoiceVerified=false.
   mismatched/zero-settled provider amounts remain held or escalated.
 - Provider invoice evidence remains unverified even if local audits are clean.
 
+
+## Read-only per-request verification (additional draft guard)
+
+`src/stage3-operator-case-triage.js` adds a **single SELECT** for one
+server-issued request ID using the three unapplied SQL schemas. The result
+contains **no request ID, account ID, attempt ID, raw tokens, prompt or invoice**.
+The caller must enforce strict operator authorization before accessing the
+module; no HTTP route imports it. This is only diagnostic. Every result reports
+`operatorActionAuthorized=false` and `providerInvoiceVerified=false`.
+
+It distinguishes:
+- A provider-settled / wallet-reserved case that *might* be reviewed for
+  finalizing the original wallet hold, with independently verified invoice,
+  customer tariff and signoffs.
+- Measured journal evidence with both holds still open, which requires
+  provider-first review.
+- Pre-dispatch holds that are *candidates* only after independent proof that
+  the provider was never called; a missing journal event is not proof.
+- Unknown/missing usage, unmeasured or duplicate attempts, mixed tariff
+  versions, provider/model mismatch, cost mismatch, zero-provider settlement
+  after dispatch, released customer credit after dispatch and orphan records.
+  All are flagged for escalation, never automatically resolved.
+
+A candidate is **not permission to debit, settle or release**. This module
+cannot verify invoices, distinguish stale provider bills from final invoices,
+or authenticate human reviewers. Production authorization requires a
+separate evidence-bound and audited recovery service.
+
+Local regression tests:
+`node --test tests/stage3-operator-case-triage.test.js`
+on disposable in-memory SQLite, no external calls.
+
 ## Still blocked
 
 1. Authentic Workers AI provider usage and invoice reconciliation, approved
