@@ -1,0 +1,100 @@
+name: BOR AI Stage 3 synthetic Cloudflare sandbox proof
+
+on:
+  push:
+    branches: [ops/stage3-worker-sandbox-proof-01]
+    paths:
+      - '.github/workflows/bor-ai-stage3-synthetic-cloud-proof.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bor-ai-stage3-synthetic-cloud-proof
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    if: github.event.before == '0be02bbaf032172b1c1ef7c1079691e6c98bf283'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    environment: stage3-worker-sandbox
+    outputs:
+      subdomain: ${{ steps.access.outputs.subdomain }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 22
+      - name: Verify Worker token in the sandbox account and find workers.dev
+        id: access
+        env:
+          STAGE3_WORKER_TOKEN: ${{ secrets.BOR_AI_STAGE3_WORKER_DEPLOY_TOKEN }}
+        run: node staging/stage3-cloud-proof.mjs preflight
+  provision:
+    needs: prepare
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    environment: billing-sandbox
+    outputs:
+      database: ${{ steps.database.outputs.database }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 22
+      - name: Provision and seed a new sandbox D1
+        id: database
+        env:
+          STAGE3_D1_TOKEN: ${{ secrets.BOR_AI_D1_SANDBOX_TOKEN }}
+          STAGE3_D1_ACCOUNT: ${{ vars.BOR_AI_D1_SANDBOX_ACCOUNT_ID }}
+        run: node staging/stage3-cloud-proof.mjs provision
+  worker:
+    needs: [prepare, provision]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    environment: stage3-worker-sandbox
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 22
+      - name: Build the synthetic Worker without deploy credentials
+        run: |
+          npm ci --prefix tests/billing/stage3-wrangler-lock --ignore-scripts --no-audit --no-fund
+          tests/billing/stage3-wrangler-lock/node_modules/.bin/esbuild staging/stage3-worker.js --bundle --format=esm --platform=browser --outfile="$RUNNER_TEMP/stage3-worker.mjs"
+      - name: Deploy and exercise the authenticated sandbox Worker
+        env:
+          STAGE3_WORKER_TOKEN: ${{ secrets.BOR_AI_STAGE3_WORKER_DEPLOY_TOKEN }}
+          STAGE3_DATABASE: ${{ needs.provision.outputs.database }}
+          STAGE3_SUBDOMAIN: ${{ needs.prepare.outputs.subdomain }}
+        run: node staging/stage3-cloud-proof.mjs deploy
+      - name: Disable sandbox Worker routing
+        if: always()
+        env:
+          STAGE3_WORKER_TOKEN: ${{ secrets.BOR_AI_STAGE3_WORKER_DEPLOY_TOKEN }}
+        run: node staging/stage3-cloud-proof.mjs close
+  verify:
+    needs: [provision, worker]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    environment: billing-sandbox
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 22
+      - name: Verify settlement and reservation holds directly in sandbox D1
+        env:
+          STAGE3_D1_TOKEN: ${{ secrets.BOR_AI_D1_SANDBOX_TOKEN }}
+          STAGE3_D1_ACCOUNT: ${{ vars.BOR_AI_D1_SANDBOX_ACCOUNT_ID }}
+          STAGE3_DATABASE: ${{ needs.provision.outputs.database }}
+        run: node staging/stage3-cloud-proof.mjs verify
