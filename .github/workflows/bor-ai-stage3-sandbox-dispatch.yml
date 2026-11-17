@@ -1,0 +1,55 @@
+name: BOR AI Stage 3 remote D1 journal proof (MANUAL SANDBOX ONLY)
+
+# Prepared manual dispatcher. NO push/PR/schedule triggers and NO production deploy.
+# Requires a NEW empty D1 DB and explicit owner review/approval before any run.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bor-ai-stage3-remote-d1-sandbox
+  cancel-in-progress: false
+
+jobs:
+  stage3-remote-d1:
+    name: Verify three SQL migrations on NEW disposable remote D1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    environment: billing-sandbox
+    env:
+      CI: 'true'
+      CLOUDFLARE_SEND_METRICS: 'false'
+      PINNED_TEST_SHA: '3cdb6678fdad366cabc5a54c9f4d109592f5eef0'
+      BOR_AI_D1_SANDBOX_TOKEN: ${{ secrets.BOR_AI_D1_SANDBOX_TOKEN }}
+      BOR_AI_D1_SANDBOX_ACCOUNT_ID: ${{ vars.BOR_AI_D1_SANDBOX_ACCOUNT_ID }}
+      BOR_AI_D1_STAGE3_DB_NAME: ${{ vars.BOR_AI_D1_STAGE3_DB_NAME }}
+      BOR_AI_D1_STAGE3_DB_ID: ${{ vars.BOR_AI_D1_STAGE3_DB_ID }}
+    steps:
+      - name: Checkout pinned reviewed unmerged test SHA, NOT production main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 3cdb6678fdad366cabc5a54c9f4d109592f5eef0
+      - name: Refuse unreviewed or changed test commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACTUAL="$(git rev-parse HEAD)"
+          test "$ACTUAL" = "$PINNED_TEST_SHA" || {
+            echo '::error::Sandbox test commit does not match reviewed pin'
+            exit 1
+          }
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Verify exact NEW remote Stage 3 database and synthetic financial invariants
+        run: node tests/billing/stage3-d1-proof.mjs --remote
+      - name: Classify evidence accurately
+        run: |
+          echo 'Stage 3 SQL-only D1 proof passed using an isolated disposable remote database.'
+          echo 'No paid model provider usage, invoices, live payments, production migration or Worker deployment verified.'
