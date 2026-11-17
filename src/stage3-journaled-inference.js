@@ -4,6 +4,7 @@
 // This module alone does not authorize paid inference, pricing or deployment.
 import { calculateProviderCostMicroUsd } from "./credit-metering.js";
 import { appendProviderUsageEvent, strictProviderTokenUsage } from "./provider-usage-journal.js";
+import { authorizePlanFeature } from "./plan-entitlements.js";
 
 const MAX=BigInt(Number.MAX_SAFE_INTEGER);
 const OPAQUE=/^[A-Za-z0-9][A-Za-z0-9:_-]{0,119}$/;
@@ -32,8 +33,12 @@ function checkedTariff(tariff){
   if(!tariff || tariff.approved!==true || !valid(tariff.version,VERSION) ||
     !valid(tariff.provider,PROVIDER) || !valid(tariff.model,MODEL))
     throw new TypeError("Server-approved, bounded tariff required");
+  if(tariff.requiredPlan!==undefined &&
+     !["basic","pro"].includes(tariff.requiredPlan))
+    throw new TypeError("Server-approved minimum plan tier required");
   return {
     ...tariff,
+    requiredPlan:tariff.requiredPlan??"basic",
     inputRateMicroUsdPerMillion:positive(tariff.inputRateMicroUsdPerMillion,"inputRate"),
     outputRateMicroUsdPerMillion:positive(tariff.outputRateMicroUsdPerMillion,"outputRate"),
     creditNumerator:positive(tariff.creditNumerator,"creditNumerator"),
@@ -79,6 +84,15 @@ export async function runJournaledInferencePrototype({
   const policy=checkedTariff(tariff);
   const quote=quoteJournaledInference({tariff:policy,maxInputTokens,maxOutputTokens});
   if(!quote.allowed) return declined(quote.reason);
+  // In any future PLAN_ENTITLEMENTS_ENABLED staging run, the selected account
+  // tier must be independently verified BEFORE reserving spend or dispatching
+  // a provider. The tariff is trusted server-side and chooses Basic vs Pro.
+  // The prototype is inactive and never a production billing authorization.
+  if(env.PLAN_ENTITLEMENTS_ENABLED==="true"){
+    const feature=policy.requiredPlan==="pro"?"pro_credit_capacity":"basic_paid_credits";
+    const permission=await callSafe(()=>authorizePlanFeature(env,userId,feature));
+    if(permission?.allowed!==true)return declined("paid_plan_entitlement_rejected");
+  }
   const budgetId="ai:"+requestId;
   const budget=await callSafe(()=>providerBudget.reserve({
     id:budgetId,provider:policy.provider,model:policy.model,
