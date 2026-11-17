@@ -3,7 +3,7 @@
 // Do not import in production routes without independent review.
 const COUNTS = Object.freeze([
   "budgetReservations", "staleBudgetHolds", "stalePreDispatchDualHolds",
-  "unknownProviderHolds", "unverifiedUsageHolds",
+  "staleDispatchesWithoutOutcome", "unknownProviderHolds", "unverifiedUsageHolds",
   "measuredPendingProviderSettlement", "creditFinalizationPending",
   "providerFinalizationPending", "walletSettledWithoutMeasuredUsage", "settledWithoutMeasuredUsage",
   "settledMeasuredCostMismatch", "orphanWalletHolds",
@@ -20,6 +20,16 @@ WITH journal AS (
    COALESCE(SUM(CASE WHEN event_kind='usage_measured' THEN provider_cost_micro_usd ELSE 0 END),0) AS measured_cost
  FROM provider_usage_events GROUP BY request_id
 ),
+unresolved_dispatch AS (
+ SELECT dispatch.request_id, COUNT(*) AS stale_dispatch_count
+ FROM provider_usage_events dispatch
+ WHERE dispatch.event_kind='dispatched' AND dispatch.created_at <= ?
+   AND NOT EXISTS (
+     SELECT 1 FROM provider_usage_events outcome
+     WHERE outcome.attempt_id=dispatch.attempt_id AND outcome.event_kind!='dispatched'
+   )
+ GROUP BY dispatch.request_id
+),
 paired AS (
  SELECT b.id, b.status AS provider_status, b.actual_micro_usd,
         b.created_at, c.status AS wallet_status,
@@ -27,15 +37,18 @@ paired AS (
         COALESCE(j.measured_count,0) AS measured_count,
         COALESCE(j.unknown_count,0) AS unknown_count,
         COALESCE(j.unverified_count,0) AS unverified_count,
+        COALESCE(u.stale_dispatch_count,0) AS stale_dispatch_count,
         COALESCE(j.measured_cost,0) AS measured_cost
  FROM provider_budget_reservations b
  LEFT JOIN credit_reservations c ON b.id='ai:' || c.request_id
  LEFT JOIN journal j ON b.id='ai:' || j.request_id
+ LEFT JOIN unresolved_dispatch u ON b.id='ai:' || u.request_id
 )
 SELECT COUNT(*) AS budget_reservations,
  COALESCE(SUM(CASE WHEN provider_status='reserved' AND created_at <= ? THEN 1 ELSE 0 END),0) AS stale_budget_holds,
  COALESCE(SUM(CASE WHEN provider_status='reserved' AND wallet_status='reserved'
    AND dispatched_count=0 AND created_at <= ? THEN 1 ELSE 0 END),0) AS stale_pre_dispatch_dual_holds,
+ COALESCE(SUM(stale_dispatch_count),0) AS stale_dispatches_without_outcome,
  COALESCE(SUM(CASE WHEN provider_status='reserved' AND wallet_status='reserved'
    AND unknown_count>0 AND measured_count=0 THEN 1 ELSE 0 END),0) AS unknown_provider_holds,
  COALESCE(SUM(CASE WHEN provider_status='reserved' AND wallet_status='reserved'
@@ -73,7 +86,7 @@ export async function inspectStage3HoldTriage(env, {
   // One aggregate SELECT, therefore one snapshot. No customer IDs, provider
   // payloads, prompts, request IDs, or account balances leave this function.
   const threshold=Math.floor(nowMs/1000)-staleAfterSeconds;
-  const row=await env.DB.prepare(SQL).bind(threshold,threshold).first();
+  const row=await env.DB.prepare(SQL).bind(threshold,threshold,threshold).first();
   if (!row) throw new Error("Stage 3 reconciliation snapshot unavailable");
   const result={};
   for (const name of COUNTS) {

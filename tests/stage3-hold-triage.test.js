@@ -91,7 +91,25 @@ test("unknown outcome has two holds and requires operator review",async t=>{
   assert.equal(report.unknownProviderHolds,1);
   assert.equal(report.staleBudgetHolds,1);
   assert.equal(report.stalePreDispatchDualHolds,0);
+  assert.equal(report.staleDispatchesWithoutOutcome,0);
   assert.equal(report.reviewRequired,true);
+});
+test("stale dispatch without an outcome remains visible after another attempt reports usage", async t => {
+  const x = setup(t);
+  assert.equal((await x.budget()).ok, true);
+  assert.equal((await x.wallet()).ok, true);
+  assert.equal((await x.event("dispatched")).ok, true);
+  const fresh = await inspectStage3HoldTriage(x.env, { nowMs: baseMs + 30000, staleAfterSeconds: 60 });
+  assert.equal(fresh.staleDispatchesWithoutOutcome, 0);
+
+  assert.equal((await x.event("dispatched", "req1", "attempt2")).ok, true);
+  assert.equal((await x.event("usage_measured", "req1", "attempt2")).ok, true);
+  const report = await x.report();
+  assert.equal(report.staleDispatchesWithoutOutcome, 1);
+  assert.equal(report.measuredPendingProviderSettlement, 1);
+  assert.equal(report.reviewRequired, true);
+  assert.equal(x.sqlite.prepare("SELECT status FROM provider_budget_reservations").get().status, "reserved");
+  assert.equal(x.sqlite.prepare("SELECT status FROM credit_reservations").get().status, "reserved");
 });
 test("pre-dispatch stale holds are NOT silently released",async t=>{
   const x=setup(t);await x.budget();await x.wallet();

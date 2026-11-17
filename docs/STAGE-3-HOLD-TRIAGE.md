@@ -9,6 +9,7 @@ A Workers AI request can be dispatched successfully but then time out, return in
 `src/stage3-hold-triage.js` provides one **read-only aggregate SQL SELECT** over the existing, **unapplied** Stage 2/3 tables. It differentiates:
 - A stale provider hold with or without wallet reservation
 - A stale dual hold before confirmed dispatch
+- A stale dispatch with no outcome event for that attempt, including when another attempt in the same request has measured usage
 - A dispatched provider with unknown outcome or unverified usage
 - Measured usage but provider budget still reserved
 - Provider budget settled but wallet not finalized

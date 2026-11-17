@@ -33,7 +33,10 @@ node tests/billing/stage3-staging-smoke.mjs
 
 The smoke runs four application paths on disposable local D1 and checks the
 settled wallet, the journal, concurrent replay, authentication, and unknown
-usage holds. Provider invoices and remote staging deployment remain separate.
+usage holds. The [remote sandbox proof](https://github.com/muhriskiawan23/ai-command-center/actions/runs/44102929468)
+reproduced these checks on Cloudflare. It recorded seven synthetic settlements
+and one hold in each ledger. The workflow disabled Worker routing after the
+run. No live AI usage occurred during that proof.
 
 The prototype demonstrates this mandatory sequence:
 
@@ -163,6 +166,46 @@ cost, consumption of the shared free allocation, account-specific
 eligibility or billable usage. Compare a separately operator-approved
 bounded staging call with provider dashboard/invoice before finance signoff.
 
+For the first live metering check, record the sandbox account's Workers plan
+and same-day Workers AI neuron total before running a single non-streaming
+request with fixed synthetic input and a 16-token output cap. Keep the UTC time,
+model ID and returned input/output counters, and compare the recorded neuron
+total after usage reporting catches up. Use the same UTC day for both readings.
+The published Llama 3.3 rates are 26,668 neurons per million input tokens and
+204,805 per million output tokens. Using the 24,000-token context as a
+conservative input bound, a single probe with at most 16 output tokens has a
+published-rate estimate of about 643.31 neurons, or $0.007069 before any free
+allocation. If the aggregate has other traffic, it cannot attribute the entire
+delta to the probe. A matched usage delta checks metering. Invoice
+reconciliation still requires Cloudflare's billable usage for the billing period.
+
+### Observed Workers Free sandbox metering
+
+The [live metering run](https://github.com/muhriskiawan23/ai-command-center/actions/runs/44105707860)
+sent one request at `2026-11-17T14:40:53.803Z` and received 42 prompt tokens,
+2 completion tokens, and 44 total tokens. A durable request claim prevented
+replay. The workflow verified that the Worker route was disabled at the end.
+The owner confirmed the sandbox was on Workers Free and reported the dashboard
+value **Neurons used today: 1.53/10k** after the request. The published rates
+yield **1.529666 neurons**, which rounds to the observed daily dashboard total.
+The per-model chart showed no data for its selected range. This comparison
+uses the daily total and has no numeric pre-run baseline.
+
+The list-price estimate is **17 micro-USD** when rounded up per request.
+The sandbox request was within the free allowance. An overage invoice and
+paid-plan billing remain unverified.
+
+### Live sandbox settlement
+
+The [settlement proof](https://github.com/muhriskiawan23/ai-command-center/actions/runs/44107564777)
+ran one real Workers AI request through the journal, budget and wallet on a
+separate sandbox D1. The provider reported 42 input and 2 output tokens. The
+budget and test wallet each reserved 7,069 units in their respective ledgers
+and settled 17 at the model's published tariff. The test wallet ended at 7,052
+microcredits. D1 recorded one dispatch, one measured event and one reservation
+per ledger. The repeated request was refused before invoking the provider again.
+The workflow verified that Worker routing was disabled after the proof.
+
 ## Safety and privacy
 
 - No migrations against production or the Stage 2 disposable remote test DB.
@@ -174,6 +217,13 @@ bounded staging call with provider dashboard/invoice before finance signoff.
 
 ## Remaining gates
 
-Authoritative response metering at the configured model, actual provider invoice comparison, owner-approved rates/credit conversion and global caps, durable reconciliation and alerts/kill switch, staging-only endpoint integration, independent security/privacy review, Midtrans lifecycle verification and a separately authorized production migration/release.
+| Gate for issue [#253](https://github.com/muhriskiawan23/ai-command-center/issues/253) | Evidence and remaining work |
+| --- | --- |
+| Provider metering | Workers Free Llama 3.3 usage matched the daily dashboard total. The paid invoice and other proposed models remain unverified. |
+| Journal, provider budget and wallet | Remote sandbox verified synthetic application paths and one live Llama 3.3 settlement through the fixed staging probe. Billable application routes still need an authenticated integration with server-issued customer and request IDs, including retry identity and model caps. |
+| Failure recovery | Sandbox verified replay rejection and unverified-usage holds. The read-only [hold triage](STAGE-3-HOLD-TRIAGE.md) flags stale dispatches by attempt. Operator reconciliation mutations, crash recovery and compensating adjustment policy remain open. |
+| Tariff and release controls | Review model and tool rates, credit conversion, fees, margin, alerts, kill switch, rollback and phased rollout before enabling paid traffic. |
+| Independent review | Complete security and privacy review, including [#156](https://github.com/muhriskiawan23/ai-command-center/issues/156), and finance review before founder release approval. |
+| Payments | Midtrans [#246](https://github.com/muhriskiawan23/ai-command-center/pull/246) covers the design. Sandbox [#247](https://github.com/muhriskiawan23/ai-command-center/pull/247) has verified settlement and replay protection in tests. Live webhook replay and partial reversal, chargeback and spent-credit policies remain open in addition to merchant approval. |
 
 Tracked in [Stage 3 issue #253](https://github.com/muhriskiawan23/ai-command-center/issues/253) and [Stage 2 PR #245](https://github.com/muhriskiawan23/ai-command-center/pull/245). Preserve production quota controls and keep URL Reader off.
