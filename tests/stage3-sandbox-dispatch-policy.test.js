@@ -92,6 +92,7 @@ test("integrity-locked Wrangler npm ci runs BEFORE Cloudflare credentials are av
   assert.match(installStep,/mkdir -p "\$RUNNER_TEMP\/stage3-wrangler"/);
   assert.match(installStep,/cp tests\/billing\/stage3-wrangler-lock\/package\.json tests\/billing\/stage3-wrangler-lock\/package-lock\.json "\$RUNNER_TEMP\/stage3-wrangler\/"/);
   assert.match(installStep,/npm ci --prefix "\$RUNNER_TEMP\/stage3-wrangler" --ignore-scripts --no-audit --no-fund/);
+  assert.match(installStep,/npm audit --prefix "\$RUNNER_TEMP\/stage3-wrangler" --audit-level=high --no-fund/);
   assert.match(installStep,/"\$RUNNER_TEMP\/stage3-wrangler\/node_modules\/\.bin\/wrangler" --version/);
   assert.doesNotMatch(installStep,/\$\{\{\s*(?:secrets|vars)\./);
   assert.doesNotMatch(installStep,/npm install|npx\s/);
