@@ -284,3 +284,13 @@ test("guest, unknown order and fake plan selection never expose paid inference",
   assert.equal((await authorizePlanFeature(x.env,null,"basic_paid_credits")).allowed,false);
   assert.equal((await x.request("/api/plan")).headers.get("Cache-Control"),"no-store");
 });
+
+test("account deletion cascades temporary plan selection and payment eligibility records",async t=>{
+  const x=setup(t);x.paid({tier:"pro"});
+  assert.equal((await x.request("/api/plan/select","POST",{tier:"pro"})).status,200);
+  x.db.sqlite.prepare("DELETE FROM users WHERE id='alice-test'").run();
+  assert.equal(x.count("plan_selections"),0);
+  assert.equal(x.count("plan_entitlements"),0);
+  assert.equal(x.count("verified_plan_payments"),0);
+  assert.equal((await x.request("/api/plan","GET",null,x.alice)).data.plan.effectiveTier,"free");
+});
