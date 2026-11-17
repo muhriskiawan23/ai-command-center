@@ -82,3 +82,18 @@ test("Cloudflare token and database identifiers are scoped ONLY to the remote pr
   assert.match(proof,/^        run: node tests\/billing\/stage3-d1-proof\.mjs --remote$/m);
   assert.equal((yaml.match(/BOR_AI_D1_SANDBOX_TOKEN:/g)||[]).length,1);
 });
+
+test("fixed Wrangler CLI is provisioned BEFORE D1 token is visible, never downloaded under secrets",()=>{
+  const install="      - name: Prepare fixed Wrangler CLI BEFORE sandbox credentials are available";
+  const remote="      - name: Verify exact NEW remote Stage 3 database and synthetic financial invariants";
+  const i=yaml.indexOf(install),r=yaml.indexOf(remote);
+  assert.ok(i>0 && r>i,"Reviewed CLI install must precede remote proof");
+  const installStep=yaml.slice(i,r);
+  assert.match(installStep,/npm install --prefix "\$RUNNER_TEMP\/stage3-wrangler" --no-save --ignore-scripts --no-audit --no-fund --save-exact wrangler@4\.160\.0/);
+  assert.match(installStep,/"\$RUNNER_TEMP\/stage3-wrangler\/node_modules\/\.bin\/wrangler" --version/);
+  assert.doesNotMatch(installStep,/\$\{\{\s*(?:secrets|vars)\./);
+  const proof=yaml.slice(r);
+  assert.match(proof,/^          BOR_AI_STAGE3_WRANGLER_BIN: \$\{\{ runner\.temp \}\}\/stage3-wrangler\/node_modules\/\.bin\/wrangler$/m);
+  assert.doesNotMatch(proof,/npx\s+.*wrangler|npm\s+(?:install|exec|run)/);
+  assert.equal((yaml.match(/wrangler@4\.160\.0/g)||[]).length,1);
+});
