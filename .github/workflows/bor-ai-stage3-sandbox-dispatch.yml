@@ -52,10 +52,17 @@ jobs:
           cache: npm
       - name: Install locked dependencies
         run: npm ci
+      - name: Prepare fixed Wrangler CLI BEFORE sandbox credentials are available
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix "$RUNNER_TEMP/stage3-wrangler" --no-save --ignore-scripts --no-audit --no-fund --save-exact wrangler@4.160.0
+          "$RUNNER_TEMP/stage3-wrangler/node_modules/.bin/wrangler" --version
       - name: Verify exact NEW remote Stage 3 database and synthetic financial invariants
         # Secrets exist ONLY during this audited test step. In particular,
         # actions/checkout, setup-node and npm ci never receive D1 credentials.
         env:
+          BOR_AI_STAGE3_WRANGLER_BIN: ${{ runner.temp }}/stage3-wrangler/node_modules/.bin/wrangler
           BOR_AI_D1_SANDBOX_TOKEN: ${{ secrets.BOR_AI_D1_SANDBOX_TOKEN }}
           BOR_AI_D1_SANDBOX_ACCOUNT_ID: ${{ vars.BOR_AI_D1_SANDBOX_ACCOUNT_ID }}
           BOR_AI_D1_STAGE3_DB_NAME: ${{ vars.BOR_AI_D1_STAGE3_DB_NAME }}
