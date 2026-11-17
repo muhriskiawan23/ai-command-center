@@ -294,3 +294,14 @@ test("account deletion cascades temporary plan selection and payment eligibility
   assert.equal(x.count("verified_plan_payments"),0);
   assert.equal((await x.request("/api/plan","GET",null,x.alice)).data.plan.effectiveTier,"free");
 });
+
+test("chat payload cannot forge paid plan tier or mint extra credits",async t=>{
+  const x=setup(t);x.paid({tier:"pro"});
+  for(const extra of [{plan:"pro"},{tier:"pro"},{paidTier:"pro"},{credits:1000000}]){
+    const response=await x.request("/api/chat","POST",{message:"Halo",agent:"coordinator",...extra});
+    assert.equal(response.status,400);
+    assert.equal(response.data.code,"client_tier_override_rejected");
+  }
+  assert.equal(x.count("plan_selections"),0);
+  assert.equal(x.count("verified_plan_payments"),1);
+});
