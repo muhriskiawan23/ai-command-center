@@ -62,21 +62,34 @@ export function quoteBillableInference({ tariff, maxInputTokens, maxOutputTokens
 // must both exist. Do not estimate by string length or count one retry as free.
 export function measuredModelUsage(response) {
   const usage = response?.usage;
-  if (!usage || typeof usage !== "object") return null;
+  if (!usage || typeof usage !== "object" || Array.isArray(usage)) return null;
   const pairs = [
     ["prompt_tokens", "completion_tokens"],
     ["input_tokens", "output_tokens"]
   ];
-  const valid = pairs.filter(([input, output]) =>
-    Number.isSafeInteger(usage[input]) && usage[input] >= 0 &&
-    Number.isSafeInteger(usage[output]) && usage[output] >= 0);
-  if (!valid.length) return null;
-  const [inputTokens, outputTokens] = [usage[valid[0][0]], usage[valid[0][1]]];
-  if (inputTokens + outputTokens <= 0) return null;
-  // Reject contradictory aliases rather than selecting the cheapest count.
-  if (valid.some(([a, b]) => usage[a] !== inputTokens || usage[b] !== outputTokens))
+  let measured = null;
+  for (const [input, output] of pairs) {
+    const hasInput = Object.hasOwn(usage, input);
+    const hasOutput = Object.hasOwn(usage, output);
+    if (!hasInput && !hasOutput) continue;
+    // Reject a partial or invalid alias even if a different alias is valid.
+    if (!hasInput || !hasOutput ||
+        !Number.isSafeInteger(usage[input]) || usage[input] < 0 ||
+        !Number.isSafeInteger(usage[output]) || usage[output] < 0)
+      return null;
+    if (measured &&
+        (measured.inputTokens !== usage[input] || measured.outputTokens !== usage[output]))
+      return null;
+    measured = { inputTokens: usage[input], outputTokens: usage[output] };
+  }
+  if (!measured) return null;
+  const total = measured.inputTokens + measured.outputTokens;
+  if (!Number.isSafeInteger(total) || total <= 0) return null;
+  // When a provider reports the total, it must agree with the complete pair.
+  if (Object.hasOwn(usage, "total_tokens") &&
+      (!Number.isSafeInteger(usage.total_tokens) || usage.total_tokens !== total))
     return null;
-  return { inputTokens, outputTokens };
+  return measured;
 }
 
 // All callbacks are trusted server-side dependencies, never client-supplied.
