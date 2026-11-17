@@ -156,8 +156,11 @@ test("database-level CHECK rejects fabricated zero-cost or unmatched token event
     "(attempt_id,event_kind,request_id,provider,model,rate_version,input_tokens,output_tokens,provider_cost_micro_usd,created_at) "+
     "VALUES (?,?,?,?,?,?,?,?,?,?)"
   );
+  insert.run("a","dispatched","r","p","m","v",null,null,null,1);
   assert.throws(()=>insert.run("a","usage_measured","r","p","m","v",null,null,0,1),
-    /CHECK constraint|usage_event_missing_or_mismatched_dispatch/);
+    /CHECK constraint/);
+  assert.throws(()=>insert.run("a","usage_measured","r","p","m","v",1000,100,0,1),
+    /CHECK constraint/);
   assert.throws(()=>insert.run("a","outcome_unknown","r","p","m","v",0,0,0,1),
     /CHECK constraint/);
 });
