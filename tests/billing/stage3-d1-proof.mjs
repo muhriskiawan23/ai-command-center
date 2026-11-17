@@ -8,21 +8,24 @@ import {mkdtempSync,mkdirSync,writeFileSync,rmSync,readFileSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {join,resolve} from "node:path";
 import {DatabaseSync} from "node:sqlite";
+import {validateStage3RemoteTarget,verifyStage3RemoteInventory} from "./stage3-remote-target-guard.mjs";
 
 const asyncExec=promisify(execFile);
 const remote=process.argv[2]==="--remote";
 assert.ok(["--remote","--local"].includes(process.argv[2])&&process.argv.length===3);
 const production=JSON.parse(readFileSync(resolve("wrangler.jsonc"),"utf8"));
-const productionIds=new Set((production.d1_databases||[]).map(x=>x.database_id));
-const productionNames=new Set((production.d1_databases||[]).map(x=>x.database_name));
+const productionDatabases=production.d1_databases||[];
 const dbName=remote?process.env.BOR_AI_D1_STAGE3_DB_NAME:"bor-ai-stage3-local-only";
 const dbId=remote?process.env.BOR_AI_D1_STAGE3_DB_ID:randomUUID();
 if(remote){
-  assert.match(dbName||"",/^bor-ai-billing-sbx-stage3-[a-z0-9-]{6,40}$/);
-  assert.match(dbId||"",/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
-  assert.ok(!productionIds.has(dbId)&&!productionNames.has(dbName));
-  assert.match(process.env.BOR_AI_D1_SANDBOX_ACCOUNT_ID||"",/^[a-f0-9]{32}$/i);
-  assert.ok((process.env.BOR_AI_D1_SANDBOX_TOKEN||"").length>15);
+  validateStage3RemoteTarget({
+    name:dbName,id:dbId,
+    accountId:process.env.BOR_AI_D1_SANDBOX_ACCOUNT_ID,
+    token:process.env.BOR_AI_D1_SANDBOX_TOKEN,
+    productionDatabases,
+    previousSandboxName:process.env.BOR_AI_D1_SANDBOX_DB_NAME,
+    previousSandboxId:process.env.BOR_AI_D1_SANDBOX_DB_ID
+  });
 }
 const env={...process.env,CLOUDFLARE_SEND_METRICS:"false"};
 for(const key of ["CLOUDFLARE_API_TOKEN","CLOUDFLARE_ACCOUNT_ID",
@@ -112,10 +115,9 @@ function empty(stage){
 }
 function verifyIdentity(){
   const list=JSON.parse(run(["--yes","wrangler@4","d1","list","--json"]));
-  assert.ok(Array.isArray(list));
-  const match=list.find(x=>x.uuid===dbId||x.id===dbId);
-  assert.ok(match&&match.name===dbName);
-  assert.ok(!productionIds.has(match.uuid||match.id));
+  verifyStage3RemoteInventory({
+    inventory:list,name:dbName,id:dbId,productionDatabases
+  });
 }
 const now=Math.floor(Date.now()/1000),day=new Date(now*1000).toISOString().slice(0,10);
 function budget(request,cost,t=now){
