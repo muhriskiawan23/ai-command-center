@@ -84,9 +84,17 @@ test("conservative preflight is exact integer money with an explicit ceiling", (
 test("usage must have real complete non-conflicting token counters", () => {
   assert.deepEqual(measuredModelUsage({usage:{prompt_tokens:10,completion_tokens:3}}),{inputTokens:10,outputTokens:3});
   assert.deepEqual(measuredModelUsage({usage:{input_tokens:3,output_tokens:10}}),{inputTokens:3,outputTokens:10});
+  assert.deepEqual(measuredModelUsage({usage:{prompt_tokens:10,completion_tokens:3,
+    input_tokens:10,output_tokens:3,total_tokens:13}}),{inputTokens:10,outputTokens:3});
   for (const usage of [{},{prompt_tokens:1},{prompt_tokens:0,completion_tokens:0},
     {prompt_tokens:1,completion_tokens:-1},{prompt_tokens:1.5,completion_tokens:1},
-    {prompt_tokens:10,completion_tokens:3,input_tokens:12,output_tokens:3}])
+    {prompt_tokens:10,completion_tokens:3,input_tokens:12,output_tokens:3},
+    {prompt_tokens:10,completion_tokens:3,input_tokens:99},
+    {prompt_tokens:10,completion_tokens:3,input_tokens:10,output_tokens:-1},
+    {prompt_tokens:10,completion_tokens:3,total_tokens:12},
+    {prompt_tokens:10,completion_tokens:3,total_tokens:NaN},
+    {prompt_tokens:Number.MAX_SAFE_INTEGER,completion_tokens:2},
+    {input_tokens:8,output_tokens:2,prompt_tokens:8}])
     assert.equal(measuredModelUsage({usage}),null);
   assert.equal(measuredModelUsage({response:"no counters"}),null);
 });
