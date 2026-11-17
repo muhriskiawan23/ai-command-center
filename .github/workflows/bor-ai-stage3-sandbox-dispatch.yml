@@ -49,9 +49,8 @@ jobs:
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: 22
-          cache: npm
-      - name: Install locked dependencies without npm lifecycle scripts
-        run: npm ci --ignore-scripts
+      # Only the separately locked Wrangler dependency graph is required.
+      # The proof uses built-in node: modules and repository-local source.
       - name: Install audited integrity-locked Wrangler CLI BEFORE sandbox credentials are available
         shell: bash
         run: |
@@ -63,7 +62,7 @@ jobs:
           "$RUNNER_TEMP/stage3-wrangler/node_modules/.bin/wrangler" --version
       - name: Verify exact NEW remote Stage 3 database and synthetic financial invariants
         # Secrets exist ONLY during this audited test step. In particular,
-        # actions/checkout, setup-node and npm ci never receive D1 credentials.
+        # actions/checkout, setup-node and the locked Wrangler npm ci never receive D1 credentials.
         env:
           BOR_AI_STAGE3_WRANGLER_BIN: ${{ runner.temp }}/stage3-wrangler/node_modules/.bin/wrangler
           BOR_AI_D1_SANDBOX_TOKEN: ${{ secrets.BOR_AI_D1_SANDBOX_TOKEN }}
