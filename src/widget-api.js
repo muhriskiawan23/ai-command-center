@@ -118,6 +118,12 @@ export async function handlePublicChatRoute(request, env, deps) {
   const parsed = await deps.readJsonRequest(request, 64 * 1024);
   if (parsed.error) return withCors(parsed.error, origin);
   const body = parsed.body;
+  // Public API keys identify an existing user; a caller cannot declare a
+  // subscription tier or credit balance in a JSON payload.
+  if(body && typeof body==="object" && (
+    Object.hasOwn(body,"tier") || Object.hasOwn(body,"plan") ||
+    Object.hasOwn(body,"paidTier") || Object.hasOwn(body,"credits")
+  ))return fail("Paket dan kredit hanya ditentukan dari langganan yang diverifikasi.",400);
   const message = typeof body?.message === "string" ? body.message.trim() : "";
   if (!message) return fail("Pesan tidak boleh kosong.", 400);
   if (message.length > 12000) return fail("Pesan maksimal 12.000 karakter.", 400);
