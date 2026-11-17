@@ -1,0 +1,56 @@
+name: BOR AI plan tier synthetic proof (NO SECRETS)
+
+on:
+  push:
+    branches:
+      - feat/plan-tier-server-gates-20261117
+  pull_request:
+    branches:
+      - main
+      - feat/stage3-real-d1-adapters-20261117
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bor-ai-plan-tier-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  plans-and-unit:
+    name: Plan entitlement and full test suite (LOCAL ONLY)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Run isolated plan and payment-state tests
+        run: node --test tests/plan-entitlements.test.js
+      - name: Run complete regression suite
+        run: npm test
+      - name: Syntax and build without deployment
+        run: |
+          npm run check
+          node --check src/plan-entitlements.js
+          node --check public/app.js
+          npm run preview
+
+  browser-e2e:
+    name: Browser E2E against stub AI and ephemeral SQLite (LOCAL ONLY)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Run browser E2E
+        run: npm run test:e2e
