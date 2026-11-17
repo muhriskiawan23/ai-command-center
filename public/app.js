@@ -236,6 +236,8 @@ function setState(next,notice=""){
   $("gateRetry").hidden=next!==AppState.ERROR;
   if(!inChatView()){closeMemoryDom(false);closeDrawerDom(false)}
   syncInert();renderAuth();
+  if(inChatView())void refreshPlanView();
+  else {planRequestSeq++;$("planSelector").disabled=true;}
 }
 function resetChatView(){
   navSeq++;loadingChat=false;activePdf=null;activeCsv=null;renderPdfAttachment();renderCsvAttachment();lockComposer();
@@ -269,6 +271,58 @@ function renderAuth(){
   renderHistory();
   if(logged) refreshGitHubConnection(); else resetGitHubConnection();
 }
+
+// Display-only plan state. Backend is authoritative; changing an HTML
+// <select> never grants tier access, credits, a subscription or a payment.
+let planRequestSeq=0;
+const TIER_LABELS={free:"Free",basic:"Basic",pro:"Pro"};
+async function refreshPlanView(){
+  const sequence=++planRequestSeq;
+  const selector=$("planSelector"),notice=$("planStatus");
+  selector.disabled=true;notice.textContent="Memeriksa hak akses paket…";
+  try{
+    const response=await api("/api/plan");
+    if(sequence!==planRequestSeq||!inChatView())return;
+    const plan=response.plan;
+    const levels=Array.isArray(plan?.availableTiers)
+      ? plan.availableTiers.filter(tier=>Object.hasOwn(TIER_LABELS,tier)):["free"];
+    if(!levels.length || !Object.hasOwn(TIER_LABELS,plan?.effectiveTier))
+      throw new Error("Hak akses paket tidak valid");
+    selector.replaceChildren();
+    for(const tier of levels){
+      const option=document.createElement("option");
+      option.value=tier;option.textContent=TIER_LABELS[tier];
+      selector.append(option);
+    }
+    selector.value=levels.includes(plan.effectiveTier)?plan.effectiveTier:"free";
+    selector.disabled=!(state===AppState.AUTH&&plan.planSelectionEnabled&&levels.length>1);
+    notice.textContent=plan.paidTier
+      ? "Langganan terverifikasi: "+TIER_LABELS[plan.paidTier]+
+        " · Mode aktif: "+TIER_LABELS[plan.effectiveTier]+"."
+      : "Mode Free. Basic dan Pro hanya aktif setelah pembayaran diverifikasi.";
+  }catch{
+    if(sequence!==planRequestSeq||!inChatView())return;
+    selector.replaceChildren();
+    const opt=document.createElement("option");
+    opt.value="free";opt.textContent="Belum dapat diverifikasi";selector.append(opt);
+    selector.disabled=true;
+    notice.textContent="Hak akses paket belum bisa diverifikasi. Fitur berbayar tetap terkunci.";
+  }
+}
+async function changePlanView(tier){
+  if(!Object.hasOwn(TIER_LABELS,tier))return;
+  const selector=$("planSelector");
+  selector.disabled=true;
+  try{
+    await postJson("/api/plan/select",{tier});
+    toast("Mode paket berhasil diperbarui: "+TIER_LABELS[tier]);
+  }catch(error){
+    toast(error.message||"Pemilihan mode ditolak oleh server");
+  }finally{
+    void refreshPlanView();
+  }
+}
+$("planSelector").addEventListener("change",event=>void changePlanView(event.target.value));
 
 let githubConnection=null;
 let githubConnectionLoading=false;
