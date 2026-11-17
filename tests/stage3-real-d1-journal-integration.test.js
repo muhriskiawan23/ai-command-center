@@ -121,6 +121,21 @@ test("real provider budget prevents replay even with a distinct journal attempt"
   assert.equal(x.journal().length,2);
   assert.equal(x.scalar("SELECT COUNT(*) AS n FROM credit_reservations").n,1);
 });
+test("concurrent retries dispatch and charge only once for the same billing request", async t => {
+  const x = fixture(t);
+  const attempts = Array.from({ length: 5 }, (_, index) =>
+    x.run({ attemptId: `concurrent-attempt-${index}` })
+  );
+
+  const results = await Promise.all(attempts);
+  assert.equal(results.filter(result => result.ok).length, 1);
+  assert.equal(results.filter(result => result.modelInvoked).length, 1);
+  assert.equal(x.invoked(), 1);
+  assert.equal(x.balance(), 49481);
+  assert.equal(x.budget().actual_micro_usd, 519);
+  assert.equal(x.reservation().settled_microcredits, 519);
+  assert.deepEqual(x.journal().map(event => event.event_kind), ["dispatched", "usage_measured"]);
+});
 test("missing global operator cap denies provider call before credit reservation",async t=>{
   const x=fixture(t);
   x.sqlite.prepare("DELETE FROM provider_budget_limits WHERE provider='__global__'").run();
