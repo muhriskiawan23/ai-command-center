@@ -71,7 +71,7 @@ test("no case records fail closed but return no account IDs",async t=>{
   const x=setup(t);
   const output=await x.inspect();
   assert.equal(output.reviewClass,"escalate");
-  assert.deepEqual(output.reasons.sort(),["provider_budget_record_missing","wallet_record_missing"].sort());
+  assert.deepEqual([...output.reasons].sort(),["provider_budget_record_missing","wallet_record_missing"].sort());
 });
 test("valid pre-dispatch dual holds are candidates ONLY for independent human proof",async t=>{
   const x=setup(t);await x.holds();
