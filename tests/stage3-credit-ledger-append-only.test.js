@@ -93,3 +93,29 @@ test("full release of a pre-dispatch reservation appends one immutable full refu
   assert.equal((await x.finalize()).ok,false);
   assert.throws(()=>x.sqlite.exec("DELETE FROM credit_ledger"),/append_only/);
 });
+
+test("INSERT OR REPLACE may not bypass immutable history when recursive triggers are off",async t=>{
+  const x=fixture(t);await x.reserve();await x.finalize();
+  // SQLite defaults to recursive_triggers OFF: a REPLACE may implicitly
+  // delete a conflicting row without firing an ordinary DELETE trigger.
+  x.sqlite.exec("PRAGMA recursive_triggers = OFF");
+  const before=x.ledger();
+  const ins=x.sqlite.prepare(
+    "INSERT OR REPLACE INTO credit_ledger "+
+    "(id,user_id,delta_microcredits,reason,reference_id,created_at) "+
+    "VALUES (?,?,?,?,?,?)"
+  );
+  assert.throws(()=>ins.run(
+    "reserve:fake-request-1","fake-customer",-1,"reserve","fake-request-1",1735000005
+  ),/duplicate_or_replace_forbidden/);
+  assert.throws(()=>ins.run(
+    "different-id","fake-customer",-1,"reserve","fake-request-1",1735000005
+  ),/duplicate_or_replace_forbidden/);
+  assert.throws(()=>x.sqlite.prepare(
+    "INSERT INTO credit_ledger(id,user_id,delta_microcredits,reason,reference_id,created_at) "+
+    "VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET delta_microcredits=excluded.delta_microcredits"
+  ).run("refund:fake-request-1","fake-customer",1,"refund","fake-request-1",1735000005),
+  /duplicate_or_replace_forbidden/);
+  assert.deepEqual(x.ledger(),before);
+  assert.equal(x.balance(),9481);
+});
