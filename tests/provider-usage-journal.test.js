@@ -107,7 +107,9 @@ test("partial, inconsistent, negative, zero or estimated usage never journals co
     {prompt_tokens:0,completion_tokens:0},
     {input_tokens:1000,output_tokens:100,prompt_tokens:1000,completion_tokens:101},
     {input_tokens:1000,output_tokens:100,prompt_tokens:1000},
-    {input_tokens:"1000",output_tokens:100}
+    {input_tokens:"1000",output_tokens:100},
+    {prompt_tokens:1000,completion_tokens:100,total_tokens:1099},
+    {prompt_tokens:1000,completion_tokens:100,total_tokens:"1100"}
   ]) {
     assert.deepEqual(await x.append("usage_measured",{tariff,usage}),
       {ok:false,reason:"authoritative_usage_unverified"});
@@ -200,7 +202,8 @@ test("missing D1 schema or storage fails closed without fabricating a clean jour
 
 test("strict token parser accepts both matching provider aliases",()=>{
   assert.deepEqual(strictProviderTokenUsage({
-    prompt_tokens:1000,completion_tokens:100,input_tokens:1000,output_tokens:100
+    prompt_tokens:1000,completion_tokens:100,input_tokens:1000,output_tokens:100,
+    total_tokens:1100
   }),{inputTokens:1000,outputTokens:100});
   assert.deepEqual(strictProviderTokenUsage({input_tokens:1000,output_tokens:100}),
     {inputTokens:1000,outputTokens:100});
