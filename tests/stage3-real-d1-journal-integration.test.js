@@ -10,6 +10,7 @@ import { providerSpendBudget } from "../src/provider-spend-budget.js";
 import { inspectDraftBillingReconciliation } from "../src/billing-reconciliation.js";
 import { appendProviderUsageEvent, inspectProviderUsageJournal } from "../src/provider-usage-journal.js";
 import { runJournaledInferencePrototype } from "../src/stage3-journaled-inference.js";
+import worker from "../src/index.js";
 
 const migrations=[
   "../migrations/0012_credit_ledger.sql",
@@ -136,6 +137,78 @@ test("concurrent retries dispatch and charge only once for the same billing requ
   assert.equal(x.reservation().settled_microcredits, 519);
   assert.deepEqual(x.journal().map(event => event.event_kind), ["dispatched", "usage_measured"]);
 });
+
+const syntheticAnswer = "Tokyo adalah ibu kota Jepang. Kota ini menjadi pusat pemerintahan nasional dan salah satu pusat ekonomi utama negara tersebut.";
+
+function chatThroughTestBillingBinding(x, providerResponse) {
+  let providerCalls = 0;
+  let attempts = 0;
+  const env = {
+    AI: {
+      async run(model, payload) {
+        const result = await x.run({
+          attemptId: `worker-attempt-${++attempts}`,
+          tariff: { ...tariff, model },
+          maxOutputTokens: payload.max_tokens,
+          invokeModel: async () => {
+            providerCalls++;
+            return providerResponse;
+          }
+        });
+        if (!result.ok) throw new Error(result.reason);
+        return result.response;
+      }
+    }
+  };
+  return {
+    submit: () => worker.fetch(new Request("https://example.test/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: "Apa ibu kota Jepang?", agent: "coordinator" })
+    }), env),
+    providerCalls: () => providerCalls
+  };
+}
+
+test("Worker chat returns a synthetic answer only after Stage 3 settles the charge", async t => {
+  const x = fixture(t);
+  const chat = chatThroughTestBillingBinding(x, {
+    response: syntheticAnswer,
+    usage: { prompt_tokens: 1000, completion_tokens: 100 }
+  });
+  const response = await chat.submit();
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).response, syntheticAnswer);
+  assert.equal(chat.providerCalls(), 1);
+  assert.equal(x.budget().actual_micro_usd, 519);
+  assert.equal(x.reservation().settled_microcredits, 519);
+});
+
+test("Worker chat with missing synthetic usage holds both reservations and withholds the answer", async t => {
+  const x = fixture(t);
+  const chat = chatThroughTestBillingBinding(x, { response: syntheticAnswer });
+  const response = await chat.submit();
+  assert.equal(response.status, 502);
+  assert.doesNotMatch(await response.text(), /Tokyo|metering_unverified/);
+  assert.equal(chat.providerCalls(), 1);
+  assert.equal(x.budget().status, "reserved");
+  assert.equal(x.reservation().status, "reserved");
+  assert.deepEqual(x.journal().map(event => event.event_kind), ["dispatched", "usage_unverified"]);
+});
+
+for (const [label, funds] of [["customer credit", { balance: 100 }], ["global budget", { globalCap: 100 }]]) {
+  test(`Worker chat skips the synthetic provider when ${label} is insufficient`, async t => {
+    const x = fixture(t, funds);
+    const chat = chatThroughTestBillingBinding(x, { response: syntheticAnswer });
+    const response = await chat.submit();
+    assert.equal(response.status, 502);
+    assert.doesNotMatch(await response.text(), /Tokyo/);
+    assert.equal(chat.providerCalls(), 0);
+    assert.equal(x.reservation(), undefined);
+    assert.deepEqual(x.journal(), []);
+  });
+}
+
 test("missing global operator cap denies provider call before credit reservation",async t=>{
   const x=fixture(t);
   x.sqlite.prepare("DELETE FROM provider_budget_limits WHERE provider='__global__'").run();
