@@ -60,7 +60,8 @@ test("remote command is test-only; no deploy, paid AI, or DB destroy command",()
   ]);
   assert.doesNotMatch(yaml,/^\s+run: .*\b(?:deploy|migrations apply|d1 delete|d1 create|cloudflare workers deploy)\b/mi);
   assert.doesNotMatch(yaml,/^\s+run: .*\b(?:curl|wget|powershell|bash -c|eval)\b/mi);
-  assert.match(yaml,/^      - name: Install locked dependencies\n        run: npm ci$/m);
+  assert.match(yaml,/^      - name: Install locked dependencies without npm lifecycle scripts\n        run: npm ci --ignore-scripts$/m,
+    "Root dependencies cannot execute lifecycle scripts before a secret-bearing step");
 });
 
 test("Cloudflare token and database identifiers are scoped ONLY to the remote proof step",()=>{
