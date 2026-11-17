@@ -125,6 +125,10 @@ test("provider settled without journal or with inconsistent amount is flagged",a
   await z.event("dispatched");await z.event("usage_measured");
   assert.equal((await settleProviderSpend(z.env,{id:"ai:req1",actualMicroUsd:0n})).ok,true);
   assert.equal((await z.report()).settledMeasuredCostMismatch,1);
+  const w=setup(t);await w.budget();await w.wallet();
+  assert.equal((await settleProviderSpend(w.env,{id:"ai:req1",actualMicroUsd:0n})).ok,true);
+  assert.equal((await finalizeCredits(w.env,{userId:"synthetic-user",requestId:"req1",settledMicrocredits:1n})).ok,true);
+  assert.equal((await w.report()).walletSettledWithoutMeasuredUsage,1);
 });
 test("orphan provider budget, wallet and dispatch are detected independently",async t=>{
   const x=setup(t);await x.budget();
