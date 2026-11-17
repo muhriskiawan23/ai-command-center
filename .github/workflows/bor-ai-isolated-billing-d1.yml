@@ -8,8 +8,10 @@ on:
       - '.github/workflows/bor-ai-isolated-billing-d1.yml'
       - 'tests/billing/isolated-d1-smoke.mjs'
       - 'tests/billing/stage2-d1-proof.mjs'
+      - 'tests/billing/stage3-d1-proof.mjs'
       - 'migrations/0012_credit_ledger.sql'
       - 'migrations/0013_provider_spend_budget.sql'
+      - 'migrations/0014_provider_usage_journal.sql'
       - 'src/credit-ledger.js'
       - 'src/provider-spend-budget.js'
       - 'src/billable-inference-gate.js'
@@ -40,3 +42,5 @@ jobs:
         run: node tests/billing/isolated-d1-smoke.mjs
       - name: Stage 2 multi-request local D1 atomicity and timeout/refund proof
         run: node tests/billing/stage2-d1-proof.mjs --local
+      - name: Stage 3 three-schema SQL and journal safety proof (LOCAL ONLY)
+        run: node tests/billing/stage3-d1-proof.mjs --local
