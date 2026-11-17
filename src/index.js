@@ -1298,7 +1298,12 @@ export default {
           return json({error:"Pemilihan paket berbayar belum aktif."},503,headers);
         const parsed=await readJsonRequest(request,1024);
         if(parsed.error)return parsed.error;
-        const result=await selectAccountPlan(env,user.id,parsed.body?.tier);
+        if(!parsed.body || typeof parsed.body!=="object" ||
+           Array.isArray(parsed.body) ||
+           Object.keys(parsed.body).length!==1 ||
+           !Object.hasOwn(parsed.body,"tier"))
+          return json({error:"Kirim hanya pilihan tier: free, basic atau pro."},400,headers);
+        const result=await selectAccountPlan(env,user.id,parsed.body.tier);
         if(!result.ok) return json({
           error:result.reason==="verified_plan_required"
             ?"Paket tidak aktif atau tidak sesuai hak langganan yang diverifikasi."
