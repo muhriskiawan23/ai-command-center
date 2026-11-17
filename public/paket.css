@@ -8,3 +8,24 @@ main{width:min(100% - 36px,980px);margin:auto}h1,h2,h3,p{margin-top:0}h1{font-si
 .details{background:white;padding:27px 30px;border:1px solid #dbe6ec;border-radius:16px;margin-bottom:18px}.details h2{margin-bottom:16px}.feature-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px}.feature-grid p{color:#566b78;font-size:.92rem}.feature-grid strong{color:#143345}ol{padding-left:24px}li{margin-bottom:7px}.fine{font-size:.86rem;color:#607587}
 footer{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;width:min(100% - 36px,980px);margin:30px auto;color:#637486;font-size:.82rem;border-top:1px solid #dbe6ec;padding:20px 0 30px}
 @media(max-width:680px){.nav{padding:12px 18px}.hero{padding:38px 0 20px}.grid,.feature-grid{grid-template-columns:1fr}.details{padding:20px}.package{padding:22px}.intro{font-size:1rem}}
+
+/* Benefit comparison makes package differences legible before checkout. */
+.package{display:flex;flex-direction:column}
+.package-pro{border:2px solid #1b7895;box-shadow:0 9px 30px rgba(18,95,127,.12)}
+.package-tagline{margin:0 0 15px;color:#516978;font-size:.96rem}
+.package h4{margin:17px 0 10px;font-size:.92rem}
+.benefits{padding:0;margin:0 0 14px;list-style:none;display:grid;gap:11px}
+.benefits li{position:relative;padding-left:24px;line-height:1.5;font-size:.94rem}
+.benefits li::before{content:"✓";position:absolute;left:0;top:0;font-weight:800;color:#16728a}
+.package-summary{font-size:.87rem;color:#536878}
+.compare-link{display:inline-block;align-self:flex-start;font-weight:700;margin:8px 0 12px;text-underline-offset:3px}
+.unavailable{margin-top:auto}
+.compare{margin:24px 0 15px;border-radius:16px;background:#fff;border:1px solid #dbe6ec;padding:25px}
+.compare>p{color:#425d6a}.table-scroll{overflow:auto;max-width:100%}.table-scroll:focus-visible{outline:3px solid #1b7895;outline-offset:2px}
+table{border-collapse:collapse;width:100%;min-width:550px;font-size:.9rem}
+th,td{padding:12px 13px;border-bottom:1px solid #e3edf0;text-align:left;vertical-align:top}
+thead th{background:#edf5f8;color:#174058}
+tbody th{font-weight:650;width:48%}
+tbody tr:nth-child(even){background:#fbfdfe}
+.comparison-note{font-size:.84rem;margin:17px 0 0}
+@media(max-width:680px){.compare{padding:18px 14px}.compare h3{font-size:1.2rem}}
