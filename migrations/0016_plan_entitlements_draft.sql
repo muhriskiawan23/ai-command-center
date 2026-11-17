@@ -1,10 +1,10 @@
-// FUTURE / INACTIVE BOR AI subscription entitlements. NO PRODUCTION MIGRATION.
-// Order proofs below must ONLY be inserted/updated after a separately
-// authenticated Midtrans notification PLUS an authoritative Status API lookup.
-// No user-selectable endpoint is allowed to write verified_plan_payments or
-// plan_entitlements. A paid plan is never granted by a browser redirect.
-// Payment proof here is a future integration contract, not an actual
-// verification of external signatures, FX, amount, refunds or merchant status.
+-- FUTURE / INACTIVE BOR AI subscription entitlements. NO PRODUCTION MIGRATION.
+-- Order proofs below must ONLY be inserted/updated after a separately
+-- authenticated Midtrans notification PLUS an authoritative Status API lookup.
+-- No user-selectable endpoint is allowed to write verified_plan_payments or
+-- plan_entitlements. A paid plan is never granted by a browser redirect.
+-- Payment proof here is a future integration contract, not an actual
+-- verification of external signatures, FX, amount, refunds or merchant status.
 
 CREATE TABLE IF NOT EXISTS verified_plan_payments (
   order_id TEXT PRIMARY KEY NOT NULL,
