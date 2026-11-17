@@ -36,8 +36,6 @@ if(remote){
   env.CLOUDFLARE_ACCOUNT_ID=process.env.BOR_AI_D1_SANDBOX_ACCOUNT_ID;
 }
 delete env.BOR_AI_D1_SANDBOX_TOKEN;
-const tmp=mkdtempSync(join(tmpdir(),"bor-ai-stage3-proof-"));
-const cfg=join(tmp,"wrangler.json"),persist=join(tmp,"local");
 const npx=process.platform==="win32"?"npx.cmd":"npx";
 // A real remote run MUST execute a previously installed, reviewed exact
 // Wrangler version. Never fetch/resolve an npm package while the Cloudflare
@@ -61,6 +59,9 @@ if(remote){
   assert.ok(new RegExp('\\b'+pinnedVersion.replaceAll('.','\\.')+'\\b').test(version),
     "Remote Wrangler does not match exact reviewed version");
 }
+// Never allocate local files until sandbox and CLI identity preflight pass.
+const tmp=mkdtempSync(join(tmpdir(),"bor-ai-stage3-proof-"));
+const cfg=join(tmp,"wrangler.json"),persist=join(tmp,"local");
 const executable=remote?remoteBin:npx;
 const prefix=remote?[]:["--yes","wrangler@4"];
 const migrations=["0012_credit_ledger.sql","0013_provider_spend_budget.sql",
