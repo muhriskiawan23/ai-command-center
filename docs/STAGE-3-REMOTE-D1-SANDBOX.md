@@ -19,8 +19,11 @@
 | BOR_AI_D1_SANDBOX_ACCOUNT_ID | Existing sandbox account variable |
 | BOR_AI_D1_STAGE3_DB_NAME | NEW stage3-specific database name variable |
 | BOR_AI_D1_STAGE3_DB_ID | NEW stage3-specific D1 UUID variable |
+| BOR_AI_D1_SANDBOX_DB_NAME | Existing Stage 2 sandbox name (mandatory denylist) |
+| BOR_AI_D1_SANDBOX_DB_ID | Existing Stage 2 sandbox UUID (mandatory denylist) |
 
 These Stage 3 DB variables are deliberately different from the Stage 2 DB vars, preventing accidental use of the existing populated Stage 2 database.
+Both prior Stage 2 environment values are REQUIRED: missing or malformed values stop the remote preflight. Cloudflare inventory UUID and ID fields must agree if both are present; any ambiguity stops before SQL writes.
 
 ## Local rehearsal before any remote approval
 
