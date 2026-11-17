@@ -35,6 +35,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: f56205e8b0a3ece7c32cdb6e946d6eb0889dcff8
+          persist-credentials: false
       - name: Refuse unreviewed or changed test commit
         shell: bash
         run: |
