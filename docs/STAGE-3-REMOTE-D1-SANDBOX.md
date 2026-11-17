@@ -49,3 +49,22 @@ The test applies the exact SQL migration files 0012_credit_ledger.sql, 0013_prov
 - Crash/retry recovery across calls, authenticated Worker and multi-agent routes, privacy and security approvals, Midtrans production payment lifecycle, or launch readiness.
 
 Log a run URL, test commit, database UUID/name, concurrency counters, anomalies, independent reviewer and founder signoff before declaring this gate complete. Keep PR #245, #254 and #255 unmerged; production billing remains disabled.
+## Regression-tested remote-target identity preflight
+
+The remote SQL proof now invokes a pure fail-closed Stage 3 target guard
+before constructing any Wrangler request. It rejects invalid or
+non-Stage3 database names/UUIDs, missing limited-scope sandbox credentials,
+and any match against a production D1 binding or provided earlier Stage 2
+sandbox identifier. Its Cloudflare D1 inventory check requires **exactly
+one UUID match, exactly one name match and the same record for both**.
+Mismatched, duplicate, missing or misleading inventory records stop the
+proof before any SQL migrations or test fixtures are written.
+
+`tests/stage3-remote-target-guard.test.js` exercises these preflight
+boundaries with fake credentials and synthetic inventory objects. The
+tests are local pure functions; **they do not contact Cloudflare**.
+
+An operator must still independently verify the Cloudflare account scope
+and approve a new empty DB. The safety check is not proof of actual
+account separation, security approval, provider billing, or production
+readiness. A remote run remains blocked without an authorized fresh DB.
