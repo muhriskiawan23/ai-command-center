@@ -22,13 +22,6 @@ jobs:
       CI: 'true'
       CLOUDFLARE_SEND_METRICS: 'false'
       PINNED_TEST_SHA: 'f56205e8b0a3ece7c32cdb6e946d6eb0889dcff8'
-      BOR_AI_D1_SANDBOX_TOKEN: ${{ secrets.BOR_AI_D1_SANDBOX_TOKEN }}
-      BOR_AI_D1_SANDBOX_ACCOUNT_ID: ${{ vars.BOR_AI_D1_SANDBOX_ACCOUNT_ID }}
-      BOR_AI_D1_STAGE3_DB_NAME: ${{ vars.BOR_AI_D1_STAGE3_DB_NAME }}
-      BOR_AI_D1_STAGE3_DB_ID: ${{ vars.BOR_AI_D1_STAGE3_DB_ID }}
-      # Secondary denylist: also pass the existing Stage 2 sandbox IDs for preflight rejection.
-      BOR_AI_D1_SANDBOX_DB_NAME: ${{ vars.BOR_AI_D1_SANDBOX_DB_NAME }}
-      BOR_AI_D1_SANDBOX_DB_ID: ${{ vars.BOR_AI_D1_SANDBOX_DB_ID }}
     steps:
       - name: Refuse manual dispatch from any branch other than main
         shell: bash
@@ -59,6 +52,15 @@ jobs:
       - name: Install locked dependencies
         run: npm ci
       - name: Verify exact NEW remote Stage 3 database and synthetic financial invariants
+        # Secrets exist ONLY during this audited test step. In particular,
+        # actions/checkout, setup-node and npm ci never receive D1 credentials.
+        env:
+          BOR_AI_D1_SANDBOX_TOKEN: ${{ secrets.BOR_AI_D1_SANDBOX_TOKEN }}
+          BOR_AI_D1_SANDBOX_ACCOUNT_ID: ${{ vars.BOR_AI_D1_SANDBOX_ACCOUNT_ID }}
+          BOR_AI_D1_STAGE3_DB_NAME: ${{ vars.BOR_AI_D1_STAGE3_DB_NAME }}
+          BOR_AI_D1_STAGE3_DB_ID: ${{ vars.BOR_AI_D1_STAGE3_DB_ID }}
+          BOR_AI_D1_SANDBOX_DB_NAME: ${{ vars.BOR_AI_D1_SANDBOX_DB_NAME }}
+          BOR_AI_D1_SANDBOX_DB_ID: ${{ vars.BOR_AI_D1_SANDBOX_DB_ID }}
         run: node tests/billing/stage3-d1-proof.mjs --remote
       - name: Classify evidence accurately
         run: |
