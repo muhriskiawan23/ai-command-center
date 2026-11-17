@@ -6,7 +6,8 @@ import {promisify} from "node:util";
 import {randomUUID} from "node:crypto";
 import {mkdtempSync,mkdirSync,writeFileSync,rmSync,readFileSync} from "node:fs";
 import {tmpdir} from "node:os";
-import {join,resolve} from "node:path";
+import {join,resolve,isAbsolute} from "node:path";
+import {existsSync} from "node:fs";
 import {DatabaseSync} from "node:sqlite";
 import {validateStage3RemoteTarget,verifyStage3RemoteInventory} from "./stage3-remote-target-guard.mjs";
 
@@ -38,12 +39,36 @@ delete env.BOR_AI_D1_SANDBOX_TOKEN;
 const tmp=mkdtempSync(join(tmpdir(),"bor-ai-stage3-proof-"));
 const cfg=join(tmp,"wrangler.json"),persist=join(tmp,"local");
 const npx=process.platform==="win32"?"npx.cmd":"npx";
+// A real remote run MUST execute a previously installed, reviewed exact
+// Wrangler version. Never fetch/resolve an npm package while the Cloudflare
+// D1 sandbox secret is in the child process environment.
+const pinnedVersion="4.160.0";
+const approvedBin=join(process.env.RUNNER_TEMP||"",
+  "stage3-wrangler","node_modules",".bin","wrangler");
+const remoteBin=process.env.BOR_AI_STAGE3_WRANGLER_BIN;
+if(remote){
+  assert.ok(process.env.RUNNER_TEMP&&isAbsolute(approvedBin),
+    "Explicit absolute GitHub runner temp path required");
+  assert.equal(remoteBin,approvedBin,
+    "Remote CLI path must be the preinstalled isolated reviewed Wrangler");
+  assert.ok(existsSync(remoteBin),"Preinstalled remote Wrangler CLI missing");
+  const checkEnv={...env};
+  delete checkEnv.CLOUDFLARE_API_TOKEN;
+  const version=execFileSync(remoteBin,["--version"],{
+    encoding:"utf8",env:checkEnv,timeout:30000,
+    stdio:["ignore","pipe","pipe"]
+  });
+  assert.match(version,/\\b4\\.160\\.0\\b/,
+    "Remote Wrangler does not match exact reviewed version");
+}
+const executable=remote?remoteBin:npx;
+const prefix=remote?[]:["--yes","wrangler@4"];
 const migrations=["0012_credit_ledger.sql","0013_provider_spend_budget.sql",
   "0014_provider_usage_journal.sql"].map(f=>resolve("migrations",f));
-const args=(type,value)=>["--yes","wrangler@4","d1","execute",dbName,
+const args=(type,value)=>[...prefix,"d1","execute",dbName,
   remote?"--remote":"--local","--config",cfg,
   ...(remote?[]:["--persist-to",persist]),"--json","--yes",type,value];
-const run=a=>execFileSync(npx,a,{
+const run=a=>execFileSync(executable,a,{
   cwd:process.cwd(),env,encoding:"utf8",timeout:remote?90000:120000,
   maxBuffer:4*1024*1024,stdio:["ignore","pipe","pipe"]
 });
@@ -64,7 +89,7 @@ function reject(s,expected){
 }
 async function attempt(s){
   try{
-    const r=await asyncExec(npx,args("--command",s),{
+    const r=await asyncExec(executable,args("--command",s),{
       cwd:process.cwd(),env,timeout:remote?90000:120000,maxBuffer:4*1024*1024
     });
     jsonRows(r.stdout);return true;
@@ -114,7 +139,7 @@ function empty(stage){
       "Previous synthetic data detected; NEW sandbox DB required");
 }
 function verifyIdentity(){
-  const list=JSON.parse(run(["--yes","wrangler@4","d1","list","--json"]));
+  const list=JSON.parse(run([...prefix,"d1","list","--json"]));
   verifyStage3RemoteInventory({
     inventory:list,name:dbName,id:dbId,productionDatabases
   });
