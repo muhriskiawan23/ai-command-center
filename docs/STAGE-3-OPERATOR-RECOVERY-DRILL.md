@@ -116,6 +116,36 @@ Local regression tests:
 `node --test tests/stage3-operator-case-triage.test.js`
 on disposable in-memory SQLite, no external calls.
 
+## Hardened original-request triage (local-only verification)
+
+The read-only function now **requires** the caller to supply the expected
+authenticated account ID, provider, model and immutable rate version in
+addition to the original request ID. The module checks these against the
+actual reservation and immutable dispatch events. A mismatched account is
+returned as a generic escalation, never a recovered or billable state.
+
+The single SQL snapshot additionally verifies:
+- Exactly one original wallet reserve journal entry for the expected user;
+  its negative ledger amount must equal the reserved microcredits.
+- For a settled wallet, the refund amount must equal unused reserved
+  microcredits, with no duplicate refund entries; for a released wallet,
+  exactly one full refund entry must exist.
+- A still-reserved wallet must not have any refund entry.
+- Measured provider cost may never exceed the original provider reservation.
+- Every dispatched event must use the expected tariff version and original
+  provider/model. Retry attempts with unverified outcomes are escalated.
+
+A mismatch generates a review reason, **not** a recovery mutation.
+The caller-supplied identity is only a second consistency check: it is
+**not an authentication mechanism**. Any future operator endpoint must first
+authenticate and authorize the reviewer and bind these values to audited,
+trusted server records. No such endpoint is shipped here.
+
+The negative tests include deliberate privileged journal tampering in
+disposable SQLite to verify that the diagnostic detects corrupt entries.
+Neither those deliberate test modifications nor the test-only approval
+simulation are valid production remediation methods.
+
 ## Still blocked
 
 1. Authentic Workers AI provider usage and invoice reconciliation, approved
