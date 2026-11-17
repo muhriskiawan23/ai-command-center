@@ -38,6 +38,8 @@ test("only the main dispatcher may check out one immutable reviewed test commit"
   assert.match(yaml,/ACTUAL="\$\(git rev-parse HEAD\)"/);
   assert.match(yaml,/test "\$ACTUAL" = "\$PINNED_TEST_SHA"/);
   assert.equal((yaml.match(/^          ref:/gm)||[]).length,1);
+  assert.match(yaml,/^          persist-credentials: false$/m,
+    "Do not persist GitHub credentials into a test workspace that runs pinned code");
 });
 test("only allowed D1 sandbox token, account and separate Stage 2/3 identity vars appear",()=>{
   const secretRefs=[...yaml.matchAll(/secrets\.([A-Z0-9_]+)/g)].map(x=>x[1]);
