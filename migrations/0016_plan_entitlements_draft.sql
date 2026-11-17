@@ -39,21 +39,13 @@ CREATE TABLE IF NOT EXISTS plan_entitlements (
     REFERENCES verified_plan_payments(order_id,user_id,purchased_tier)
 );
 
--- Selected mode can be less powerful than the currently paid entitlement.
--- Selecting 'free' does not cancel a paid subscription or alter credit lots.
--- Server must atomically verify paid eligibility on each upgrade and recheck
--- before every protected request. This table alone NEVER grants paid access.
-CREATE TABLE IF NOT EXISTS plan_selections (
-  user_id TEXT PRIMARY KEY NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  selected_tier TEXT NOT NULL CHECK (selected_tier IN ('free','basic','pro')),
-  updated_at INTEGER NOT NULL CHECK (updated_at >= 0)
-);
-
+-- No plan_selections table: subscription status automatically grants the
+-- entire subscribed tier. Users cannot downgrade the UI mode independently.
 -- Prevent reusing the same provider order for two different accounts/tiers.
 -- The composite FKs protect cross-account entitlement assignment when D1 FK
 -- enforcement is enabled. The runtime also explicitly validates the JOIN.
 
 -- These are *ephemeral eligibility proofs*, not statutory invoice/settlement
--- archives. On verified account erasure, delete linked selection and paid
+-- archives. On verified account erasure, delete linked subscription and paid
 -- access rows via FK CASCADE; any lawfully retained financial invoice evidence
 -- must use a separately reviewed, minimized retention system.
