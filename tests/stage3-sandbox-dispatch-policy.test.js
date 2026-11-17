@@ -60,3 +60,23 @@ test("remote command is test-only; no deploy, paid AI, or DB destroy command",()
   assert.doesNotMatch(yaml,/^\s+run: .*\b(?:curl|wget|powershell|bash -c|eval)\b/mi);
   assert.match(yaml,/^      - name: Install locked dependencies\n        run: npm ci$/m);
 });
+
+test("Cloudflare token and database identifiers are scoped ONLY to the remote proof step",()=>{
+  const heading="      - name: Verify exact NEW remote Stage 3 database and synthetic financial invariants";
+  const start=yaml.indexOf(heading);
+  assert.ok(start>0,"Expected bounded D1 remote proof step");
+  const after=yaml.indexOf("\\n      - name:",start+heading.length);
+  assert.ok(after>start,"Expected separate follow-up step");
+  const before=yaml.slice(0,start);
+  const proof=yaml.slice(start,after);
+  const tail=yaml.slice(after);
+  assert.doesNotMatch(before,/\\$\\{\\{\\s*(?:secrets|vars)\\./,
+    "Checkout and npm installation must not inherit D1 credentials");
+  assert.doesNotMatch(tail,/\\$\\{\\{\\s*(?:secrets|vars)\\./,
+    "Later reporting must not inherit D1 credentials");
+  assert.match(proof,/^        env:$/m);
+  assert.match(proof,/^          BOR_AI_D1_SANDBOX_TOKEN: \\$\\{\\{ secrets\\.BOR_AI_D1_SANDBOX_TOKEN \\}\\}$/m);
+  assert.match(proof,/^          BOR_AI_D1_STAGE3_DB_ID: \\$\\{\\{ vars\\.BOR_AI_D1_STAGE3_DB_ID \\}\\}$/m);
+  assert.match(proof,/^        run: node tests\\/billing\\/stage3-d1-proof\\.mjs --remote$/m);
+  assert.equal((yaml.match(/BOR_AI_D1_SANDBOX_TOKEN:/g)||[]).length,1);
+});
