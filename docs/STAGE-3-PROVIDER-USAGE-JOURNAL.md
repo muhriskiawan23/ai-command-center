@@ -123,6 +123,28 @@ invoice comparison remain separate launch gates.
 
 Before a paid model call, a future staging-only gate MUST atomically reserve global/provider budget and customer credits and durably append a `dispatched` record, refusing provider dispatch if the record is not confirmed. After the call it MUST append a measured or unknown/unverified event, reconcile the authoritative provider usage/invoice and commit both financial settlements in a documented sequence. Every model call, retry and agent/tool invocation needs its **own attempt ID**. The existing prototype `runReservedBillableInference` is **not wired** to this journal yet, and adding a journal by itself does not close the settlement-crash atomicity window.
 
+## Cloudflare Workers AI usage contract (documentation check, no paid call)
+
+Cloudflare's current [AI run API documentation](https://developers.cloudflare.com/api/resources/ai/methods/run/)
+lists optional `usage.prompt_tokens`, `usage.completion_tokens` and
+`usage.total_tokens`. The Stage 3 strict meter accepts complete nonnegative
+input/output counters; **when `total_tokens` is present, it now must equal
+the safe integer sum of input plus output tokens**. An inconsistent or
+non-integer total is `authoritative_usage_unverified`, preserving both
+reservations until review. Missing optional `total_tokens` alone is allowed
+if both other authoritative counters are complete and consistent.
+
+Cloudflare [Workers AI pricing](https://developers.cloudflare.com/workers-ai/platform/pricing/)
+(updated 12 Nov 2026) publishes model token-equivalent rates but says
+the underlying Workers AI accounting is in **neurons**, includes a
+10,000-neuron/day free allocation and depends on the Workers plan;
+the configured model [lists](https://developers.cloudflare.com/workers-ai/models/llama-3.3-70b-instruct-fp8-fast/)
+$0.293/M input tokens and $2.253/M output tokens. Neither the synthetic
+test tariff nor a calculated micro-USD event establishes actual invoice
+cost, consumption of the shared free allocation, account-specific
+eligibility or billable usage. Compare a separately operator-approved
+bounded staging call with provider dashboard/invoice before finance signoff.
+
 ## Safety and privacy
 
 - No migrations against production or the Stage 2 disposable remote test DB.
