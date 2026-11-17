@@ -18,6 +18,13 @@ export function validateStage3RemoteTarget({
     "Explicit limited-scope sandbox account identity is required");
   assert.ok(typeof token==="string"&&token.length>15,
     "Dedicated sandbox-only D1 token required");
+  // The dispatcher MUST supply the existing Stage 2 sandbox's exact identity.
+  // If either environment variable is absent, fail before any remote SQL.
+  assert.match(previousSandboxName||"",
+    /^bor-ai-billing-sbx-stage2(?:-[a-z0-9-]+)?$/,
+    "Existing Stage 2 sandbox name required for reuse denial");
+  assert.match(previousSandboxId||"",uuid,
+    "Existing Stage 2 sandbox UUID required for reuse denial");
   assert.ok(Array.isArray(productionDatabases),
     "Production D1 binding inventory missing");
   assert.ok(!productionDatabases.some(x=>x?.database_id===id||x?.database_name===name),
@@ -47,6 +54,10 @@ export function verifyStage3RemoteInventory({
     "The sandbox name must uniquely exist in D1 inventory");
   assert.equal(byId[0],byName[0],
     "Database UUID/name mismatch; refusing remote D1 writes");
+  const found=byId[0];
+  if(found.uuid!==undefined&&found.id!==undefined)
+    assert.equal(found.uuid,found.id,
+      "Conflicting UUID/id fields in remote D1 inventory");
   assert.ok(!productionDatabases.some(x=>
     x?.database_id===id||x?.database_name===name),
     "Production D1 binding forbidden");
