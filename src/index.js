@@ -1421,6 +1421,13 @@ export default {
       let body;
       try { body = JSON.parse(bodyResult.text); }
       catch { return json({ error: "Request JSON tidak valid." }, 400); }
+      // A client may request a feature, but must never self-assign a paid tier
+      // through a chat request. Paid authorization uses the D1-backed plan
+      // selection and authoritative verified payment records only.
+      if(body && typeof body==="object" && (
+        Object.hasOwn(body,"tier") || Object.hasOwn(body,"plan") ||
+        Object.hasOwn(body,"paidTier") || Object.hasOwn(body,"credits")
+      ))return json({error:"Paket dan kredit tidak dapat diubah melalui pesan chat.",code:"client_tier_override_rejected"},400);
       const message = typeof body?.message === "string" ? body.message.trim() : "";
       const document = body?.document;
       if (document !== undefined && (!document || typeof document !== "object" || typeof document.name !== "string" || typeof document.content !== "string" || !document.content.trim() || document.content.length > PDF_CONTEXT_MAX_CHARS)) return json({ error: "Konteks PDF tidak valid atau terlalu besar. Unggah ulang dokumen." }, 400);
