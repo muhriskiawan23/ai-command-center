@@ -21,7 +21,7 @@ jobs:
     env:
       CI: 'true'
       CLOUDFLARE_SEND_METRICS: 'false'
-      PINNED_TEST_SHA: '96550748fcd3a81296b76f72f94022238826dbf3'
+      PINNED_TEST_SHA: '21825a2834535898bb355ae5f6fe4eb9491ed8d4'
       BOR_AI_D1_SANDBOX_TOKEN: ${{ secrets.BOR_AI_D1_SANDBOX_TOKEN }}
       BOR_AI_D1_SANDBOX_ACCOUNT_ID: ${{ vars.BOR_AI_D1_SANDBOX_ACCOUNT_ID }}
       BOR_AI_D1_STAGE3_DB_NAME: ${{ vars.BOR_AI_D1_STAGE3_DB_NAME }}
@@ -38,7 +38,7 @@ jobs:
       - name: Checkout pinned reviewed unmerged test SHA, NOT production main
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: 96550748fcd3a81296b76f72f94022238826dbf3
+          ref: 21825a2834535898bb355ae5f6fe4eb9491ed8d4
       - name: Refuse unreviewed or changed test commit
         shell: bash
         run: |
