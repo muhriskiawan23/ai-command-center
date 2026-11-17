@@ -10,13 +10,15 @@ Status: DESIGN ONLY. No checkout, paid API, migration or billing is enabled by t
 - Workers AI baseline model catalog has **unknown** input/output token rates (`src/model-gateway.js`). Do not publish profitability estimates until pricing and actual token metering are verified.
 - URL Reader remains OFF. Tavily Extract needs separate provider security/privacy/billing sign-off.
 
-## Product proposal (not yet approved prices)
+## Founder-approved base prices and planned product policies
 
 - Main accounting, invoices, entitlements and financial reports in **USD**.
 - Indonesian checkout may accept IDR through a payment gateway supporting local bank transfer, QRIS and e-wallets. Display an exchange-rate quote, FX source, fees and expiration; lock the exact IDR amount in the server-side order at checkout. Do not infer payment success from a browser redirect.
-- Candidate tiers: Basic **$1.99/month** and Pro **$6.99/month**; these are hypotheses, not validated unit economics. Optional credit top-ups priced in USD; no unlimited usage promises.
+- **Founder-approved subscription price points (17 November 2026): Basic US$1.99/month and Pro US$6.99/month.** This approval fixes the USD-facing list prices for product planning; it is **not** proof of profitable unit economics, approved credit entitlements, or authorization to start charging customers. Optional credit top-ups are planned in USD; no unlimited usage promises.
 - Keep guest/free protections separate from subscription allowances. Define a consistent paid unit, e.g. internal **microcredits** as integer ledger amounts; token usage and external tool charges map to microcredits via a versioned rate table. Never equate 1 message with 1 token.
 - No plan or payment activation before end-to-end reconciliation, refunds, tax, chargeback, fraud, privacy and provider costs are reviewed.
+
+**Midtrans onboarding (17 November 2026):** The founder reports submitting the website-correction merchant form. Midtrans approval has not yet been verified. The public pricing page may show example IDR conversions, but the actual amount due must be fixed and shown in IDR before payment. Do not represent example rates as binding quotes. Activation of production checkout requires a separate explicit go-live decision.
 
 ## Financial and metering invariants
 
@@ -51,7 +53,7 @@ Status: DESIGN ONLY. No checkout, paid API, migration or billing is enabled by t
 
 `gross margin % = contribution margin / revenue * 100` (when revenue > 0).
 
-For each tier, run conservative/base/stress scenarios from **verified** provider rates, real token counts per request, multi-agent amplification, utilization distribution, gateway pricing and FX. Do not treat the $1.99/$6.99 candidates as profitable until these are measured.
+For each tier, run conservative/base/stress scenarios from **verified** provider rates, real token counts per request, multi-agent amplification, utilization distribution, gateway pricing and FX. Do not treat the approved US$1.99/US$6.99 prices as profitable until these are measured.
 
 ## Safe implementation sequence
 
