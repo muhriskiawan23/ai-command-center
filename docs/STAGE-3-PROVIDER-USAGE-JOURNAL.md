@@ -57,6 +57,31 @@ The aggregate journal only counts **measured attempts**, not completed
 financial settlements. The read-only Stage 2 budget+credit reconciliation and
 actual provider invoice reconciliation remain mandatory before any paid release.
 
+## Stacked local integration with actual Stage 2 adapters (Draft PR #255)
+
+The **separate, unmerged** [stacked test PR #255](https://github.com/muhriskiawan23/ai-command-center/pull/255)
+checks the combined migrations `0012`, `0013`, and `0014`
+against a disposable, in-memory SQLite database. Unlike the narrower
+Stage 3 orchestration fixture above, `tests/stage3-real-d1-journal-integration.test.js`
+uses the actual `reserveCredits/finalizeCredits` and `providerSpendBudget`
+functions on the same database as the Stage 3 append-only journal.
+
+It verifies successful 519-micro-USD measured settlement, duplicate request
+rejection, global-budget cap and insufficient-credit guard, uncertain
+provider outcomes and stale reservations, failed journal persistence (no
+provider call), invalid usage, failed settlements, journal and wallet
+immutability and read-only billing exception reports. A separate local
+parallel-request fixture tests only local SQLite budget-limit safety;
+it does **not** establish remote Cloudflare D1 concurrency.
+
+Important: PR #255 is a **combined unmerged proof branch** based on PR #245
+and containing the prototype work from Draft PR #254, not an authorization
+to merge all branches. Real Cloudflare D1 **remote integration** of all three
+schemas, authenticated staging Worker routes, actual provider usage and
+invoices, outage/retry crash recovery, privacy and independent approval
+remain explicitly NOT verified. The earlier Stage 2 remote test did not
+include this journal.
+
 ## Intended production integration (NOT IMPLEMENTED)
 
 Before a paid model call, a future staging-only gate MUST atomically reserve global/provider budget and customer credits and durably append a `dispatched` record, refusing provider dispatch if the record is not confirmed. After the call it MUST append a measured or unknown/unverified event, reconcile the authoritative provider usage/invoice and commit both financial settlements in a documented sequence. Every model call, retry and agent/tool invocation needs its **own attempt ID**. The existing prototype `runReservedBillableInference` is **not wired** to this journal yet, and adding a journal by itself does not close the settlement-crash atomicity window.
