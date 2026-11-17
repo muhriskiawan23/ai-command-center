@@ -48,7 +48,7 @@ SELECT COUNT(*) AS budget_reservations,
    THEN 1 ELSE 0 END),0) AS provider_finalization_pending,
  COALESCE(SUM(CASE WHEN provider_status='settled' AND actual_micro_usd>0
    AND measured_count=0 THEN 1 ELSE 0 END),0) AS settled_without_measured_usage,
- COALESCE(SUM(CASE WHEN provider_status='settled' AND actual_micro_usd>0
+ COALESCE(SUM(CASE WHEN provider_status='settled' AND actual_micro_usd IS NOT NULL
    AND measured_count>0 AND actual_micro_usd!=measured_cost THEN 1 ELSE 0 END),0) AS settled_measured_cost_mismatch,
  (SELECT COUNT(*) FROM credit_reservations c
    LEFT JOIN provider_budget_reservations b ON b.id='ai:' || c.request_id
