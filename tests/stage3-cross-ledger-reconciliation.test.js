@@ -217,3 +217,76 @@ test("missing schema, failed result and invalid clocks fail closed",async t=>{
   x.db.exec("DROP TABLE provider_usage_events");
   await assert.rejects(x.audit(),/no such table/);
 });
+
+test("post-dispatch zero-cost settlement is not silently classified as free",async t=>{
+  const x=setup(t);
+  await x.reserve();
+  assert.equal((await x.journal("dispatched")).ok,true);
+  assert.equal((await settleProviderSpend(x.env,{
+    id:"ai:r1",actualMicroUsd:0n
+  })).ok,true);
+  assert.equal((await finalizeCredits(x.env,{
+    userId:"test-user",requestId:"r1",settledMicrocredits:0n
+  })).ok,true);
+  const report=await x.audit();
+  assert.equal(report.zeroSettledBudgetAfterDispatch,1);
+  assert.equal(report.settledBudgetWithoutMeasuredUsage,0);
+  assert.equal(report.reviewRequired,true);
+});
+
+test("credit release after provider dispatch without measured usage requires review",async t=>{
+  const x=setup(t);
+  await x.reserve();
+  assert.equal((await x.journal("dispatched")).ok,true);
+  assert.equal((await finalizeCredits(x.env,{
+    userId:"test-user",requestId:"r1"
+  })).ok,true);
+  const report=await x.audit();
+  assert.equal(report.releasedCreditAfterDispatch,1);
+  assert.equal(report.releasedCreditAfterMeasuredUsage,0);
+  assert.equal(report.reviewRequired,true);
+});
+
+test("measured paid usage cannot be settled with zero customer credits unnoticed",async t=>{
+  const x=setup(t);
+  await x.reserve();
+  await measured(x);
+  assert.equal((await settleProviderSpend(x.env,{
+    id:"ai:r1",actualMicroUsd:519n
+  })).ok,true);
+  assert.equal((await finalizeCredits(x.env,{
+    userId:"test-user",requestId:"r1",settledMicrocredits:0n
+  })).ok,true);
+  const report=await x.audit();
+  assert.equal(report.zeroSettledCreditAfterMeasuredUsage,1);
+  assert.equal(report.settledCostMismatches,0);
+  assert.equal(report.reviewRequired,true);
+});
+
+test("customer credit settlement without any corresponding provider budget is an exception",async t=>{
+  const x=setup(t);
+  assert.equal((await reserveCredits(x.env,{
+    userId:"test-user",requestId:"r1",amountMicrocredits:8610n
+  })).ok,true);
+  assert.equal((await finalizeCredits(x.env,{
+    userId:"test-user",requestId:"r1",settledMicrocredits:519n
+  })).ok,true);
+  const report=await x.audit();
+  assert.equal(report.settledCreditWithoutBudget,1);
+  assert.equal(report.reviewRequired,true);
+});
+
+test("definitely unused pre-dispatch cancellation may settle zero without anomaly",async t=>{
+  const x=setup(t);
+  await x.reserve();
+  assert.equal((await settleProviderSpend(x.env,{
+    id:"ai:r1",actualMicroUsd:0n
+  })).ok,true);
+  assert.equal((await finalizeCredits(x.env,{
+    userId:"test-user",requestId:"r1"
+  })).ok,true);
+  const report=await x.audit();
+  assert.equal(report.zeroSettledBudgetAfterDispatch,0);
+  assert.equal(report.releasedCreditAfterDispatch,0);
+  assert.equal(report.reviewRequired,false);
+});
