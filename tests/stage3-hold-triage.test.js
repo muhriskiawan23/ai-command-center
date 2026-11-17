@@ -214,3 +214,37 @@ test("a measured event for the SAME attempt resolves prior unknown/unverified ev
     assert.equal(r.providerInvoiceVerified,false);
   }
 });
+
+test("fully settled request still escalates a different retry with missing provider outcome",async t=>{
+  const x=setup(t);await x.budget();await x.wallet();
+  assert.equal((await x.event("dispatched","req1","attempt1")).ok,true);
+  assert.equal((await x.event("outcome_unknown","req1","attempt1")).ok,true);
+  assert.equal((await x.event("dispatched","req1","attempt2")).ok,true);
+  assert.equal((await x.event("usage_measured","req1","attempt2")).ok,true);
+  assert.equal((await settleProviderSpend(x.env,{id:"ai:req1",actualMicroUsd:519n})).ok,true);
+  assert.equal((await finalizeCredits(x.env,{
+    userId:"synthetic-user",requestId:"req1",settledMicrocredits:519n
+  })).ok,true);
+  const result=await x.report();
+  assert.equal(result.unknownProviderHolds,0);
+  assert.equal(result.unresolvedUnknownAttempts,1);
+  assert.equal(result.unresolvedUnverifiedAttempts,0);
+  assert.equal(result.reviewRequired,true);
+  assert.equal(result.providerInvoiceVerified,false);
+  assert.equal(x.sqlite.prepare("SELECT status FROM credit_reservations").get().status,"settled");
+});
+test("unverified separate attempt remains escalated after provider+wallet settlement",async t=>{
+  const x=setup(t);await x.budget();await x.wallet();
+  assert.equal((await x.event("dispatched","req1","attempt1")).ok,true);
+  assert.equal((await x.event("usage_unverified","req1","attempt1")).ok,true);
+  assert.equal((await x.event("dispatched","req1","attempt2")).ok,true);
+  assert.equal((await x.event("usage_measured","req1","attempt2")).ok,true);
+  assert.equal((await settleProviderSpend(x.env,{id:"ai:req1",actualMicroUsd:519n})).ok,true);
+  assert.equal((await finalizeCredits(x.env,{
+    userId:"synthetic-user",requestId:"req1",settledMicrocredits:519n
+  })).ok,true);
+  const result=await x.report();
+  assert.equal(result.unresolvedUnverifiedAttempts,1);
+  assert.equal(result.unresolvedUnknownAttempts,0);
+  assert.equal(result.reviewRequired,true);
+});
