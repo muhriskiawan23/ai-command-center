@@ -29,6 +29,11 @@ jobs:
           set -euo pipefail
           npm ci --prefix tests/billing/stage3-wrangler-lock --ignore-scripts --no-audit --no-fund
           tests/billing/stage3-wrangler-lock/node_modules/.bin/wrangler --version
+      - name: Fail on currently known high or critical npm advisories (no secrets)
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm audit --prefix tests/billing/stage3-wrangler-lock --audit-level=high --no-fund
       - name: Verify exact package version and every registry integrity pin
         shell: bash
         run: |
