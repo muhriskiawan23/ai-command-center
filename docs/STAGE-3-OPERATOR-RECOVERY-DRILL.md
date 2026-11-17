@@ -146,6 +146,28 @@ disposable SQLite to verify that the diagnostic detects corrupt entries.
 Neither those deliberate test modifications nor the test-only approval
 simulation are valid production remediation methods.
 
+## Unresolved retry exposure after otherwise successful settlement
+
+The aggregate `src/stage3-hold-triage.js` now tracks uncertainty at the
+**individual provider attempt** level, not merely at the whole-request
+level. An earlier `outcome_unknown` or `usage_unverified` event is cleared
+only by authoritative `usage_measured` on the **same attempt ID**; a later
+measured, successful retry must not erase a different attempt's uncertainty.
+
+The report exposes `unresolvedUnknownAttempts` and
+`unresolvedUnverifiedAttempts` even when the credit reservation and provider
+budget are already recorded as *settled*. A settled wallet is **not evidence
+that all upstream retries were billed correctly**. These counts force
+`reviewRequired=true` pending independent provider statement reconciliation;
+they do **not** perform corrective writes or approve customer charges.
+
+Regression tests use real proposed local D1 SQL to cover:
+- One measured retry plus one unknown/unverified sibling with both holds open
+- Both wallets and provider budgets already settled, but an earlier attempt
+  remains unknown/unverified
+- A same-attempt later `usage_measured` event legitimately superseding
+  a previous uncertainty marker (invoice verification still false)
+
 ## Still blocked
 
 1. Authentic Workers AI provider usage and invoice reconciliation, approved
