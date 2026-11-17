@@ -102,6 +102,17 @@ must refuse a clean verdict. In-flight unmeasured attempts only count as
 **stale** after the configured threshold; explicit unknown/unverified outcomes
 require immediate operator attention.
 
+The follow-up safety patch also flags three **zero-cost laundering** risks:
+a provider budget finalized at zero **after** a `dispatched` event,
+a customer credit reservation released **after** dispatch even when usage
+is still unknown, and a wallet finalized at zero despite independently
+measured positive provider cost. It also flags any finalized customer
+debit without a corresponding provider-budget reservation. A genuine
+pre-dispatch cancellation (no `dispatched` event) is permitted to release
+unused credit and settle its provider budget to zero without these anomalies.
+An exception requires a human review of upstream evidence; it is not
+permission to charge a customer or auto-issue a refund.
+
 This audit is a risk detector, **not an automatic reconciliation action**.
 It cannot infer the official billed token counts, reconcile actual provider
 invoices, apply refunds, release uncertain reservations, change prices or
