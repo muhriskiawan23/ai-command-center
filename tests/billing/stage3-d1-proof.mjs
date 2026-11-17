@@ -28,14 +28,27 @@ if(remote){
     previousSandboxId:process.env.BOR_AI_D1_SANDBOX_DB_ID
   });
 }
-const env={...process.env,CLOUDFLARE_SEND_METRICS:"false"};
-for(const key of ["CLOUDFLARE_API_TOKEN","CLOUDFLARE_ACCOUNT_ID",
-  "CF_API_TOKEN","CLOUDFLARE_GLOBAL_API_KEY","CLOUDFLARE_EMAIL"])delete env[key];
+// Remote CLI is invoked with an allowlisted child environment. Never spread
+// GitHub's entire runner environment into a process holding a D1 token.
+// A reviewer must explicitly approve any newly required child variable.
+const remoteEnvironmentKeys=[
+  "PATH","HOME","TMPDIR","TMP","TEMP","CI",
+  "XDG_CONFIG_HOME","XDG_CACHE_HOME"
+];
+const env=remote
+  ?Object.fromEntries(remoteEnvironmentKeys
+    .filter(k=>typeof process.env[k]==="string")
+    .map(k=>[k,process.env[k]]))
+  :{...process.env};
+env.CLOUDFLARE_SEND_METRICS="false";
 if(remote){
   env.CLOUDFLARE_API_TOKEN=process.env.BOR_AI_D1_SANDBOX_TOKEN;
   env.CLOUDFLARE_ACCOUNT_ID=process.env.BOR_AI_D1_SANDBOX_ACCOUNT_ID;
+} else {
+  for(const key of ["CLOUDFLARE_API_TOKEN","CLOUDFLARE_ACCOUNT_ID",
+    "CF_API_TOKEN","CLOUDFLARE_GLOBAL_API_KEY","CLOUDFLARE_EMAIL",
+    "BOR_AI_D1_SANDBOX_TOKEN"])delete env[key];
 }
-delete env.BOR_AI_D1_SANDBOX_TOKEN;
 const npx=process.platform==="win32"?"npx.cmd":"npx";
 // A real remote run MUST execute a previously installed, reviewed exact
 // Wrangler version. Never fetch/resolve an npm package while the Cloudflare
