@@ -158,7 +158,14 @@ async function deploy() {
     assert.ok(ready, "Sandbox Worker did not become ready");
     assert.equal((await send(chat, single)).status, 401);
     const responses = await Promise.all(Array.from({ length: 3 }, () => send(chat, single, web)));
-    assert.ok(responses.every(response => response.status === 200 || response.status === 409));
+    const unexpected = responses.filter(response => response.status !== 200 && response.status !== 409);
+    for (const response of unexpected) {
+      const info = await response.json().catch(() => null);
+      console.log("Unexpected sandbox chat result", {
+        status: response.status, ray: response.headers.get("cf-ray"), error: info?.error, code: info?.code
+      });
+    }
+    assert.equal(unexpected.length, 0, "Unexpected status during authenticated concurrent chat");
     const accepted = await Promise.all(responses.filter(response => response.status === 200).map(response => response.json()));
     assert.equal(accepted.filter(answer => !answer.replayed && answer.saved).length, 1);
     assert.equal((await (await send(chat, single, web)).json()).replayed, true);
@@ -203,6 +210,11 @@ async function verify() {
     (SELECT COUNT(*) FROM provider_budget_reservations WHERE status='reserved') AS budget_holds,
     (SELECT COUNT(*) FROM credit_reservations WHERE status='settled') AS wallet_settlements,
     (SELECT COUNT(*) FROM provider_budget_reservations WHERE status='settled') AS budget_settlements`);
+  const [state] = await query(id, `SELECT
+    (SELECT COUNT(*) FROM stage3_staging_requests) AS claimed,
+    (SELECT COUNT(*) FROM sessions WHERE expires_at > unixepoch()) AS active_sessions,
+    (SELECT COUNT(*) FROM provider_usage_events WHERE event_kind='dispatched') AS dispatched`);
+  console.log(JSON.stringify({ proof, state }));
   assert.deepEqual(proof, { measured: 9, unverified: 1, wallet_holds: 2, budget_holds: 1, wallet_settlements: 8, budget_settlements: 9 });
   const wallets = await query(id, `SELECT user_id, COUNT(*) AS settlements, SUM(settled_microcredits) AS debits
     FROM credit_reservations WHERE status='settled' GROUP BY user_id ORDER BY user_id`);

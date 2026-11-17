@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   prepare:
-    if: github.event.before == 'd4c9c937dce5ab3f2445f94f0b0cc164d3700198'
+    if: github.event.before == '88446d80e2351bb6dd16f0f5be72ce41a48eed74'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     environment: stage3-worker-sandbox
@@ -82,6 +82,7 @@ jobs:
         run: node staging/stage3-cloud-proof.mjs close
   verify:
     needs: [provision, worker]
+    if: always() && needs.provision.result == 'success'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     environment: billing-sandbox
