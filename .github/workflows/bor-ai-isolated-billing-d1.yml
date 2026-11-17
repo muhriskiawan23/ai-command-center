@@ -9,6 +9,9 @@ on:
       - 'tests/billing/isolated-d1-smoke.mjs'
       - 'tests/billing/stage2-d1-proof.mjs'
       - 'tests/billing/stage3-d1-proof.mjs'
+      - 'tests/billing/stage3-staging-smoke.mjs'
+      - 'tests/billing/stage3-wrangler-lock/**'
+      - 'staging/stage3-worker.js'
       - 'migrations/0012_credit_ledger.sql'
       - 'migrations/0013_provider_spend_budget.sql'
       - 'migrations/0014_provider_usage_journal.sql'
@@ -38,6 +41,10 @@ jobs:
           cache: npm
       - name: Install locked test dependencies
         run: npm ci
+      - name: Verify the isolated synthetic Stage 3 Worker against local D1
+        run: |
+          npm ci --prefix tests/billing/stage3-wrangler-lock --ignore-scripts --no-audit --no-fund
+          node tests/billing/stage3-staging-smoke.mjs
       - name: Test D1 migrations, global budget and ledger with isolated local Wrangler state
         run: node tests/billing/isolated-d1-smoke.mjs
       - name: Stage 2 multi-request local D1 atomicity and timeout/refund proof

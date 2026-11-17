@@ -1,6 +1,6 @@
 # BOR AI — Stage 3 provider usage audit journal (development-only)
 
-**Status: INACTIVE PROTOTYPE / NOT MERGED / NOT LINKED TO ROUTES.**
+**Status: SYNTHETIC STAGING WORKER / NO PRODUCTION ROUTE INTEGRATION.**
 
 Stage 2 remote D1 concurrency proof passed on [run #44003354049](https://github.com/muhriskiawan23/ai-command-center/actions/runs/44003354049) on 17 November 2026. That was synthetic financial-invariant testing only, not authentic Workers AI cost verification.
 
@@ -16,6 +16,24 @@ This Stage 3 proposal adds:
 entrypoints and no live provider credentials. Its integration tests use a **real
 SQLite usage journal** plus synthetic spending/wallet adapters (not the PR #245
 D1 financial ledger).
+
+`staging/stage3-worker.js` is a separate entry point that wraps the application
+Worker with the D1 budget, wallet and journal adapters. It requires the staging
+operator key and a D1 binding initialized with a staging-only request claim
+table. A repeated request ID is rejected before the application can dispatch a
+second model call. The entry point uses a fixed synthetic wallet and model
+response. It has no live AI binding and stubs Telegram delivery.
+
+Run the workerd smoke with the existing Wrangler lockfile:
+
+```sh
+npm ci --prefix tests/billing/stage3-wrangler-lock --ignore-scripts --no-audit --no-fund
+node tests/billing/stage3-staging-smoke.mjs
+```
+
+The smoke runs four application paths on disposable local D1 and checks the
+settled wallet, the journal, concurrent replay, authentication, and unknown
+usage holds. Provider invoices and remote staging deployment remain separate.
 
 The prototype demonstrates this mandatory sequence:
 
