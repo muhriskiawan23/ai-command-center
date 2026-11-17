@@ -67,11 +67,11 @@ the same plan gate and apply the **actual** per-feature credit budget.
 or multimodal generation until Midtrans commercial approval, a real
 signature-and-Status-API-verified payment pipeline, measured paid provider
 invoices, credit grants and limits, opt-in staging evaluation, independent
-finance/security/privacy review and founder approval are complete.- Verified Basic automatically has Basic status and inherits all Free features; it cannot use Pro-only features.
-- Verified Pro automatically has Pro status and inherits all Basic and Free features. No downgrade-mode selector is exposed or accepted by the API.
-- A plan change is a separately authorized billing lifecycle event, not a chat/UI setting. Cancellation, refunds, chargebacks and expiry change the server-verified entitlement, not a local mode.
-- A Free guest or account without valid payment proof cannot self-promote through browser input, account IDs or query parameters.
+finance/security/privacy review are complete. The owner has authorized continuing
+implementation and bug fixes; this does not replace the missing technical
+and provider evidence required for commercial release.
 
-3. There is **no** `plan_selections` table. The active tier is derived only from a current, verified server-side subscription. A Pro subscriber is always Pro while that entitlement remains valid.
-4. `GET /api/plan` reports the current verified tier and inherited feature labels. `POST /api/plan/select` is intentionally removed (404). Neither route grants credit, accepts client tier changes or performs inference.
-
+The UI rechecks the package at server-reported expiry, within 60 seconds while
+visible, and when the tab resumes. A stale badge never authorizes a request.
+The linked `/paket.html` comparison page exists and labels unreleased media
+features as planned; it offers no tier selector or checkout.

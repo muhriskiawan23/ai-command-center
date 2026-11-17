@@ -1,0 +1,7 @@
+.table-scroll{max-width:100%;overflow-x:auto;border:1px solid #2a3c59;border-radius:10px}
+table{width:100%;min-width:700px;border-collapse:collapse;font-size:14px;text-align:left}
+caption{text-align:left;padding:14px;color:#bbcae4}
+th,td{padding:14px;border-top:1px solid #2a3c59;vertical-align:top;line-height:1.6}
+thead th{background:#1c2941;color:#fff}tbody th{font-weight:600;color:#eaf0ff}
+td{color:#bbcae4}tbody tr:nth-child(even){background:#172239}
+:focus-visible{outline:2px solid #96c7ff;outline-offset:3px}

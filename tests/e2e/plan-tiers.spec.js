@@ -72,3 +72,14 @@ test("an open tab rechecks the package when the server entitlement expires",asyn
   await expect(page.locator("#planBadge")).toHaveText("Pro");
   await expect(page.locator("#planBadge")).toHaveText("Free",{timeout:8000});
 });
+test("the package comparison link opens an existing honest catalog with no mode selector",async({page,app})=>{
+  await page.goto(app.url);await page.locator("#continueGuest").click();await reveal(page);
+  await page.locator("#planPanel a").click();
+  await expect(page).toHaveURL(app.url+"/paket.html");
+  await expect(page.getByRole("heading",{name:"Satu langganan, manfaat otomatis"})).toBeVisible();
+  await expect(page.getByRole("table")).toBeVisible();
+  await expect(page.getByText("Belum dibuka untuk pembelian:")).toBeVisible();
+  await expect(page.locator("select,button,form")).toHaveCount(0);
+  const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth);
+  expect(overflow).toBe(false);
+});
