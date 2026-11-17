@@ -20,7 +20,8 @@ CREATE TABLE provider_usage_events (
   CHECK (
     (event_kind = 'usage_measured'
       AND input_tokens IS NOT NULL AND output_tokens IS NOT NULL
-      AND input_tokens + output_tokens > 0 AND provider_cost_micro_usd IS NOT NULL)
+      AND input_tokens + output_tokens > 0 AND provider_cost_micro_usd IS NOT NULL
+      AND provider_cost_micro_usd > 0)
     OR
     (event_kind != 'usage_measured'
       AND input_tokens IS NULL AND output_tokens IS NULL
