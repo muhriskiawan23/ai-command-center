@@ -11,6 +11,7 @@ WITH journal AS (
    COUNT(CASE WHEN event_kind='usage_measured' THEN 1 END) AS measured,
    COALESCE(SUM(CASE WHEN event_kind='usage_measured' THEN provider_cost_micro_usd ELSE 0 END),0) AS measured_cost,
    COUNT(DISTINCT CASE WHEN event_kind='dispatched' THEN rate_version END) AS rate_versions,
+   COUNT(CASE WHEN event_kind='dispatched' AND rate_version != ? THEN 1 END) AS mismatched_rate_version,
    COUNT(CASE WHEN event_kind='dispatched' AND NOT EXISTS (
        SELECT 1 FROM provider_usage_events terminal
        WHERE terminal.attempt_id=events.attempt_id AND terminal.event_kind='usage_measured'
@@ -22,25 +23,35 @@ WITH journal AS (
  FROM provider_usage_events events WHERE events.request_id=?
 )
 SELECT
- c.status AS wallet_status, c.reserved_microcredits AS wallet_reserved,
- c.settled_microcredits AS wallet_settled,
- b.status AS provider_status, b.reserved_micro_usd AS provider_reserved,
- b.actual_micro_usd AS provider_actual,
- j.dispatched, j.measured, j.measured_cost, j.rate_versions, j.unmeasured, j.unresolved,
+ c.status AS wallet_status, c.user_id AS wallet_user_id,
+ c.reserved_microcredits AS wallet_reserved, c.settled_microcredits AS wallet_settled,
+ b.status AS provider_status, b.provider AS budget_provider, b.model AS budget_model,
+ b.reserved_micro_usd AS provider_reserved, b.actual_micro_usd AS provider_actual,
+ j.dispatched, j.measured, j.measured_cost, j.rate_versions, j.mismatched_rate_version,
+ j.unmeasured, j.unresolved,
  (SELECT COUNT(*) FROM provider_usage_events d
    WHERE d.request_id=q.request_id AND d.event_kind='dispatched'
    AND (b.id IS NULL OR d.provider!=b.provider OR d.model!=b.model))
    AS mismatched_dispatch_identity,
  (SELECT COUNT(*) FROM credit_ledger l
    WHERE l.reference_id=q.request_id AND c.user_id=l.user_id
-   AND l.reason='refund') AS refund_events
+   AND l.reason='refund') AS refund_events,
+ (SELECT COALESCE(SUM(delta_microcredits),0) FROM credit_ledger l
+   WHERE l.reference_id=q.request_id AND c.user_id=l.user_id
+   AND l.reason='refund') AS refund_delta,
+ (SELECT COUNT(*) FROM credit_ledger l
+   WHERE l.reference_id=q.request_id AND c.user_id=l.user_id
+   AND l.reason='reserve') AS reserve_events,
+ (SELECT COALESCE(SUM(delta_microcredits),0) FROM credit_ledger l
+   WHERE l.reference_id=q.request_id AND c.user_id=l.user_id
+   AND l.reason='reserve') AS reserve_delta
 FROM (SELECT ? AS request_id) q
 LEFT JOIN credit_reservations c ON c.request_id=q.request_id
 LEFT JOIN provider_budget_reservations b ON b.id='ai:' || q.request_id
 CROSS JOIN journal j
 `;
 
-const COUNTS=["dispatched","measured","measured_cost","rate_versions","unmeasured","unresolved","mismatched_dispatch_identity","refund_events"];
+const COUNTS=["dispatched","measured","measured_cost","rate_versions","unmeasured","unresolved","mismatched_dispatch_identity","mismatched_rate_version","refund_events","reserve_events"];
 const OPTIONAL_AMOUNTS=["wallet_reserved","wallet_settled","provider_reserved","provider_actual"];
 
 function nonnegativeSafe(x){return Number.isSafeInteger(x)&&x>=0;}
@@ -59,13 +70,30 @@ function failClosed(reason) {
 // No raw account IDs, request IDs, attempt IDs or PII leave this function.
 // 'candidate' means a human may investigate a proposed path, NOT permission
 // to call finalizeCredits or settleProviderSpend.
-export async function inspectStage3RecoveryCase(env,{requestId}={}) {
+export async function inspectStage3RecoveryCase(env,{
+  requestId, expectedUserId, expectedProvider, expectedModel, expectedRateVersion
+}={}) {
   if(!env?.DB?.prepare||typeof env.DB.prepare!=="function")
     throw new TypeError("D1 binding required for Stage 3 operator case triage");
   if(typeof requestId!=="string" || !/^[A-Za-z0-9][A-Za-z0-9:_-]{0,119}$/.test(requestId) ||
      requestId.length>MAX_ID)
     throw new TypeError("Bounded server-issued request ID required");
-  const row=await env.DB.prepare(SQL).bind(requestId,requestId).first();
+  // An operator must provide the expected authenticated owner, provider,
+  // model and immutable rate version; never infer a "safe" case from a
+  // globally guessable request ID alone. Inputs do not authorize mutation.
+  if(typeof expectedUserId!=="string" ||
+     !/^[A-Za-z0-9][A-Za-z0-9:_-]{0,119}$/.test(expectedUserId))
+    throw new TypeError("Bounded authenticated expected account required");
+  if(typeof expectedProvider!=="string" ||
+     !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$/.test(expectedProvider))
+    throw new TypeError("Expected provider required");
+  if(typeof expectedModel!=="string" ||
+     !/^[A-Za-z0-9@][A-Za-z0-9@/._:-]{0,179}$/.test(expectedModel))
+    throw new TypeError("Expected model required");
+  if(typeof expectedRateVersion!=="string" ||
+     !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$/.test(expectedRateVersion))
+    throw new TypeError("Expected tariff version required");
+  const row=await env.DB.prepare(SQL).bind(expectedRateVersion,requestId,requestId).first();
   if(!row || COUNTS.some(key=>!nonnegativeSafe(row[key])) ||
       OPTIONAL_AMOUNTS.some(key=>row[key]!==null && !nonnegativeSafe(row[key])) ||
       !readStatus(row.wallet_status,["reserved","settled","released"]) ||
@@ -73,6 +101,29 @@ export async function inspectStage3RecoveryCase(env,{requestId}={}) {
     throw new Error("Incomplete or invalid Stage 3 case snapshot");
 
   const problems=[];
+  if(row.wallet_status!==null && row.wallet_user_id!==expectedUserId)
+    return failClosed("account_owner_mismatch");
+  if(row.provider_status!==null &&
+     (row.budget_provider!==expectedProvider || row.budget_model!==expectedModel))
+    return failClosed("provider_or_model_mismatch");
+  if(row.mismatched_rate_version>0) problems.push("tariff_version_mismatch");
+  if(row.wallet_status!==null &&
+     (!Number.isSafeInteger(row.reserve_delta) || !Number.isSafeInteger(row.refund_delta)))
+    throw new Error("Invalid wallet ledger delta in Stage 3 case snapshot");
+  if(row.wallet_status!==null && (row.reserve_events!==1 ||
+     row.reserve_delta!==-row.wallet_reserved))
+    problems.push("wallet_reservation_ledger_mismatch");
+  if(row.wallet_status==="reserved" && (row.refund_events!==0 || row.refund_delta!==0))
+    problems.push("refund_exists_for_reserved_wallet");
+  if(row.wallet_status==="settled" &&
+     (row.refund_delta!==row.wallet_reserved-row.wallet_settled ||
+      row.refund_events!==(row.wallet_reserved>row.wallet_settled?1:0)))
+    problems.push("wallet_settlement_refund_mismatch");
+  if(row.wallet_status==="released" &&
+     (row.refund_events!==1 || row.refund_delta!==row.wallet_reserved))
+    problems.push("wallet_release_refund_mismatch");
+  if(row.provider_status!==null && row.measured_cost>row.provider_reserved)
+    problems.push("measured_cost_above_provider_ceiling");
   if(row.wallet_status===null) problems.push("wallet_record_missing");
   if(row.provider_status===null) problems.push("provider_budget_record_missing");
   if(row.dispatched && (!row.wallet_status||!row.provider_status)) problems.push("orphan_dispatch");
@@ -99,8 +150,6 @@ export async function inspectStage3RecoveryCase(env,{requestId}={}) {
     problems.push("customer_credit_released_while_provider_reserved");
   if(row.wallet_status==="released" && row.provider_actual>0)
     problems.push("customer_credit_released_with_provider_cost");
-  if(row.wallet_status==="reserved" && row.refund_events>0)
-    problems.push("refund_exists_for_reserved_wallet");
   if(row.wallet_status==="settled" && row.wallet_settled===0 && row.measured)
     problems.push("zero_customer_charge_after_metering");
 
