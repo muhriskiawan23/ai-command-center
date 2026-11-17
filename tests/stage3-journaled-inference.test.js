@@ -223,7 +223,7 @@ test("wallet settlement failure cannot report a successful paid answer",async t=
 
 test("all ID references stay opaque and journal schema remains unmodified on policy rejection",async t=>{
   const x=setup(t);
-  assert.equal((await x.run({tariff:{...tariff,provider:"bad/provider"}})).ok,false);
+  await assert.rejects(x.run({tariff:{...tariff,provider:"bad/provider"}}),/tariff/);
   assert.equal(x.events().length,0);
   assert.equal(x.invoked(),0);
 });
