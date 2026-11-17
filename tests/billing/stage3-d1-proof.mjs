@@ -166,7 +166,7 @@ try{
   assert.equal(one("SELECT SUM(delta_microcredits) AS n FROM credit_ledger WHERE reference_id='measured'").n,-519);
   reject(budget("measured",8610),"UNIQUE");
   reject(wallet("measured","fixture",8610),"UNIQUE");
-  reject(event("attempt-measured","measured","usage_measured","1000,100,519"),"UNIQUE");
+  reject(event("attempt-measured","measured","usage_measured","1000,100,519"),"usage_event_already_metered");
   reject("UPDATE provider_usage_events SET provider_cost_micro_usd=0 WHERE event_kind='usage_measured'",
     "usage_event_append_only");
   reject("DELETE FROM provider_usage_events","usage_event_append_only");
