@@ -31,3 +31,16 @@ test("remote tests cannot silently use production config or delete a remote D1",
   assert.match(runner,/finally\{rmSync\(tmp,\{recursive:true,force:true\}\);\}/);
   assert.doesNotMatch(runner,/d1","(?:delete|create)|d1 (?:delete|create)|migrations apply/);
 });
+
+test("remote D1 subprocess environment explicitly excludes unrelated GitHub/CI secrets",()=>{
+  assert.match(runner,/const remoteEnvironmentKeys=\[/);
+  assert.match(runner,/"PATH","HOME","TMPDIR","TMP","TEMP","CI"/);
+  assert.match(runner,/"XDG_CONFIG_HOME","XDG_CACHE_HOME"/);
+  assert.match(runner,/const env=remote\s*\?Object\.fromEntries\(remoteEnvironmentKeys/);
+  assert.match(runner,/env\.CLOUDFLARE_API_TOKEN=process\.env\.BOR_AI_D1_SANDBOX_TOKEN/);
+  assert.match(runner,/env\.CLOUDFLARE_ACCOUNT_ID=process\.env\.BOR_AI_D1_SANDBOX_ACCOUNT_ID/);
+  const declaration=runner.split("const remoteEnvironmentKeys=[")[1]?.split("];")[0];
+  assert.ok(declaration);
+  assert.doesNotMatch(declaration,/TOKEN|SECRET|AUTH|KEY|NPM|GITHUB|NODE_OPTIONS/i);
+  assert.doesNotMatch(runner,/env=remote\?\{\.\.\.process\.env/);
+});
