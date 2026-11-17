@@ -43,6 +43,13 @@ export function strictProviderTokenUsage(usage) {
       return null;
     measured={inputTokens:usage[i],outputTokens:usage[o]};
   }
+  if(measured){
+    const computedTotal=measured.inputTokens+measured.outputTokens;
+    if(!Number.isSafeInteger(computedTotal)) return null;
+    if(Object.hasOwn(usage,"total_tokens") &&
+      (!Number.isSafeInteger(usage.total_tokens) || usage.total_tokens!==computedTotal))
+      return null;
+  }
   return measured;
 }
 
