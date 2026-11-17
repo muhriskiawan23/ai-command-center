@@ -72,6 +72,20 @@ and approve a new empty DB. The safety check is not proof of actual
 account separation, security approval, provider billing, or production
 readiness. A remote run remains blocked without an authorized fresh DB.
 
+## Remote Wrangler environment allowlist
+
+The Stage 3 remote SQL proof no longer forwards every GitHub Actions runner
+environment variable to Wrangler. Only PATH, HOME, temporary directory
+paths, CI and optional XDG config/cache paths are retained, along with
+CLOUDFLARE_SEND_METRICS=false and the dedicated Cloudflare sandbox API
+token/account ID explicitly required for D1. npm auth tokens, unrelated
+GitHub credentials, NODE_OPTIONS and other secret-bearing variables are
+not inherited by the Wrangler child process.
+
+Separate Node unit tests enforce this explicit allowlist. This reduces
+the credential blast radius but does not substitute for a least-privilege
+Cloudflare API token, pinned dependency integrity or an independent review.
+
 ## Wrangler supply-chain boundary (draft PRs #255 and #256)
 
 The proposed manual dispatcher now installs a fixed Wrangler version
