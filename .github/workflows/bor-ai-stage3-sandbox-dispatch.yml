@@ -26,6 +26,9 @@ jobs:
       BOR_AI_D1_SANDBOX_ACCOUNT_ID: ${{ vars.BOR_AI_D1_SANDBOX_ACCOUNT_ID }}
       BOR_AI_D1_STAGE3_DB_NAME: ${{ vars.BOR_AI_D1_STAGE3_DB_NAME }}
       BOR_AI_D1_STAGE3_DB_ID: ${{ vars.BOR_AI_D1_STAGE3_DB_ID }}
+      # Secondary denylist: also pass the existing Stage 2 sandbox IDs for preflight rejection.
+      BOR_AI_D1_SANDBOX_DB_NAME: ${{ vars.BOR_AI_D1_SANDBOX_DB_NAME }}
+      BOR_AI_D1_SANDBOX_DB_ID: ${{ vars.BOR_AI_D1_SANDBOX_DB_ID }}
     steps:
       - name: Refuse manual dispatch from any branch other than main
         shell: bash
