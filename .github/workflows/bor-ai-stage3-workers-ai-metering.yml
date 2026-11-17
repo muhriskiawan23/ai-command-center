@@ -1,8 +1,8 @@
-name: BOR AI Stage 3 one-request Workers AI metering
+name: BOR AI Stage 3 one-request Workers AI settlement
 
 on:
   push:
-    branches: [ops/stage3-workers-ai-metering-01]
+    branches: [ops/stage3-workers-ai-settlement-01]
     paths:
       - '.github/workflows/bor-ai-stage3-workers-ai-metering.yml'
 
@@ -10,14 +10,35 @@ permissions:
   contents: read
 
 concurrency:
-  group: bor-ai-stage3-workers-ai-metering
+  group: bor-ai-stage3-workers-ai-settlement
   cancel-in-progress: false
 
 jobs:
-  metering:
-    if: github.event.before == '08b624eeeec6e2075da9c0c17e7d5922e7eea727' && github.run_attempt == 1
+  provision:
+    if: github.event.before == '0b90d48669df1307e619cd0ff90b6e03d688c964' && github.run_attempt == 1
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    environment: billing-sandbox
+    outputs:
+      database: ${{ steps.database.outputs.database }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 22
+      - name: Seed the isolated sandbox ledger and matching budget caps
+        id: database
+        env:
+          STAGE3_D1_TOKEN: ${{ secrets.BOR_AI_D1_SANDBOX_TOKEN }}
+          STAGE3_D1_ACCOUNT: ${{ vars.BOR_AI_D1_SANDBOX_ACCOUNT_ID }}
+        run: node staging/stage3-workers-ai-probe.mjs provision
+
+  worker:
+    needs: provision
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
     environment: stage3-worker-sandbox
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -26,12 +47,37 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: 22
-      - name: Capture usage from exactly one sandbox inference
+      - name: Build the settlement Worker outside the step that receives credentials
+        run: |
+          npm ci --prefix tests/billing/stage3-wrangler-lock --ignore-scripts --no-audit --no-fund
+          tests/billing/stage3-wrangler-lock/node_modules/.bin/esbuild staging/stage3-workers-ai-metering-worker.js --bundle --format=esm --platform=browser --outfile="$RUNNER_TEMP/stage3-settlement.mjs"
+      - name: Settle one sandbox inference and reject replay
         env:
           STAGE3_WORKER_TOKEN: ${{ secrets.BOR_AI_STAGE3_WORKER_DEPLOY_TOKEN }}
+          STAGE3_DATABASE: ${{ needs.provision.outputs.database }}
         run: node staging/stage3-workers-ai-probe.mjs run
       - name: Verify sandbox Worker routing is disabled
         if: always()
         env:
           STAGE3_WORKER_TOKEN: ${{ secrets.BOR_AI_STAGE3_WORKER_DEPLOY_TOKEN }}
         run: node staging/stage3-workers-ai-probe.mjs close
+
+  verify:
+    needs: [provision, worker]
+    if: always() && needs.provision.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    environment: billing-sandbox
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 22
+      - name: Reconcile journal, budget, and synthetic wallet directly in sandbox D1
+        env:
+          STAGE3_D1_TOKEN: ${{ secrets.BOR_AI_D1_SANDBOX_TOKEN }}
+          STAGE3_D1_ACCOUNT: ${{ vars.BOR_AI_D1_SANDBOX_ACCOUNT_ID }}
+          STAGE3_DATABASE: ${{ needs.provision.outputs.database }}
+        run: node staging/stage3-workers-ai-probe.mjs verify

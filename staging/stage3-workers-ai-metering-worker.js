@@ -1,5 +1,22 @@
+import { finalizeCredits, reserveCredits } from "../src/credit-ledger.js";
+import { providerSpendBudget } from "../src/provider-spend-budget.js";
+import { runJournaledInferencePrototype } from "../src/stage3-journaled-inference.js";
+
 const model = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
-const attemptId = "stage3-workers-ai-metering-01";
+const requestId = "stage3-workers-ai-settlement-01";
+const userId = "stage3-live-test-wallet";
+const tariff = {
+  approved: true,
+  version: "sandbox-list-price-20261117",
+  provider: "workers-ai-free-sandbox",
+  model,
+  inputRateMicroUsdPerMillion: 293000n,
+  outputRateMicroUsdPerMillion: 2253000n,
+  creditNumerator: 1n,
+  creditDenominator: 1n,
+  maxCallMicroUsd: 7069n,
+  maxCallMicrocredits: 7069n
+};
 
 function json(body, status = 200) {
   return Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
@@ -19,30 +36,34 @@ export default {
     let difference = 0;
     for (let index = 0; index < 64; index++) difference |= key.charCodeAt(index) ^ env.METERING_KEY.charCodeAt(index);
     if (difference !== 0) return json({ error: "authentication_required" }, 401);
-    try {
-      // This sandbox marker is durable across Worker instances and deploys.
-      const claim = await env.STAGE3_DB.prepare(
-        "INSERT INTO stage3_staging_requests (id) VALUES (?) ON CONFLICT(id) DO NOTHING RETURNING id"
-      ).bind(attemptId).first();
-      if (!claim) return json({ error: "already_attempted" }, 409);
-    } catch {
-      return json({ error: "claim_failed" }, 503);
-    }
-    const startedAt = new Date().toISOString();
-    let response;
-    try {
-      response = await env.AI.run(model, {
+
+    const bindings = { DB: env.STAGE3_DB };
+    const result = await runJournaledInferencePrototype({
+      env: bindings,
+      userId,
+      requestId,
+      attemptId: requestId,
+      tariff,
+      maxInputTokens: 24000,
+      maxOutputTokens: 16,
+      providerBudget: providerSpendBudget(bindings),
+      ledger: { reserve: reserveCredits, finalize: finalizeCredits },
+      invokeModel: ({ model: selectedModel, maxOutputTokens }) => env.AI.run(selectedModel, {
         messages: [{ role: "user", content: "Reply with only the word OK." }],
-        max_tokens: 16,
+        max_tokens: maxOutputTokens,
         stream: false
-      });
-    } catch {
-      return json({ error: "provider_request_failed", startedAt, model }, 502);
+      })
+    });
+    if (!result.ok) {
+      const status = result.reason === "provider_budget_reservation_rejected" ? 409 : 502;
+      return json({ error: result.reason, modelInvoked: result.modelInvoked }, status);
     }
-    const usage = response?.usage;
-    const counters = Object.fromEntries([
-      "prompt_tokens", "completion_tokens", "total_tokens", "input_tokens", "output_tokens"
-    ].flatMap(name => Number.isSafeInteger(usage?.[name]) && usage[name] >= 0 ? [[name, usage[name]]] : []));
-    return json({ model, startedAt, usagePresent: Boolean(usage), counters });
+    return json({
+      model,
+      inputTokens: result.inputTokens,
+      outputTokens: result.outputTokens,
+      estimatedMicroUsdBeforeFreeAllocation: Number(result.providerCostMicroUsd),
+      syntheticDebitMicrocredits: Number(result.customerDebitMicrocredits)
+    });
   }
 };
