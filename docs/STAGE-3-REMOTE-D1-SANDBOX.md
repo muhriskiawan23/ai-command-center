@@ -71,3 +71,24 @@ An operator must still independently verify the Cloudflare account scope
 and approve a new empty DB. The safety check is not proof of actual
 account separation, security approval, provider billing, or production
 readiness. A remote run remains blocked without an authorized fresh DB.
+
+## Wrangler supply-chain boundary (draft PRs #255 and #256)
+
+The proposed manual dispatcher now installs a fixed Wrangler version
+4.160.0 into a dedicated temporary directory **before** the D1 sandbox
+token becomes available. The Stage 3 runner's remote mode rejects an
+absent/unapproved CLI path or an unexpected CLI version; it executes
+the preinstalled executable directly. It does **not** dynamically
+download or resolve npm packages while holding the Cloudflare token.
+Installation uses --ignore-scripts and --no-save and prints the CLI
+version before the secret-bearing test step.
+
+Local D1 tests retain an independent npx path **without** Cloudflare
+secrets. The proposed manual workflow has read-only GitHub permissions,
+persist-credentials disabled, and step-scoped D1 sandbox credentials.
+
+**Remaining supply-chain work:** fixed top-level Wrangler 4.160.0
+does not mean transitive dependencies are integrity-locked. Independently
+review package provenance/integrity, D1 token permissions and the exact
+workflow/test commits before any authorized remote dispatch. This change
+does not execute remote D1 SQL or a paid provider request.
