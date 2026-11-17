@@ -58,7 +58,7 @@ if(remote){
     encoding:"utf8",env:checkEnv,timeout:30000,
     stdio:["ignore","pipe","pipe"]
   });
-  assert.match(version,/\\b4\\.160\\.0\\b/,
+  assert.ok(new RegExp('\\b'+pinnedVersion.replaceAll('.','\\.')+'\\b').test(version),
     "Remote Wrangler does not match exact reviewed version");
 }
 const executable=remote?remoteBin:npx;
