@@ -3,6 +3,7 @@
 // real funds, remote D1, production migration or authentic provider invoice.
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { reserveCredits, finalizeCredits } from "../src/credit-ledger.js";
@@ -140,7 +141,7 @@ test("concurrent retries dispatch and charge only once for the same billing requ
 
 const syntheticAnswer = "Tokyo adalah ibu kota Jepang. Kota ini menjadi pusat pemerintahan nasional dan salah satu pusat ekonomi utama negara tersebut.";
 
-function chatThroughTestBillingBinding(x, providerResponse) {
+function testBillingBinding(x, providerResponse, { separateCalls = false } = {}) {
   let providerCalls = 0;
   let attempts = 0;
   const env = {
@@ -148,6 +149,7 @@ function chatThroughTestBillingBinding(x, providerResponse) {
       async run(model, payload) {
         const result = await x.run({
           attemptId: `worker-attempt-${++attempts}`,
+          ...(separateCalls ? { requestId: `worker-request-${attempts}`, maxInputTokens: 12000 } : {}),
           tariff: { ...tariff, model },
           maxOutputTokens: payload.max_tokens,
           invokeModel: async () => {
@@ -161,18 +163,19 @@ function chatThroughTestBillingBinding(x, providerResponse) {
     }
   };
   return {
-    submit: () => worker.fetch(new Request("https://example.test/api/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: "Apa ibu kota Jepang?", agent: "coordinator" })
-    }), env),
+    submit: ({ path = "/api/chat", headers, body = { message: "Apa ibu kota Jepang?", agent: "coordinator" }, bindings } = {}) =>
+      worker.fetch(new Request(`https://example.test${path}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify(body)
+      }), { ...env, ...bindings }),
     providerCalls: () => providerCalls
   };
 }
 
 test("Worker chat returns a synthetic answer only after Stage 3 settles the charge", async t => {
   const x = fixture(t);
-  const chat = chatThroughTestBillingBinding(x, {
+  const chat = testBillingBinding(x, {
     response: syntheticAnswer,
     usage: { prompt_tokens: 1000, completion_tokens: 100 }
   });
@@ -186,7 +189,7 @@ test("Worker chat returns a synthetic answer only after Stage 3 settles the char
 
 test("Worker chat with missing synthetic usage holds both reservations and withholds the answer", async t => {
   const x = fixture(t);
-  const chat = chatThroughTestBillingBinding(x, { response: syntheticAnswer });
+  const chat = testBillingBinding(x, { response: syntheticAnswer });
   const response = await chat.submit();
   assert.equal(response.status, 502);
   assert.doesNotMatch(await response.text(), /Tokyo|metering_unverified/);
@@ -199,7 +202,7 @@ test("Worker chat with missing synthetic usage holds both reservations and withh
 for (const [label, funds] of [["customer credit", { balance: 100 }], ["global budget", { globalCap: 100 }]]) {
   test(`Worker chat skips the synthetic provider when ${label} is insufficient`, async t => {
     const x = fixture(t, funds);
-    const chat = chatThroughTestBillingBinding(x, { response: syntheticAnswer });
+    const chat = testBillingBinding(x, { response: syntheticAnswer });
     const response = await chat.submit();
     assert.equal(response.status, 502);
     assert.doesNotMatch(await response.text(), /Tokyo/);
@@ -208,6 +211,73 @@ for (const [label, funds] of [["customer credit", { balance: 100 }], ["global bu
     assert.deepEqual(x.journal(), []);
   });
 }
+
+const meteredAnswer = {
+  response: syntheticAnswer,
+  usage: { prompt_tokens: 1000, completion_tokens: 100 }
+};
+
+test("multi-agent chat settles each synthetic model call independently", async t => {
+  const x = fixture(t);
+  const chat = testBillingBinding(x, {
+    ...meteredAnswer,
+    response: "Analisis ini mempertimbangkan tujuan, batasan, risiko, dan langkah konkret.\nRekomendasi utama adalah memvalidasi asumsi terlebih dahulu, mengukur hasil, lalu memperbaiki pendekatan berdasarkan data yang terkumpul."
+  }, { separateCalls: true });
+  const response = await chat.submit({ body: { message: "Buat analisis risiko dan strategi untuk bisnis saya." } });
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).workflow, "multi-agent");
+  assert.equal(chat.providerCalls(), 4);
+  assert.equal(x.balance(), 50000 - 519 * chat.providerCalls());
+  assert.equal(x.journal().filter(event => event.event_kind === "usage_measured").length, chat.providerCalls());
+});
+
+test("Telegram verifies the webhook before billing and sends the settled answer through a stub", async t => {
+  const x = fixture(t);
+  const chat = testBillingBinding(x, meteredAnswer);
+  const replies = [];
+  const webhook = {
+    path: "/api/integrations/telegram/webhook",
+    body: { message: { chat: { id: 77, type: "private" }, from: { id: 77 }, text: "Apa ibu kota Jepang?" } },
+    bindings: {
+      TELEGRAM_BOT_TOKEN: "synthetic-token",
+      TELEGRAM_WEBHOOK_SECRET: "synthetic-webhook",
+      TELEGRAM_FETCHER: async (_url, init) => {
+        replies.push(JSON.parse(init.body));
+        return Response.json({ ok: true });
+      }
+    }
+  };
+  assert.equal((await chat.submit(webhook)).status, 401);
+  assert.equal(chat.providerCalls(), 0);
+  const response = await chat.submit({ ...webhook, headers: { "X-Telegram-Bot-Api-Secret-Token": "synthetic-webhook" } });
+  assert.deepEqual(await response.json(), { ok: true });
+  assert.equal(chat.providerCalls(), 1);
+  assert.equal(x.reservation().settled_microcredits, 519);
+  assert.equal(replies[0].text, syntheticAnswer);
+});
+
+test("public chat verifies the key and origin before settling a synthetic charge", async t => {
+  const x = fixture(t);
+  const chat = testBillingBinding(x, meteredAnswer);
+  for (const name of ["0001_auth_and_chat", "0002_daily_usage", "0009_public_api_keys"]) {
+    x.sqlite.exec(readFileSync(new URL(`../migrations/${name}.sql`, import.meta.url), "utf8"));
+  }
+  x.sqlite.exec("INSERT INTO users (id, email, created_at, updated_at) VALUES ('synthetic-user', 'fixture@example.test', 1, 1)");
+  const key = `borai_live_${"synthetic".repeat(4)}`;
+  x.sqlite.prepare(`INSERT INTO public_api_keys (id, user_id, key_hash, label, allowed_origins, created_at, updated_at)
+    VALUES ('fixture-key', 'synthetic-user', ?, 'fixture', ?, 1, 1)`)
+    .run(createHash("sha256").update(key).digest("hex"), JSON.stringify(["https://shop.example"]));
+  const request = { path: "/api/public/chat", bindings: x.env };
+  assert.equal((await chat.submit({ ...request, headers: { Origin: "https://shop.example" } })).status, 401);
+  const headers = { Origin: "https://other.example", Authorization: `Bearer ${key}` };
+  assert.equal((await chat.submit({ ...request, headers })).status, 403);
+  assert.equal(chat.providerCalls(), 0);
+  const response = await chat.submit({ ...request, headers: { ...headers, Origin: "https://shop.example" } });
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).response, syntheticAnswer);
+  assert.equal(chat.providerCalls(), 1);
+  assert.equal(x.reservation().settled_microcredits, 519);
+});
 
 test("missing global operator cap denies provider call before credit reservation",async t=>{
   const x=fixture(t);
