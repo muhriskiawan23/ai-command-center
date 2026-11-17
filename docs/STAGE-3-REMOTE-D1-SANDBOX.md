@@ -86,23 +86,34 @@ Separate Node unit tests enforce this explicit allowlist. This reduces
 the credential blast radius but does not substitute for a least-privilege
 Cloudflare API token, pinned dependency integrity or an independent review.
 
-## Wrangler supply-chain boundary (draft PRs #255 and #256)
+## Locked Wrangler supply chain — Stage 3 only
 
-The proposed manual dispatcher now installs a fixed Wrangler version
-4.160.0 into a dedicated temporary directory **before** the D1 sandbox
-token becomes available. The Stage 3 runner's remote mode rejects an
-absent/unapproved CLI path or an unexpected CLI version; it executes
-the preinstalled executable directly. It does **not** dynamically
-download or resolve npm packages while holding the Cloudflare token.
-Installation uses --ignore-scripts and --no-save and prints the CLI
-version before the secret-bearing test step.
+A new separate manifest and npm lockfile live at
+`tests/billing/stage3-wrangler-lock/`. They pin the exact CLI
+`wrangler@4.160.0` plus 91 npm registry dependency entries with SHA-512
+integrity checks (92 total package entries including the root). The
+lockfile was generated in credential-free GitHub Actions CI and its
+reported SHA-256 was:
 
-Local D1 tests retain an independent npx path **without** Cloudflare
-secrets. The proposed manual workflow has read-only GitHub permissions,
-persist-credentials disabled, and step-scoped D1 sandbox credentials.
+`932af7fd768c50eb08a72e960f62daa9c52c17de4fa7529139bb1cb115538437`
 
-**Remaining supply-chain work:** fixed top-level Wrangler 4.160.0
-does not mean transitive dependencies are integrity-locked. Independently
-review package provenance/integrity, D1 token permissions and the exact
-workflow/test commits before any authorized remote dispatch. This change
-does not execute remote D1 SQL or a paid provider request.
+The manual-only dispatcher now **copies both files into the temporary
+CLI directory and runs `npm ci --ignore-scripts` before granting any
+Cloudflare token**. A separate no-secret CI job reproduced the installation
+and confirmed the same digest and Wrangler version. Remote runtime still
+checks the exact installed binary path and version before D1 inventory
+or SQL. It never resolves npm packages while holding its sandbox token.
+
+The normal BOR AI package dependencies are unchanged; the Wrangler lock
+is only for the isolated Stage 3 test. Workflow permissions stay read-only,
+GitHub checkout credentials are not persisted, and the D1 token is
+scoped only to the remote proof step. Local Wrangler tests still use
+their existing separate `npx` installation **without** sandbox secrets.
+
+**Still not approved:** an integrity-locked lockfile proves dependency
+content hashes, not that every dependency is free from vulnerabilities
+or malicious behavior. Independent package provenance/vulnerability review,
+Cloudflare D1 token permission inspection, protected environment approval,
+an authorized **new empty** Stage 3 sandbox database, green exact-head CI
+and founder go/no-go remain required. No remote SQL or paid model call
+was run to generate or check this lockfile.
