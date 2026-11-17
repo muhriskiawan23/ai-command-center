@@ -82,6 +82,32 @@ invoices, outage/retry crash recovery, privacy and independent approval
 remain explicitly NOT verified. The earlier Stage 2 remote test did not
 include this journal.
 
+## Stage 3 read-only cross-ledger anomaly report (new, inactive)
+
+The unmerged integration stack also adds `src/stage3-cross-ledger-reconciliation.js`
+with a **single read-only SQLite snapshot query** that checks all three proposed
+database schemas together. `inspectStage3CrossLedgerReconciliation()`
+counts missing dispatched journal evidence for positive provider settlements,
+actual settled micro-USD versus the sum of immutable measured usage events,
+missing budget or wallet for dispatched attempts, provider/model disagreement,
+stale pre-dispatch holds, measured usage with unsettled budgets, release of
+customer credits despite measured usage, and multiple attempts spending one
+reservation's worst-case ceiling. Its report contains only aggregate counts
+and a UTC cutoff, not user IDs or raw prompts.
+
+A successful measured-event write alone is **not** proof that both financial
+reservations settled; conversely two settled ledgers can disagree with the
+immutable metering journal. A missing table, incomplete result or D1 error
+must refuse a clean verdict. In-flight unmeasured attempts only count as
+**stale** after the configured threshold; explicit unknown/unverified outcomes
+require immediate operator attention.
+
+This audit is a risk detector, **not an automatic reconciliation action**.
+It cannot infer the official billed token counts, reconcile actual provider
+invoices, apply refunds, release uncertain reservations, change prices or
+approve production activation. Versioned credit conversion and independent
+invoice comparison remain separate launch gates.
+
 ## Intended production integration (NOT IMPLEMENTED)
 
 Before a paid model call, a future staging-only gate MUST atomically reserve global/provider budget and customer credits and durably append a `dispatched` record, refusing provider dispatch if the record is not confirmed. After the call it MUST append a measured or unknown/unverified event, reconcile the authoritative provider usage/invoice and commit both financial settlements in a documented sequence. Every model call, retry and agent/tool invocation needs its **own attempt ID**. The existing prototype `runReservedBillableInference` is **not wired** to this journal yet, and adding a journal by itself does not close the settlement-crash atomicity window.
