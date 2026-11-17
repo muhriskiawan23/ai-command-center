@@ -55,7 +55,10 @@ function setup(t){
   }
   async function inspect(){
     const before=writes;
-    const value=await inspectStage3RecoveryCase(env,{requestId});
+    const value=await inspectStage3RecoveryCase(env,{
+      requestId,expectedUserId:userId,expectedProvider:provider,
+      expectedModel:model,expectedRateVersion:tariff.version
+    });
     assert.equal(writes,before,"inspector must never write to D1");
     assert.equal(value.operatorActionAuthorized,false);
     assert.equal(value.providerInvoiceVerified,false);
@@ -158,6 +161,51 @@ test("read-only inspector rejects invalid request IDs, DB failures and incomplet
   const x=setup(t);
   await assert.rejects(inspectStage3RecoveryCase(x.env,{requestId:"bad request"}),/request ID/);
   await assert.rejects(inspectStage3RecoveryCase({},{requestId}),/D1 binding/);
-  await assert.rejects(inspectStage3RecoveryCase({DB:{prepare(){throw Error("offline")}}},{requestId}),/offline/);
-  await assert.rejects(inspectStage3RecoveryCase({DB:{prepare(){return{bind(){return{first:async()=>({})}}}}}},{requestId}),/snapshot/);
+  await assert.rejects(inspectStage3RecoveryCase({DB:{prepare(){throw Error("offline")}}},{requestId,
+    expectedUserId:userId,expectedProvider:provider,expectedModel:model,
+    expectedRateVersion:tariff.version}),/offline/);
+  await assert.rejects(inspectStage3RecoveryCase({DB:{prepare(){return{bind(){return{first:async()=>({})}}}}}},{requestId,
+    expectedUserId:userId,expectedProvider:provider,expectedModel:model,
+    expectedRateVersion:tariff.version}),/snapshot/);
+});
+
+test("caller-supplied identity and tariff scope must match original immutable records", async t=>{
+  const x=setup(t);await x.holds();await x.journal("dispatched");await x.journal("usage_measured");
+  const base={requestId,expectedUserId:userId,expectedProvider:provider,
+    expectedModel:model,expectedRateVersion:tariff.version};
+  const denied=async args=>inspectStage3RecoveryCase(x.env,{...base,...args});
+  assert.deepEqual((await denied({expectedUserId:"other-tenant"})).reasons,["account_owner_mismatch"]);
+  assert.deepEqual((await denied({expectedProvider:"other-provider"})).reasons,["provider_or_model_mismatch"]);
+  assert.deepEqual((await denied({expectedModel:"@cf/other"})).reasons,["provider_or_model_mismatch"]);
+  assert.ok((await denied({expectedRateVersion:"other-policy"})).reasons.includes("tariff_version_mismatch"));
+  await assert.rejects(denied({expectedUserId:undefined}),/expected account/);
+  await assert.rejects(denied({expectedRateVersion:undefined}),/Expected tariff/);
+  assert.equal((await x.inspect()).reviewClass,"candidate_provider_then_wallet_review");
+});
+
+test("wallet reserve ledger tampering and missing refunds never permit recovery candidates", async t=>{
+  const x=setup(t);await x.holds();await x.journal("dispatched");await x.journal("usage_measured");
+  // Existing ledger entries are append-only by application contract; this SQL
+  // simulates a privileged database compromise/restored-corrupt snapshot.
+  x.sql.prepare("UPDATE credit_ledger SET delta_microcredits=-1 WHERE reason='reserve' AND reference_id=?")
+    .run(requestId);
+  assert.ok((await x.inspect()).reasons.includes("wallet_reservation_ledger_mismatch"));
+  const y=setup(t);await y.holds();await y.journal("dispatched");await y.journal("usage_measured");
+  await y.budget();await y.wallet();
+  y.sql.prepare("DELETE FROM credit_ledger WHERE reason='refund' AND reference_id=?").run(requestId);
+  assert.ok((await y.inspect()).reasons.includes("wallet_settlement_refund_mismatch"));
+});
+
+test("measured provider cost above original reservation ceiling is escalated even before settlement",async t=>{
+  const x=setup(t);await x.holds();await x.journal("dispatched");
+  // Create an immutable measured usage event whose actual cost exceeds the
+  // originally reserved provider ceiling. Do not use any live model here.
+  assert.equal((await appendProviderUsageEvent(x.env,{
+    attemptId:"attempt-a",requestId,provider,model,rateVersion:tariff.version,
+    kind:"usage_measured",usage:{prompt_tokens:30000,completion_tokens:1000},
+    tariff,nowMs:now+1000
+  })).ok,true);
+  const output=await x.inspect();
+  assert.equal(output.reviewClass,"escalate");
+  assert.ok(output.reasons.includes("measured_cost_above_provider_ceiling"));
 });
