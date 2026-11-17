@@ -27,6 +27,14 @@ jobs:
       BOR_AI_D1_STAGE3_DB_NAME: ${{ vars.BOR_AI_D1_STAGE3_DB_NAME }}
       BOR_AI_D1_STAGE3_DB_ID: ${{ vars.BOR_AI_D1_STAGE3_DB_ID }}
     steps:
+      - name: Refuse manual dispatch from any branch other than main
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = 'refs/heads/main' || {
+            echo '::error::Stage 3 sandbox dispatcher must run from main only'
+            exit 1
+          }
       - name: Checkout pinned reviewed unmerged test SHA, NOT production main
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
