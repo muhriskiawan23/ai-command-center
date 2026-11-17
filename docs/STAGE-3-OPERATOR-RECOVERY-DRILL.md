@@ -168,6 +168,28 @@ Regression tests use real proposed local D1 SQL to cover:
 - A same-attempt later `usage_measured` event legitimately superseding
   a previous uncertainty marker (invoice verification still false)
 
+
+## Unapplied credit-ledger immutability migration
+
+The draft `migrations/0015_credit_ledger_append_only.sql` is **additive and
+unapplied**. It adds SQL `BEFORE UPDATE` and `BEFORE DELETE` abort
+triggers on `credit_ledger`, which was not previously protected from direct
+history edits by migration 0012. Ledger balance projections and reservation
+states still use the existing atomic triggers; existing historical rows are
+not rewritten and no grants are created.
+
+`tests/stage3-credit-ledger-append-only.test.js` uses **disposable
+in-memory SQLite** with actual 0012+0015 to prove that legitimate
+reservation, partial settlement, full release, exact once-only refunds
+and replay refusal still work while direct journal rewrite/deletion fails.
+The test intentionally does not use a production or remote database.
+
+This migration is **not a substitute** for restricting D1 write credentials,
+authenticating every customer grant, verifying actual payment webhooks,
+approving refund operators, securing backups or reviewing other mutable
+balance-projection tables. Apply it only after an independently approved
+schema review and an explicit production migration authorization.
+
 ## Still blocked
 
 1. Authentic Workers AI provider usage and invoice reconciliation, approved
