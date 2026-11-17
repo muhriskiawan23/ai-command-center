@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   prepare:
-    if: github.event.before == '88446d80e2351bb6dd16f0f5be72ce41a48eed74'
+    if: github.event.before == '57fee8e840814bd7e567b7df471eea6cf676d68f'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     environment: stage3-worker-sandbox
@@ -33,6 +33,10 @@ jobs:
         env:
           STAGE3_WORKER_TOKEN: ${{ secrets.BOR_AI_STAGE3_WORKER_DEPLOY_TOKEN }}
         run: node staging/stage3-cloud-proof.mjs preflight
+      - name: Confirm routing for the previous sandbox attempts is disabled
+        env:
+          STAGE3_WORKER_TOKEN: ${{ secrets.BOR_AI_STAGE3_WORKER_DEPLOY_TOKEN }}
+        run: node staging/stage3-cloud-proof.mjs close-previous
   provision:
     needs: prepare
     runs-on: ubuntu-24.04

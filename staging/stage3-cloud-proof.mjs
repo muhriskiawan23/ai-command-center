@@ -104,10 +104,24 @@ async function provision() {
   console.log(`Prepared sandbox D1 ${databaseName} (${id}).`);
 }
 
-async function route(enabled, allowMissing = false) {
-  return api(workerToken, `${scriptPath}/subdomain`, {
+async function route(enabled, allowMissing = false, endpoint = scriptPath) {
+  return api(workerToken, `${endpoint}/subdomain`, {
     method: "POST", json: { enabled, previews_enabled: false }, allowMissing
   });
+}
+
+async function closeAndVerify(endpoint = scriptPath) {
+  const closed = await route(false, true, endpoint);
+  if (closed === null) return;
+  for (let check = 0; check < 12; check++) {
+    const settings = await api(workerToken, `${endpoint}/subdomain`);
+    if (settings.enabled === false && settings.previews_enabled === false) {
+      console.log(`Routing disabled for ${endpoint.split("/").at(-1)}.`);
+      return;
+    }
+    await delay(2500);
+  }
+  assert.fail("Cloudflare did not confirm that sandbox routes were disabled");
 }
 
 async function deploy() {
@@ -133,13 +147,22 @@ async function deploy() {
   }), "worker.mjs");
   await api(workerToken, scriptPath, { method: "PUT", form });
   const origin = `https://${workerName}.${subdomain}.workers.dev`;
-  const send = (path, body, extra = {}, request = randomBytes(16).toString("hex")) => fetch(origin + path, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-BOR-Stage3-Key": key, "X-BOR-Stage3-Request": request, ...extra },
-    body: JSON.stringify(body),
-    redirect: "error",
-    signal: AbortSignal.timeout(20000)
-  });
+  const send = async (path, body, extra = {}, request = randomBytes(16).toString("hex")) => {
+    for (let check = 0; ; check++) {
+      const response = await fetch(origin + path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-BOR-Stage3-Key": key, "X-BOR-Stage3-Request": request, ...extra },
+        body: JSON.stringify(body),
+        redirect: "error",
+        signal: AbortSignal.timeout(20000)
+      });
+      const routingMiss = response.status === 404 && !response.headers.get("content-type")?.includes("application/json");
+      if (!routingMiss || check >= 3) return response;
+      // Only retry a Cloudflare routing miss. Keep the same logical request ID.
+      await response.body?.cancel();
+      await delay(3000);
+    }
+  };
   const chat = "/api/chat";
   const single = { message: "Apa ibu kota Jepang?", requestId: randomUUID(), userId: "stage3-api" };
   const webHeaders = userId => ({ Origin: origin, Cookie: `__Host-borai_session=${sessionToken(userId)}` });
@@ -148,8 +171,11 @@ async function deploy() {
     await route(true);
     let ready = false;
     for (let check = 0; check < 20; check++) {
-      const probe = await send(chat, single, { "X-BOR-Stage3-Key": "invalid" }).catch(() => null);
-      if (probe?.status === 401 && (await probe.json().catch(() => null))?.error === "Stage 3 authentication required") {
+      const probes = await Promise.all(Array.from({ length: 3 }, async () => {
+        const probe = await send(chat, single, { "X-BOR-Stage3-Key": "invalid" }).catch(() => null);
+        return probe?.status === 401 && (await probe.json().catch(() => null))?.error === "Stage 3 authentication required";
+      }));
+      if (probes.every(Boolean)) {
         ready = true;
         break;
       }
@@ -230,12 +256,10 @@ switch (process.argv[2]) {
   case "preflight": await preflight(); break;
   case "provision": await provision(); break;
   case "deploy": await deploy(); break;
-  case "close": {
-    const closed = await route(false, true);
-    if (closed !== null) {
-      const settings = await api(workerToken, `${scriptPath}/subdomain`);
-      assert.equal(settings.enabled, false);
-      assert.equal(settings.previews_enabled, false);
+  case "close": await closeAndVerify(); break;
+  case "close-previous": {
+    for (const runId of [44112087114, 44112721138]) {
+      await closeAndVerify(`/workers/scripts/bor-ai-s3-auth-${runId}-1`);
     }
     break;
   }
