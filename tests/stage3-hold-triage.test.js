@@ -171,3 +171,46 @@ test("unverified token usage and invalid or missing schema fail closed",async t=
     /offline/);
   assert.throws(()=>x.sqlite.prepare("DELETE FROM provider_usage_events").run(),/append_only/);
 });
+
+
+test("separate unknown retry remains unresolved even when another attempt is measured",async t=>{
+  const x=setup(t);
+  await x.budget();await x.wallet();
+  assert.equal((await x.event("dispatched","req1","attempt1")).ok,true);
+  assert.equal((await x.event("outcome_unknown","req1","attempt1")).ok,true);
+  assert.equal((await x.event("dispatched","req1","attempt2")).ok,true);
+  assert.equal((await x.event("usage_measured","req1","attempt2")).ok,true);
+  const report=await x.report();
+  assert.equal(report.unknownProviderHolds,1);
+  assert.equal(report.measuredPendingProviderSettlement,1);
+  assert.equal(report.reviewRequired,true);
+  assert.equal(report.providerInvoiceVerified,false);
+  // No settlement or release is triggered by read-only triage.
+  assert.equal(x.sqlite.prepare("SELECT status FROM credit_reservations").get().status,"reserved");
+  assert.equal(x.sqlite.prepare("SELECT status FROM provider_budget_reservations").get().status,"reserved");
+});
+
+test("unverified retry stays held despite a different measured attempt",async t=>{
+  const x=setup(t);await x.budget();await x.wallet();
+  assert.equal((await x.event("dispatched","req1","attempt1")).ok,true);
+  assert.equal((await x.event("usage_unverified","req1","attempt1")).ok,true);
+  assert.equal((await x.event("dispatched","req1","attempt2")).ok,true);
+  assert.equal((await x.event("usage_measured","req1","attempt2")).ok,true);
+  const result=await x.report();
+  assert.equal(result.unverifiedUsageHolds,1);
+  assert.equal(result.reviewRequired,true);
+});
+
+test("a measured event for the SAME attempt resolves prior unknown/unverified event flags",async t=>{
+  for(const uncertain of ["outcome_unknown","usage_unverified"]){
+    const x=setup(t);await x.budget();await x.wallet();
+    assert.equal((await x.event("dispatched")).ok,true);
+    assert.equal((await x.event(uncertain)).ok,true);
+    assert.equal((await x.event("usage_measured")).ok,true);
+    const r=await x.report();
+    assert.equal(r.unknownProviderHolds,0);
+    assert.equal(r.unverifiedUsageHolds,0);
+    assert.equal(r.measuredPendingProviderSettlement,1);
+    assert.equal(r.providerInvoiceVerified,false);
+  }
+});
