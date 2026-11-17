@@ -173,8 +173,10 @@ Regression tests use real proposed local D1 SQL to cover:
 
 The draft `migrations/0015_credit_ledger_append_only.sql` is **additive and
 unapplied**. It adds SQL `BEFORE UPDATE` and `BEFORE DELETE` abort
-triggers on `credit_ledger`, which was not previously protected from direct
-history edits by migration 0012. Ledger balance projections and reservation
+triggers and a `BEFORE INSERT` conflicting-reference guard on `credit_ledger`,
+which was not previously protected from direct history edits by migration 0012.
+The insert guard also blocks SQLite `INSERT OR REPLACE` from silently deleting
+a conflicting historic row when `recursive_triggers` is disabled. Ledger balance projections and reservation
 states still use the existing atomic triggers; existing historical rows are
 not rewritten and no grants are created.
 
