@@ -9,7 +9,55 @@ This Stage 3 proposal adds:
 - `src/provider-usage-journal.js`: an **opt-in internal** function `appendProviderUsageEvent()` for a server-issued opaque attempt ID. A measured event requires a caller-provided *server-approved and version-matched* tariff and complete, internally consistent token counts. Integer micro-USD provider cost is calculated independently. Incomplete counts cannot be treated as zero cost; failed journal inserts return `ok:false`. A separate read-only aggregate `inspectProviderUsageJournal()` returns counts and unresolved attempts with no customer IDs.
 - `tests/provider-usage-journal.test.js`: real SQLite constraints, replay, missing dispatch, mismatched references, unknown-outcome retention, later reconciliation, rate mismatch, inconsistent provider token usage, immutable history, cost-overflow guard, missing table fail-closed and private metadata checks.
 
-## Intended integration (NOT IMPLEMENTED)
+## Stage 3 synthetic orchestration — implemented but INACTIVE
+
+`src/stage3-journaled-inference.js` adds a **staging-only, dependency-injected**
+`runJournaledInferencePrototype()`. It has no import path from production
+entrypoints and no live provider credentials. Its integration tests use a **real
+SQLite usage journal** plus synthetic spending/wallet adapters (not the PR #245
+D1 financial ledger).
+
+The prototype demonstrates this mandatory sequence:
+
+1. Validate a versioned server-approved tariff, conservative model input/output
+   caps, customer-credit conversion and maximum USD/credit cost quote.
+2. Reserve **provider and global budget first** with the supplied atomic adapter,
+   then reserve customer credits with a separate atomic adapter.
+3. Durably confirm an immutable `dispatched` event **before** invoking the
+   injected provider. If the write is ambiguous/failed, **do not invoke or
+   automatically release reserved value**; require operator reconciliation.
+4. Invoke exactly one provider attempt with an independently enforceable output
+   cap. A thrown call records `outcome_unknown` if possible and holds both
+   reservations. Missing/contradictory usage records `usage_unverified` and
+   also holds both reservations.
+5. Confirm a measured usage event with independently calculated integer
+   micro-USD cost **before settling either financial reservation**. Over-ceiling
+   measurements remain journaled for investigation, but never authorize
+   settlement or returning a paid answer.
+6. Only after the journal write, settle provider budget, then customer credits.
+   If either settlement fails, keep the result private and require reconciliation.
+   A successful response is returned **only after both settle**.
+
+`tests/stage3-journaled-inference.test.js` includes replay, budget denial,
+insufficient wallet credit, failed dispatch/measurement writes, provider
+timeout, missing/contradictory counts, measured overrun, budget-settlement
+failure and customer-ledger settlement failure.
+
+**Important limitation:** mocked adapters are *not* evidence of cross-table
+atomicity or integrated Stage 2 remote D1 operations. This is independent
+contract/orchestration testing. A later, separately approved patch must compose
+the reviewed Stage 2 concrete `credit-ledger` and `provider-spend-budget`
+adapters, add crash/restart and full remote D1 integration tests, and guarantee
+server authentication and actual provider max-token enforcement at each route.
+Provider `usage` fields must be checked against real provider statements and
+billable costs in an explicitly approved staging test; a synthetic
+`approved:true` tariff is not business/finance authorization.
+
+The aggregate journal only counts **measured attempts**, not completed
+financial settlements. The read-only Stage 2 budget+credit reconciliation and
+actual provider invoice reconciliation remain mandatory before any paid release.
+
+## Intended production integration (NOT IMPLEMENTED)
 
 Before a paid model call, a future staging-only gate MUST atomically reserve global/provider budget and customer credits and durably append a `dispatched` record, refusing provider dispatch if the record is not confirmed. After the call it MUST append a measured or unknown/unverified event, reconcile the authoritative provider usage/invoice and commit both financial settlements in a documented sequence. Every model call, retry and agent/tool invocation needs its **own attempt ID**. The existing prototype `runReservedBillableInference` is **not wired** to this journal yet, and adding a journal by itself does not close the settlement-crash atomicity window.
 
