@@ -102,3 +102,28 @@ test("guards do not create or modify financial files, payments, or D1 state",()=
   verifyStage3RemoteInventory({...payload,inventory});
   assert.equal(JSON.stringify({payload,inventory}),before);
 });
+
+test("missing Stage 2 identity must fail closed before remote SQL even for valid new database",()=>{
+  for(const broken of [
+    {previousSandboxName:undefined},
+    {previousSandboxName:""},
+    {previousSandboxId:undefined},
+    {previousSandboxId:""},
+    {previousSandboxName:"not-a-stage2-sandbox"},
+    {previousSandboxId:"invalid-id"}
+  ]){
+    assert.throws(()=>validateStage3RemoteTarget({...inputs,...broken}),
+      /Existing Stage 2 sandbox/);
+  }
+});
+
+test("inconsistent UUID and id on the same Cloudflare inventory row are rejected",()=>{
+  const wrong={uuid:id,
+    id:"22222222-2222-4222-8222-222222222222",name};
+  assert.throws(()=>verifyStage3RemoteInventory({
+    inventory:[wrong],name,id,productionDatabases
+  }),/Conflicting UUID\/id fields/);
+  assert.equal(verifyStage3RemoteInventory({
+    inventory:[{uuid:id,id,name}],name,id,productionDatabases
+  }),true);
+});
