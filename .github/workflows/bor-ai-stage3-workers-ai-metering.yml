@@ -1,0 +1,37 @@
+name: BOR AI Stage 3 one-request Workers AI metering
+
+on:
+  push:
+    branches: [ops/stage3-workers-ai-metering-01]
+    paths:
+      - '.github/workflows/bor-ai-stage3-workers-ai-metering.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bor-ai-stage3-workers-ai-metering
+  cancel-in-progress: false
+
+jobs:
+  metering:
+    if: github.event.before == '08b624eeeec6e2075da9c0c17e7d5922e7eea727' && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    environment: stage3-worker-sandbox
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 22
+      - name: Capture usage from exactly one sandbox inference
+        env:
+          STAGE3_WORKER_TOKEN: ${{ secrets.BOR_AI_STAGE3_WORKER_DEPLOY_TOKEN }}
+        run: node staging/stage3-workers-ai-probe.mjs run
+      - name: Verify sandbox Worker routing is disabled
+        if: always()
+        env:
+          STAGE3_WORKER_TOKEN: ${{ secrets.BOR_AI_STAGE3_WORKER_DEPLOY_TOKEN }}
+        run: node staging/stage3-workers-ai-probe.mjs close
