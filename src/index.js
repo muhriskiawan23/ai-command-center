@@ -14,7 +14,7 @@ import { selectModel, taskProfileForAgent, summarizeModelTrace } from "./model-g
 import { COMMUNICATION_NOTICE, CAPABILITY_NOTICE, AGENTS } from "./prompts.js";
 import { json, sha256Hex } from "./http.js";
 import { dailyLimit, usageDay, secondsUntilNextUtcDay, consumeUsage, refundUsage, limitResponse, enforceDailyLimits, DAILY_LIMIT_DEFAULTS, MULTI_AGENT_UNITS } from "./daily-limits.js";
-import { resolvePlanAccess, selectAccountPlan } from "./plan-entitlements.js";
+import { resolvePlanAccess } from "./plan-entitlements.js";
 
 const MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 const MAX_REQUEST_BYTES = 64 * 1024;
@@ -1277,43 +1277,21 @@ export default {
       const response = await handleAuthRoute(request, env, url);
       if (response) return response;
     }
-    // Read-only plan visibility and CSRF-protected mode selection. A selected
-    // mode NEVER grants paid entitlements or subscription credits. The source
-    // of truth is the verified payment + paid entitlement joined by D1.
-    if (url.pathname === "/api/plan" || url.pathname === "/api/plan/select") {
-      const headers={ "Cache-Control":"no-store" };
-      if(url.pathname==="/api/plan" && request.method!=="GET")
-        return json({error:"Metode tidak didukung."},405,{...headers,Allow:"GET"});
-      if(url.pathname==="/api/plan/select" && request.method!=="POST")
-        return json({error:"Metode tidak didukung."},405,{...headers,Allow:"POST"});
-      try {
+    // Current authenticated subscription is fixed by verified payment, not
+    // by browser-selected modes. The old /api/plan/select is intentionally
+    // removed; POSTing a tier never changes or grants a subscription.
+    if(url.pathname==="/api/plan/select")
+      return json({error:"Paket aktif hanya ditentukan oleh pembayaran yang diverifikasi.",code:"plan_selection_removed"},404,{"Cache-Control":"no-store"});
+    if(url.pathname==="/api/plan"){
+      if(request.method!=="GET")
+        return json({error:"Metode tidak didukung."},405,{Allow:"GET","Cache-Control":"no-store"});
+      try{
         const user=await getSession(request,env);
-        if(url.pathname==="/api/plan") {
-          const plan=await resolvePlanAccess(env,user?.id??null);
-          return json({plan},200,headers);
-        }
-        if(!user) return json({error:"Masuk dengan Google untuk memilih mode paket."},401,headers);
-        if(!sameOrigin(request)) return json({error:"Origin tidak valid."},403,headers);
-        if(env.PLAN_ENTITLEMENTS_ENABLED!=="true")
-          return json({error:"Pemilihan paket berbayar belum aktif."},503,headers);
-        const parsed=await readJsonRequest(request,1024);
-        if(parsed.error)return parsed.error;
-        if(!parsed.body || typeof parsed.body!=="object" ||
-           Array.isArray(parsed.body) ||
-           Object.keys(parsed.body).length!==1 ||
-           !Object.hasOwn(parsed.body,"tier"))
-          return json({error:"Kirim hanya pilihan tier: free, basic atau pro."},400,headers);
-        const result=await selectAccountPlan(env,user.id,parsed.body.tier);
-        if(!result.ok) return json({
-          error:result.reason==="verified_plan_required"
-            ?"Paket tidak aktif atau tidak sesuai hak langganan yang diverifikasi."
-            :"Pemilihan paket tidak dapat diterapkan.",
-          code:result.reason
-        },result.reason==="verified_plan_required"?403:409,headers);
-        return json({plan:result.plan},200,headers);
-      } catch(error) {
-        console.error("Plan entitlement operation failed:",safeError(error));
-        return json({error:"Verifikasi akses paket sementara tidak tersedia.",code:"plan_verification_unavailable"},503,headers);
+        const plan=await resolvePlanAccess(env,user?.id??null);
+        return json({plan},200,{"Cache-Control":"no-store"});
+      }catch(error){
+        console.error("Plan status lookup failed:",safeError(error));
+        return json({error:"Verifikasi paket sedang tidak tersedia.",code:"plan_verification_unavailable"},503,{"Cache-Control":"no-store"});
       }
     }
     if (url.pathname.startsWith("/api/github/")) {
