@@ -84,9 +84,10 @@ export async function runJournaledInferencePrototype({
   const policy=checkedTariff(tariff);
   const quote=quoteJournaledInference({tariff:policy,maxInputTokens,maxOutputTokens});
   if(!quote.allowed) return declined(quote.reason);
-  // In any future PLAN_ENTITLEMENTS_ENABLED staging run, the selected account
-  // tier must be independently verified BEFORE reserving spend or dispatching
-  // a provider. The tariff is trusted server-side and chooses Basic vs Pro.
+  // In a future authorized Stage 3 environment, the account's actual paid
+  // subscription tier must be verified BEFORE reserving provider spend or
+  // dispatching inference. There is no client-selectable downgrade/upgrade.
+  // The server-approved tariff determines the required Basic/Pro capability.
   // The prototype is inactive and never a production billing authorization.
   if(env.PLAN_ENTITLEMENTS_ENABLED==="true"){
     const feature=policy.requiredPlan==="pro"?"pro_credit_capacity":"basic_paid_credits";
