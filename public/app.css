@@ -457,3 +457,10 @@ html[dir="rtl"] pre, html[dir="rtl"] code, html[dir="rtl"] .message-text pre { d
 }
 
 .topbar-left{display:flex;align-items:center;gap:10px}
+
+
+/* Public Midtrans merchant catalog link (no checkout or payment integration). */
+.merchant-pricing-note{margin-top:10px}
+.merchant-pricing-link{color:#96d8fb;text-decoration:underline;text-underline-offset:3px}
+.merchant-pricing-link:focus-visible,.merchant-side-link:focus-visible{outline:2px solid #96d8fb;outline-offset:2px}
+.merchant-side-link{text-decoration:none}
