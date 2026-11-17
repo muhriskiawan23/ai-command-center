@@ -1,6 +1,6 @@
-name: BOR AI Stage 3 Wrangler lockfile evidence (NO SECRETS)
+name: BOR AI Stage 3 Wrangler lockfile integrity proof (NO SECRETS)
 
-# Development-only lockfile generation; never any Cloudflare/provider credentials.
+# Offline review of committed dependency lock, no Cloudflare credentials.
 on:
   pull_request:
     paths:
@@ -11,11 +11,11 @@ permissions:
   contents: read
 
 jobs:
-  lockfile-evidence:
+  locked-dependencies:
     runs-on: ubuntu-24.04
     timeout-minutes: 12
     steps:
-      - name: Checkout proposed Stage 3 test branch
+      - name: Checkout Stage 3 lockfile evidence
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
@@ -23,34 +23,28 @@ jobs:
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: 22
-      - name: Resolve exact Wrangler 4.160.0 dependency tree without lifecycle scripts
+      - name: Reproduce exact locked Wrangler dependencies without credentials
         shell: bash
         run: |
           set -euo pipefail
-          npm install --package-lock-only --ignore-scripts --no-audit --no-fund --prefix tests/billing/stage3-wrangler-lock
-      - name: Emit deterministic text chunks for independent lockfile review (no tokens)
+          npm ci --prefix tests/billing/stage3-wrangler-lock --ignore-scripts --no-audit --no-fund
+          tests/billing/stage3-wrangler-lock/node_modules/.bin/wrangler --version
+      - name: Verify exact package version and every registry integrity pin
         shell: bash
         run: |
           set -euo pipefail
           node <<'NODE'
-          const fs = require('node:fs');
-          const crypto = require('node:crypto');
-          const path = 'tests/billing/stage3-wrangler-lock/package-lock.json';
-          const data = fs.readFileSync(path,'utf8');
-          const lock = JSON.parse(data);
-          if (lock.lockfileVersion !== 3 ||
-            lock.packages?.['']?.devDependencies?.wrangler !== '4.160.0' ||
-            lock.packages?.['node_modules/wrangler']?.version !== '4.160.0')
-            throw Error('Missing expected exact Wrangler in lockfile');
-          for (const [name,pkg] of Object.entries(lock.packages)) {
-            if (name && pkg.resolved?.startsWith('https://') && !pkg.integrity)
-              throw Error('Missing npm integrity for '+name);
-          }
-          const hash=crypto.createHash('sha256').update(data).digest('hex');
-          console.log('STAGE3_LOCK_SHA256='+hash);
-          console.log('STAGE3_LOCK_LEN='+data.length);
-          for(let i=0,idx=0;i<data.length;i+=3000,idx++)
-            console.log('STAGE3_LOCK_CHUNK:'+String(idx).padStart(4,'0')+':'+
-              JSON.stringify(data.slice(i,i+3000)));
-          console.log('STAGE3_LOCK_COMPLETE');
+          const fs=require('node:fs');
+          const crypto=require('node:crypto');
+          const content=fs.readFileSync('tests/billing/stage3-wrangler-lock/package-lock.json','utf8');
+          const lock=JSON.parse(content);
+          if(lock.lockfileVersion!==3 || lock.packages?.['']?.devDependencies?.wrangler!=='4.160.0' ||
+             lock.packages?.['node_modules/wrangler']?.version!=='4.160.0')
+             throw Error('Stage 3 Wrangler dependency lock drift');
+          for(const [k,v] of Object.entries(lock.packages||{}))
+            if(k && v.resolved?.startsWith('https://') && !v.integrity)
+              throw Error('Unpinned registry package '+k);
+          console.log('LOCKED_CLI=wrangler@4.160.0');
+          console.log('LOCKFILE_PACKAGE_COUNT='+Object.keys(lock.packages).length);
+          console.log('LOCKFILE_SHA256='+crypto.createHash('sha256').update(content).digest('hex'));
           NODE
