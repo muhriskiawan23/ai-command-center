@@ -14,6 +14,7 @@ A Workers AI request can be dispatched successfully but then time out, return in
 - Provider budget settled but wallet not finalized
 - Wallet finalized/released while provider budget remains reserved
 - Provider spending settled without a measured journal event
+- Customer wallet marked settled without any measured journal event (including a provider zero-cost settlement)
 - Provider spending whose amount disagrees with summed measured journal costs
 - Orphan wallet holds, provider budget holds, and dispatch journals
 
