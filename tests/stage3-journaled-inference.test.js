@@ -169,7 +169,8 @@ test("missing or conflicting usage records uncertainty, never bills measured zer
   for(const response of [
     {output:"no usage"},
     {usage:{prompt_tokens:1000}},
-    {usage:{prompt_tokens:1000,completion_tokens:100,input_tokens:900,output_tokens:100}}
+    {usage:{prompt_tokens:1000,completion_tokens:100,input_tokens:900,output_tokens:100}},
+    {usage:{prompt_tokens:1000,completion_tokens:100,total_tokens:1099}}
   ]){
     const x=setup(t,{response});
     const result=await x.run();
