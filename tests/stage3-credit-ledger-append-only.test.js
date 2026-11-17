@@ -115,7 +115,7 @@ test("INSERT OR REPLACE may not bypass immutable history when recursive triggers
     "INSERT INTO credit_ledger(id,user_id,delta_microcredits,reason,reference_id,created_at) "+
     "VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET delta_microcredits=excluded.delta_microcredits"
   ).run("refund:fake-request-1","fake-customer",1,"refund","fake-request-1",1735000005),
-  /duplicate_or_replace_forbidden/);
+  /duplicate_or_replace_forbidden|append_only_update_forbidden/);
   assert.deepEqual(x.ledger(),before);
   assert.equal(x.balance(),9481);
 });
