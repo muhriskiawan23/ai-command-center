@@ -108,7 +108,7 @@ function fixture(t) {
 
 // Test-only simulation of an independent signoff. Actual operator identity,
 // provider statements and approvals are NOT checked by this helper.
-function simulateTwoIndependentHumanReviews(first, second, evidence) {
+function simulateTwoIndependentHumanReviews(first, second, evidence, expectedMicroUsd) {
   assert.notEqual(first, second);
   assert.equal(evidence.account, USER);
   assert.equal(evidence.request, REQUEST);
@@ -116,12 +116,14 @@ function simulateTwoIndependentHumanReviews(first, second, evidence) {
   assert.equal(evidence.model, MODEL);
   assert.equal(evidence.rateVersion, tariff.version);
   assert.equal(evidence.externallyVerified, true);
+  assert.equal(Number.isSafeInteger(expectedMicroUsd) && expectedMicroUsd >= 0, true);
+  assert.equal(evidence.invoiceCostMicroUsd, expectedMicroUsd);
 }
 function syntheticEvidence(extra = {}) {
   return {
     account: USER, request: REQUEST, provider: PROVIDER,
     model: MODEL, rateVersion: tariff.version,
-    externallyVerified: true, ...extra
+    externallyVerified: true, invoiceCostMicroUsd: 519, ...extra
   };
 }
 function verifySafeFinal(x) {
@@ -144,7 +146,7 @@ test("after provider settled, two-reviewed synthetic wallet recovery is single-c
   assert.equal(before.providerInvoiceVerified, false);
   assert.equal(x.balance(), 91000);
 
-  simulateTwoIndependentHumanReviews("reviewer-A", "reviewer-B", syntheticEvidence({ amount: 519 }));
+  simulateTwoIndependentHumanReviews("reviewer-A", "reviewer-B", syntheticEvidence(), 519);
   assert.equal((await x.walletSettle(519n)).ok, true);
   verifySafeFinal(x);
   assert.equal((await x.walletSettle(519n)).ok, false);
@@ -163,7 +165,7 @@ test("measured provider-budget hold resolves in provider-then-wallet order witho
   const before = await x.ledgerAudit();
   assert.equal(before.measuredBudgetStillHeld, 1);
 
-  simulateTwoIndependentHumanReviews("finance", "security", syntheticEvidence({ amount: 519 }));
+  simulateTwoIndependentHumanReviews("finance", "security", syntheticEvidence(), 519);
   assert.equal((await x.budgetSettle(519n)).ok, true);
   assert.equal((await x.holdAudit()).creditFinalizationPending, 1);
   assert.equal((await x.walletSettle(519n)).ok, true);
@@ -186,8 +188,8 @@ test("synthetic pre-dispatch confirmed no-invocation case can release once, only
   assert.equal(x.balance(), 91000);
   // In a real incident journal absence alone does NOT prove no provider usage.
   simulateTwoIndependentHumanReviews("operator", "independent-finance", syntheticEvidence({
-    noProviderInvocationAttested: true
-  }));
+    noProviderInvocationAttested: true, invoiceCostMicroUsd: 0
+  }), 0);
   assert.equal((await x.budgetSettle(0n)).ok, true);
   assert.equal((await x.walletRelease()).ok, true);
   assert.equal(x.balance(), 100000);
@@ -267,13 +269,16 @@ test("review simulation refuses identical reviewers or wrong account and cost is
   await x.journal("dispatched");
   await x.journal("outcome_unknown");
   assert.throws(() => simulateTwoIndependentHumanReviews(
-    "same", "same", syntheticEvidence()
+    "same", "same", syntheticEvidence(), 519
   ));
   assert.throws(() => simulateTwoIndependentHumanReviews(
-    "one", "two", syntheticEvidence({ account: "other" })
+    "one", "two", syntheticEvidence({ account: "other" }), 519
   ));
   assert.throws(() => simulateTwoIndependentHumanReviews(
-    "one", "two", syntheticEvidence({ externallyVerified: false })
+    "one", "two", syntheticEvidence({ externallyVerified: false }), 519
+  ));
+  assert.throws(() => simulateTwoIndependentHumanReviews(
+    "one", "two", syntheticEvidence({ invoiceCostMicroUsd: 520 }), 519
   ));
   assert.equal(x.balance(), 91000);
   assert.equal(x.refundCount(), 0);
