@@ -109,7 +109,8 @@ test("partial, inconsistent, negative, zero or estimated usage never journals co
     {input_tokens:1000,output_tokens:100,prompt_tokens:1000},
     {input_tokens:"1000",output_tokens:100},
     {prompt_tokens:1000,completion_tokens:100,total_tokens:1099},
-    {prompt_tokens:1000,completion_tokens:100,total_tokens:"1100"}
+    {prompt_tokens:1000,completion_tokens:100,total_tokens:"1100"},
+    {prompt_tokens:Number.MAX_SAFE_INTEGER,completion_tokens:10}
   ]) {
     assert.deepEqual(await x.append("usage_measured",{tariff,usage}),
       {ok:false,reason:"authoritative_usage_unverified"});
@@ -134,7 +135,7 @@ test("a server-approved exact policy is mandatory; client fees cannot choose cos
   assert.equal(x.entries().length,1);
   const overflow=await x.append("usage_measured",{
     tariff:{...tariff,inputRateMicroUsdPerMillion:BigInt(Number.MAX_SAFE_INTEGER)},
-    usage:{prompt_tokens:Number.MAX_SAFE_INTEGER,completion_tokens:10}
+    usage:{prompt_tokens:1_000_000,completion_tokens:10}
   });
   assert.equal(overflow.reason,"measured_cost_overflow");
   assert.equal(x.entries().length,1);
