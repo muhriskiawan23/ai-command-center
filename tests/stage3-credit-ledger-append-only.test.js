@@ -26,7 +26,7 @@ function fixture(t) {
   const row=(sql,...args)=>sqlite.prepare(sql).get(...args);
   const ledger=()=>sqlite.prepare(
     "SELECT reason,delta_microcredits,reference_id FROM credit_ledger ORDER BY rowid"
-  ).all();
+  ).all().map(row=>({...row}));
   const balance=()=>row(
     "SELECT balance_microcredits AS amount FROM credit_accounts WHERE user_id='fake-customer'"
   ).amount;
