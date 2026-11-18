@@ -1207,7 +1207,11 @@ async function boot(){
   let me;
   try{me=await api("/api/auth/me")}
   catch{setState(AppState.ERROR,"Status akun tidak dapat diperiksa. Periksa koneksi lalu coba lagi, atau lanjutkan sebagai Guest.");loadGoogle();return}
-  if(me.authenticated){currentUser=me.user;setState(AppState.AUTH);await enterChat();return}
+  if(me.authenticated){currentUser=me.user;setState(AppState.AUTH);await enterChat();
+    // Existing Google sessions skip the login button boot path. Resolve the
+    // public OAuth client ID now so a later user-click can ask for Forms scope.
+    try{const cfg=await api("/api/config");if(cfg.googleSignInEnabled&&cfg.googleClientId)gsi.clientId=cfg.googleClientId;}catch{}
+    return}
   // The Free plan is an opt-in guest-chat link, not a payment or subscription route.
   // Keep a pre-existing signed-in session above; otherwise use the same Guest flow
   // as the welcome screen, with no checkout and no saved Guest chat content.
