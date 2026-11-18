@@ -234,6 +234,13 @@ async function runMediaJob({
   const debit=mediaCreditsForCost(cost,policy);
   if(debit>quote.reservedMicrocredits)return denied("media_cost_over_ceiling_reservations_held",calls);
   if(signal?.aborted)return denied("media_job_interrupted_reservations_held",calls);
+  // Entitlements must remain active through final provider usage and delivery.
+  // Provider cost may already exist: keep holds pending audited reconciliation
+  // instead of releasing them on a late refund or revocation.
+  const finalAccess=await safe(()=>authorizePlanFeature(env,userId,operation.feature));
+  if(finalAccess?.allowed!==true)
+    return denied("media_final_entitlement_unverified_reservations_held",calls);
+  if(signal?.aborted)return denied("media_job_interrupted_reservations_held",calls);
   const paid=await safe(()=>budget.settle({id,actualMicroUsd:cost}));
   if(paid?.ok!==true)return denied("provider_budget_settlement_failed_reservations_held",calls);
   const settled=await safe(()=>ledger.finalize(env,{userId,requestId:id,settledMicrocredits:debit}));
@@ -241,6 +248,12 @@ async function runMediaJob({
   // A cancellation can arrive while either financial write is committing.
   // Finish confirmed bookkeeping, but never publish media to a cancelled job.
   // Already-settled costs cannot be blindly rolled back as if no call ran.
+  if(signal?.aborted)return denied("cancelled_after_financial_settlement",calls);
+  // Revocation could occur while settlement commits; never publish the result
+  // just because a prior authorization check succeeded.
+  const deliveryAccess=await safe(()=>authorizePlanFeature(env,userId,operation.feature));
+  if(deliveryAccess?.allowed!==true)
+    return denied("media_delivery_entitlement_revoked_after_settlement",calls);
   if(signal?.aborted)return denied("cancelled_after_financial_settlement",calls);
   return {ok:true,modelInvoked:true,dispatchedCalls:calls,feature:operation.feature,
     outputs:Object.freeze(outputs),providerCostMicroUsd:cost,customerDebitMicrocredits:debit,
