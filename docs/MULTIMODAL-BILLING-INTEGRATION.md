@@ -144,3 +144,13 @@ job queue, reviewed codec wiring/resource limits and real moderation/retention,
 live validation of the native provider adapter and trusted receipt adapter, live metering/invoice reconciliation,
 combined token/media financial audits, Indonesian output-quality evaluation,
 audio integration, merchant payment lifecycle and production rollout checks.
+
+### Entitlement race checks (18 November 2026)
+The media coordinator checks active paid entitlement before final financial
+settlement and again immediately before returning protected output. Revocation
+during the final model call leaves provider and credit reservations held for
+operator reconciliation; it is never treated as a free or completed job.
+If revocation arrives during confirmed budget/credit finalization, the
+already-committed ledger is not silently reversed; media output is suppressed
+and the payment/refund dispute must be handled separately. All coverage is
+synthetic/local until production finance and payment verification exist.
