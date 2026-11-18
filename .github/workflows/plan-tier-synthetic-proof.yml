@@ -39,6 +39,10 @@ jobs:
           node --check src/plan-entitlements.js
           node --check public/app.js
           npm run preview
+      - name: Install existing locked CLI for local PNG runtime proof (NO SECRETS)
+        run: npm ci --ignore-scripts --prefix tests/billing/stage3-wrangler-lock
+      - name: Decode and re-encode PNG pixels in actual local workerd (NO ACCOUNT)
+        run: node tests/media/codec-workerd-proof.mjs
 
   browser-e2e:
     name: Browser E2E against stub AI and ephemeral SQLite (LOCAL ONLY)

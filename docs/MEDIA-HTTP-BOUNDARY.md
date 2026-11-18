@@ -24,8 +24,12 @@ trusted server-only `MEDIA_RUNTIME` object containing versioned `tariffs`,
 `invokeModel`, `measureUsage`, `preflightInput`, `moderateInput`,
 `validateOutput` and a whole-job `jobTimeoutMs` (at most 120 seconds).
 
-No real pixel decoder, moderator or trusted usage/invoice verifier is supplied
-here. Tests inject fictional implementations. Setting a flag alone cannot make
+An optional real bounded PNG decoder/re-encoder is now supplied by
+`src/png-preflight.js`; its supported subset and local JPG/WebP normalization
+are documented in [PNG pixel preflight](PNG-PIXEL-PREFLIGHT.md). The runtime must
+explicitly install it. No semantic moderator or trusted usage/invoice verifier
+is supplied here. Tests use fictional moderation/receipt implementations.
+Setting a flag alone cannot make
 the API usable. Native provider metrics or uploaded `measured:true` are not
 trusted receipts. Preflight must perform bounded local decode/re-encode and
 metadata stripping. Input/output moderation must be local and non-billable;
@@ -81,7 +85,7 @@ consent, idempotency/concurrency, body/type/stream bounds, rate limits,
 mandatory hooks, intent preservation, whole deadlines/late callbacks,
 private status after refund, output validation and financial failure states.
 
-Still needed: real decoder/moderation/meter implementations, live model/account
+Still needed: reviewed decoder wiring/resource limits, real moderation/meter implementations, live model/account
 and input-token-bound validation, measured cost and quality evidence, durable
 queue and combined token/media reconciliation, reviewed delivery/recovery and
 retention, merchant payment lifecycle, and production rollout/security/finance

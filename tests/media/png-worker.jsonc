@@ -1,0 +1,7 @@
+{
+  "name": "bor-ai-png-local-proof",
+  "main": "png-worker.js",
+  "compatibility_date": "2026-11-01",
+  "workers_dev": false,
+  "preview_urls": false
+}

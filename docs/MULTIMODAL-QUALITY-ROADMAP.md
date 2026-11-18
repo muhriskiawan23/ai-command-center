@@ -34,6 +34,11 @@ finalize, slow-queue timeouts and cancellation recovery. Never silently
 send every video frame to paid model calls.
 
 ## Technical prototypes added
+- Real bounded PNG pixel decoding/re-encoding and optional local browser
+  JPG/WebP-to-PNG upload preparation are now implemented. These are actual
+  codecs, not semantic moderation or proof of live AI quality. See
+  [PNG pixel preflight](PNG-PIXEL-PREFLIGHT.md) for supported formats,
+  independent reference digests and actual local workerd/browser proofs.
 - `src/multimodal-inference.js` and `multimodal-metering.js` connect model
   contracts to actual entitlement/budget/credit adapters with per-attempt
   append-only media usage evidence, bounded provider deadlines and held-funds

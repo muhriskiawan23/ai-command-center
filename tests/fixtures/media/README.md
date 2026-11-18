@@ -6,6 +6,14 @@ are 64×64 local conversions of this repository's `public/icon-192.png`.
 encoded as VP9/yuv420p. All three fixtures are small, static test inputs;
 they do not require remote services or paid inference.
 
+`filters-color-{0,2,4,6}.png` are synthetic 64×64, 8-bit grayscale/RGB/
+grayscale-alpha/RGBA patterns. Every fixture uses all five PNG filters and
+contains a deliberately private-looking **fictional** tEXt comment. Their
+decoded pixels were independently checked with Pillow against the original
+pattern bytes. SHA-256 pixel digests are in `png-pixel-manifest.json`, which
+also records a Pillow-decoded digest for the existing repository icon. These
+digests detect pixel/filter/alpha changes during real decoder round trips.
+
 Reproduce with FFmpeg:
 
 ```sh

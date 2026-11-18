@@ -210,11 +210,14 @@ async function runMediaJob({
     cost+=measured;
     if(cost>quote.maximumMicroUsd)return denied("media_cost_over_ceiling_reservations_held",calls);
     try{
-      const output=checkedOutput(response,operation,call);
+      let output=checkedOutput(response,operation,call);
       if(validateOutput!==undefined){
         if(typeof validateOutput!=="function")throw new TypeError("Output validator required");
         const reviewed=await invokeWithDeadline(()=>validateOutput({output,feature:operation.feature,signal}),{},signal,policy.callTimeoutMs);
         if(reviewed?.ok!==true)throw new TypeError("Media output rejected");
+        // Trusted validation may strip metadata/re-encode. Reapply the same
+        // output shape/geometry/provenance bounds before returning its result.
+        if(reviewed.output!==undefined)output=checkedOutput(reviewed.output,operation,call);
       }
       outputs.push(output);
     }

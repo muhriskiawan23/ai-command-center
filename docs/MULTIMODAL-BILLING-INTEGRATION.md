@@ -108,9 +108,11 @@ retries/global ceilings, token-vs-MP pricing, receipt mismatches, unknown outcom
 mid-video revocation/cancellation, deadlines and late callbacks, output limits,
 settlement failures, immutable history and read-only audit flags.
 
+The optional real PNG pixel decoder/re-encoder and browser JPG/WebP-to-PNG
+preparation are implemented; see [pixel preflight](PNG-PIXEL-PREFLIGHT.md).
 The opt-in authenticated quote/execution/status HTTP boundary and whole-job
 deadlines are now implemented and synthetically tested. Still required: a durable
-job queue, real bounded server decoder/re-encode and moderation/retention,
+job queue, reviewed codec wiring/resource limits and real moderation/retention,
 live validation of the native provider adapter and trusted receipt adapter, live metering/invoice reconciliation,
 combined token/media financial audits, Indonesian output-quality evaluation,
 audio integration, merchant payment lifecycle and production rollout checks.
