@@ -112,3 +112,40 @@ test("full refund after spent credits still records review without a negative ac
  assert.deepEqual(ledger(),[25,-20]);
  assert.equal(db.prepare("SELECT outcome FROM sandbox_payment_reversals").get().outcome,"review_required");
 });
+
+test("confirmed reversal decision is append-only and cannot be deleted or rewritten",t=>{
+ const {db,apply,balance,ledger,state}=fundedOrder(t);
+ apply("refund");
+ const first=db.prepare("SELECT outcome,amount_idr,kind FROM sandbox_payment_reversals WHERE order_id='order'").get();
+ assert.equal(first.outcome,"reversed");
+ for(const statement of [
+  "UPDATE sandbox_payment_reversals SET outcome='review_required' WHERE order_id='order'",
+  "UPDATE sandbox_payment_reversals SET amount_idr=1 WHERE order_id='order'",
+  "UPDATE sandbox_payment_reversals SET kind='chargeback' WHERE order_id='order'"
+ ])assert.throws(()=>db.exec(statement),/sandbox_reversal_append_only/);
+ assert.throws(()=>db.exec("DELETE FROM sandbox_payment_reversals WHERE order_id='order'"),
+   /sandbox_reversal_delete_forbidden/);
+ assert.deepEqual(db.prepare("SELECT outcome,amount_idr,kind FROM sandbox_payment_reversals WHERE order_id='order'").get(),first);
+ assert.equal(state(),"refunded");
+ assert.equal(balance(),0);
+ assert.deepEqual(ledger(),[25,-25]);
+});
+test("dispute review markers cannot be overwritten or deleted",t=>{
+ const {db,apply,balance,ledger,state}=fundedOrder(t);
+ db.exec("UPDATE credit_accounts SET balance_microcredits=5");
+ db.exec("INSERT INTO credit_ledger VALUES ('spend','tester',-20,'usage','fixture-spend',3)");
+ apply("chargeback");
+ db.exec("INSERT INTO sandbox_payment_reversal_reviews (order_id,provider_status,created_at) VALUES ('order','chargeback',4)");
+ for(const sql of [
+  "UPDATE sandbox_payment_reversal_reviews SET created_at=99 WHERE order_id='order'",
+  "UPDATE sandbox_payment_reversal_reviews SET provider_status='refund' WHERE order_id='order'"
+ ])assert.throws(()=>db.exec(sql),/sandbox_reversal_review_append_only/);
+ assert.throws(()=>db.exec("DELETE FROM sandbox_payment_reversal_reviews WHERE order_id='order'"),
+   /sandbox_reversal_review_delete_forbidden/);
+ assert.deepEqual(db.prepare("SELECT provider_status,created_at FROM sandbox_payment_reversal_reviews").get(),
+   {provider_status:"chargeback",created_at:4});
+ assert.equal(db.prepare("SELECT outcome FROM sandbox_payment_reversals").get().outcome,"review_required");
+ assert.equal(state(),"disputed");
+ assert.equal(balance(),5);
+ assert.deepEqual(ledger(),[25,-20]);
+});
