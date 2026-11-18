@@ -14,6 +14,7 @@ import { handleGitHubReadRoute } from "./github-reader.js";
 import { handleGitHubOAuthRoute } from "./github-oauth.js";
 import { selectModel, taskProfileForAgent, summarizeModelTrace } from "./model-gateway.js";
 import { GPT_OSS_MODEL_ID, mayUseGptOss, reserveGptOssCall, extractModelAnswer } from "./gpt-oss.js";
+import { handleBrowserAutomationRoute } from "./browser-automation-route.js";
 import { planFeedbackForm, generateFormsScript } from "./form-draft.js";
 import { COMMUNICATION_NOTICE, CAPABILITY_NOTICE, AGENTS } from "./prompts.js";
 import { json, sha256Hex } from "./http.js";
@@ -1355,6 +1356,13 @@ export default {
           });
         }
         return json({ error: "Integrasi GitHub gagal memproses permintaan.", code: "github_route_dispatch" }, 503);
+      }
+    }
+    if (url.pathname === "/api/browser/plan" || url.pathname === "/api/browser/execute") {
+      try { return await handleBrowserAutomationRoute(request,env,{getSession,sameOrigin}); }
+      catch (error) {
+        console.error("Browser automation route failed:", safeError(error).name);
+        return json({error:"Browser automation belum dapat diproses.",code:"browser_route_failed"},503);
       }
     }
     if (url.pathname === "/api/developer/keys" || url.pathname.startsWith("/api/developer/keys/")) {
