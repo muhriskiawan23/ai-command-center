@@ -21,8 +21,8 @@ test("direct Workers AI calls in main Worker require paid-gate inventory review 
   const markdownCalls=[...main.matchAll(/\benv\.AI\.toMarkdown\s*\(/g)];
   assert.equal(runCalls.length,5,"AI.run callsites changed: review billing-gate wiring and all wrappers");
   assert.equal(markdownCalls.length,1,"PDF conversion route changed: review conversion-cost treatment");
-  assert.match(main,/const generated = await env\.AI\.run\(modelId, payload\)/);
-  assert.match(main,/const fallback = await env\.AI\.run\(selection\.model\.id, payload\)/);
+  assert.match(main,/generated=await env\.AI\.run\(modelId,payload\)/);
+  assert.match(main,/fallback=await env\.AI\.run\(selection\.model\.id,\{\.\.\.payload,max_tokens:baselineMaxTokens\}\)/);
   assert.match(main,/reserveGptOssCall\(env, modelMessages, gptMaxTokens\)/);
   assert.match(main,/error instanceof AiCancelledError/);
   assert.match(main,/error instanceof AiTimeoutError/);
@@ -54,7 +54,6 @@ test("research and Extract are separately identified cost-bearing tool paths",()
   // The provider controls and per-operation billing must be audited
   // separately; passing this test must never enable a payment feature.
 });
-
 
 test("browser step-planning AI invocation is metered and cannot execute without a separate approval",()=>{
   assert.match(browserPlanner,/env\.AI\.run\(BASE_MODEL,/);

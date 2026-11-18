@@ -13,6 +13,7 @@ test("model ID and paid pricing are explicit; default guest and disabled routes 
   assert.equal(mayUseGptOss({BOR_GPT_OSS_ENABLED:"true",BOR_AUTHENTICATED:false},"writer"),false);
   assert.equal(mayUseGptOss({BOR_GPT_OSS_ENABLED:"false",BOR_AUTHENTICATED:true},"writer"),false);
   assert.equal(mayUseGptOss({BOR_GPT_OSS_ENABLED:"true",BOR_AUTHENTICATED:true},"writer"),true);
+  assert.equal(mayUseGptOss({BOR_GPT_OSS_ENABLED:"true",BOR_AUTHENTICATED:true,MODEL_TRACE:Object.assign([],{gptOssDegraded:true})},"writer"),false);
   assert.equal(mayUseGptOss({BOR_GPT_OSS_ENABLED:"true",BOR_AUTHENTICATED:true},"translator"),false);
 });
 test("budget reservation is atomic, per turn max two calls and fails closed on missing D1",async()=>{
@@ -40,6 +41,8 @@ test("model output parsing excludes hidden reasoning and safely extracts user-fa
   assert.equal(extractModelAnswer({response:"Final answer"}),"Final answer");
   assert.equal(extractModelAnswer({output:[{type:"reasoning",summary:[{text:"Private reasoning"}]},{type:"message",content:[{type:"output_text",text:"Safe final"}]}]}),"Safe final");
   assert.equal(extractModelAnswer({output:[{type:"reasoning",content:[{type:"output_text",text:"hidden"}]}]}),"");
+  assert.equal(extractModelAnswer({choices:[{message:{role:"assistant",content:"Halo BOR AI"}}]}),"Halo BOR AI");
+  assert.equal(extractModelAnswer({choices:[{message:{role:"assistant",content:null,reasoning:"private"}}]}),"");
   assert.equal(extractModelAnswer({}),"");
 });
 test("auto search uses high-confidence freshness; static and credential-bearing prompts stay local",()=>{
@@ -66,7 +69,7 @@ test("Google Forms workflow produces an explicit user-run draft, never an actual
 });
 test("production model config documents hard USD cap, no remote provider secrets",()=>{
  const cfg=JSON.parse(readFileSync(new URL("../wrangler.jsonc",import.meta.url),"utf8"));
- assert.equal(cfg.vars.BOR_GPT_OSS_ENABLED,"true");
+ assert.equal(cfg.vars.BOR_GPT_OSS_ENABLED,"false"); // Canary paused until provider live smoke succeeds
  assert.equal(cfg.vars.BOR_GPT_OSS_DAILY_USD_LIMIT,"0.25");
  assert.equal(Object.hasOwn(cfg.vars,"CLOUDFLARE_API_TOKEN"),false);
 });

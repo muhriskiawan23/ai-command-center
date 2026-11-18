@@ -445,29 +445,45 @@ async function runAgent(env, agentId, userMessage, context = "", history = [], p
       temperature: 0.4,
       repetition_penalty: 1.1
     };
+    // Treat a GPT-OSS response that has no user-visible final text like an
+    // unavailable model. A provider can return HTTP success while consuming
+    // its output allowance entirely on reasoning or using a new envelope.
+    let generated;
+    let primaryError=null;
     try {
-      const generated = await env.AI.run(modelId, payload);
-      traceEntry.attempts.push({ outcome: "success", durationMs: Math.max(0, Date.now() - startedAt) });
-      return generated;
-    } catch (error) {
-      traceEntry.attempts.push({ outcome: "error", durationMs: Math.max(0, Date.now() - startedAt) });
-      if (modelId !== GPT_OSS_MODEL_ID || error instanceof AiCancelledError ||
-        error instanceof AiTimeoutError) throw error;
-      // Cloudflare model outage: stay available with the previously audited
-      // baseline; do not retry the paid inference or bypass its global cap.
-      traceEntry.modelId = selection.model.id;
-      traceEntry.policyVersion = selection.policyVersion;
-      activeModelId = selection.model.id;
-      traceEntry.calls += 1;
-      const fallbackStart = Date.now();
-      try {
-        const fallback = await env.AI.run(selection.model.id, payload);
-        traceEntry.attempts.push({ outcome: "success", durationMs: Math.max(0, Date.now() - fallbackStart) });
-        return fallback;
-      } catch (fallbackError) {
-        traceEntry.attempts.push({ outcome: "error", durationMs: Math.max(0, Date.now() - fallbackStart) });
-        throw fallbackError;
+      generated=await env.AI.run(modelId,payload);
+    } catch(error) {
+      primaryError=error;
+    }
+    if(primaryError===null){
+      const finalText=extractModelAnswer(generated);
+      if(modelId!==GPT_OSS_MODEL_ID||finalText.trim()){
+        traceEntry.attempts.push({outcome:"success",durationMs:Math.max(0,Date.now()-startedAt)});
+        return generated;
       }
+      traceEntry.attempts.push({outcome:"empty_output",durationMs:Math.max(0,Date.now()-startedAt)});
+    }else{
+      traceEntry.attempts.push({outcome:"error",durationMs:Math.max(0,Date.now()-startedAt)});
+    }
+    if(modelId!==GPT_OSS_MODEL_ID||primaryError instanceof AiCancelledError||
+      primaryError instanceof AiTimeoutError){
+      throw primaryError || new Error("Model returned an empty final answer");
+    }
+    if(Array.isArray(env.MODEL_TRACE))env.MODEL_TRACE.gptOssDegraded=true;
+    // Exactly one baseline fallback (not another paid GPT-OSS attempt).
+    // Use Llama's original output allowance, not the reasoning model's 1600+.
+    traceEntry.modelId=selection.model.id;
+    traceEntry.policyVersion=selection.policyVersion;
+    activeModelId=selection.model.id;
+    traceEntry.calls+=1;
+    const fallbackStart=Date.now();
+    try{
+      const fallback=await env.AI.run(selection.model.id,{...payload,max_tokens:baselineMaxTokens});
+      traceEntry.attempts.push({outcome:"success",durationMs:Math.max(0,Date.now()-fallbackStart)});
+      return fallback;
+    }catch(error){
+      traceEntry.attempts.push({outcome:"error",durationMs:Math.max(0,Date.now()-fallbackStart)});
+      throw error;
     }
   };
 
@@ -484,8 +500,12 @@ async function runAgent(env, agentId, userMessage, context = "", history = [], p
     let cleaned = cleanOutput(response);
     const countWords = (value) => value.replace(/[#*_\`>~-]/g, " ").match(/[\p{L}\p{N}]{2,}/gu) || [];
 
-    // Retry once when the model returns mostly empty Markdown markers.
-    if (typeof response !== "string" || countWords(cleaned).length < 8 || cleaned.length < 35) {
+    // A short greeting needs a short answer. Forcing a second inference
+    // on "hi bor" doubles cost/latency and can turn a valid answer into an error.
+    const greeting=/^(?:(?:hi|hey|hai|halo|hello|hola|bonjour|pagi|siang|sore|malam)(?:[\s,]+(?:bor(?:\s+ai)?|there))?|selamat\s+(?:pagi|siang|sore|malam))[!.?\s]*$/i.test(userMessage.trim());
+    // Retry once only when content is actually missing or nontrivial prompts
+    // receive an unusably short answer.
+    if (!cleaned || (!greeting && (countWords(cleaned).length < 8 || cleaned.length < 35))) {
       result = await generate(
         "RETRY REQUIRED: Your previous answer contained empty Markdown headings or bullets and was unusable. Return substantive content in plain text or simple numbered points. Do not output empty headings, empty bullets, or Markdown-only lines. Include at least 3 concrete findings when appropriate. Every bullet must contain a complete sentence. Answer in the user's language."
       );
