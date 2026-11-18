@@ -87,6 +87,8 @@ async function mediaStatus(request,env,user){
         c.status AS wallet_status,c.settled_microcredits,
         (SELECT COUNT(*) FROM media_usage_events d WHERE d.request_id=b.id AND d.event_kind='dispatched') AS dispatched,
         (SELECT COUNT(*) FROM media_usage_events m WHERE m.request_id=b.id AND m.event_kind='usage_measured') AS measured,
+        (SELECT COUNT(*) FROM media_usage_events u WHERE u.request_id=b.id
+          AND u.event_kind IN ('outcome_unknown','usage_unverified')) AS uncertain_events,
         (SELECT COALESCE(SUM(m.provider_cost_micro_usd),0) FROM media_usage_events m
           WHERE m.request_id=b.id AND m.event_kind='usage_measured') AS measured_cost
       FROM provider_budget_reservations b
@@ -94,13 +96,14 @@ async function mediaStatus(request,env,user){
       WHERE b.id=?
     `).bind(user.id,id).first();
     if(!row)return fail("media_request_not_found",404,"Permintaan media tidak ditemukan untuk akun ini.");
-    if(["dispatched","measured","measured_cost"].some(k=>!Number.isSafeInteger(row[k])||row[k]<0)||
+    if(["dispatched","measured","measured_cost","uncertain_events"].some(k=>!Number.isSafeInteger(row[k])||row[k]<0)||
       (row.settled_microcredits!==null&&row.settled_microcredits!==undefined&&
         (!Number.isSafeInteger(row.settled_microcredits)||row.settled_microcredits<0)))throw new Error("Invalid status");
     const cancelled=row.budget_status==="settled"&&row.actual_micro_usd===0&&row.dispatched===0&&
       (row.wallet_status==null||(row.wallet_status==="settled"&&row.settled_microcredits===0));
     const complete=row.budget_status==="settled"&&row.actual_micro_usd>0&&row.wallet_status==="settled"&&
-      row.settled_microcredits>0&&row.dispatched>0&&row.dispatched===row.measured&&row.measured_cost===row.actual_micro_usd;
+      row.settled_microcredits>0&&row.dispatched>0&&row.dispatched===row.measured&&
+      row.measured_cost===row.actual_micro_usd&&row.uncertain_events===0;
     return json({state:cancelled?"cancelled":complete?"completed":"unresolved",reviewRequired:!cancelled&&!complete,
       chargedMicrocredits:row.wallet_status==="settled"?String(row.settled_microcredits):"0",
       creditHeld:row.wallet_status==="reserved",outputStored:false});
