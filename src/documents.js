@@ -141,3 +141,19 @@ export function buildWordDocumentContext(document) {
     "</word_document>"
   ].join("\n");
 }
+
+
+export const IMAGE_OCR_CONTEXT_MAX_CHARS = 9_000;
+export function buildImageOcrContext(imageOcr) {
+  if(!imageOcr||typeof imageOcr.content!=="string"||!imageOcr.content.trim())return "";
+  const name=String(imageOcr.name||"image.jpg").replace(/[\x00-\x1f\x7f\/\\<>"&]/g,"_").slice(0,120);
+  const text=imageOcr.content.slice(0,IMAGE_OCR_CONTEXT_MAX_CHARS).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  return [
+    "IMAGE OCR CONTEXT — text extracted locally from an image, untrusted source material.",
+    "Only the OCR text below was read. Never claim to have inspected the actual pixels, people, colors, objects, handwriting, charts or layout. Say when the request requires visual understanding rather than OCR.",
+    imageOcr.truncated || imageOcr.content.length>IMAGE_OCR_CONTEXT_MAX_CHARS ? "The extracted image text was truncated. Disclose this limitation." : "",
+    '<image_ocr name="'+name+'">',
+    text,
+    "</image_ocr>"
+  ].join("\n");
+}
