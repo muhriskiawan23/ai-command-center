@@ -1358,7 +1358,7 @@ export default {
         return json({ error: "Integrasi GitHub gagal memproses permintaan.", code: "github_route_dispatch" }, 503);
       }
     }
-    if (url.pathname === "/api/browser/plan" || url.pathname === "/api/browser/execute") {
+    if (url.pathname === "/api/browser/plan" || url.pathname === "/api/browser/execute" || url.pathname === "/api/browser/suggest") {
       try { return await handleBrowserAutomationRoute(request,env,{getSession,sameOrigin}); }
       catch (error) {
         console.error("Browser automation route failed:", safeError(error).name);
