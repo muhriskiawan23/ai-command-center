@@ -158,3 +158,42 @@ test("reconciliation requires paid status and explicit matching currency", async
   assert.equal(x.count(),0);
  } finally {x.sqlite.close();}
 });
+
+test("signed webhook never grants credits when independent Status API omits currency",async()=>{
+ const x=setup();
+ try{
+  const e=evidence();
+  // The signed notification can be authentic while the independently fetched
+  // settlement proof is incomplete. Do not infer IDR from the order or webhook.
+  const result=()=>run(x.db,{...e,fetchImpl:async()=>Response.json(e.payload)});
+  await assert.rejects(result(),/currency mismatch/);
+  await assert.rejects(result(),/currency mismatch/);
+  assert.equal(x.state(),"created");
+  assert.equal(x.balance(),0);
+  assert.equal(x.count(),0);
+ }finally{x.sqlite.close();}
+});
+test("explicit non-IDR or null Status API currency never grants despite signed settlement",async()=>{
+ for(const currency of ["USD",null]){
+  const x=setup();
+  try{
+   const e=evidence();
+   e.fetchImpl=async()=>Response.json({...e.payload,currency});
+   await assert.rejects(run(x.db,e),/currency mismatch/);
+   assert.equal(x.state(),"created");
+   assert.equal(x.balance(),0);
+   assert.equal(x.count(),0);
+  }finally{x.sqlite.close();}
+ }
+});
+test("Status API explicitly confirmed IDR permits a signed webhook that omits optional currency",async()=>{
+ const x=setup();
+ try{
+  const e=evidence();
+  assert.equal(e.payload.currency,undefined);
+  assert.equal((await run(x.db,e)).kind,"fulfilled");
+  assert.equal(x.state(),"fulfilled");
+  assert.equal(x.balance(),25);
+  assert.equal(x.count(),1);
+ }finally{x.sqlite.close();}
+});
