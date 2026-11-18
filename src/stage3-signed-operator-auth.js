@@ -47,10 +47,10 @@ export function stage3AttestationMessage(proposal,attestation){
 // trust list assigns roles to distinct principals. Unknown/revoked keys fail
 // closed. The output cannot be used to mutate financial state.
 export function createStage3SignedReviewerVerifier({
-  trustedReviewers, nowMs=Date.now(), cryptoImpl=globalThis.crypto
+  trustedReviewers, nowMs=Date.now, cryptoImpl=globalThis.crypto
 }={}){
   if(!Array.isArray(trustedReviewers)||trustedReviewers.length<2||
-     trustedReviewers.length>32||!validTime(nowMs)||
+     trustedReviewers.length>32||!(validTime(nowMs)||typeof nowMs==="function")||
      !cryptoImpl?.subtle?.verify||!cryptoImpl?.subtle?.importKey)
     throw new TypeError("Independent restricted reviewer trust store required");
   const seen=new Set();
@@ -73,6 +73,14 @@ export function createStage3SignedReviewerVerifier({
     trust.set(index,{...entry,raw});
   }
   return async (attestation,proposal)=>{
+    // A reusable verifier MUST use the invocation-time clock. Capturing
+    // Date.now() when the verifier is constructed would accept stale signed
+    // approvals indefinitely in a long-lived worker/module singleton.
+    // Numeric nowMs remains available for deterministic offline unit tests.
+    let checkedAt;
+    try {checkedAt=typeof nowMs==="function"?nowMs():nowMs;}
+    catch {return null;}
+    if(!validTime(checkedAt))return null;
     if(!bindingValid(proposal)||!attestation||typeof attestation!=="object"||
        Array.isArray(attestation)||typeof attestation.principalId!=="string"||
        typeof attestation.keyId!=="string"||typeof attestation.nonce!=="string"||
@@ -81,9 +89,9 @@ export function createStage3SignedReviewerVerifier({
        !validTime(attestation.issuedAtMs)||!validTime(attestation.expiresAtMs))
       return null;
     const record=trust.get(attestation.principalId+":"+attestation.keyId);
-    if(!record||record.active!==true||attestation.expiresAtMs<=nowMs||
-       attestation.issuedAtMs>nowMs+SKEW_MS||
-       attestation.issuedAtMs<nowMs-MAX_AGE_MS||
+    if(!record||record.active!==true||attestation.expiresAtMs<=checkedAt||
+       attestation.issuedAtMs>checkedAt+SKEW_MS||
+       attestation.issuedAtMs<checkedAt-MAX_AGE_MS||
        attestation.expiresAtMs<=attestation.issuedAtMs||
        attestation.expiresAtMs-attestation.issuedAtMs>MAX_AGE_MS||
        attestation.issuedAtMs<record.validFromMs||

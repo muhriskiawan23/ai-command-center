@@ -131,3 +131,33 @@ test("duplicate trusted reviewer keys and invalid trust configuration are reject
     trustedReviewers:[fx.trustedReviewers[0]],nowMs:NOW,cryptoImpl:webcrypto
   }),/trust store/);
 });
+
+test("a long-lived verifier rechecks expiration at EACH call instead of using its construction timestamp",async()=>{
+  const fx=await fixture();
+  let clock=NOW;
+  const verifier=createStage3SignedReviewerVerifier({
+    trustedReviewers:fx.trustedReviewers,
+    nowMs:()=>clock,cryptoImpl:webcrypto
+  });
+  const signed=await fx.sign(fx.signers[0],proposal,{
+    issuedAtMs:NOW-5000,expiresAtMs:NOW+60000
+  });
+  assert.equal((await verifier(signed,proposal))?.verified,true);
+  clock=NOW+60001;
+  assert.equal(await verifier(signed,proposal),null,
+    "An earlier valid signature must expire even with an old verifier instance");
+  clock=Number.NaN;
+  assert.equal(await verifier(signed,proposal),null,
+    "Invalid trusted clock output must fail closed");
+});
+
+test("a throwing dynamic clock fails closed and cannot bypass time validation",async()=>{
+  const fx=await fixture();
+  const signed=await fx.sign(fx.signers[0]);
+  const verifier=createStage3SignedReviewerVerifier({
+    trustedReviewers:fx.trustedReviewers,
+    nowMs:()=>{throw new Error("trusted clock unavailable");},
+    cryptoImpl:webcrypto
+  });
+  assert.equal(await verifier(signed,proposal),null);
+});
