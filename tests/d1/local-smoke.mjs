@@ -255,6 +255,17 @@ try{
   assert.deepEqual(preserved.results.map(row=>row.delta_microcredits),[-25,25]);
   assert.equal(await db.prepare("SELECT state FROM payment_orders WHERE order_id=?").bind(lostOrderId).first("state"),"refunded");
   assert.equal(await db.prepare("SELECT balance_microcredits FROM credit_accounts WHERE user_id=?").bind("midtrans-sandbox-test").first("balance_microcredits"),25);
+  // Historical sandbox reversal and dispute rows must remain tamper-proof.
+  run("UPDATE sandbox_payment_reversals SET outcome='review_required' WHERE order_id='"+lostOrderId+"';",
+    /sandbox_reversal_append_only/);
+  run("DELETE FROM sandbox_payment_reversals WHERE order_id='"+lostOrderId+"';",
+    /sandbox_reversal_delete_forbidden/);
+  run("DELETE FROM sandbox_payment_reversal_reviews WHERE order_id='"+lostOrderId+"';",
+    /sandbox_reversal_review_delete_forbidden/);
+  assert.equal(await db.prepare(
+    "SELECT COUNT(*) AS n FROM sandbox_payment_reversal_reviews WHERE order_id=? AND provider_status='chargeback'"
+  ).bind(lostOrderId).first("n"),1);
+  console.log("PASS: D1 reversal and dispute-review evidence resists UPDATE/DELETE");
   console.log("PASS: post-refund chargeback replay records one review and no double debit");
   console.log("PASS: confirmed Sandbox refund reverses once, unconfirmed refunds and disputes require review");
   console.log("PASS: interrupted and cached checkout retries preserve one order and one credit grant");
