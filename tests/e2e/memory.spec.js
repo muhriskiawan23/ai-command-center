@@ -11,13 +11,13 @@ async function openMemoryPanel(page) {
 }
 
 test.describe("MEMORI — opsional, hanya akun login", () => {
-  test("tamu: tombol Memori hanya memberi petunjuk masuk dengan Google, tanpa membuka panel", async ({ page, app }) => {
+  test("tamu: kontrol memori akun tidak muncul sebelum login Google", async ({ page, app }) => {
     await page.goto(app.url);
     await page.locator("#continueGuest").click();
     if (drawerMode(page)) { await page.locator("#menuBtn").click(); await expect(page.locator("#sidebar")).toBeVisible(); }
     await openSettings(page);
-  await page.locator("#openMemory").click();
-    await expect(page.locator("#toast")).toContainText("Masuk dengan Google");
+    await expect(page.locator("#userProfile")).toBeHidden();
+    await expect(page.locator("#openMemory")).toBeHidden();
     await expect(page.locator("#memoryPanel")).toBeHidden();
   });
 
