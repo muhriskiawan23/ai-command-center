@@ -104,8 +104,9 @@ async function mediaStatus(request,env,user){
     if(!budgetValid||!walletValid||
       ["dispatched","measured","measured_cost","uncertain_events"].some(k=>!Number.isSafeInteger(row[k])||row[k]<0))
       throw new Error("Invalid financial status snapshot");
-    const cancelled=row.budget_status==="settled"&&row.actual_micro_usd===0&&row.dispatched===0&&
-      (row.wallet_status==null||(row.wallet_status==="settled"&&row.settled_microcredits===0));
+    const cancelled=row.budget_status==="settled"&&row.actual_micro_usd===0&&
+      row.dispatched===0&&row.measured===0&&row.uncertain_events===0&&row.measured_cost===0&&
+      (row.wallet_status===null||(row.wallet_status==="settled"&&row.settled_microcredits===0));
     const complete=row.budget_status==="settled"&&row.actual_micro_usd>0&&row.wallet_status==="settled"&&
       row.settled_microcredits>0&&row.dispatched>0&&row.dispatched===row.measured&&
       row.measured_cost===row.actual_micro_usd&&row.uncertain_events===0;
