@@ -154,3 +154,16 @@ If revocation arrives during confirmed budget/credit finalization, the
 already-committed ledger is not silently reversed; media output is suppressed
 and the payment/refund dispute must be handled separately. All coverage is
 synthetic/local until production finance and payment verification exist.
+
+### Read-only aggregate exposure monitoring (18 November 2026)
+`inspectMediaBilling` includes aggregate `held_provider_micro_usd`,
+`held_customer_microcredits`, `settled_provider_micro_usd` and
+`settled_customer_microcredits` in addition to per-job exception counts.
+All totals are safe, non-negative integers and contain no customer IDs,
+requests, prompts, photos or generated results. Held provider figures use
+**reserved maximum exposure**, not confirmed invoice charges. Settled
+figures are local bookkeeping, **not** independent provider invoice proof
+or recognized revenue. Only the existing exception counters raise
+`reviewRequired`, so legitimate settled spend alone is never flagged.
+Overflows or corrupt accounting snapshots fail closed instead of
+presenting invented totals. The function never writes to D1.
