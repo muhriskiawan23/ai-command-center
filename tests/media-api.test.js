@@ -298,3 +298,29 @@ test("HTTP media route rejects a non-native custom runtime's truncated model out
   assert.equal(x.sql.prepare("SELECT status FROM credit_reservations").get().status,"reserved");
   assert.equal((await x.send("/api/media/status")).data.state,"unresolved");
 });
+
+test("account media status fails closed if credit or provider settlement shape is inconsistent",async t=>{
+  const x=fixture(t);
+  assert.equal((await x.send()).status,200);
+  const prepare=x.env.DB.prepare.bind(x.env.DB);
+  const valid={budget_status:"settled",actual_micro_usd:400,wallet_status:"settled",
+    settled_microcredits:800,dispatched:1,measured:1,measured_cost:400,uncertain_events:0};
+  const invalid=[
+    {...valid,settled_microcredits:null},
+    {...valid,budget_status:"reserved",actual_micro_usd:400},
+    {...valid,wallet_status:"reserved",settled_microcredits:800},
+    {...valid,budget_status:"settled",actual_micro_usd:null}
+  ];
+  let row=valid;
+  x.env.DB.prepare=sql=>sql.includes("SELECT b.status AS budget_status")
+    ?{bind:()=>({first:async()=>row})}:prepare(sql);
+  for(const corrupted of invalid){
+    row=corrupted;
+    const response=await x.send("/api/media/status");
+    assert.equal(response.status,503);
+    assert.equal(response.data.code,"media_status_unavailable");
+    assert.equal(response.data.chargedMicrocredits,undefined);
+  }
+  row=valid;
+  assert.equal((await x.send("/api/media/status")).data.state,"completed");
+});
