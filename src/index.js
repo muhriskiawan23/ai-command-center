@@ -440,10 +440,13 @@ async function runAgent(env, agentId, userMessage, context = "", history = [], p
       repetition_penalty: 1.1
     };
     try {
-      return await env.AI.run(modelId, payload);
+      const generated = await env.AI.run(modelId, payload);
+      traceEntry.attempts.push({ outcome: "success", durationMs: Math.max(0, Date.now() - startedAt) });
+      return generated;
     } catch (error) {
       traceEntry.attempts.push({ outcome: "error", durationMs: Math.max(0, Date.now() - startedAt) });
-      if (modelId !== GPT_OSS_MODEL_ID) throw error;
+      if (modelId !== GPT_OSS_MODEL_ID || error instanceof AiCancelledError ||
+        error instanceof AiTimeoutError) throw error;
       // Cloudflare model outage: stay available with the previously audited
       // baseline; do not retry the paid inference or bypass its global cap.
       traceEntry.modelId = selection.model.id;
@@ -459,9 +462,6 @@ async function runAgent(env, agentId, userMessage, context = "", history = [], p
         traceEntry.attempts.push({ outcome: "error", durationMs: Math.max(0, Date.now() - fallbackStart) });
         throw fallbackError;
       }
-    } finally {
-      // Record successful first attempts only when the first call succeeded.
-      // (Fallback and error attempts have already been accounted for.)
     }
   };
 
