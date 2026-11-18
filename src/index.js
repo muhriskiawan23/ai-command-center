@@ -1515,7 +1515,7 @@ export default {
       if (found.urls.length && env.URL_READER_ENABLED !== "true") {
         // A disabled reader must neither charge for link retrieval nor imply that URLs were read.
         pages = "USER LINKS NOT READ: The user supplied web links but safe link extraction is not enabled. No linked page was opened. Do not claim to have read them; request pasted page content if it is needed.";
-        links = found.urls.map(raw => ({ ok: false, host: new URL(raw).hostname, reason: "Pembacaan tautan belum tersedia pada layanan ini." }));
+        links = found.urls.map(raw => { let host = ""; try { host = new URL(raw).hostname; } catch {} return { ok: false, host, reason: "Pembacaan tautan belum tersedia pada layanan ini." }; });
       }
       const pdfContext = document ? buildPdfContext(document) : "";
       const spreadsheetContext = spreadsheet ? buildSpreadsheetContext(spreadsheet) : "";
