@@ -74,6 +74,14 @@ function receiptCost(receipt,scope){
   return receipt.providerCostMicroUsd;
 }
 function checkedOutput(response,operation,call){
+  // Enforce provider completion integrity at the coordinator too: a trusted
+  // runtime may use a different invoker than createCloudflareMediaInvoker.
+  // A seemingly valid answer/image with an explicit error or non-success
+  // completion marker must never be delivered as a successful paid output.
+  if(!response||typeof response!=="object"||Array.isArray(response)||
+    (response.error!==undefined&&response.error!==null)||
+    (operation.kind==="vision"&&response.finish_reason!==undefined&&response.finish_reason!=="stop"))
+    throw new TypeError("Unverified media provider completion");
   if(operation.kind==="image"){
     // The binding's native image result must be normalized by the trusted
     // provider adapter. Do not return arbitrary URLs/HTML or request uploads.
