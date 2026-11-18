@@ -89,11 +89,17 @@ export async function runJournaledInferencePrototype({
   // dispatching inference. There is no client-selectable downgrade/upgrade.
   // The server-approved tariff determines the required Basic/Pro capability.
   // The prototype is inactive and never a production billing authorization.
-  if(env.PLAN_ENTITLEMENTS_ENABLED==="true"){
-    const feature=policy.requiredPlan==="pro"?"pro_credit_capacity":"basic_paid_credits";
+  // Capture whether a verified plan was required at dispatch. A later
+  // configuration change must NOT silently skip revocation checks.
+  const paidPlanGate=env.PLAN_ENTITLEMENTS_ENABLED==="true";
+  const feature=policy.requiredPlan==="pro"?"pro_credit_capacity":"basic_paid_credits";
+  const hasPaidAccess=async()=>{
+    if(env.PLAN_ENTITLEMENTS_ENABLED!=="true")return false;
     const permission=await callSafe(()=>authorizePlanFeature(env,userId,feature));
-    if(permission?.allowed!==true)return declined("paid_plan_entitlement_rejected");
-  }
+    return permission?.allowed===true;
+  };
+  if(paidPlanGate && !await hasPaidAccess())
+    return declined("paid_plan_entitlement_rejected");
   const budgetId="ai:"+requestId;
   const budget=await callSafe(()=>providerBudget.reserve({
     id:budgetId,provider:policy.provider,model:policy.model,
@@ -151,6 +157,11 @@ export async function runJournaledInferencePrototype({
       cost>quote.maximumMicroUsd || debit>quote.reservedMicrocredits ||
       cost>policy.maxCallMicroUsd || debit>policy.maxCallMicrocredits)
     return declined("inference_cost_over_ceiling_reservations_held",true);
+  // A refund/revocation after provider dispatch must never deliver an
+  // answer. Upstream cost may already exist: hold both reservations for
+  // operator reconciliation instead of releasing them as a free call.
+  if(paidPlanGate && !await hasPaidAccess())
+    return declined("paid_plan_revoked_reservations_held",true);
   const budgetSettled=await callSafe(()=>providerBudget.settle({
     id:budgetId,actualMicroUsd:cost
   }));
@@ -161,6 +172,10 @@ export async function runJournaledInferencePrototype({
   }));
   if(walletSettled?.ok!==true)
     return declined("credit_settlement_failed_reservation_held",true);
+  // The plan may be revoked while either settlement is in flight. Financial
+  // writes already committed; never claim rollback, but withhold paid output.
+  if(paidPlanGate && !await hasPaidAccess())
+    return declined("paid_plan_revoked_after_settlement",true);
   return {
     ok:true,modelInvoked:true,response,
     inputTokens:usage.inputTokens,outputTokens:usage.outputTokens,
