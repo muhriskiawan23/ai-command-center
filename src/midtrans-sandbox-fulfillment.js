@@ -8,7 +8,9 @@ export function fulfillVerifiedSandboxPayment(options) {
   const {payload,serverKey,signatureKey,expectedMerchantId,fetchImpl}=options;
   return fulfillSandboxOrder(options,async(order)=>{
     const webhook=await assessMidtransSandboxNotification(order,payload,{serverKey,signatureKey,expectedMerchantId});
-    const status=await checkMidtransSandboxOrder(order,{serverKey,expectedMerchantId,fetchImpl});
+    // A signed webhook cannot substitute for independent currency evidence.
+    // The Status API must explicitly confirm IDR before any credit grant.
+    const status=await checkMidtransSandboxOrder(order,{serverKey,expectedMerchantId,fetchImpl,requireCurrency:true});
     return decideSandboxPaymentConfirmation(order,webhook,status);
   });
 }
