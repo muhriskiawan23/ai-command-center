@@ -35,21 +35,38 @@ try {
   const sql = async source => db.batch(unstable_splitSqlQuery(source).map(statement => db.prepare(statement)));
   const migrations = ["0001_auth_and_chat", "0002_daily_usage", "0003_user_memory", "0004_conversation_pinning",
     "0005_conversation_archive", "0006_chat_request_idempotency", "0008_message_link_sources", "0009_public_api_keys",
-    "0012_credit_ledger", "0013_provider_spend_budget", "0014_provider_usage_journal"];
+    "0012_credit_ledger", "0013_provider_spend_budget", "0014_provider_usage_journal",
+    "0016_plan_entitlements_draft"];
   for (const name of migrations) await sql(readFileSync(new URL(`../../migrations/${name}.sql`, import.meta.url), "utf8"));
   await sql(`
     CREATE TABLE stage3_staging_requests (id TEXT PRIMARY KEY);
     CREATE TABLE stage3_telegram_accounts (telegram_id INTEGER PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id));
     INSERT INTO users (id,email,created_at,updated_at) VALUES
-      ('stage3-web','web@example.test',1,1),('stage3-api','api@example.test',1,1),('stage3-telegram','telegram@example.test',1,1);
+      ('stage3-web','web@example.test',1,1),('stage3-api','api@example.test',1,1),
+      ('stage3-telegram','telegram@example.test',1,1),('stage3-free','free@example.test',1,1);
     INSERT INTO credit_accounts (user_id,balance_microcredits,updated_at) VALUES
-      ('stage3-web',100000,1),('stage3-api',100000,1),('stage3-telegram',100000,1);
+      ('stage3-web',100000,1),('stage3-api',100000,1),
+      ('stage3-telegram',100000,1),('stage3-free',100000,1);
     INSERT INTO stage3_telegram_accounts (telegram_id,user_id) VALUES (77,'stage3-telegram');
     INSERT INTO provider_budget_limits (provider,daily_cap_micro_usd,updated_at) VALUES
       ('stage3-synthetic',100000,1),('__global__',100000,1);
   `);
+  // Disposable, fictional payment proofs are the *only* source of paid
+  // entitlement in this local workerd proof; no gateway/provider is called.
+  const now = Math.floor(Date.now()/1000);
+  for (const [user,tier] of [["stage3-web","pro"],["stage3-api","basic"],["stage3-telegram","basic"]]) {
+    const orderId="synthetic-plan-"+user;
+    await db.prepare("INSERT INTO verified_plan_payments "+
+      "(order_id,user_id,purchased_tier,verification_status,verified_at,updated_at) "+
+      "VALUES (?,?,?,'verified_paid',?,?)")
+      .bind(orderId,user,tier,now-120,now-60).run();
+    await db.prepare("INSERT INTO plan_entitlements "+
+      "(user_id,paid_tier,payment_order_id,status,starts_at,ends_at,updated_at) "+
+      "VALUES (?,?,?,'active',?,?,?)")
+      .bind(user,tier,orderId,now-60,now+3600,now).run();
+  }
   const sessionHeaders = {};
-  for (const user of ["stage3-web", "stage3-api"]) {
+  for (const user of ["stage3-web", "stage3-api", "stage3-free"]) {
     const token = randomBytes(32).toString("hex");
     await db.prepare("INSERT INTO sessions (token_hash,user_id,expires_at,created_at) VALUES (?,?,?,1)")
       .bind(createHash("sha256").update(token).digest("hex"), user, Math.floor(Date.now() / 1000) + 3600).run();
@@ -71,6 +88,14 @@ try {
   assert.equal((await send("/api/chat", single, { ...web, Origin: "https://other.example" })).status, 403);
   assert.equal((await send("/api/chat", { message: single.message }, web)).status, 400);
   assert.equal(await readCount("stage3_staging_requests"), 0);
+  // Even a Free user with positive (synthetic) wallet balance cannot
+  // consume paid inference merely by possessing credits.
+  const unentitled = await send("/api/chat",
+    {message:single.message,requestId:randomUUID()},sessionHeaders["stage3-free"]);
+  assert.ok(unentitled.status >= 400,"Free account must not call paid AI");
+  assert.equal(await readCount("provider_usage_events"),0);
+  assert.equal(await readCount("provider_budget_reservations"),0);
+  assert.equal(await readCount("credit_reservations"),0);
   const duplicates = await Promise.all(Array.from({ length: 3 }, () => send("/api/chat", single, web)));
   assert.ok(duplicates.every(response => response.status === 200 || response.status === 409));
   const accepted = await Promise.all(duplicates.filter(response => response.status === 200).map(response => response.json()));
@@ -106,6 +131,7 @@ try {
   const wallets = await db.prepare("SELECT user_id, balance_microcredits FROM credit_accounts ORDER BY user_id").all();
   assert.deepEqual(wallets.results, [
     { user_id: "stage3-api", balance_microcredits: 100000 - 2 * 519 },
+    { user_id: "stage3-free", balance_microcredits: 100000 },
     { user_id: "stage3-telegram", balance_microcredits: 100000 - 519 },
     { user_id: "stage3-web", balance_microcredits: 100000 - 5 * 519 }
   ]);
@@ -126,7 +152,30 @@ try {
   assert.equal(await readCount("credit_reservations", "status='reserved'"), 2);
   assert.equal(await readCount("provider_budget_reservations", "status='reserved'"), 1);
   assert.equal(await readCount("provider_budget_reservations", "status='settled'"), 9);
-  console.log("PASS: authenticated Worker routes, isolated account wallets, replay rejection and recoverable settlement holds");
+  // Payment proof reversal must immediately revoke access with no new
+  // provider call, budget hold or debit, even if the wallet has credits.
+  const before = {
+    journal:await readCount("provider_usage_events"),
+    budget:await readCount("provider_budget_reservations"),
+    wallet:await readCount("credit_reservations")
+  };
+  await db.prepare("UPDATE verified_plan_payments SET verification_status='refunded' "+
+    "WHERE order_id='synthetic-plan-stage3-api'").run();
+  const deniedPaidApi = await send("/api/public/chat",
+    {...single,requestId:randomUUID()},publicHeaders,randomBytes(16).toString("hex"));
+  assert.ok(deniedPaidApi.status >= 400,"Refunded Basic must lose paid API access");
+  assert.equal(await readCount("provider_usage_events"),before.journal);
+  assert.equal(await readCount("provider_budget_reservations"),before.budget);
+  assert.equal(await readCount("credit_reservations"),before.wallet);
+  await db.prepare("UPDATE verified_plan_payments SET verification_status='chargeback' "+
+    "WHERE order_id='synthetic-plan-stage3-web'").run();
+  const deniedWeb = await send("/api/chat",
+    {message:single.message,requestId:randomUUID()},web);
+  assert.ok(deniedWeb.status >= 400,"Charged-back Pro must lose web paid access");
+  assert.equal(await readCount("provider_usage_events"),before.journal);
+  assert.equal(await readCount("provider_budget_reservations"),before.budget);
+  assert.equal(await readCount("credit_reservations"),before.wallet);
+  console.log("PASS: verified synthetic Basic/Pro payments, Free denial, refunds, chargebacks, authenticated routes, isolated wallets, replay rejection and recoverable settlement holds");
 } finally {
   await miniflare.dispose();
 }
