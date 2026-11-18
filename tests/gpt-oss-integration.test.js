@@ -52,3 +52,49 @@ test("GPT-OSS provider error uses Llama fallback without a second paid GPT-OSS c
   assert.ok(row.units>0);
  } finally {await app.close();}
 });
+
+
+test("short 'hi bor' is a legitimate full answer: one baseline inference and HTTP 200",async()=>{
+ const app=await startHarness({extraEnv:{BOR_GPT_OSS_ENABLED:"false"}});
+ let calls=0;
+ app.env.AI.run=async()=>{calls++;return {response:"Halo!"};};
+ try{
+  const {status,body}=await message(app,"hi bor");
+  assert.equal(status,200,JSON.stringify(body));
+  assert.equal(body.response,"Halo!");
+  assert.equal(body.model,LLAMA);
+  assert.equal(calls,1,"a brief greeting must not trigger forced retry");
+ }finally{await app.close();}
+});
+
+test("empty GPT-OSS final output falls back to Llama instead of returning HTTP 502",async()=>{
+ const app=await startHarness({extraEnv:{BOR_GPT_OSS_ENABLED:"true",BOR_GPT_OSS_DAILY_USD_LIMIT:"0.25"}});
+ const models=[];
+ app.env.AI.run=async(model)=>{
+  models.push(model);
+  if(model===GPT_OSS_MODEL_ID)return {output:[{type:"reasoning",summary:[{text:"Do not reveal"}]}]};
+  return {response:"Halo! Ada yang bisa saya bantu?"};
+ };
+ try{
+  const {status,body}=await message(app,"hi bor");
+  assert.equal(status,200,JSON.stringify(body));
+  assert.equal(body.model,LLAMA);
+  assert.match(body.response,/Halo!/);
+  assert.deepEqual(models,[GPT_OSS_MODEL_ID,LLAMA]);
+  assert.equal(body.agentModels[0].calls,2);
+ }finally{await app.close();}
+});
+
+test("GPT-OSS response without final text must not repeatedly call paid canary on retry",async()=>{
+ const app=await startHarness({extraEnv:{BOR_GPT_OSS_ENABLED:"true",BOR_GPT_OSS_DAILY_USD_LIMIT:"0.25"}});
+ const models=[];
+ app.env.AI.run=async(model)=>{
+  models.push(model);
+  return model===GPT_OSS_MODEL_ID?{output:[]}:{response:"Ini adalah jawaban yang memadai dan menjelaskan dengan rinci, disertai dua kalimat pendukung untuk kebutuhan pengguna."};
+ };
+ try{
+  const {status,body}=await message(app,"Jelaskan ringkas tentang risiko operasional.");
+  assert.equal(status,200,JSON.stringify(body));
+  assert.deepEqual(models,[GPT_OSS_MODEL_ID,LLAMA]);
+ }finally{await app.close();}
+});
