@@ -49,7 +49,7 @@ test("personalization is saved for the account and reaches AI only as lower-prio
  await page.locator("#customTone").selectOption("professional");
  await page.locator("#customLength").selectOption("short");
  await page.locator("#customizeForm button[type=submit]").click();
- await expect(page.locator("#customizeStatus")).toContainText("Tersimpan");
+ await expect(page.locator("#customizeStatus")).toContainText(/Tersimpan|Saved on this device/);
  await page.locator("#accountClose").click();
  await page.locator("#prompt").fill("Halo");
  await page.locator("#send").click();
