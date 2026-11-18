@@ -76,7 +76,9 @@ test("two independent verified principals and distinct finance/security roles ar
     { approvals: [{ principalId: "one", role: "finance" }, { principalId: "two", role: "finance" }] },
     { approvals: [{ principalId: "one", role: "finance" }, { principalId: "two", role: "admin" }] },
     { verifyReviewer: async () => ({ verified: true, principalId: "reviewer", role: "finance" }) },
-    { verifyReviewer: async () => { throw new Error("signature invalid"); } }
+    { verifyReviewer: async () => { throw new Error("signature invalid"); } },
+    { verifyReviewer: async (approval, proposal) => ({...proposal,verified:true,
+      principalId:{ toString:()=>approval.principalId },role:approval.role}) }
   ];
   for (const overrides of cases) {
     const report = await inspect(overrides);
