@@ -307,3 +307,5 @@ html[dir="rtl"] .composer-bottom{flex-direction:row}
  .browser-content{max-height:calc(100dvh - 95px);padding:16px 17px 30px}
  .browser-header{padding:18px 17px}
 }
+
+#openBrowserTool[hidden]{display:none!important}
