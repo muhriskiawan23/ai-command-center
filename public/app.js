@@ -878,7 +878,55 @@ function appendFormDraft(draft) {
   const open=document.createElement("a");
   open.href="https://script.google.com/home/projects/create";open.target="_blank";open.rel="noopener noreferrer";
   open.textContent="Buka Google Apps Script";
-  actions.append(copy,open);panel.append(title,notice,actions);body.append(panel);
+  const create=document.createElement("button");
+  create.type="button";
+  create.textContent="Buat langsung di Google Forms";
+  create.addEventListener("click",async()=>{
+    if(state!==AppState.AUTH||!currentUser){
+      toast("Masuk menggunakan akun Google di BOR AI untuk membuat formulir langsung.");return;
+    }
+    const forms=window.BORGoogleForms;
+    if(!forms?.validDraft?.(draft)){
+      toast("Rancangan formulir tidak valid. Gunakan salinan Apps Script.");return;
+    }
+    if(!gsi.clientId||!window.google?.accounts?.oauth2?.initTokenClient){
+      toast("Izin Google Forms belum tersedia. Gunakan salinan Apps Script atau periksa konfigurasi Google Cloud.");return;
+    }
+    if(!window.confirm("Buat satu Google Form BARU di akun Google yang kamu izinkan? Form akan belum dipublikasikan sampai kamu meninjaunya. BOR AI tidak akan menyimpan token akses."))return;
+    create.disabled=true;
+    create.textContent="Meminta izin Google…";
+    // Initiate OAuth synchronously in this button click to avoid popup blockers.
+    let pending;
+    try {
+      pending=forms.requestFormsAccess(gsi.clientId,window.google.accounts.oauth2);
+    } catch {
+      create.disabled=false;create.textContent="Buat langsung di Google Forms";
+      toast("Gagal membuka izin Google Forms. Periksa konfigurasi aplikasi.");return;
+    }
+    try {
+      const token=await pending;
+      if(state!==AppState.AUTH){toast("Akun BOR AI telah keluar. Tidak ada perubahan formulir.");return;}
+      create.textContent="Membuat formulir…";
+      const created=await forms.createUnpublishedForm(draft,token,fetch.bind(window));
+      const link=document.createElement("a");
+      link.href=created.editUrl;
+      link.rel="noopener noreferrer";
+      link.target="_blank";
+      link.textContent=created.complete?"Buka Google Form baru (belum dipublikasikan)":"Buka form yang dibuat untuk melengkapi pertanyaan";
+      actions.append(link);
+      create.hidden=true;
+      notice.textContent=created.complete
+        ?"Form berhasil dibuat melalui Google Forms API, masih belum menerima respons. Tinjau dan publikasikan sendiri di Google."
+        :"Form kosong berhasil dibuat, tetapi pertanyaan belum tersimpan. Buka editor untuk menyelesaikannya. Jangan ulangi tombol untuk menghindari form duplikat.";
+    } catch(error){
+      notice.textContent="Pembuatan langsung belum berhasil. Periksa apakah Google Forms API dan izin OAuth telah diaktifkan untuk aplikasi. Alternatif: salin Apps Script.";
+      toast(error?.message==="google_forms_access_denied"?"Akses Google Forms ditolak. Tidak ada formulir yang dibuat.":"Tidak dapat membuat form langsung. Gunakan Apps Script atau periksa izin Google.");
+    } finally {
+      create.disabled=false;
+      if(!create.hidden)create.textContent="Buat langsung di Google Forms";
+    }
+  });
+  actions.append(create,copy,open);panel.append(title,notice,actions);body.append(panel);
 }
 function appendPdfSource(pdf){
   const row=messagesEl.lastElementChild;const body=row&&row.querySelector(".message-body");if(!body||!pdf)return;
