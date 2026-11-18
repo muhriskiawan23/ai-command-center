@@ -231,3 +231,21 @@ The workflow verified that Worker routing was disabled after the proof.
 | Payments | Midtrans [#246](https://github.com/muhriskiawan23/ai-command-center/pull/246) covers the design. Sandbox [#247](https://github.com/muhriskiawan23/ai-command-center/pull/247) has verified settlement and replay protection in tests. Live webhook replay and partial reversal, chargeback and spent-credit policies remain open in addition to merchant approval. |
 
 Tracked in [Stage 3 issue #253](https://github.com/muhriskiawan23/ai-command-center/issues/253) and [Stage 2 PR #245](https://github.com/muhriskiawan23/ai-command-center/pull/245). Preserve production quota controls and keep URL Reader off.
+
+
+
+### Stale provider budget allocated before the wallet (18 November 2026)
+The read-only Stage 3 cross-ledger report now flags
+`staleBudgetWithoutWallet`: a token-AI (`ai:`-scoped) **reserved**
+provider budget with no matching customer credit reservation, no confirmed
+dispatch, and an age beyond the configured stale window. This catches a
+crash or partial outage between the two independent reservations; the
+older `stalePreDispatchBudgetHolds` only detected stale requests after
+*both* sides were reserved. In-flight requests below the stale cutoff are
+not automatically called incidents. Media (`media:`) budgets are excluded
+from this token-only audit and have their separate reconciliation report.
+Tests verify the missing-wallet case, non-stale cases and namespace
+separation using disposable SQLite. The report is read-only and never
+releases held funds; a human must verify upstream call evidence and approve
+compensating actions. **No remote D1, billing or production change** is
+authorized by this draft.
