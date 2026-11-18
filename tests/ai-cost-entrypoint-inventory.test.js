@@ -21,7 +21,7 @@ test("direct Workers AI calls in main Worker require paid-gate inventory review 
   assert.equal(markdownCalls.length,1,"PDF conversion route changed: review conversion-cost treatment");
   assert.match(main,/const generated = await env\.AI\.run\(modelId, payload\)/);
   assert.match(main,/const fallback = await env\.AI\.run\(selection\.model\.id, payload\)/);
-  assert.match(main,/reserveGptOssCall\(env, modelMessages, maxTokens\)/);
+  assert.match(main,/reserveGptOssCall\(env, modelMessages, gptMaxTokens\)/);
   assert.match(main,/error instanceof AiCancelledError/);
   assert.match(main,/error instanceof AiTimeoutError/);
   assert.match(main,/const converted = await env\.AI\.toMarkdown\(/);
