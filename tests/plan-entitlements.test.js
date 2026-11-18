@@ -224,3 +224,92 @@ test("Pro automatic entitlement passes plan check before budget; revocation stop
   assert.equal((await run()).reason,"paid_plan_entitlement_rejected");
   assert.deepEqual(trace,[]);
 });
+
+test("Stage 3 holds both financial reservations when Pro is refunded during provider execution",async t=>{
+  const x=setup(t);x.paid({tier:"pro"});
+  const trace=[];
+  const tariff={
+    approved:true,provider:"cloudflare-workers-ai",model:"@cf/synthetic",
+    version:"revocation-v1",requiredPlan:"pro",inputRateMicroUsdPerMillion:293000n,
+    outputRateMicroUsdPerMillion:2253000n,creditNumerator:1n,creditDenominator:1n,
+    maxCallMicroUsd:9000n,maxCallMicrocredits:9000n
+  };
+  const result=await runJournaledInferencePrototype({
+    env:x.env,userId:"alice-test",requestId:"revoked-during-model",attemptId:"revoked-attempt",
+    tariff,maxInputTokens:1000,maxOutputTokens:100,
+    providerBudget:{
+      reserve:async()=>{trace.push("budget:reserve");return {ok:true};},
+      settle:async()=>{trace.push("budget:settle");return {ok:true};}
+    },
+    ledger:{
+      reserve:async()=>{trace.push("wallet:reserve");return {ok:true};},
+      finalize:async()=>{trace.push("wallet:finalize");return {ok:true};}
+    },
+    journal:async(_env,event)=>{trace.push("journal:"+event.kind);return {ok:true};},
+    invokeModel:async()=>{
+      trace.push("model:invoke");
+      x.db.sqlite.prepare("UPDATE verified_plan_payments SET verification_status='refunded' WHERE order_id='verified-order-1'").run();
+      return {answer:"must not be delivered",usage:{prompt_tokens:100,completion_tokens:10}};
+    }
+  });
+  assert.deepEqual(result,{ok:false,reason:"paid_plan_revoked_reservations_held",modelInvoked:true});
+  assert.deepEqual(trace,["budget:reserve","wallet:reserve","journal:dispatched",
+    "model:invoke","journal:usage_measured"]);
+  assert.equal((await resolvePlanAccess(x.env,"alice-test")).plan,"free");
+});
+test("Stage 3 never releases output if entitlement is revoked while credit settlement commits",async t=>{
+  const x=setup(t);x.paid({tier:"pro"});
+  const trace=[];
+  const tariff={
+    approved:true,provider:"cloudflare-workers-ai",model:"@cf/synthetic",
+    version:"revocation-v1",requiredPlan:"pro",inputRateMicroUsdPerMillion:293000n,
+    outputRateMicroUsdPerMillion:2253000n,creditNumerator:1n,creditDenominator:1n,
+    maxCallMicroUsd:9000n,maxCallMicrocredits:9000n
+  };
+  const result=await runJournaledInferencePrototype({
+    env:x.env,userId:"alice-test",requestId:"revoked-at-settlement",attemptId:"settlement-attempt",
+    tariff,maxInputTokens:1000,maxOutputTokens:100,
+    providerBudget:{
+      reserve:async()=>{trace.push("budget:reserve");return {ok:true};},
+      settle:async()=>{trace.push("budget:settle");return {ok:true};}
+    },
+    ledger:{
+      reserve:async()=>{trace.push("wallet:reserve");return {ok:true};},
+      finalize:async()=>{
+        trace.push("wallet:finalize");
+        x.db.sqlite.prepare("UPDATE verified_plan_payments SET verification_status='refunded' WHERE order_id='verified-order-1'").run();
+        return {ok:true};
+      }
+    },
+    journal:async(_env,event)=>{trace.push("journal:"+event.kind);return {ok:true};},
+    invokeModel:async()=>({answer:"must not be delivered",usage:{prompt_tokens:100,completion_tokens:10}})
+  });
+  assert.deepEqual(result,{ok:false,reason:"paid_plan_revoked_after_settlement",modelInvoked:true});
+  assert.deepEqual(trace,["budget:reserve","wallet:reserve","journal:dispatched",
+    "journal:usage_measured","budget:settle","wallet:finalize"]);
+  assert.equal((await resolvePlanAccess(x.env,"alice-test")).plan,"free");
+});
+test("Stage 3 disabling plan verification during model execution cannot bypass recheck",async t=>{
+  const x=setup(t);x.paid({tier:"basic"});
+  const tariff={
+    approved:true,provider:"workers-ai",model:"@cf/synthetic",
+    version:"revocation-v1",requiredPlan:"basic",inputRateMicroUsdPerMillion:293000n,
+    outputRateMicroUsdPerMillion:2253000n,creditNumerator:1n,creditDenominator:1n,
+    maxCallMicroUsd:9000n,maxCallMicrocredits:9000n
+  };
+  let settlements=0;
+  const result=await runJournaledInferencePrototype({
+    env:x.env,userId:"alice-test",requestId:"flag-revoked",attemptId:"flag-attempt",
+    tariff,maxInputTokens:1000,maxOutputTokens:100,
+    providerBudget:{reserve:async()=>({ok:true}),settle:async()=>{settlements++;return {ok:true};}},
+    ledger:{reserve:async()=>({ok:true}),finalize:async()=>{settlements++;return {ok:true};}},
+    journal:async()=>({ok:true}),
+    invokeModel:async()=>{
+      delete x.env.PLAN_ENTITLEMENTS_ENABLED;
+      return {answer:"withheld",usage:{prompt_tokens:100,completion_tokens:10}};
+    }
+  });
+  assert.equal(result.reason,"paid_plan_revoked_reservations_held");
+  assert.equal(result.ok,false);
+  assert.equal(settlements,0);
+});
