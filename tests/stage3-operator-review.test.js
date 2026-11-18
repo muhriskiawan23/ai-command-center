@@ -107,6 +107,8 @@ test("reviewer signatures are tied to the exact immutable invoice/evidence/cost/
 test("invalid evidence, missing verifiers and non-integer costs fail before provider action", async () => {
   const cases = [
     { caseId: "" },
+    { caseId: 123 },
+    { evidenceSha256: { toString: () => hashA } },
     { evidenceSha256: "not-sha256" },
     { providerStatementSha256: "missing" },
     { actualCostMicroUsd: -1 },
