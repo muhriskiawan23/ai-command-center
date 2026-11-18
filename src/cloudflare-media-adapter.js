@@ -44,15 +44,21 @@ export function createCloudflareMediaInvoker({AI}={}){
     const result=await AI.run(model,input);
     cancelled(signal);
     if(!result||typeof result!=="object"||Array.isArray(result))throw new TypeError("Structured media response required");
+    if(model===IMAGE_MODEL&&result.error!==undefined&&result.error!==null)
+      throw new TypeError("Provider image response includes an error");
     if(model===VISION_MODEL){
       // A nonempty string alone is not a completed answer. Cloudflare may
       // return text even when the model hit its token cap or filtered output.
       // Preserve fail-closed accounting upstream rather than publishing a
       // partial/blocked result as a successful paid inference.
-      if(result.finish_reason!==undefined&&
-        (typeof result.finish_reason!=="string"||
-          ["length","max_tokens","content_filter"].includes(result.finish_reason.toLowerCase())))
+      // The published model schema does not enumerate all finish reasons.
+      // Until a live account proves other success values, "stop" is the
+      // only explicit completion marker accepted; missing is tolerated for
+      // compatibility with versions that omit the optional field.
+      if(result.finish_reason!==undefined&&result.finish_reason!=="stop")
         throw new TypeError("Incomplete or blocked provider vision completion");
+      if(result.error!==undefined&&result.error!==null)
+        throw new TypeError("Provider vision response includes an error");
       if(typeof result.answer!=="string"||!result.answer.trim()||result.answer.length>16000)
         throw new TypeError("Bounded provider vision answer required");
       return {answer:result.answer,providerUsage:{metrics:result.metrics}};
