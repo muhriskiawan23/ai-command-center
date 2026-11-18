@@ -118,3 +118,15 @@ founder GO approval are complete. This is a per-request server-side
 configuration gate, **not** yet a remotely controlled global emergency
 kill switch with atomic cross-Worker propagation, which remains a
 deployment/operational launch requirement.
+
+
+### Pre-dispatch revalidation at independent D1 boundaries
+The Stage 3 prototype also rechecks plan eligibility and the paid-inference
+switch **after** separate budget/wallet reservations and **again after** the
+durable dispatch marker, immediately before the model callback. If a refund
+or kill switch change occurs while either D1 operation is in flight, no
+billable model call is made. Existing reservations and an ambiguous dispatch
+marker remain held for operator verification; they are not automatically
+released because a concurrent write could already have committed.
+Synthetic tests inject kill-switch changes inside the wallet adapter and
+journal callback to prove zero provider calls and zero automatic settlement.
