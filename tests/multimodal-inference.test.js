@@ -417,3 +417,19 @@ test("an unverified-usage attempt cannot become measured by replay or late callb
   assert.equal(x.events().length,2);
   assert.equal(x.budget().status,"reserved");
 });
+
+test("legacy contradictory terminal rows are flagged by read-only media finance audit",async t=>{
+  const x=fixture(t);
+  assert.equal((await x.run()).ok,true);
+  x.sql.exec("DROP TRIGGER trg_media_usage_insert_guard");
+  x.sql.exec(`INSERT INTO media_usage_events
+    (attempt_id,event_kind,request_id,provider,model,rate_version,feature,provider_cost_micro_usd,created_at)
+    SELECT attempt_id,'usage_unverified',request_id,provider,model,rate_version,feature,NULL,created_at
+    FROM media_usage_events WHERE event_kind='dispatched'`);
+  const before=x.events().length;
+  const audit=await inspectMediaBilling(x.env);
+  assert.equal(audit.terminal_conflicts,1);
+  assert.equal(audit.reviewRequired,true);
+  assert.equal(audit.providerInvoiceVerified,false);
+  assert.equal(x.events().length,before);
+});
