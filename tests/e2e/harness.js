@@ -18,6 +18,10 @@ export function createD1() {
   const sqlite = new DatabaseSync(":memory:");
   sqlite.exec("PRAGMA foreign_keys = ON");
   for (const file of readdirSync(join(ROOT, "migrations")).sort()) sqlite.exec(readFileSync(join(ROOT, "migrations", file), "utf8"));
+  // Only this disposable test harness opts in to synthetic paid provider
+  // reservations. The actual unapplied D1 migration defaults OFF; dedicated
+  // emergency-switch tests verify that fail-closed behavior independently.
+  sqlite.prepare("UPDATE provider_runtime_controls SET enabled=1,updated_at=1 WHERE control_name='paid_provider_dispatch'").run();
   const stmt = (sql, values = []) => ({
     bind: (...v) => stmt(sql, v),
     first: async () => sqlite.prepare(sql).get(...values) ?? null,
