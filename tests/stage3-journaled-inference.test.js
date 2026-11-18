@@ -228,3 +228,26 @@ test("all ID references stay opaque and journal schema remains unmodified on pol
   assert.equal(x.events().length,0);
   assert.equal(x.invoked(),0);
 });
+
+test("Stage 3 default denies spend when verified-plan gate is disabled",async t=>{
+  const x=setup(t);
+  delete x.env.STAGE3_SYNTHETIC_ONLY;
+  const result=await x.run();
+  assert.equal(result.ok,false);
+  assert.equal(result.reason,"paid_plan_entitlement_disabled");
+  assert.equal(result.modelInvoked,false);
+  assert.deepEqual(x.trace,[]);
+  assert.equal(x.balance(),15000n);
+});
+test("Stage 3 never permits synthetic bypass while a real AI binding is configured",async t=>{
+  const x=setup(t);
+  x.env.AI={run:async()=>{throw Error("must not call");}};
+  const result=await x.run();
+  assert.equal(result.reason,"paid_plan_entitlement_disabled");
+  assert.equal(result.modelInvoked,false);
+  assert.deepEqual(x.trace,[]);
+});
+test("Production Wrangler does not enable the synthetic Stage 3 bypass",()=>{
+  const {vars={}}=JSON.parse(readFileSync(new URL("../wrangler.jsonc",import.meta.url),"utf8"));
+  assert.notEqual(vars.STAGE3_SYNTHETIC_ONLY,"true");
+});
