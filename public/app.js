@@ -17,37 +17,9 @@ const $=id=>document.getElementById(id);
 function id(){return Date.now().toString(36)+Math.random().toString(36).slice(2,8)}
 function toast(message){const el=$("toast");el.textContent=message;el.hidden=false;clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.hidden=true,2200)}
 function escapeHTML(s){return String(s).replace(/[&<>\"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
-  function markdown(input) {
-    let src = String(input || "").replace(/\r\n?/g, "\n");
-    const blocks = [];
-    src = src.replace(/```([\w+-]*)[ \t]*\n([\s\S]*?)```/g, (_, lang, code) => {
-      const key = "@@CB" + blocks.length + "@@";
-      blocks.push({ lang, code });
-      return key;
-    });
-    src = src
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-      .replace(/\*(.+?)\*/g, "<em>$1</em>")
-      .replace(/`([^`]+)`/g, "<code>$1</code>")
-      .replace(/\n\n+/g, "\n")
-      .replace(/^(#+)\s+(.*)$/gm, (_, hash, text) => `<h${hash.length}>${text}</h${hash.length}>`)
-      .replace(/^>\s*(.*)$/gm, "<blockquote>$1</blockquote>")
-      .replace(/^(?:- |\* |\+ )(.*)$/gm, "<li>$1</li>")
-      .replace(/\n<li>/g, "\n<ul>\n<li>")
-      .replace(/<\/li>\n(?!<li>|<h|<p|<blockquote|<ul|<ol)/g, "</li>\n</ul>\n")
-      .replace(/\n(?!<)/g, "<br>\n");
-
-    for (let i = 0; i < blocks.length; i++) {
-      const block = blocks[i];
-      const tag = block.lang ? ` class="language-${escapeHTML(block.lang)}"` : "";
-      src = src.replace("@@CB" + i + "@@", `<pre><code${tag}>${escapeHTML(block.code)}</code></pre>`);
-    }
-
-    return src;
-  }
+function markdown(input) {
+  return globalThis.BORMarkdown ? globalThis.BORMarkdown.render(input) : "<p>" + escapeHTML(input || "") + "</p>";
+}
 
 
   function appendMessage(role,content,scroll=true,controls={}) {
