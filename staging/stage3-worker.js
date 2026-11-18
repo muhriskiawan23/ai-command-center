@@ -55,6 +55,10 @@ export default {
     let modelCalls = 0;
     return worker.fetch(request, {
       DB,
+      // This standalone synthetic Worker must verify the *same* signed-off
+      // payment-backed D1 entitlement tables as the production plan gate.
+      // All provider responses remain fake; nothing turns on production AI.
+      PLAN_ENTITLEMENTS_ENABLED: "true",
       URL_READER_ENABLED: "false",
       TELEGRAM_BOT_TOKEN: "stage3-synthetic",
       TELEGRAM_WEBHOOK_SECRET: env.STAGE3_TELEGRAM_WEBHOOK_SECRET,
@@ -88,7 +92,9 @@ export default {
           const call = ++modelCalls;
           if (call > 12) throw new Error("Stage 3 synthetic call limit exceeded");
           const billing = await runJournaledInferencePrototype({
-            env: { DB, STAGE3_SYNTHETIC_ONLY: "true" },
+            // Stage 3 proof now exercises authentic D1 plan checks with
+            // disposable, fabricated payment rows. No synthetic bypass.
+            env: { DB, PLAN_ENTITLEMENTS_ENABLED: "true", PAID_INFERENCE_ENABLED: "true" },
             userId: scope.userId,
             requestId: `staging:${scope.id}:${call}`,
             attemptId: `staging:${scope.id}:${call}`,
