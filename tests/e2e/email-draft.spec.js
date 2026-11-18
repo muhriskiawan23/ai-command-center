@@ -5,6 +5,7 @@ test("email draft helper prepares a Writer prompt without sending automatically"
   await page.locator("#continueGuest").click();
   await expect(page.locator("#app")).toBeVisible();
 
+  await page.locator("#toolsMenu > summary").click();
   await page.locator("#openEmailDraft").click();
   const panel = page.locator("#emailDraftPanel");
   await expect(panel).toBeVisible();
