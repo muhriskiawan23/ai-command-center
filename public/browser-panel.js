@@ -6,6 +6,13 @@
   const $=id=>document.getElementById(id);
   const dialog=$("browserDialog"),launcher=$("openBrowserTool");
   if(!dialog||!launcher)return;
+  launcher.hidden=true;
+  // Never advertise an unavailable browser executor to paying customers.
+  // The main Worker reports readiness without revealing any secret values.
+  fetch("/api/config",{credentials:"same-origin",cache:"no-store"})
+    .then(response=>response.ok?response.json():null)
+    .then(config=>{launcher.hidden=config?.browserAgentEnabled!==true;})
+    .catch(()=>{launcher.hidden=true;});
   let current=null,pending=null,busy=false;
   const status=$("browserStatus");
   function report(message,error=false){
