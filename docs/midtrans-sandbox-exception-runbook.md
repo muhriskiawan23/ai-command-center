@@ -35,3 +35,19 @@ WHERE p.environment = 'sandbox' AND p.order_id = 'ORDER_ID';
 ```
 
 Record the provider outcome and the query result together. For a full refund completed automatically, expect `refunded`, outcome `reversed`, one grant, one reversal, and net zero. For an unpaid expired or cancelled order, expect zero grants and reversals. Keep partial-refund credits, chargeback recovery, and already-spent credit adjustments subject to explicit policy before enabling paid production access.
+
+
+### Bounded streaming body handling (18 November 2026)
+The isolated sandbox Worker now places a 10-second deadline and request-abort
+handling around every streamed notification, operator reconciliation JSON, and
+Snap checkout response JSON. Both streamed and advertised body sizes are
+bounded to 16 KiB and malformed UTF-8 fails closed. A stalled/disconnected
+notification cannot advance fulfillment or call the trusted Midtrans Status API.
+The new local tests simulate an aborted partial webhook, oversized streamed
+and declared bodies, and invalid UTF-8 without touching Midtrans or D1.
+
+These checks do **not** authorize merchant activation, production integration,
+or retry/release of funds after an unknown Midtrans provider response. Continue
+using signed webhook plus independently verified Status API, exact order/amount
+and merchant match, operator review for disputed payments, and the separate
+merchant approval process before a commercial launch.
