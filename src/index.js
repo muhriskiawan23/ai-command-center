@@ -420,14 +420,18 @@ async function runAgent(env, agentId, userMessage, context = "", history = [], p
     const modelMessages = extraInstruction
       ? [...messages, { role: "user", content: extraInstruction }]
       : messages;
-    const maxTokens = Math.min(2200, (tokenLimits[agentId] || 950) +
+    const baselineMaxTokens = Math.min(2200, (tokenLimits[agentId] || 950) +
       (/\b(mendalam|detail|lengkap|komprehensif|thorough|in.depth|step.by.step|detailed|comprehensive)\b/i.test(userMessage) ? 300 : 0));
+    let maxTokens = baselineMaxTokens;
     let modelId = selection.model.id;
     // Opt-in high-reasoning inference for signed-in turns only. Atomically reserve
     // an upper cost bound in D1 BEFORE invoking the paid model; otherwise use Llama.
     if (mayUseGptOss(env, agentId)) {
-      const allowance = await reserveGptOssCall(env, modelMessages, maxTokens);
-      if (allowance.allowed) modelId = GPT_OSS_MODEL_ID;
+      // The reasoning model needs room for its thinking and final response.
+      // Charge the larger potential output BEFORE inference, not afterward.
+      const gptMaxTokens = Math.max(1600, baselineMaxTokens);
+      const allowance = await reserveGptOssCall(env, modelMessages, gptMaxTokens);
+      if (allowance.allowed) { modelId = GPT_OSS_MODEL_ID; maxTokens = gptMaxTokens; }
     }
     activeModelId = modelId;
     traceEntry.modelId = modelId;
