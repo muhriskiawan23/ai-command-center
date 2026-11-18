@@ -216,6 +216,7 @@
   <form id="browserInspectForm"><label for="browserUrl">Alamat situs HTTPS</label><input type="url" id="browserUrl" placeholder="https://demo.playwright.dev/todomvc/" maxlength="1500" required><button type="submit" id="browserInspect">Buka dan baca halaman</button></form>
   <p id="browserStatus" role="status" class="browser-status">Masuk dengan Google untuk menggunakan browser saat fitur ini sudah diaktifkan.</p>
   <section id="browserPageResult" hidden><h3 id="browserPageTitle"></h3><a id="browserPageLink" href="#" target="_blank" rel="noopener noreferrer">Buka situs asli</a><div class="browser-excerpt" id="browserPageText"></div><h3>Langkah berikutnya</h3><p>Pilih satu elemen halaman. BOR AI akan menunjukkan langkahnya sebelum dijalankan.</p>
+   <label for="browserGoal">Tujuan yang ingin dibantu AI (opsional)</label><input id="browserGoal" type="text" maxlength="400" placeholder="Contoh: cari kolom pencarian lalu ketik BOR AI" autocomplete="off"><button type="button" id="browserSuggest">AI sarankan langkah (1 unit penggunaan)</button>
    <label for="browserTarget">Elemen</label><select id="browserTarget"></select>
    <label for="browserValue">Isi teks (untuk kolom atau pilihan)</label><input id="browserValue" type="text" maxlength="240" placeholder="Isi jika diperlukan" autocomplete="off">
    <button type="button" id="browserReview">Tinjau langkah</button>
