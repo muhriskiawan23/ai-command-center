@@ -72,6 +72,10 @@ No object storage or result cache exists. Results are transient and returned
 only after output validation and successful financial settlement. Existing
 Media Lab controls remain local-only and do not upload to these routes.
 
+Status rejects inconsistent budget/wallet settlement shapes, rather than
+presenting null or malformed charge values as a verified customer balance.
+The check applies even if legacy rows or a storage adapter are corrupt.
+
 Status returns `completed`, `cancelled` or `unresolved`, charged microcredits,
 held-credit/review flags and `outputStored:false`. A completed financial request
 does not prove the browser received its result. Lost output cannot currently
