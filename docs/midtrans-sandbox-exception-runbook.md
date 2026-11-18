@@ -107,3 +107,21 @@ still match, and the Status API must confirm a reversal status before the
 marker is created. Identical later events do not duplicate the marker.
 Investigate the new provider dispute and reconcile it against the historical
 grant/reversal before any production policy is enabled.
+
+
+### Tamper-resistant sandbox refund/dispute labels (18 November 2026)
+The **review-only** `payment-reversals-review.sql` now adds
+`sandbox_reversal_state_guard` to reject any new sandbox
+`refunded`/`disputed` order-state transition without the matching
+same-order, same-transaction, same-amount, correct-kind reversal record in
+`sandbox_payment_reversals` with outcome `reversed` or
+`review_required`. It also refuses a direct terminal refund/dispute
+transition from `paid_unfulfilled`. The only intended successful path is
+the existing atomic reversal INSERT trigger: record the decision, debit
+the credit wallet if sufficient, append the ledger event, then update
+the order. If credits have already been spent, retain `review_required`
+and never make the wallet negative. Direct manual SQL status edits are
+**not** provider confirmation and must not create a false financial outcome.
+Dedicated SQLite and real local D1 smoke regressions check the new guard.
+These review-only SQL files are not production migrations and are not
+authorized to run against remote D1 without staging review.
