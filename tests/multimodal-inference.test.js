@@ -200,7 +200,7 @@ test("cancelling before dispatch safely releases both reservations exactly once"
 test("cancelling after one video frame stops additional model requests and retains holds",async t=>{
   const x=fixture(t);const controller=new AbortController();let calls=0;
   const r=await x.run({request:video,signal:controller.signal,invokeModel:async()=>{calls++;return {answer:"Frame uji."}},
-    measureUsage:async args=>{const receipt=await x.measureUsage(args);controller.abort();return receipt;}});
+    journal:async(env,event)=>{const r=await appendMediaUsageEvent(env,event);if(event.kind==="usage_measured")controller.abort();return r;}});
   assert.equal(r.reason,"media_job_interrupted_reservations_held");assert.equal(calls,1);assert.equal(x.reservation().status,"reserved");
 });
 test("append-only media journal forbids UPDATE, DELETE, REPLACE and UPSERT rewrites",async t=>{
@@ -308,4 +308,29 @@ test("provider rejection without an Error object remains an unknown-cost failure
   const x=fixture(t);const r=await x.run({invokeModel:()=>Promise.reject(null)});
   assert.equal(r.reason,"provider_outcome_unknown_reservations_held");
   assert.equal(x.events().at(-1).event_kind,"outcome_unknown");assert.equal(x.reservation().status,"reserved");
+});
+test("whole-job deadline bounds a hanging meter without releasing uncertain spend",async t=>{
+  const x=fixture(t);let complete;
+  const r=await x.run({jobTimeoutMs:15,measureUsage:()=>new Promise(resolve=>{complete=resolve})});
+  assert.equal(r.reason,"media_job_deadline_exceeded_reservations_held");assert.equal(r.modelInvoked,true);
+  complete({});await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(x.reservation().status,"reserved");assert.equal(x.budget().status,"reserved");
+  assert.equal(x.events().filter(e=>e.event_kind==="usage_measured").length,0);
+});
+test("late dispatch-journal acknowledgement after job deadline cannot start the provider",async t=>{
+  const x=fixture(t);let complete;
+  const r=await x.run({jobTimeoutMs:15,journal:()=>new Promise(resolve=>{complete=resolve})});
+  assert.equal(r.reason,"media_job_deadline_exceeded_reservations_held");assert.equal(r.modelInvoked,false);
+  complete({ok:true});await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(x.calls(),0);assert.equal(x.reservation().status,"reserved");
+});
+test("customer-approved credit ceiling also applies inside the coordinator",async t=>{
+  const x=fixture(t);const r=await x.run({maximumMicrocredits:1n});
+  assert.equal(r.reason,"customer_credit_ceiling_exceeded");assert.equal(x.calls(),0);
+  assert.equal(x.reservation(),undefined);assert.equal(x.budget(),undefined);
+});
+test("output moderation and its deadline must complete before financial settlement",async t=>{
+  const x=fixture(t);const r=await x.run({validateOutput:async()=>({ok:false})});
+  assert.equal(r.reason,"media_output_unverified_reservations_held");assert.equal(r.outputs,undefined);
+  assert.equal(x.reservation().status,"reserved");assert.equal(x.events().at(-1).event_kind,"usage_measured");
 });

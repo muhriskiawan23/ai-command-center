@@ -1,4 +1,5 @@
-// INACTIVE integration coordinator. No production route imports this module.
+// Opt-in integration coordinator. The media HTTP boundary is disabled by
+// default and requires trusted server runtime/decoder/moderation wiring.
 // Server-owned tariff + trusted receipt adapter are mandatory; no default AI,
 // pricing, approval, upload, moderation or payment integration is installed.
 import {authorizePlanFeature,minimumPlanForFeature} from "./plan-entitlements.js";
@@ -107,8 +108,29 @@ function invokeWithDeadline(invoke,args,parentSignal,timeoutMs){
     }).then(value=>finish(true,value),error=>finish(false,error));
   });
 }
-export async function runMultimodalInferencePrototype({
+export async function runMultimodalInferencePrototype(options){
+  const {signal,jobTimeoutMs=90000}=options;
+  if(!Number.isSafeInteger(jobTimeoutMs)||jobTimeoutMs<1||jobTimeoutMs>120000)
+    throw new TypeError("Bounded media job deadline required");
+  const controller=new AbortController(),progress={calls:0};
+  const abort=()=>controller.abort();
+  signal?.addEventListener("abort",abort,{once:true});
+  if(signal?.aborted)abort();
+  let timer;
+  const deadline=new Promise(resolve=>{
+    timer=setTimeout(()=>{controller.abort();resolve(denied("media_job_deadline_exceeded_reservations_held",progress.calls));},jobTimeoutMs);
+  });
+  try{
+    // A late DB acknowledgement can still commit. Do not undo it blindly.
+    // The cancelled worker can finish conservative bookkeeping, but the
+    // signal prevents further provider dispatch and outputs are never sent
+    // after this deadline. The losing promise always has rejection handling.
+    return await Promise.race([runMediaJob({...options,signal:controller.signal,progress}),deadline]);
+  }finally{clearTimeout(timer);signal?.removeEventListener("abort",abort);}
+}
+async function runMediaJob({
   env,userId,requestId,request,tariffs,invokeModel,measureUsage,signal,
+  maximumMicrocredits,validateOutput,progress,
   journal=appendMediaUsageEvent,
   ledger={reserve:reserveCredits,finalize:finalizeCredits},providerBudget
 }){
@@ -127,6 +149,11 @@ export async function runMultimodalInferencePrototype({
   if(permission?.allowed!==true)return denied("paid_plan_entitlement_rejected");
   const quote=quoteMediaOperation(operation,tariff);
   if(!quote.allowed)return denied("media_job_spend_ceiling_exceeded");
+  if(maximumMicrocredits!==undefined){
+    if(typeof maximumMicrocredits!=="bigint"||maximumMicrocredits<1n||maximumMicrocredits>BigInt(Number.MAX_SAFE_INTEGER))
+      throw new TypeError("Safe customer credit ceiling required");
+    if(quote.reservedMicrocredits>maximumMicrocredits)return denied("customer_credit_ceiling_exceeded");
+  }
   const policy=quote.policy;
   const budget=providerBudget??providerSpendBudget(env);
   if(typeof budget?.reserve!=="function"||typeof budget?.settle!=="function")throw new TypeError("Provider budget adapter required");
@@ -161,6 +188,7 @@ export async function runMultimodalInferencePrototype({
     const payload=operation.kind==="vision"?{...call.payload,max_tokens:policy.maxOutputTokens}:call.payload;
     let response;
     calls++;
+    progress.calls=calls;
     try{response=await invokeWithDeadline(invokeModel,{model:operation.model,payload,maxInputTokens:policy.maxInputTokens,
       ...scope},signal,policy.callTimeoutMs);}
     catch{
@@ -169,9 +197,9 @@ export async function runMultimodalInferencePrototype({
     }
     // Receipt verification is a server adapter, never a boolean supplied in
     // an uploaded JSON body. It must attest model/attempt/rate AND actual cost.
-    const receipt=await safe(()=>measureUsage({...scope,response,policy,
+    const receipt=await safe(()=>invokeWithDeadline(()=>measureUsage({...scope,response,policy,
       bounds:Object.freeze({maxInputTokens:policy.maxInputTokens,maxOutputTokens:policy.maxOutputTokens,
-        width:operation.width,height:operation.height,referenceDimensions:operation.referenceDimensions})}));
+        width:operation.width,height:operation.height,referenceDimensions:operation.referenceDimensions})}),{},signal,policy.callTimeoutMs));
     const measured=receiptCost(receipt,scope);
     if(measured===null){
       await safe(()=>journal(env,{...scope,kind:"usage_unverified"}));
@@ -181,7 +209,15 @@ export async function runMultimodalInferencePrototype({
     if(event?.ok!==true)return denied("journal_measured_unconfirmed_reservations_held",calls);
     cost+=measured;
     if(cost>quote.maximumMicroUsd)return denied("media_cost_over_ceiling_reservations_held",calls);
-    try{outputs.push(checkedOutput(response,operation,call));}
+    try{
+      const output=checkedOutput(response,operation,call);
+      if(validateOutput!==undefined){
+        if(typeof validateOutput!=="function")throw new TypeError("Output validator required");
+        const reviewed=await invokeWithDeadline(()=>validateOutput({output,feature:operation.feature,signal}),{},signal,policy.callTimeoutMs);
+        if(reviewed?.ok!==true)throw new TypeError("Media output rejected");
+      }
+      outputs.push(output);
+    }
     catch{return denied("media_output_unverified_reservations_held",calls);}
   }
   const debit=mediaCreditsForCost(cost,policy);

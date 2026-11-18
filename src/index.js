@@ -15,6 +15,7 @@ import { COMMUNICATION_NOTICE, CAPABILITY_NOTICE, AGENTS } from "./prompts.js";
 import { json, sha256Hex } from "./http.js";
 import { dailyLimit, usageDay, secondsUntilNextUtcDay, consumeUsage, refundUsage, limitResponse, enforceDailyLimits, DAILY_LIMIT_DEFAULTS, MULTI_AGENT_UNITS } from "./daily-limits.js";
 import { resolvePlanAccess } from "./plan-entitlements.js";
+import { handleMediaRoute } from "./media-api.js";
 
 const MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 const MAX_REQUEST_BYTES = 64 * 1024;
@@ -1293,6 +1294,9 @@ export default {
         console.error("Plan status lookup failed:",safeError(error));
         return json({error:"Verifikasi paket sedang tidak tersedia.",code:"plan_verification_unavailable"},503,{"Cache-Control":"no-store"});
       }
+    }
+    if(url.pathname==="/api/media"||url.pathname==="/api/media/quote"||url.pathname==="/api/media/status"){
+      return handleMediaRoute(request,env,url,{getSession,sameOrigin});
     }
     if (url.pathname.startsWith("/api/github/")) {
       try {

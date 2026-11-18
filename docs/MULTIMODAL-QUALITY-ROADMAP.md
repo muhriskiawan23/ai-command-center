@@ -38,8 +38,15 @@ send every video frame to paid model calls.
   contracts to actual entitlement/budget/credit adapters with per-attempt
   append-only media usage evidence, bounded provider deadlines and held-funds
   failure handling. Integrated SQLite tests use synthetic provider receipts;
-  no live adapter/production route is installed. See
+  the opt-in HTTP route is disabled and no live billing/decoder/moderation
+  implementation is installed. See
   [Multimodal billing integration](MULTIMODAL-BILLING-INTEGRATION.md).
+- `src/media-api.js` supplies authenticated, same-origin quote/execution/status
+  routes, 8 MiB encoded-request limits, rate/credit-consent/idempotency controls,
+  mandatory trusted preflight/moderation hooks and whole-request deadlines.
+  Routes are disabled in all checked-in deployment configs. See
+  [Media HTTP boundary](MEDIA-HTTP-BOUNDARY.md) for the synthetic tests and
+  remaining live rollout requirements.
 - `src/multimodal-contract.js`: strict data URI-only PNG/JPEG/WebP
   input, byte/image-dimension bounds, prompt and output dimension
   validation, supported feature labels and model-specific request builders.

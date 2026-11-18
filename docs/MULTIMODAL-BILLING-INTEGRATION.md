@@ -1,6 +1,8 @@
 # Multimodal execution and finance integration
 
-Status: inactive prototype on Draft PR #264; not imported by production routes.
+Status: opt-in prototype on Draft PR #264. Its authenticated media HTTP boundary
+is disabled in all checked-in deployment configurations and requires trusted
+server runtime wiring. See [HTTP boundary](MEDIA-HTTP-BOUNDARY.md).
 No paid AI calls, remote migrations, real receipts or customer charges have
 been performed by this implementation. The existing local Media Lab remains
 local-only and does not upload media to this coordinator.
@@ -53,7 +55,7 @@ image schemas. It rejects unknown models, remote vision URLs and malformed
 outputs, caps responses, and does not retry. It is tested with a simulated
 binding, including composition with the actual finance coordinator. It has
 not been invoked against a live account. It supplies no trusted billing
-receipt adapter and is not imported or enabled by production routes.
+receipt adapter and is not enabled by the checked-in deployment configurations.
 
 `multimodal-metering.js` separates token-based vision quotes from conservative
 image-megapixel reservations. It requires explicit positive integer rates,
@@ -106,8 +108,9 @@ retries/global ceilings, token-vs-MP pricing, receipt mismatches, unknown outcom
 mid-video revocation/cancellation, deadlines and late callbacks, output limits,
 settlement failures, immutable history and read-only audit flags.
 
-Still required: a reviewed authenticated upload/job endpoint and queue, a bounded
-server decoder/re-encode and moderation/retention, live validation of the native
-provider adapter and a trusted receipt adapter, whole-job deadlines, live metering/invoice reconciliation,
+The opt-in authenticated quote/execution/status HTTP boundary and whole-job
+deadlines are now implemented and synthetically tested. Still required: a durable
+job queue, real bounded server decoder/re-encode and moderation/retention,
+live validation of the native provider adapter and trusted receipt adapter, live metering/invoice reconciliation,
 combined token/media financial audits, Indonesian output-quality evaluation,
 audio integration, merchant payment lifecycle and production rollout checks.
