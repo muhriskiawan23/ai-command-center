@@ -45,6 +45,14 @@ export function createCloudflareMediaInvoker({AI}={}){
     cancelled(signal);
     if(!result||typeof result!=="object"||Array.isArray(result))throw new TypeError("Structured media response required");
     if(model===VISION_MODEL){
+      // A nonempty string alone is not a completed answer. Cloudflare may
+      // return text even when the model hit its token cap or filtered output.
+      // Preserve fail-closed accounting upstream rather than publishing a
+      // partial/blocked result as a successful paid inference.
+      if(result.finish_reason!==undefined&&
+        (typeof result.finish_reason!=="string"||
+          ["length","max_tokens","content_filter"].includes(result.finish_reason.toLowerCase())))
+        throw new TypeError("Incomplete or blocked provider vision completion");
       if(typeof result.answer!=="string"||!result.answer.trim()||result.answer.length>16000)
         throw new TypeError("Bounded provider vision answer required");
       return {answer:result.answer,providerUsage:{metrics:result.metrics}};
