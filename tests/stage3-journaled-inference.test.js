@@ -24,7 +24,7 @@ function setup(t,config={}){
   const sqlite=new DatabaseSync(":memory:");
   t.after(()=>sqlite.close());
   sqlite.exec(schema);
-  const env={DB:{prepare(sql){return {
+  const env={STAGE3_SYNTHETIC_ONLY:"true",DB:{prepare(sql){return {
     bind(...params){return{first:async()=>sqlite.prepare(sql).get(...params)};},
     first:async()=>sqlite.prepare(sql).get()
   };}}};
