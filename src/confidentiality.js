@@ -22,7 +22,7 @@ const refusals = {
 };
 const normalize = value => String(value || "").normalize("NFKC").replace(/[\u200b-\u200f\u202a-\u202e\u2060-\u206f\ufeff]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
 export function confidentialityReply(language, message = "") {
-  return refusals[language] || refusals[/\b(saya|kamu|lu|gw|kode|tampilkan|bagaimana|rahasia|tolong)\b/i.test(message) ? "id" : "en"];
+  return typeof language === "string" && Object.hasOwn(refusals, language) ? refusals[language] : refusals[/\b(saya|kamu|lu|gw|kode|tampilkan|bagaimana|rahasia|tolong)\b/i.test(message) ? "id" : "en"];
 }
 
 function directRequest(text) {
@@ -31,16 +31,20 @@ function directRequest(text) {
   const reveal = /\b(?:show|reveal|print|dump|repeat|return|give|list|display|extract|translate|encode|decode|reconstruct|tell|what (?:is|are)|tampil\w*|bocor\w*|cetak|ulang\w*|beri\w*|sebut\w*|salin|ungkap\w*|terjemah\w*|apa(?:kah)?|bagaimana|gimana|how)\b/.test(t);
   const disclose = /\b(?:show|reveal|print|dump|repeat|display|extract|encode|decode|reconstruct|tampil\w*|bocor\w*|cetak|ulang\w*|salin|ungkap\w*)\b/.test(t);
   const prevention = /\b(?:melindungi|mencegah|menjaga|protect|prevent|avoid|keep.{0,20}safe)\b/.test(t) && !disclose;
-  const hiddenPrompt = /\b(?:system|developer|hidden|internal|initial|original|sistem|pengembang|tersembunyi)\s+(?:prompt|instructions?|messages?|pesan|instruksi)\b|\bprompt\s+(?:sistem|internal|asli|rahasia|kamu|anda|mu)\b/.test(t);
+  const hiddenPrompt = /\byour instructions\b|\binstruksi(?:mu| kamu| anda)\b|\b(?:system|developer|hidden|internal|initial|original|sistem|pengembang|tersembunyi)\s+(?:prompt|instructions?|messages?|pesan|instruksi)\b|\bprompt\s+(?:sistem|internal|asli|rahasia|kamu|anda|mu)\b/.test(t);
   const ownExample = /\b(?:contoh|example|aplikasi saya|my (?:app|system|chatbot)|my own)\b/.test(t);
   const promptOwnership = /\b(?:your|yours|kamu|anda|mu|milikmu|milik anda|milik kamu)\b/.test(t) || platform || !ownExample;
   if (hiddenPrompt && reveal && promptOwnership && !prevention) return true;
   if (/\b(?:repeat|print|dump|reveal|show)\b.{0,70}\b(?:everything|all (?:text|instructions|messages))\b.{0,70}\b(?:before (?:the )?(?:first )?user|above (?:the )?(?:first )?user)\b/.test(t)) return true;
   const internal = /\b(?:source\s*code|kode\s*(?:sumber|internal)|kode|arsitektur|architecture|backend|back[- ]end|database\s+schema|skema\s+(?:database|basis data)|system\s+prompt|prompt\s+(?:internal|sistem)|internal\s+(?:config\w*|implementation|security)|konfigurasi\s+internal|api\s*keys?|kredensial|credentials?|secrets?|rahasia|celah|vulnerabilit\w*|security\s+(?:bugs?|weakness\w*|audit)|algoritma\s+(?:kredit|billing))\b/.test(t);
   const inspect = /\b(?:audit|review|inspect|tinjau|analisis|analisa|petakan|identifikasi|pelajari|jelaskan|explain|describe)\b/.test(t);
+  // Customers may manage their own developer keys without receiving platform secrets.
+  const ownKeyHelp = /\b(?:create|manage|rotate|revoke|membuat|mengelola|merotasi|mencabut|buat|cabut|rotasi)\b.{0,50}\bapi\s*key\b/.test(t)
+    && /\b(?:my|own|saya|akun saya|aplikasi saya)\b/.test(t)
+    && !disclose && !/\b(?:internal|provider|secret|rahasia|source|kode|backend|arsitektur)\b/.test(t);
   // Public safety questions must remain answerable; asking to reveal/audit actual
   // internals is separate from asking how to protect one's own information.
-  if (platform && internal && (reveal || inspect) && !prevention) return true;
+  if (platform && internal && (reveal || inspect) && !prevention && !ownKeyHelp) return true;
   if (!platform && reveal && /\b(?:your|milikmu|milik anda|milik kamu)\s+(?:backend|source\s*code|api\s*key|credentials?|secrets?|database\s+schema)\b|\b(?:kode\s+sumber|api\s*key|kredensial|rahasia|skema\s+database)(?:mu|\s+(?:kamu|anda))\b/.test(t)) return true;
   const harmful = /\b(?:clone|cloning|clon\w*|recreate|duplicate|duplikat\w*|meniru|tiru|salin|mencuri|curi|steal|exploit\w*|hack\w*|bobol\w*|bypass|bypass\w*|ddos|dos|lumpuhkan|menjatuhkan)\b|\b(?:buat|bikin|make).{0,45}\b(?:down|crash)\b/.test(t);
   const action = reveal || inspect || /\b(?:bantu|buat|bikin|ajari|ingin|mau|want|help|cara|steps?|langkah|to|i will)\b/.test(t);
