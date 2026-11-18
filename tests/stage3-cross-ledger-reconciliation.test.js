@@ -290,3 +290,41 @@ test("definitely unused pre-dispatch cancellation may settle zero without anomal
   assert.equal(report.releasedCreditAfterDispatch,0);
   assert.equal(report.reviewRequired,false);
 });
+
+test("orphaned pre-dispatch provider budget without wallet is flagged only after stale threshold",async t=>{
+  const x=setup(t);
+  const now=Date.now();
+  const held=await reserveProviderSpend(x.env,{
+    id:"ai:orphan-before-wallet",provider:tariff.provider,model:tariff.model,
+    maximumMicroUsd:8610n,nowMs:now-7200_000
+  });
+  assert.equal(held.ok,true);
+  const current=await x.audit({nowMs:now,staleAfterSeconds:3600});
+  assert.equal(current.staleBudgetWithoutWallet,1);
+  assert.equal(current.stalePreDispatchBudgetHolds,0);
+  assert.equal(current.orphanDispatches,0);
+  assert.equal(current.reviewRequired,true);
+  assert.equal(JSON.stringify(current).includes("orphan-before-wallet"),false);
+});
+test("a fresh provider reservation awaiting wallet admission is not a false-positive anomaly",async t=>{
+  const x=setup(t);
+  const held=await reserveProviderSpend(x.env,{
+    id:"ai:wallet-in-flight",provider:tariff.provider,model:tariff.model,
+    maximumMicroUsd:8610n
+  });
+  assert.equal(held.ok,true);
+  const current=await x.audit({staleAfterSeconds:3600});
+  assert.equal(current.staleBudgetWithoutWallet,0);
+  assert.equal(current.reviewRequired,false);
+});
+test("stale non-AI namespace budget is outside the token-only Stage 3 audit",async t=>{
+  const x=setup(t);
+  const held=await reserveProviderSpend(x.env,{
+    id:"media:example-operation",provider:tariff.provider,model:tariff.model,
+    maximumMicroUsd:8610n,nowMs:Date.now()-7200_000
+  });
+  assert.equal(held.ok,true);
+  const current=await x.audit({staleAfterSeconds:3600});
+  assert.equal(current.staleBudgetWithoutWallet,0);
+  assert.equal(current.reviewRequired,false);
+});
