@@ -49,6 +49,10 @@
     "URL_READER_PROVIDER": "tavily",
     "TAVILY_EXTRACT_DAILY_URL_LIMIT": "8",
     "BOR_GPT_OSS_ENABLED": "false",
-    "BOR_GPT_OSS_DAILY_USD_LIMIT": "0.25"
+    "BOR_GPT_OSS_DAILY_USD_LIMIT": "0.25",
+    "BROWSER_AGENT_ENABLED": "false",
+    "BROWSER_AGENT_ALLOWED_HOSTS": "demo.playwright.dev,example.com",
+    "BROWSER_AGENT_DAILY_USER_JOBS": "2",
+    "BROWSER_AGENT_DAILY_GLOBAL_JOBS": "10"
   }
 }

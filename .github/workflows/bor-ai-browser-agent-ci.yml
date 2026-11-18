@@ -1,0 +1,85 @@
+name: BOR AI isolated browser agent validation
+
+on:
+  pull_request:
+    paths:
+      - "browser-agent/**"
+      - "src/browser-automation*.js"
+      - "src/browser-action-planner.js"
+      - "public/browser-panel.js"
+      - "tests/browser-automation*.test.js"
+      - "tests/browser-action-planner.test.js"
+      - ".github/workflows/bor-ai-browser-agent-ci.yml"
+  workflow_dispatch:
+    inputs:
+      deploy_staging:
+        description: "Explicitly deploy the private disabled Browser Run staging Worker (no live browsing)"
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bor-ai-browser-agent-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Browser policy and private Worker dry run
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 22
+      - name: Test browser plan, one-time approval and real API wiring without external calls
+        run: |
+          set -euo pipefail
+          node --check browser-agent/src/index.js
+          node --check public/browser-panel.js
+          node --test tests/browser-automation-policy.test.js tests/browser-automation-route.test.js tests/browser-action-planner.test.js
+      - name: Install pinned Cloudflare Playwright in isolated Worker only
+        run: npm --prefix browser-agent install --ignore-scripts --no-audit --no-fund --package-lock=false
+      - name: Bundle isolated private Worker without deploying
+        run: npx --yes wrangler@4 deploy --config browser-agent/wrangler.jsonc --dry-run --outdir .wrangler/browser-agent-dry-run
+      - name: Check that default browser worker remains non-public and disabled
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          const v=JSON.parse(fs.readFileSync("browser-agent/wrangler.jsonc","utf8"));
+          if(v.workers_dev!==false||v.vars.BROWSER_EXECUTION_ENABLED!=="false"||v.browser?.binding!=="BROWSER")
+            throw Error("Unsafe browser staging defaults.");
+          console.log("Private staging browser defaults verified.");
+          NODE
+
+  staging-deploy:
+    name: Optional owner-requested private staging deployment
+    needs: validate
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy_staging }}
+    runs-on: ubuntu-24.04
+    environment: staging
+    timeout-minutes: 12
+    steps:
+      - name: Restrict staging dispatch to main
+        run: test "${{ github.ref }}" = "refs/heads/main"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 22
+      - name: Install isolated browser runtime
+        run: npm --prefix browser-agent install --ignore-scripts --no-audit --no-fund --package-lock=false
+      - name: Verify Cloudflare credentials are explicitly configured
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN"
+          test -n "$CLOUDFLARE_ACCOUNT_ID"
+      - name: Deploy PRIVATE disabled Browser Run Worker only (no browse calls)
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx --yes wrangler@4 deploy --config browser-agent/wrangler.jsonc

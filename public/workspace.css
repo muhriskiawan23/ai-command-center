@@ -274,3 +274,38 @@ html[dir="rtl"] .composer-bottom{flex-direction:row}
 .form-draft-actions{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
 .form-draft-actions button,.form-draft-actions a{display:inline-flex;align-items:center;min-height:38px;padding:8px 12px;border:1px solid var(--line);border-radius:9px;color:var(--text);background:var(--surface);font-size:12px;font-weight:600;text-decoration:none}
 .form-draft-actions button:hover,.form-draft-actions a:hover{border-color:var(--accent);background:var(--soft-accent)}
+
+
+/* Browser beta: explicit operator-controlled browsing, never background actions. */
+.browser-dialog{width:min(650px,calc(100vw - 24px));max-width:650px;max-height:min(91dvh,920px);padding:0;margin:auto;border:1px solid var(--line);border-radius:17px;background:var(--bg);color:var(--text);box-shadow:0 22px 70px #11182740;overflow:hidden}
+.browser-dialog::backdrop{background:#10182788;backdrop-filter:blur(3px)}
+.browser-header{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;padding:18px 20px 14px;border-bottom:1px solid var(--line)}
+.browser-header h2{margin:0;font-size:20px;line-height:1.3}
+.browser-header h2 small{font-size:11px;color:var(--accent)}
+.browser-header p{margin:5px 0 0;color:var(--muted);font-size:12px}
+.browser-header button{display:grid;place-items:center;width:38px;height:38px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--text)}
+.browser-content{max-height:calc(91dvh - 88px);overflow:auto;padding:16px 20px 24px}
+.browser-safety{margin:0 0 15px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;color:var(--muted);background:var(--panel);font-size:12px;line-height:1.6}
+#browserInspectForm{display:grid;gap:8px}
+.browser-content label{display:block;margin:11px 0 5px;font-size:12px;font-weight:600}
+.browser-content input,.browser-content select{width:100%;max-width:100%;min-height:43px;padding:10px 11px;border:1px solid var(--line);border-radius:9px;background:var(--surface);color:var(--text)}
+.browser-content :is(button){min-height:42px;margin-top:9px;padding:9px 12px;border:1px solid var(--line);border-radius:9px;background:var(--surface);color:var(--text);font-weight:600}
+#browserInspect,#browserReview,#browserExecute{background:var(--accent);color:var(--accentText);border-color:var(--accent)}
+.browser-content button:disabled{opacity:.55;cursor:wait}
+.browser-status{min-height:20px;margin:12px 0;color:var(--muted);font-size:12px;line-height:1.6;overflow-wrap:anywhere}
+.browser-status[data-error="true"]{color:var(--danger)}
+#browserPageResult{border-top:1px solid var(--line);padding-top:13px}
+#browserPageResult h3,.browser-approval h3{font-size:14px;margin:10px 0}
+#browserPageLink{color:var(--accent);font-size:12px;overflow-wrap:anywhere}
+.browser-excerpt{max-height:230px;overflow:auto;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--panel);white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;line-height:1.65}
+#browserPageResult p,.browser-approval p{font-size:12px;color:var(--muted);line-height:1.6}
+.browser-approval{padding:12px;margin-top:13px;border:1px solid var(--line);border-radius:12px;background:var(--panel)}
+.browser-approval pre{margin:8px 0;padding:12px;white-space:pre-wrap;overflow-wrap:anywhere;background:var(--surface);border:1px solid var(--line);border-radius:9px;font-size:12px}
+#browserCancel{margin-left:8px}
+@media(max-width:760px){
+ .browser-dialog{inset:0;width:100%;height:100%;max-width:100%;max-height:100dvh;border:0;border-radius:0;margin:0}
+ .browser-content{max-height:calc(100dvh - 95px);padding:16px 17px 30px}
+ .browser-header{padding:18px 17px}
+}
+
+#openBrowserTool[hidden]{display:none!important}
