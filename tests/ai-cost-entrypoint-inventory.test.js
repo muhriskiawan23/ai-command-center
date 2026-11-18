@@ -9,6 +9,8 @@ const widget=source("widget-api.js");
 const telegram=source("telegram.js");
 const research=source("research.js");
 const extract=source("tavily-extract.js");
+const browserPlanner=source("browser-action-planner.js");
+const browserRoute=source("browser-automation-route.js");
 
 test("direct Workers AI calls in main Worker require paid-gate inventory review on change",()=>{
   // Reviewed: four pre-existing direct Workers AI callsites (deadline,
@@ -51,4 +53,13 @@ test("research and Extract are separately identified cost-bearing tool paths",()
   assert.match(extract,/export async function extractWithTavily\(/);
   // The provider controls and per-operation billing must be audited
   // separately; passing this test must never enable a payment feature.
+});
+
+
+test("browser step-planning AI invocation is metered and cannot execute without a separate approval",()=>{
+  assert.match(browserPlanner,/env\.AI\.run\(BASE_MODEL,/);
+  assert.match(browserPlanner,/max_tokens:240/);
+  assert.match(browserRoute,/enforceDailyLimits\(env,request,user,1\)/);
+  assert.match(browserRoute,/verifyBrowserApproval\(body\?\.approvalToken,/);
+  assert.match(browserRoute,/consumeUsage\(env,usageDay\(\),"browser:approval:"\+nonce,1,1\)/);
 });
