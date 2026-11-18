@@ -433,3 +433,23 @@ test("legacy contradictory terminal rows are flagged by read-only media finance 
   assert.equal(audit.providerInvoiceVerified,false);
   assert.equal(x.events().length,before);
 });
+
+test("coordinator rejects truncated, filtered, error-marked provider outputs even with a custom invoker",async t=>{
+  const cases=[
+    {request:describe,response:{answer:"Incomplete",finish_reason:"length"}},
+    {request:describe,response:{answer:"Filtered",finish_reason:"content_filter"}},
+    {request:describe,response:{answer:"Unknown status",finish_reason:"unexpected"}},
+    {request:describe,response:{answer:"Looks valid",error:{message:"synthetic failure"}}},
+    {request:generate,response:{imageDataUri:pngDataUri({width:256,height:256}),error:"synthetic failure"}}
+  ];
+  for(const item of cases){
+    const x=fixture(t);
+    const r=await x.run({request:item.request,invokeModel:async()=>item.response});
+    assert.equal(r.ok,false);assert.equal(r.reason,"media_output_unverified_reservations_held");
+    assert.equal(r.outputs,undefined);
+    assert.equal(x.reservation().status,"reserved");
+    assert.equal(x.budget().status,"reserved");
+    assert.equal(x.events().at(-1).event_kind,"usage_measured");
+    assert.equal((await inspectMediaBilling(x.env)).reviewRequired,true);
+  }
+});
