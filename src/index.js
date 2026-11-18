@@ -13,6 +13,8 @@ import { handleTelegramWebhook } from "./telegram.js";
 import { handleGitHubReadRoute } from "./github-reader.js";
 import { handleGitHubOAuthRoute } from "./github-oauth.js";
 import { selectModel, taskProfileForAgent, summarizeModelTrace } from "./model-gateway.js";
+import { GPT_OSS_MODEL_ID, mayUseGptOss, reserveGptOssCall, extractModelAnswer } from "./gpt-oss.js";
+import { planFeedbackForm, generateFormsScript } from "./form-draft.js";
 import { COMMUNICATION_NOTICE, CAPABILITY_NOTICE, AGENTS } from "./prompts.js";
 import { json, sha256Hex } from "./http.js";
 import { dailyLimit, usageDay, secondsUntilNextUtcDay, consumeUsage, refundUsage, limitResponse, enforceDailyLimits, DAILY_LIMIT_DEFAULTS, MULTI_AGENT_UNITS } from "./daily-limits.js";
@@ -244,7 +246,7 @@ async function serveAsset(request, env) {
   if (/^text\/html(?:;|$)/i.test(headers.get("Content-Type") || "")) {
     headers.set(
       "Content-Security-Policy",
-      "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; connect-src 'self' https://accounts.google.com https://cdn.jsdelivr.net https://tessdata.projectnaptha.com; script-src 'self' https://accounts.google.com/gsi/client https://cdn.jsdelivr.net https://cdn.sheetjs.com; worker-src 'self' blob: https://cdn.jsdelivr.net; style-src 'self' https://accounts.google.com/gsi/style; style-src-attr 'unsafe-inline'; img-src 'self' data: blob: https://*.googleusercontent.com; frame-src https://accounts.google.com/gsi/; upgrade-insecure-requests"
+      "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; connect-src 'self' https://accounts.google.com https://forms.googleapis.com https://cdn.jsdelivr.net https://tessdata.projectnaptha.com; script-src 'self' https://accounts.google.com/gsi/client https://cdn.jsdelivr.net https://cdn.sheetjs.com; worker-src 'self' blob: https://cdn.jsdelivr.net; style-src 'self' https://accounts.google.com/gsi/style; style-src-attr 'unsafe-inline'; img-src 'self' data: blob: https://*.googleusercontent.com; frame-src https://accounts.google.com/gsi/; upgrade-insecure-requests"
     );
   }
 
@@ -363,6 +365,7 @@ async function runAgent(env, agentId, userMessage, context = "", history = [], p
 
   const taskProfile = taskProfileForAgent(agentId);
   const selection = selectModel({ task: taskProfile });
+  let activeModelId = selection.model.id;
   const requestId = Array.isArray(env.MODEL_TRACE)
     ? (env.MODEL_TRACE.requestId ||= crypto.randomUUID())
     : crypto.randomUUID();
@@ -414,22 +417,56 @@ async function runAgent(env, agentId, userMessage, context = "", history = [], p
     if (selection.model.adapter !== "workers-ai") {
       throw new Error(`Unsupported model adapter: ${selection.model.adapter}`);
     }
+    const modelMessages = extraInstruction
+      ? [...messages, { role: "user", content: extraInstruction }]
+      : messages;
+    const baselineMaxTokens = Math.min(2200, (tokenLimits[agentId] || 950) +
+      (/\b(mendalam|detail|lengkap|komprehensif|thorough|in.depth|step.by.step|detailed|comprehensive)\b/i.test(userMessage) ? 300 : 0));
+    let maxTokens = baselineMaxTokens;
+    let modelId = selection.model.id;
+    // Opt-in high-reasoning inference for signed-in turns only. Atomically reserve
+    // an upper cost bound in D1 BEFORE invoking the paid model; otherwise use Llama.
+    if (mayUseGptOss(env, agentId)) {
+      // The reasoning model needs room for its thinking and final response.
+      // Charge the larger potential output BEFORE inference, not afterward.
+      const gptMaxTokens = Math.max(1600, baselineMaxTokens);
+      const allowance = await reserveGptOssCall(env, modelMessages, gptMaxTokens);
+      if (allowance.allowed) { modelId = GPT_OSS_MODEL_ID; maxTokens = gptMaxTokens; }
+    }
+    activeModelId = modelId;
+    traceEntry.modelId = modelId;
+    traceEntry.policyVersion = modelId === GPT_OSS_MODEL_ID ? "gpt-oss-budgeted-canary-v1" : selection.policyVersion;
     traceEntry.calls += 1;
     const startedAt = Date.now();
+    const payload = {
+      messages: modelMessages,
+      max_tokens: maxTokens,
+      temperature: 0.4,
+      repetition_penalty: 1.1
+    };
     try {
-      const generated = await env.AI.run(selection.model.id, {
-        messages: extraInstruction
-          ? [...messages, { role: "user", content: extraInstruction }]
-          : messages,
-        max_tokens: Math.min(2200, (tokenLimits[agentId] || 950) + (/\b(mendalam|detail|lengkap|komprehensif|thorough|in.depth|step.by.step|detailed|comprehensive)\b/i.test(userMessage) ? 300 : 0)),
-        temperature: 0.4,
-        repetition_penalty: 1.1
-      });
+      const generated = await env.AI.run(modelId, payload);
       traceEntry.attempts.push({ outcome: "success", durationMs: Math.max(0, Date.now() - startedAt) });
       return generated;
     } catch (error) {
       traceEntry.attempts.push({ outcome: "error", durationMs: Math.max(0, Date.now() - startedAt) });
-      throw error;
+      if (modelId !== GPT_OSS_MODEL_ID || error instanceof AiCancelledError ||
+        error instanceof AiTimeoutError) throw error;
+      // Cloudflare model outage: stay available with the previously audited
+      // baseline; do not retry the paid inference or bypass its global cap.
+      traceEntry.modelId = selection.model.id;
+      traceEntry.policyVersion = selection.policyVersion;
+      activeModelId = selection.model.id;
+      traceEntry.calls += 1;
+      const fallbackStart = Date.now();
+      try {
+        const fallback = await env.AI.run(selection.model.id, payload);
+        traceEntry.attempts.push({ outcome: "success", durationMs: Math.max(0, Date.now() - fallbackStart) });
+        return fallback;
+      } catch (fallbackError) {
+        traceEntry.attempts.push({ outcome: "error", durationMs: Math.max(0, Date.now() - fallbackStart) });
+        throw fallbackError;
+      }
     }
   };
 
@@ -441,7 +478,7 @@ async function runAgent(env, agentId, userMessage, context = "", history = [], p
   };
   try {
     let result = await generate();
-    let response = result?.response ?? result?.result?.response ?? "";
+    let response = extractModelAnswer(result);
     if (blockOutput(response)) return blockedOutput();
     let cleaned = cleanOutput(response);
     const countWords = (value) => value.replace(/[#*_\`>~-]/g, " ").match(/[\p{L}\p{N}]{2,}/gu) || [];
@@ -451,7 +488,7 @@ async function runAgent(env, agentId, userMessage, context = "", history = [], p
       result = await generate(
         "RETRY REQUIRED: Your previous answer contained empty Markdown headings or bullets and was unusable. Return substantive content in plain text or simple numbered points. Do not output empty headings, empty bullets, or Markdown-only lines. Include at least 3 concrete findings when appropriate. Every bullet must contain a complete sentence. Answer in the user's language."
       );
-      response = result?.response ?? result?.result?.response ?? "";
+      response = extractModelAnswer(result);
       if (blockOutput(response)) return blockedOutput();
       cleaned = cleanOutput(response);
     }
@@ -1509,11 +1546,13 @@ export default {
       } catch (error) { console.error("Memory handling failed:", safeError(error)); memoryNote = ""; memoryItems = []; }
       const modelTrace = [];
       const requestEnv = { ...env, MODEL_TRACE: modelTrace };
-      const memoryEnv = withSystemExtra(requestEnv, buildMemoryBlock(memoryItems));
-      const localizedEnv = { ...withResponseLanguage(memoryEnv, language), BOR_CUSTOMIZATION: custom.value };
+      const memoryContext = buildMemoryBlock(memoryItems);
+      const memoryEnv = withSystemExtra(requestEnv, memoryContext);
+      const localizedEnv = { ...withResponseLanguage(memoryEnv, language), BOR_CUSTOMIZATION: custom.value, BOR_AUTHENTICATED: Boolean(user), BOR_EXTRA_INPUT_BYTES: new TextEncoder().encode(memoryContext || "").length };
       const aiEnv = withAiDeadline(localizedEnv, Date.now() + budgetMs, request.signal);
       let pages = "";
       let links = [];
+      const toolActivity = [];
       if (found.urls.length && env.URL_READER_ENABLED !== "true") {
         // A disabled reader must neither charge for link retrieval nor imply that URLs were read.
         pages = "USER LINKS NOT READ: The user supplied web links but safe link extraction is not enabled. No linked page was opened. Do not claim to have read them; request pasted page content if it is needed.";
@@ -1530,6 +1569,7 @@ export default {
           : await readLinks(found.urls, { fetcher: createVerifiedLinkFetcher(env) || env.LINK_FETCHER || null, ownHost: url.hostname }); // LINK_FETCHER: test hook, unset in production
         pages = buildPageContext(results);
         links = summarizeLinks(results);
+        toolActivity.push({ tool: "read_links", status: results.some(x => x.ok) ? "completed" : "unavailable", count: results.filter(x => x.ok).length });
         if (found.ignored) links.push({ ok: false, host: "", reason: `hanya ${found.urls.length} link pertama yang dibaca; ${found.ignored} lainnya diabaikan` });
       }
       // Curated first-party knowledge is retrieved locally; it never makes an external request.
@@ -1537,6 +1577,7 @@ export default {
       if (curated.context) { pages = [pages, curated.context].filter(Boolean).join("\n\n"); links.push(...curated.sources); }
       if (researchMode) {
         const search = await searchExternal(message, researchMode, env);
+        toolActivity.push({ tool: "web_search", status: search.reason || !search.configured ? "unavailable" : "completed", provider: search.provider === "tavily" ? "Tavily" : search.provider === "brave" ? "Brave" : "Other", count: (search.results || []).filter(item => item.ok).length });
         // Read up to three eligible result pages through the same SSRF-safe link reader used for user URLs.
         // Keep the Brave result as a citable source even when the destination page cannot be read.
         const pageCandidates = search.results.filter((item) => item?.ok && typeof item.url === "string").slice(0, 3);
@@ -1639,6 +1680,9 @@ export default {
           }
         } else result.saved = false;
         if (links.length) result.links = links;
+        if (toolActivity.length) result.toolActivity = toolActivity;
+        const draft = planFeedbackForm(message);
+        if (draft) result.formDraft = { ...draft, script: generateFormsScript(draft) };
         return json(result);
       } catch (error) {
         if (error instanceof AiCancelledError || request.signal.aborted) {

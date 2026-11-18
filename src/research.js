@@ -144,10 +144,20 @@ async function readBoundedResponseText(response, maxBytes) {
 }
 
 export function detectResearchMode(message) {
-  const text = String(message || "").replace(/https?:\/\/[^\s<>]+|www\.[^\s<>]+/gi, " ");
+  const raw = String(message || "").slice(0, 12000);
+  // Never automatically forward apparent credentials to a third-party search API.
+  if (/\b(?:api[_ -]?key|password|secret|access[_ -]?token)\s*[:=]\s*\S{8,}/i.test(raw)) return null;
+  const text = raw.replace(/https?:\/\/[^\s<>]+|www\.[^\s<>]+/gi, " ");
   if (/\b(berita|news|headline|breaking|kabar terbaru)\b/i.test(text)) return "news";
   if (/\b(cari|telusuri|search|riset|terbaru|terkini|hari ini|saat ini|sekarang|latest|current|today|this week|recent|what happened)\b/i.test(text) ||
       /\b(harga|kurs|nilai tukar|saham|emas|bitcoin|crypto)\b.{0,35}\b(sekarang|hari ini|terbaru|terkini)\b/i.test(text)) return "web";
+  // Automatic search for queries where unverified model memory is likely stale.
+  // Keep this narrow because live Tavily requests have a shared daily credit cap.
+  if (/\b(?:siapa|who is|who's|name of the|current)\b.{0,45}\b(?:ceo|presiden|president|menteri|minister|gubernur|governor|pemimpin|direktur utama|prime minister|head of state)\b/i.test(text) ||
+      /\b(?:ceo|president|presiden|menteri|gubernur)\b.{0,40}\b(?:siapa|who|which|apa)\b/i.test(text)) return "web";
+  if (/\b(?:jadwal|schedule|jam buka|opening hours|tanggal rilis|release date|version|versi|latest updates|harga tiket|ticket price|ketersediaan|availability)\b/i.test(text) &&
+      /\?|\b(?:berapa|kapan|what|when|where|how|apakah|cek|check|tell me|berikan)\b/i.test(text)) return "web";
+  if (/\b(?:how to|cara|bagaimana)\b.{0,65}\b(?:google forms api|cloudflare workers|tavily api|oauth|integrasi api|software versi terbaru)\b/i.test(text)) return "web";
   return null;
 }
 

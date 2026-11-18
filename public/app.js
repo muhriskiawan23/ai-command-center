@@ -845,6 +845,89 @@ function appendSources(links){
   }
   body.append(box);
 }
+/* Auditable tool summary. Only report actual server activity, never pretend Google was opened. */
+function appendToolActivity(items) {
+  const row=messagesEl.lastElementChild,body=row?.querySelector(".message-body");
+  if(!body||!Array.isArray(items)||!items.length)return;
+  const details=document.createElement("details");details.className="tool-activity";
+  const summary=document.createElement("summary");summary.textContent="Proses alat yang digunakan";details.append(summary);
+  const list=document.createElement("ul");
+  for(const item of items.slice(0,5)){
+    if(!["web_search","read_links"].includes(item?.tool))continue;
+    const line=document.createElement("li");
+    const noun=item.tool==="web_search"?"Pencarian web":"Pembacaan tautan";
+    const provider=item.tool==="web_search"&&["Tavily","Brave"].includes(item.provider)?" ("+item.provider+")":"";
+    line.textContent=noun+provider+" · "+(item.status==="completed"?(Number(item.count)||0)+" sumber berhasil":"Tidak tersedia atau gagal");
+    list.append(line);
+  }
+  if(!list.children.length)return;details.append(list);body.append(details);
+}
+function appendFormDraft(draft) {
+  const row=messagesEl.lastElementChild,body=row?.querySelector(".message-body");
+  if(!body||draft?.kind!=="google-forms-apps-script"||typeof draft.script!=="string"||draft.script.length>30000)return;
+  const panel=document.createElement("section");panel.className="form-draft";
+  const title=document.createElement("strong");title.textContent=draft.title||"Rancangan Google Forms";
+  const notice=document.createElement("p");
+  notice.textContent="Draf formulir siap. Belum dibuat di Google; kamu perlu menjalankan script dan meninjau link sebelum membagikannya.";
+  const actions=document.createElement("div");actions.className="form-draft-actions";
+  const copy=document.createElement("button");copy.type="button";copy.textContent="Salin Google Apps Script";
+  copy.addEventListener("click",async()=>{
+    try{await navigator.clipboard.writeText(draft.script);toast("Script berhasil disalin. Jalankan di akun Google milikmu.");}
+    catch{toast("Gagal menyalin script. Periksa izin clipboard browser.");}
+  });
+  const open=document.createElement("a");
+  open.href="https://script.google.com/home/projects/create";open.target="_blank";open.rel="noopener noreferrer";
+  open.textContent="Buka Google Apps Script";
+  const create=document.createElement("button");
+  create.type="button";
+  create.textContent="Buat langsung di Google Forms";
+  create.addEventListener("click",async()=>{
+    if(state!==AppState.AUTH||!currentUser){
+      toast("Masuk menggunakan akun Google di BOR AI untuk membuat formulir langsung.");return;
+    }
+    const forms=window.BORGoogleForms;
+    if(!forms?.validDraft?.(draft)){
+      toast("Rancangan formulir tidak valid. Gunakan salinan Apps Script.");return;
+    }
+    if(!gsi.clientId||!window.google?.accounts?.oauth2?.initTokenClient){
+      toast("Izin Google Forms belum tersedia. Gunakan salinan Apps Script atau periksa konfigurasi Google Cloud.");return;
+    }
+    if(!window.confirm("Buat satu Google Form BARU di akun Google yang kamu izinkan? Form akan belum dipublikasikan sampai kamu meninjaunya. BOR AI tidak akan menyimpan token akses."))return;
+    create.disabled=true;
+    create.textContent="Meminta izin Google…";
+    // Initiate OAuth synchronously in this button click to avoid popup blockers.
+    let pending;
+    try {
+      pending=forms.requestFormsAccess(gsi.clientId,window.google.accounts.oauth2);
+    } catch {
+      create.disabled=false;create.textContent="Buat langsung di Google Forms";
+      toast("Gagal membuka izin Google Forms. Periksa konfigurasi aplikasi.");return;
+    }
+    try {
+      const token=await pending;
+      if(state!==AppState.AUTH){toast("Akun BOR AI telah keluar. Tidak ada perubahan formulir.");return;}
+      create.textContent="Membuat formulir…";
+      const created=await forms.createUnpublishedForm(draft,token,fetch.bind(window));
+      const link=document.createElement("a");
+      link.href=created.editUrl;
+      link.rel="noopener noreferrer";
+      link.target="_blank";
+      link.textContent=created.complete?"Buka Google Form baru (belum dipublikasikan)":"Buka form yang dibuat untuk melengkapi pertanyaan";
+      actions.append(link);
+      create.hidden=true;
+      notice.textContent=created.complete
+        ?"Form berhasil dibuat melalui Google Forms API, masih belum menerima respons. Tinjau dan publikasikan sendiri di Google."
+        :"Form kosong berhasil dibuat, tetapi pertanyaan belum tersimpan. Buka editor untuk menyelesaikannya. Jangan ulangi tombol untuk menghindari form duplikat.";
+    } catch(error){
+      notice.textContent="Pembuatan langsung belum berhasil. Periksa apakah Google Forms API dan izin OAuth telah diaktifkan untuk aplikasi. Alternatif: salin Apps Script.";
+      toast(error?.message==="google_forms_access_denied"?"Akses Google Forms ditolak. Tidak ada formulir yang dibuat.":"Tidak dapat membuat form langsung. Gunakan Apps Script atau periksa izin Google.");
+    } finally {
+      create.disabled=false;
+      if(!create.hidden)create.textContent="Buat langsung di Google Forms";
+    }
+  });
+  actions.append(create,copy,open);panel.append(title,notice,actions);body.append(panel);
+}
 function appendPdfSource(pdf){
   const row=messagesEl.lastElementChild;const body=row&&row.querySelector(".message-body");if(!body||!pdf)return;
   const box=document.createElement("div");box.className="sources pdf-source";
@@ -995,7 +1078,7 @@ async function submit(options={}){
     if(typeof data.response!=="string"||!data.response.trim())throw new Error("AI tidak menghasilkan jawaban.");
     if(pendingRetryRequest?.requestId===requestId)pendingRetryRequest=null;
     chat.messages.push({role:"assistant",content:data.response,id:data.responseId||null,feedback:null,links:data.links||[],pdf:data.pdf||null,spreadsheet:data.spreadsheet||null,wordDocument:activeCsv?.kind==="word-document"?{name:activeCsv.name,paragraphCount:activeCsv.paragraphCount,truncated:activeCsv.truncated}:null});chat.updated=Date.now();
-    if(stillActive()){$("typing")?.remove();appendMessage("assistant",data.response,true,{regenerate:true,responseId:data.saved?data.responseId:null,conversationId:data.saved?data.conversationId:null});addEditActionToLastUser();appendSources(data.links);if(data.pdf)appendPdfSource(data.pdf);if(data.spreadsheet)appendSpreadsheetSource(data.spreadsheet);if(data.presentation)appendPresentationSource(data.presentation);if(activeCsv?.kind==="word-document")appendWordDocumentSource(activeCsv);if(activeCsv?.kind==="image-ocr")appendImageOcrSource(activeCsv);renderWorkflow(data.steps)}
+    if(stillActive()){$("typing")?.remove();appendMessage("assistant",data.response,true,{regenerate:true,responseId:data.saved?data.responseId:null,conversationId:data.saved?data.conversationId:null});addEditActionToLastUser();appendSources(data.links);appendToolActivity(data.toolActivity);appendFormDraft(data.formDraft);if(data.pdf)appendPdfSource(data.pdf);if(data.spreadsheet)appendSpreadsheetSource(data.spreadsheet);if(data.presentation)appendPresentationSource(data.presentation);if(activeCsv?.kind==="word-document")appendWordDocumentSource(activeCsv);if(activeCsv?.kind==="image-ocr")appendImageOcrSource(activeCsv);renderWorkflow(data.steps)}
     if(state===AppState.AUTH&&data.saved&&data.conversationId){
       chat.serverId=data.conversationId;chat.id=data.conversationId;chat.loaded=true;
       if(stillActive()){activeId=chat.id;replaceRoute({name:"chat",id:chat.id})}
@@ -1124,7 +1207,11 @@ async function boot(){
   let me;
   try{me=await api("/api/auth/me")}
   catch{setState(AppState.ERROR,"Status akun tidak dapat diperiksa. Periksa koneksi lalu coba lagi, atau lanjutkan sebagai Guest.");loadGoogle();return}
-  if(me.authenticated){currentUser=me.user;setState(AppState.AUTH);await enterChat();return}
+  if(me.authenticated){currentUser=me.user;setState(AppState.AUTH);await enterChat();
+    // Existing Google sessions skip the login button boot path. Resolve the
+    // public OAuth client ID now so a later user-click can ask for Forms scope.
+    try{const cfg=await api("/api/config");if(cfg.googleSignInEnabled&&cfg.googleClientId)gsi.clientId=cfg.googleClientId;}catch{}
+    return}
   // The Free plan is an opt-in guest-chat link, not a payment or subscription route.
   // Keep a pre-existing signed-in session above; otherwise use the same Guest flow
   // as the welcome screen, with no checkout and no saved Guest chat content.
