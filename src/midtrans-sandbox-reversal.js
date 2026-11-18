@@ -47,7 +47,19 @@ export async function handleSandboxReversal({ db, payload, serverKey, expectedMe
   const reversed = await db.prepare(
     "SELECT outcome FROM sandbox_payment_reversals WHERE order_id=?"
   ).bind(orderId).first();
-  if (reversed) return reversed.outcome === "reversed" ? "unchanged" : reversed.outcome;
+  if (reversed) {
+    // A confirmed refund may already have reversed the original credits,
+    // but a later provider-verified chargeback/partial reversal is a new
+    // dispute event. Never silently ACK it as an ordinary refund replay.
+    // Record a privacy-minimal, idempotent review marker; never debit again.
+    if (reversed.outcome==="reversed" && status.transaction_status!=="refund") {
+      await db.prepare(
+        "INSERT INTO sandbox_payment_reversal_reviews (order_id,provider_status,created_at) VALUES (?,?,?) ON CONFLICT DO NOTHING"
+      ).bind(orderId,status.transaction_status,Date.now()).run();
+      return "review_required";
+    }
+    return reversed.outcome === "reversed" ? "unchanged" : reversed.outcome;
+  }
 
   const priorChargeback = await db.prepare(
     "SELECT 1 FROM sandbox_payment_reversal_reviews WHERE order_id=? AND provider_status IN ('chargeback','partial_chargeback') LIMIT 1"
