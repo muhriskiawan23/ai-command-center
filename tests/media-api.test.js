@@ -271,3 +271,19 @@ test("moderation callbacks cannot replace verified input/output pixel bytes",asy
   const y=fixture(t);y.runtime.validateOutput=async({output})=>{output.imageDataUri="corrupt";return {ok:true}};
   const r=await y.send("/api/media",generate);assert.equal(r.status,502);assert.equal(r.data.outputs,undefined);
 });
+
+test("legacy contradictory provider outcomes never appear financially complete in account status",async t=>{
+  const x=fixture(t);
+  assert.equal((await x.send()).status,200);
+  assert.equal((await x.send("/api/media/status")).data.state,"completed");
+  // Simulate an old/corrupt snapshot that predates the terminal guard.
+  // Never do this in a deployed database; new inserts are rejected by migration 0017.
+  x.sql.exec("DROP TRIGGER trg_media_usage_insert_guard");
+  x.sql.exec(`INSERT INTO media_usage_events
+    (attempt_id,event_kind,request_id,provider,model,rate_version,feature,provider_cost_micro_usd,created_at)
+    SELECT attempt_id,'outcome_unknown',request_id,provider,model,rate_version,feature,NULL,created_at
+    FROM media_usage_events WHERE event_kind='dispatched'`);
+  const r=await x.send("/api/media/status");
+  assert.equal(r.status,200);assert.equal(r.data.state,"unresolved");
+  assert.equal(r.data.reviewRequired,true);assert.equal(r.data.outputStored,false);
+});
