@@ -145,13 +145,26 @@ try {
   assert.equal(await readCount("credit_reservations", "status='reserved'"), 1);
   assert.equal(await readCount("provider_budget_reservations", "status='reserved'"), 1);
 
+  // An injected provider that never returns must not hang the HTTP request.
+  // It may still have incurred upstream cost, so both holds remain pending.
+  const timedOutBody = { ...single, requestId: randomUUID() };
+  const timedOut = await send("/api/chat", timedOutBody,
+    { ...web, "X-BOR-Stage3-Usage": "provider-timeout" });
+  assert.equal(timedOut.status,502);
+  assert.equal((await send("/api/chat", timedOutBody, web)).status,409);
+  assert.equal(await readCount("provider_usage_events","event_kind='outcome_unknown'"),1);
+  assert.equal(await readCount("provider_usage_events","event_kind='usage_unverified'"),1);
+  assert.equal(await readCount("credit_reservations","status='reserved'"),2);
+  assert.equal(await readCount("provider_budget_reservations","status='reserved'"),2);
+  assert.equal(await readCount("provider_usage_events","event_kind='usage_measured'"),8);
+
   const walletFailure = { ...single, requestId: randomUUID() };
   const partial = await send("/api/chat", walletFailure, { ...web, "X-BOR-Stage3-Usage": "wallet-finalization-failure" });
   assert.equal(partial.status, 502);
   assert.equal((await send("/api/chat", walletFailure, web)).status, 409);
   assert.equal(await readCount("provider_usage_events", "event_kind='usage_measured'"), 9);
-  assert.equal(await readCount("credit_reservations", "status='reserved'"), 2);
-  assert.equal(await readCount("provider_budget_reservations", "status='reserved'"), 1);
+  assert.equal(await readCount("credit_reservations", "status='reserved'"), 3);
+  assert.equal(await readCount("provider_budget_reservations", "status='reserved'"), 2);
   assert.equal(await readCount("provider_budget_reservations", "status='settled'"), 9);
   // Payment proof reversal must immediately revoke access with no new
   // provider call, budget hold or debit, even if the wallet has credits.
