@@ -43,6 +43,8 @@ jobs:
         run: npm ci --ignore-scripts --prefix tests/billing/stage3-wrangler-lock
       - name: Verify integrated D1 payment-backed Basic/Pro checks with synthetic Worker routes (NO SECRETS)
         run: node tests/billing/stage3-staging-smoke.mjs
+      - name: Recreate local workerd and verify persisted D1 holds + emergency OFF (NO SECRETS)
+        run: node tests/billing/stage3-workerd-restart-smoke.mjs
       - name: Decode and re-encode PNG pixels in actual local workerd (NO ACCOUNT)
         run: node tests/media/codec-workerd-proof.mjs
 
