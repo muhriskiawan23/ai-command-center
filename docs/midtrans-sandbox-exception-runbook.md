@@ -51,3 +51,17 @@ or retry/release of funds after an unknown Midtrans provider response. Continue
 using signed webhook plus independently verified Status API, exact order/amount
 and merchant match, operator review for disputed payments, and the separate
 merchant approval process before a commercial launch.
+
+
+### Independent Midtrans Status API deadline (18 November 2026)
+The sandbox-only `readVerifiedSandboxStatus` adapter now has its own bounded
+8-second maximum deadline spanning both HTTP response headers and fully
+consumed JSON body, rather than relying solely on a caller's fetch timeout.
+A stalled chunked body or fetch that ignores the supplied AbortSignal cannot
+keep a payment verification waiting indefinitely. Already-aborted lookups
+never initiate a network request. An interrupted or expired verification
+fails closed: no independent paid proof is returned and no credit can be
+granted by this adapter. Local regression fixtures simulate stalled headers,
+stalled response body, cancellation and invalid timeout configuration.
+The existing 32 KiB streaming response cap and signed-webhook + independent
+Status API checks remain intact. No remote payment was initiated.
