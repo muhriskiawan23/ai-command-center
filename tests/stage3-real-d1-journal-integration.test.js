@@ -60,7 +60,7 @@ function fixture(t,{balance=50000,providerCap=limits.provider,globalCap=limits.g
       }
     }
   };
-  const env={DB};
+  const env={DB,STAGE3_SYNTHETIC_ONLY:"true"};
   const actualBudget=providerSpendBudget(env);
   const actualLedger={reserve:reserveCredits,finalize:finalizeCredits};
   let invoked=0;
