@@ -1,3 +1,4 @@
+import { isConfidentialityRequest, confidentialityReply } from "./confidentiality.js";
 import { safeError } from "./safe-error.js";
 const MAX_UPDATE_BYTES = 64 * 1024;
 const MAX_MESSAGE_CHARS = 4000;
@@ -94,6 +95,12 @@ export async function handleTelegramWebhook(request, env, deps) {
       console.error("Telegram rate limiter failed:", safeError(error));
       return response({ error: "Pembatasan permintaan sedang bermasalah." }, 503);
     }
+  }
+
+  if (isConfidentialityRequest(text)) {
+    try { await sendTelegramMessage(token, chat.id, confidentialityReply(sender.language_code, text), deps.fetcher); }
+    catch (error) { console.error("Telegram protected reply failed:", safeError(error)); return response({ error: "Pesan Telegram gagal dikirim." }, 502); }
+    return response({ ok: true, protected: true });
   }
 
   const useMultiAgent = deps.shouldUseMultiAgent(text);

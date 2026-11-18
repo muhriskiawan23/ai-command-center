@@ -313,7 +313,7 @@ export function summarizeModelTrace(trace = []) {
       calls: item.calls,
       durationMs: Number.isFinite(item.durationMs) ? item.durationMs : null,
       retryCount: Number.isSafeInteger(item.retryCount) ? item.retryCount : 0,
-      outcome: item.outcome === "success" || item.outcome === "error" ? item.outcome : "unknown"
+      outcome: ["success", "error", "policy-blocked"].includes(item.outcome) ? item.outcome : "unknown"
     }))
   };
 }
