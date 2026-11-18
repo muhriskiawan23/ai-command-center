@@ -482,3 +482,38 @@ test("refund arriving during credit finalization suppresses delivery after measu
   assert.equal(x.reservation().status,"settled");
   assert.equal((await inspectMediaBilling(x.env)).reviewRequired,false);
 });
+
+test("read-only media audit separates held exposure from verified local settlement, without PII",async t=>{
+  const settled=fixture(t);
+  assert.equal((await settled.run()).ok,true);
+  const a=await inspectMediaBilling(settled.env);
+  assert.equal(a.held_provider_micro_usd,0);
+  assert.equal(a.held_customer_microcredits,0);
+  assert.equal(a.settled_provider_micro_usd,400);
+  assert.equal(a.settled_customer_microcredits,800);
+  assert.equal(a.reviewRequired,false);
+  assert.equal(a.providerInvoiceVerified,false);
+  assert.doesNotMatch(JSON.stringify(a),/alice|bob|job-1|Apa isi|data:image/);
+
+  const unknown=fixture(t);
+  await unknown.run({invokeModel:async()=>{throw Error("synthetic upstream timeout")}});
+  const b=await inspectMediaBilling(unknown.env);
+  assert.equal(b.held_provider_micro_usd,1112);
+  assert.equal(b.held_customer_microcredits,2224);
+  assert.equal(b.settled_provider_micro_usd,0);
+  assert.equal(b.settled_customer_microcredits,0);
+  assert.equal(b.reviewRequired,true);
+  assert.equal(b.providerInvoiceVerified,false);
+});
+test("media audit rejects unsafe or malformed aggregate financial exposure",async t=>{
+  const x=fixture(t);
+  const prepare=x.env.DB.prepare.bind(x.env.DB);
+  const original=await inspectMediaBilling(x.env);
+  for(const value of [-1,1.5,Number.MAX_SAFE_INTEGER+1,null]){
+    x.env.DB.prepare=sql=>sql.includes("WITH jobs AS")
+      ?{first:async()=>({...original,held_customer_microcredits:value})}:prepare(sql);
+    await assert.rejects(inspectMediaBilling(x.env),/Media billing audit unavailable/);
+  }
+  x.env.DB.prepare=prepare;
+  assert.equal((await inspectMediaBilling(x.env)).held_customer_microcredits,0);
+});
