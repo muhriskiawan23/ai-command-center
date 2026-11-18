@@ -74,3 +74,41 @@ test("an expired unpaid order creates no credit or ledger entry", t => {
   assert.equal(balance(), 25);
   assert.deepEqual(ledger(), [25]);
 });
+
+test("direct refund or dispute SQL cannot forge a verified reversal",t=>{
+ const {db,balance,ledger,state}=fundedOrder(t);
+ for(const target of ["refunded","disputed"]){
+  assert.throws(
+   ()=>db.prepare("UPDATE payment_orders SET state=?,updated_at=3 WHERE order_id='order'").run(target),
+   /sandbox_reversal_evidence_required/
+  );
+ }
+ assert.equal(state(),"fulfilled");
+ assert.equal(balance(),25);
+ assert.deepEqual(ledger(),[25]);
+ assert.equal(db.prepare("SELECT COUNT(*) AS n FROM sandbox_payment_reversals").get().n,0);
+});
+test("paid-but-unfulfilled sandbox order cannot be marked refunded or disputed without ledger proof",t=>{
+ const {db}=fundedOrder(t);
+ db.exec(`
+   INSERT INTO payment_orders VALUES ('unfulfilled','tester','fixture','sandbox','IDR',10000,25,'created',NULL,4,4);
+   UPDATE payment_orders SET state='paid_unfulfilled',provider_transaction_id='tx2' WHERE order_id='unfulfilled';
+ `);
+ for(const target of ["refunded","disputed"]){
+  assert.throws(
+   ()=>db.prepare("UPDATE payment_orders SET state=? WHERE order_id='unfulfilled'").run(target),
+   /sandbox_reversal_evidence_required/
+  );
+ }
+ assert.equal(db.prepare("SELECT state FROM payment_orders WHERE order_id='unfulfilled'").get().state,"paid_unfulfilled");
+});
+test("full refund after spent credits still records review without a negative account",t=>{
+ const {db,apply,balance,ledger,state}=fundedOrder(t);
+ db.exec("UPDATE credit_accounts SET balance_microcredits=5");
+ db.exec("INSERT INTO credit_ledger VALUES ('spent','tester',-20,'usage','spent-before-refund',3)");
+ apply("refund");
+ assert.equal(state(),"refunded");
+ assert.equal(balance(),5);
+ assert.deepEqual(ledger(),[25,-20]);
+ assert.equal(db.prepare("SELECT outcome FROM sandbox_payment_reversals").get().outcome,"review_required");
+});
