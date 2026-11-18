@@ -33,15 +33,20 @@ test("Google Forms direct creation requires explicit click, Google OAuth consent
   await loginAs(context,app,{id:"forms-test-user",email:"forms-user@example.test",name:"Forms Tester"});
   let requests=0;
   await page.route("https://forms.googleapis.com/**",async route=>{
+    const cors={"access-control-allow-origin":"*","access-control-allow-methods":"POST, OPTIONS",
+      "access-control-allow-headers":"authorization, content-type"};
+    if(route.request().method()==="OPTIONS"){
+      await route.fulfill({status:204,headers:cors});return;
+    }
     requests++;
     const url=route.request().url();
     if(url.endsWith("unpublished=true")){
-      await route.fulfill({status:200,contentType:"application/json",body:JSON.stringify({formId:"abcdefghijkl123456"})});
+      await route.fulfill({status:200,headers:cors,contentType:"application/json",body:JSON.stringify({formId:"abcdefghijkl123456"})});
     }else if(url.endsWith(":batchUpdate")){
       const request=JSON.parse(route.request().postData());
       expect(request.requests.length).toBe(9);
-      await route.fulfill({status:200,contentType:"application/json",body:'{"replies":[]}'});
-    }else await route.fulfill({status:404,body:"not found"});
+      await route.fulfill({status:200,headers:cors,contentType:"application/json",body:'{"replies":[]}'});
+    }else await route.fulfill({status:404,headers:cors,body:"not found"});
   });
   await page.goto(app.url);
   await expect(page.locator("#prompt")).toBeVisible();
