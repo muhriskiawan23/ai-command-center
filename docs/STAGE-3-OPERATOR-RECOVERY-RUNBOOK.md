@@ -75,11 +75,22 @@ temporary physical SQLite database, closes its connection, reopens that
 same file and checks orphan reservations, dispatch/timeout evidence,
 provider-settled-but-wallet-held cases, emergency OFF persistence, replay
 rejection, and corrupt/missing journal fail-closed behavior.
-These are **local process/database-reopen tests**, not an actual
-Cloudflare Workerd restart, remote D1 test, cross-region consistency
-proof or an approved operator write. Additional hosted validation,
-recovery-service design and independent security/finance review are
-required before BOR AI can charge customers.
+A separate opt-in-free CI proof,
+`tests/billing/stage3-workerd-restart-smoke.mjs`, uses the previously
+locked Miniflare/workerd dependencies with a temporary persistence root,
+fictional Basic payment records and no outbound network access. It
+**disposes the local workerd instance and creates a new instance twice**,
+reusing the same local persisted D1 state. Its assertions cover a fake
+provider's unverified usage, surviving credit and provider holds, request
+idempotency after restart, and a shared D1 emergency OFF state surviving a
+second restart. Only a successful *exact-head* CI run can count as evidence
+that the workerd restart proof passed.
+
+These are local disk/workerd runtime-recreation tests, **not remote
+Cloudflare D1, a forced live Worker crash, cross-region consistency
+proof, provider invoice comparison, or an approved operator write**.
+Additional hosted validation, recovery-service design and independent
+security/finance review are required before BOR AI can charge customers.
 
 **No network/provider calls, payments, production D1 operations, merge
 or deployment are authorized by this document.**
