@@ -237,7 +237,7 @@
     const heading=document.querySelector("#welcome h1");
     if(heading) heading.textContent=translate("Apa yang ingin kamu kerjakan?");
     const picker=document.querySelector("#languagePreference");
-    if(picker) picker.value=choice;
+    if(picker){picker.value=choice;if(picker.parentElement)picker.parentElement.dataset.label=translate("Bahasa");}
     const prompt=document.querySelector("#prompt");
     if(prompt) prompt.placeholder=translate("Tulis pesan untuk BOR AI…");
   };
