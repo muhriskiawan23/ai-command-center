@@ -2,6 +2,7 @@ import worker from "../src/index.js";
 import { finalizeCredits, reserveCredits } from "../src/credit-ledger.js";
 import { providerSpendBudget } from "../src/provider-spend-budget.js";
 import { runJournaledInferencePrototype } from "../src/stage3-journaled-inference.js";
+import { authorizePlanFeature } from "../src/plan-entitlements.js";
 import { sha256Hex } from "../src/http.js";
 
 const allowedPaths = new Set(["/api/chat", "/api/public/chat", "/api/integrations/telegram/webhook"]);
@@ -74,6 +75,12 @@ export default {
           if (!userId) return result("Stage 3 account required", 401);
           if (channel === "public") logicalId = request.headers.get("X-BOR-Stage3-Request");
           if (!logicalId || (channel === "public" && !requestKey.test(logicalId))) return result("Invalid Stage 3 request ID", 400);
+          // Validate verified D1 payment proof BEFORE claiming the request ID.
+          // Free/refunded accounts cannot burn staging idempotency keys.
+          const access = await authorizePlanFeature(
+            { DB, PLAN_ENTITLEMENTS_ENABLED: "true" },userId,"basic_paid_credits"
+          );
+          if (access.allowed !== true) return result("Stage 3 paid plan required", 403);
           const id = await sha256Hex(JSON.stringify([channel, userId, String(logicalId).toLowerCase()]));
           // Each route supplies identity only after its normal authentication.
           const claim = await DB.prepare(
