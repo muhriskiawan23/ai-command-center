@@ -189,6 +189,10 @@ test("missing journal schema after restart never becomes a clean recovery report
   x.restart();
   x.sql().exec("DROP TABLE provider_usage_events");
   await assert.rejects(x.inspect(),/no such table|snapshot/);
-  assert.equal(x.state().budget,"reserved");
-  assert.equal(x.state().wallet,"reserved");
+  assert.equal(x.sql().prepare(
+    "SELECT status FROM provider_budget_reservations WHERE id=?"
+  ).get("ai:"+REQ).status,"reserved");
+  assert.equal(x.sql().prepare(
+    "SELECT status FROM credit_reservations WHERE request_id=?"
+  ).get(REQ).status,"reserved");
 });
