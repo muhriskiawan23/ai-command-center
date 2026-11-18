@@ -83,7 +83,9 @@ test.describe("MEMORI — opsional, hanya akun login", () => {
     await expect(page.locator(".memory-item")).toHaveCount(1);
     await page.locator("#memoryClose").click();
     await expect(page.locator("#memoryPanel")).toBeHidden();
-    if (drawerMode(page)) { await page.locator("#drawerClose").click(); await expect(page.locator("#sidebar")).toBeHidden(); }
+    await expect(page.locator("#accountDialog")).toBeVisible();
+    await page.locator("#accountClose").click();
+    await expect(page.locator("#accountDialog")).toBeHidden();
     await page.locator("#prompt").fill("Halo, siapa namaku?");
     await page.locator("#send").click();
     await expect(page.locator(".message.assistant:not(#typing)")).toHaveCount(1);
@@ -94,7 +96,9 @@ test.describe("MEMORI — opsional, hanya akun login", () => {
     await page.locator("#memoryToggle").uncheck();
     await expect.poll(() => app.db.sqlite.prepare("SELECT memory_enabled m FROM user_settings WHERE user_id = ?").get(ALICE.id).m).toBe(0);
     await page.locator("#memoryClose").click();
-    if (drawerMode(page)) { await page.locator("#drawerClose").click(); await expect(page.locator("#sidebar")).toBeHidden(); }
+    await expect(page.locator("#accountDialog")).toBeVisible();
+    await page.locator("#accountClose").click();
+    await expect(page.locator("#accountDialog")).toBeHidden();
     await page.locator("#prompt").fill("Halo lagi");
     await page.locator("#send").click();
     await expect(page.locator(".message.assistant:not(#typing)")).toHaveCount(2);
