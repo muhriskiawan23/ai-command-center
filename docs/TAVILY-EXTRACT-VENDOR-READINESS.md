@@ -36,8 +36,10 @@ These documents must not be confused with independent network security proof.
 
 ## Additional isolated hardening proposed in this PR
 
-- A maximum 8-second deadline now controls both API response headers and
-  streamed response body, even if a synthetic transport ignores abort.
+- A maximum 8-second deadline now controls D1 quota admission, API
+  response headers and streamed response body, even if a synthetic transport
+  or quota adapter stalls. A timed-out D1 reservation can conservatively
+  consume local quota but never starts a new provider request.
 - Advertised and streamed response bytes are bounded at 1 MB and malformed
   UTF-8 fails closed.
 - Stream cancellation is never awaited, so an unresponsive `cancel()`
