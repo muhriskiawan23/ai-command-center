@@ -16,10 +16,12 @@ export function mayUseGptOss(env, agentId) {
     ["coordinator", "analyst", "writer", "coder", "researcher"].includes(agentId);
 }
 
-export function worstCaseGptOssMicroUsd(messages, maxOutputTokens) {
+export function worstCaseGptOssMicroUsd(messages, maxOutputTokens, additionalInputBytes = 0) {
   if (!Array.isArray(messages) || !Number.isSafeInteger(maxOutputTokens) ||
     maxOutputTokens < 1 || maxOutputTokens > 2200) return null;
-  const bytes = new TextEncoder().encode(JSON.stringify(messages)).length;
+  if (!Number.isSafeInteger(additionalInputBytes) || additionalInputBytes < 0 ||
+    additionalInputBytes > 40000) return null;
+  const bytes = new TextEncoder().encode(JSON.stringify(messages)).length + additionalInputBytes;
   if (bytes > MAX_INPUT_BYTES) return null;
   // Byte count is a conservative upper bound for BPE token count; include
   // overhead for response-language and memory guards applied by wrappers.
@@ -33,7 +35,7 @@ export async function reserveGptOssCall(env, messages, maxOutputTokens) {
   if ((trace.gptOssReservedCalls || 0) >= GPT_OSS_MAX_CALLS_PER_TURN) {
     return { allowed: false, reason: "per_turn_cap" };
   }
-  const microUsd = worstCaseGptOssMicroUsd(messages, maxOutputTokens);
+  const microUsd = worstCaseGptOssMicroUsd(messages, maxOutputTokens, Number(env.BOR_EXTRA_INPUT_BYTES || 0));
   if (microUsd === null) return { allowed: false, reason: "input_or_output_limit" };
   const rawLimit = String(env.BOR_GPT_OSS_DAILY_USD_LIMIT ?? "0.25");
   if (!/^(?:0|[1-9]\d*)(?:\.\d{1,4})?$/.test(rawLimit)) return { allowed: false, reason: "invalid_limit" };
