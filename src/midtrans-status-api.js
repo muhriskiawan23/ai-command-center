@@ -53,6 +53,7 @@ export async function readVerifiedSandboxStatus(order, { serverKey, expectedMerc
   // one bounded, adapter-owned deadline across headers AND the full body.
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > MAX_STATUS_DEADLINE_MS)
     throw new TypeError("Bounded Midtrans status timeout required");
+  if (signal?.aborted) throw new Error("Midtrans status cancelled");
   const controller = new AbortController();
   let timer, stop;
   const stopped = new Promise((_, reject) => {
