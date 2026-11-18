@@ -66,7 +66,7 @@ function setup(t){
       providerBudget:providerSpendBudget(env),
       ledger:{reserve:reserveCredits,finalize:finalizeCredits},
       invokeModel:async()=>({
-        result:"synthetic-only",usage:{prompt_tokens:1000,completion_tokens:100}
+        response:"synthetic-only",usage:{prompt_tokens:1000,completion_tokens:100}
       })
     });
   const sum=(sql)=>db.prepare(sql).get();

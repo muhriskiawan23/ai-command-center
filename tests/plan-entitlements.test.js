@@ -252,7 +252,7 @@ test("Stage 3 holds both financial reservations when Pro is refunded during prov
     invokeModel:async()=>{
       trace.push("model:invoke");
       x.db.sqlite.prepare("UPDATE verified_plan_payments SET verification_status='refunded' WHERE order_id='verified-order-1'").run();
-      return {answer:"must not be delivered",usage:{prompt_tokens:100,completion_tokens:10}};
+      return {response:"must not be delivered",usage:{prompt_tokens:100,completion_tokens:10}};
     }
   });
   assert.deepEqual(result,{ok:false,reason:"paid_plan_revoked_reservations_held",modelInvoked:true});
@@ -285,7 +285,7 @@ test("Stage 3 never releases output if entitlement is revoked while credit settl
       }
     },
     journal:async(_env,event)=>{trace.push("journal:"+event.kind);return {ok:true};},
-    invokeModel:async()=>({answer:"must not be delivered",usage:{prompt_tokens:100,completion_tokens:10}})
+    invokeModel:async()=>({response:"must not be delivered",usage:{prompt_tokens:100,completion_tokens:10}})
   });
   assert.deepEqual(result,{ok:false,reason:"paid_plan_revoked_after_settlement",modelInvoked:true});
   assert.deepEqual(trace,["budget:reserve","wallet:reserve","journal:dispatched",
@@ -309,7 +309,7 @@ test("Stage 3 disabling plan verification during model execution cannot bypass r
     journal:async()=>({ok:true}),
     invokeModel:async()=>{
       delete x.env.PLAN_ENTITLEMENTS_ENABLED;
-      return {answer:"withheld",usage:{prompt_tokens:100,completion_tokens:10}};
+      return {response:"withheld",usage:{prompt_tokens:100,completion_tokens:10}};
     }
   });
   assert.equal(result.reason,"paid_plan_revoked_reservations_held");
@@ -358,7 +358,7 @@ test("Stage 3 kill switch changes during inference withhold output and preserve 
     invokeModel:async()=>{
       calls.push("model");
       x.env.PAID_INFERENCE_ENABLED="false";
-      return {answer:"should be withheld",usage:{prompt_tokens:100,completion_tokens:10}};
+      return {response:"should be withheld",usage:{prompt_tokens:100,completion_tokens:10}};
     }
   });
   assert.deepEqual(result,{ok:false,reason:"paid_plan_revoked_reservations_held",modelInvoked:true});

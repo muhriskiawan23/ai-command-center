@@ -285,9 +285,10 @@ jobs:
                 record(
                   "Gateway policies",
                   "AUTHORIZED",
-                  `page_count=${items.length}; reported_total=${Number.isFinite(info.total_count) ? info.total_count : "unknown"}; enabled_on_page=${enabled}; filter_types_on_page=${Object.entries(filters).map(([key, value]) => key + ":" + value).join(",") || "none"}.`
+                  `returned=${items.length}; pages=${info.pages_read ?? "unknown"}; completion=${info.completion ?? "unverified"}; reported_total=${Number.isFinite(info.total_count) ? info.total_count : "unknown"}; enabled=${enabled}; filter_types=${Object.entries(filters).map(([key, value]) => key + ":" + value).join(",") || "none"}.`
                 );
-              }
+              },
+              undefined, "page"
             );
           }
 

@@ -187,7 +187,21 @@ export async function runJournaledInferencePrototype({
     await callSafe(()=>journal(env,{...entry,kind:"outcome_unknown"}));
     return declined("provider_outcome_unknown_reservations_held",true);
   }
-  const usage=strictProviderTokenUsage(response?.usage);
+  // Copy the provider envelope and counters BEFORE the next await. An injected
+  // invoker must not replace a validated answer/usage while D1 is journaling.
+  const envelope=response&&typeof response==="object"&&!Array.isArray(response)
+    ? response:null;
+  const usageSnapshot=envelope?.usage&&typeof envelope.usage==="object"
+    &&!Array.isArray(envelope.usage)?Object.freeze({...envelope.usage}):null;
+  const answer=envelope?.response??envelope?.output;
+  const completionValid=!!envelope&&
+    (envelope.error===undefined||envelope.error===null)&&
+    (envelope.finish_reason===undefined||envelope.finish_reason==="stop")&&
+    typeof answer==="string"&&answer.trim().length>0&&answer.length<=64000&&
+    !/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(answer)&&
+    (envelope.response===undefined||envelope.output===undefined||envelope.response===envelope.output);
+  response=Object.freeze({response:answer,usage:usageSnapshot});
+  const usage=strictProviderTokenUsage(usageSnapshot);
   if(!usage){
     await callSafe(()=>journal(env,{...entry,kind:"usage_unverified"}));
     return declined("metering_unverified_reservations_held",true);
@@ -209,6 +223,10 @@ export async function runJournaledInferencePrototype({
       cost>quote.maximumMicroUsd || debit>quote.reservedMicrocredits ||
       cost>policy.maxCallMicroUsd || debit>policy.maxCallMicrocredits)
     return declined("inference_cost_over_ceiling_reservations_held",true);
+  // Measured tokens establish exposure, not a successful deliverable. Keep
+  // the measured immutable evidence and both holds for a separate review.
+  if(!completionValid)
+    return declined("provider_completion_invalid_reservations_held",true);
   // A refund/revocation after provider dispatch must never deliver an
   // answer. Upstream cost may already exist: hold both reservations for
   // operator reconciliation instead of releasing them as a free call.

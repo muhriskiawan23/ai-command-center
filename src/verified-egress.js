@@ -2,6 +2,42 @@
 // Bind EGRESS_PROXY to a private Cloudflare VPC Service after security review.
 // Never substitute global fetch or an arbitrary public endpoint.
 const MAX_BODY_BASE64 = 1_400_000;
+// Cap the JSON envelope BEFORE parsing/base64 decoding. A page-size cap
+// checked after response.json() did not bound the private-hop response.
+export const MAX_PROXY_RESPONSE_BYTES = 1_500_000;
+async function readProxyJson(response,signal){
+  const cancel=()=>{try{void response.body?.cancel().catch(()=>{});}catch{}};
+  const length=response.headers.get("content-length");
+  if(length!==null&&(!/^[0-9]+$/.test(length)||Number(length)>MAX_PROXY_RESPONSE_BYTES)){
+    cancel();throw Error("proxy_envelope_too_large");
+  }
+  if(signal?.aborted){cancel();throw Error("proxy_request_aborted");}
+  const reader=response.body?.getReader();
+  if(!reader)throw Error("proxy_empty_envelope");
+  let abort,timer;
+  const stopped=new Promise((_,reject)=>{
+    abort=()=>reject(Error("proxy_request_aborted"));
+    signal?.addEventListener("abort",abort,{once:true});
+    timer=setTimeout(()=>reject(Error("proxy_envelope_timeout")),10000);
+  });
+  let total=0;
+  const parts=[];
+  try{
+    for(;;){
+      const {done,value}=await Promise.race([reader.read(),stopped]);
+      if(done)break;
+      total+=value.byteLength;
+      if(total>MAX_PROXY_RESPONSE_BYTES)throw Error("proxy_envelope_too_large");
+      parts.push(value);
+    }
+    const bytes=new Uint8Array(total);let offset=0;
+    for(const part of parts){bytes.set(part,offset);offset+=part.byteLength;}
+    return JSON.parse(new TextDecoder("utf-8",{fatal:true}).decode(bytes));
+  }catch(error){
+    // A stalled source may also stall cancel(); never await it on failure.
+    void reader.cancel().catch(()=>{});throw error;
+  }finally{clearTimeout(timer);signal?.removeEventListener("abort",abort);reader.releaseLock();}
+}
 function decodeBase64(value) {
   if (typeof value !== "string" || value.length > MAX_BODY_BASE64 || !/^[A-Za-z0-9+/]*={0,2}$/.test(value)) throw Error("invalid_proxy_body");
   const binary = atob(value);
@@ -24,8 +60,11 @@ export function createVerifiedLinkFetcher(env) {
       redirect: "manual",
       signal
     });
-    if (!response.ok) throw Error("proxy_unavailable");
-    const data = await response.json();
+    if (!response.ok) {
+      try{void response.body?.cancel().catch(()=>{});}catch{}
+      throw Error("proxy_unavailable");
+    }
+    const data = await readProxyJson(response,signal);
     if (!data || !Number.isInteger(data.status) || data.status < 100 || data.status > 599 ||
         typeof data.peerIp !== "string" || !data.transport ||
         data.transport.peerIpVerified !== true ||
