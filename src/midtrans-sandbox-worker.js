@@ -17,6 +17,7 @@ function json(status, body) {
 // The same 16 KiB cap applies to client notifications and Snap receipts.
 const MAX_JSON_BYTES = 16384;
 const BODY_DEADLINE_MS = 10000;
+class SandboxJsonInterrupted extends Error {}
 async function parseJson(message, signal = message.signal) {
   const advertised = message.headers?.get?.("Content-Length");
   if (advertised !== null && advertised !== undefined &&
@@ -29,7 +30,7 @@ async function parseJson(message, signal = message.signal) {
   let text = "";
   let timer, interrupt;
   const stopped = new Promise((_, reject) => {
-    interrupt = () => reject(new Error("JSON stream interrupted or timed out"));
+    interrupt = () => reject(new SandboxJsonInterrupted("JSON stream interrupted or timed out"));
     signal?.addEventListener("abort", interrupt, { once: true });
     timer = setTimeout(interrupt, BODY_DEADLINE_MS);
     if (signal?.aborted) interrupt();
@@ -45,7 +46,8 @@ async function parseJson(message, signal = message.signal) {
   } finally {
     clearTimeout(timer);
     signal?.removeEventListener("abort", interrupt);
-    await reader.cancel().catch(() => {});
+    // Do not await a producer's unbounded cancel promise.
+    void reader.cancel().catch(() => {});
     reader.releaseLock();
   }
 }
@@ -121,7 +123,9 @@ async function reconcile(request, env, providerFetch) {
   let input;
   try {
     input = await parseJson(request);
-  } catch {
+  } catch (error) {
+    if (error instanceof SandboxJsonInterrupted)
+      return json(503, { error: "Sandbox request interrupted; retry with same order" });
     return json(400, { error: "Invalid JSON" });
   }
   if (!isSandboxOrderId(input?.orderId)) return json(400, { error: "Invalid sandbox order" });
@@ -141,7 +145,9 @@ async function webhook(request, env, providerFetch) {
   let payload;
   try {
     payload = await parseJson(request);
-  } catch {
+  } catch (error) {
+    if (error instanceof SandboxJsonInterrupted)
+      return json(503, { error: "Sandbox notification interrupted; provider retry required" });
     return json(400, { error: "Invalid JSON notification" });
   }
   if (!isSandboxOrderId(payload?.order_id) ||
