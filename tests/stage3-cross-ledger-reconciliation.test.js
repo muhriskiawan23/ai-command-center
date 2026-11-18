@@ -24,7 +24,7 @@ function setup(t){
   db.exec("INSERT INTO credit_accounts VALUES ('test-user',50000,1)");
   db.exec("INSERT INTO provider_budget_limits VALUES ('cloudflare-workers-ai',50000,1)");
   db.exec("INSERT INTO provider_budget_limits VALUES ('__global__',50000,1)");
-  const env={DB:{prepare(sql){
+  const env={STAGE3_SYNTHETIC_ONLY:"true",DB:{prepare(sql){
     return {
       bind(...params){return{first:async()=>db.prepare(sql).get(...params)};},
       first:async()=>db.prepare(sql).get()
