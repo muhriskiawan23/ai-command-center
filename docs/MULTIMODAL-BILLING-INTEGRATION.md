@@ -36,6 +36,9 @@ client model, feature, tier, credit and price overrides are rejected.
    authoritative. The receipt adapter must independently validate actual billing
    and token/unit limits; this adapter remains unimplemented for live Cloudflare.
 6. Validate bounded output; generated image dimensions must match the quote.
+   The coordinator independently rejects error-marked provider responses and
+   vision answers with an explicit non-`stop` finish reason, even if a
+   different server invoker bypasses the optional Cloudflare native adapter.
    Return results only after both provider-budget and wallet settlement succeed.
 
 Before any dispatch marker/model call, a confirmed cancellation can release both
