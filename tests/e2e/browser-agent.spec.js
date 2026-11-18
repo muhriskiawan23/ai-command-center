@@ -5,15 +5,16 @@ async function openPanel(page){
  await page.locator("#openBrowserTool").click();
  await expect(page.locator("#browserDialog")).toBeVisible();
 }
-test("browser beta is visible but refuses network jobs before owner enables private service binding",async({page,app})=>{
+test("browser beta is hidden when private executor is not configured",async({page,app})=>{
  await page.goto(app.url);
  await page.locator("#continueGuest").click();
- await openPanel(page);
- await expect(page.locator("#browserDialog")).toContainText("persetujuan");
- await page.locator("#browserUrl").fill(URL);
- await page.locator("#browserInspect").click();
- await expect(page.locator("#browserStatus")).toContainText("belum diaktifkan");
- await expect(page.locator("#browserPageResult")).toBeHidden();
+ await expect(page.locator("#openBrowserTool")).toBeHidden();
+ const res=await page.evaluate(async()=> {
+   const response=await fetch("/api/browser/plan",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({plan:{url:"https://demo.playwright.dev/todomvc/",steps:[]}})});
+   return {status:response.status,body:await response.json()};
+ });
+ expect(res.status).toBe(503);
+ expect(res.body.code).toBe("browser_not_ready");
  expect(app.aiCalls).toHaveLength(0);
 });
 test("signed-in beta can inspect allowed page and execute only a reviewed, user-confirmed action",async({page,context,app})=>{
