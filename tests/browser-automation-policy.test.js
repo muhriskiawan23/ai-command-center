@@ -9,7 +9,7 @@ const ALLOWED=["demo.playwright.dev","example.com"];
 const safe={url:"https://demo.playwright.dev/todomvc/",steps:[]};
 const click={url:safe.url,steps:[{type:"click",target:{by:"role",role:"button",name:"Clear completed"}}]};
 test("browser host allowlist forbids private IPs, credentials, local networks, ports, cross-domain and HTTP",()=>{
- assert.deepEqual(browserAllowedHosts("demo.playwright.dev,example.com,127.0.0.1"),["demo.playwright.dev","example.com","127.0.0.1"]);
+ assert.deepEqual(browserAllowedHosts("demo.playwright.dev,example.com,127.0.0.1,localhost,private.internal"),["demo.playwright.dev","example.com"]);
  const accepted=browserPublicUrl("https://demo.playwright.dev/todomvc/#local",ALLOWED);
  assert.equal(accepted.url,"https://demo.playwright.dev/todomvc/");
  for(const input of [
@@ -48,6 +48,7 @@ test("browser results only pass bounded public metadata",()=>{
  assert.equal(response.privateKeys,undefined);
  assert.equal(response.stepsExecuted,5);
  assert.equal(safeBrowserResult({...response,host:"evil.com"},"example.com"),null);
+ assert.equal(safeBrowserResult({...response,url:"https://evil.com/private"},"example.com"),null);
 });
 test("browser HMAC approval is user-bound, plan-bound, expires and rejects tampering",async()=>{
  const secret="s".repeat(40), user="account-alpha";
