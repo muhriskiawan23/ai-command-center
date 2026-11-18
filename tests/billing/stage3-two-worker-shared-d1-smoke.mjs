@@ -161,12 +161,23 @@ try {
     ["provider_budget_reservations","status='settled'",1],
     ["provider_budget_reservations","status='reserved'",1]
   ]);
-  assert.equal((await dbA.prepare(
+  // An uncertain upstream call has already DEBITED the maximum reserve
+  // from available credits, but it is NOT a finalized consumer charge.
+  // Check available + still-held credits + finalized spend == initial wallet.
+  const unsettledReserve=(await dbB.prepare(
+    "SELECT COALESCE(SUM(reserved_microcredits),0) AS n FROM credit_reservations WHERE status='reserved'"
+  ).first()).n;
+  assert.ok(unsettledReserve>0,"Unknown upstream cost must retain a positive wallet hold");
+  const available=(await dbA.prepare(
     "SELECT balance_microcredits AS n FROM credit_accounts WHERE user_id=?"
-  ).bind(user).first()).n,100000-519,"Exactly one real D1 credit charge for measured fixture");
-  assert.equal((await dbB.prepare(
+  ).bind(user).first()).n;
+  assert.equal(available+unsettledReserve+519,100000,
+    "Available wallet plus unresolved hold plus one measured charge must conserve total credits");
+  const netLedger=(await dbB.prepare(
     "SELECT COALESCE(SUM(delta_microcredits),0) AS n FROM credit_ledger"
-  ).first()).n,-519,"Append-only ledger must match settled measured cost");
+  ).first()).n;
+  assert.equal(netLedger,-519-unsettledReserve,
+    "Append-only ledger must include the unknown reserve debit, not classify it as a settled charge");
 
   // Completely dispose/recreate BOTH local Worker isolates, retaining the
   // single persisted D1 identity across a new workerd process.
