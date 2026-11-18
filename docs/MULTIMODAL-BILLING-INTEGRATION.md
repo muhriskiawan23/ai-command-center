@@ -95,6 +95,11 @@ Retention/erasure of financial evidence needs a separately reviewed policy.
 UPDATE, DELETE, conflict-driven REPLACE and UPSERT rewriting are rejected even
 with SQLite recursive triggers disabled. Terminal events require the exact
 matching prior dispatch, and cannot overwrite a measured outcome.
+An additional insert guard now prohibits backfilling a `usage_measured` record
+(or appending another competing outcome) after a terminal `outcome_unknown`
+or `usage_unverified` marker for the same attempt. The holds remain unresolved
+until a separately reviewed, invoice-backed operator recovery flow exists;
+a late provider callback must not auto-settle or reclassify that attempt.
 
 `inspectMediaBilling` makes one read-only SQL snapshot. It flags held jobs,
 unresolved attempts, orphan/mismatched financial references, measured-vs-settled
