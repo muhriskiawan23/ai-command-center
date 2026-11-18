@@ -19,11 +19,13 @@ function setup(t){
   const db=new DatabaseSync(":memory:");
   t.after(()=>db.close());
   for(const file of ["0012_credit_ledger.sql","0013_provider_spend_budget.sql",
-    "0014_provider_usage_journal.sql"])
+    "0014_provider_usage_journal.sql","0018_provider_emergency_stop_draft.sql"])
     db.exec(readFileSync(new URL("../migrations/"+file,import.meta.url),"utf8"));
   db.exec("INSERT INTO credit_accounts VALUES ('test-user',50000,1)");
   db.exec("INSERT INTO provider_budget_limits VALUES ('cloudflare-workers-ai',50000,1)");
   db.exec("INSERT INTO provider_budget_limits VALUES ('__global__',50000,1)");
+  // Only the ephemeral local financial test opts in: default production is OFF.
+  db.exec("UPDATE provider_runtime_controls SET enabled=1,updated_at=1 WHERE control_name='paid_provider_dispatch'");
   const env={STAGE3_SYNTHETIC_ONLY:"true",DB:{prepare(sql){
     return {
       bind(...params){return{first:async()=>db.prepare(sql).get(...params)};},
@@ -289,4 +291,42 @@ test("definitely unused pre-dispatch cancellation may settle zero without anomal
   assert.equal(report.zeroSettledBudgetAfterDispatch,0);
   assert.equal(report.releasedCreditAfterDispatch,0);
   assert.equal(report.reviewRequired,false);
+});
+
+test("orphaned pre-dispatch provider budget without wallet is flagged only after stale threshold",async t=>{
+  const x=setup(t);
+  const now=Date.now();
+  const held=await reserveProviderSpend(x.env,{
+    id:"ai:orphan-before-wallet",provider:tariff.provider,model:tariff.model,
+    maximumMicroUsd:8610n,nowMs:now-7200_000
+  });
+  assert.equal(held.ok,true);
+  const current=await x.audit({nowMs:now,staleAfterSeconds:3600});
+  assert.equal(current.staleBudgetWithoutWallet,1);
+  assert.equal(current.stalePreDispatchBudgetHolds,0);
+  assert.equal(current.orphanDispatches,0);
+  assert.equal(current.reviewRequired,true);
+  assert.equal(JSON.stringify(current).includes("orphan-before-wallet"),false);
+});
+test("a fresh provider reservation awaiting wallet admission is not a false-positive anomaly",async t=>{
+  const x=setup(t);
+  const held=await reserveProviderSpend(x.env,{
+    id:"ai:wallet-in-flight",provider:tariff.provider,model:tariff.model,
+    maximumMicroUsd:8610n
+  });
+  assert.equal(held.ok,true);
+  const current=await x.audit({staleAfterSeconds:3600});
+  assert.equal(current.staleBudgetWithoutWallet,0);
+  assert.equal(current.reviewRequired,false);
+});
+test("stale non-AI namespace budget is outside the token-only Stage 3 audit",async t=>{
+  const x=setup(t);
+  const held=await reserveProviderSpend(x.env,{
+    id:"media:example-operation",provider:tariff.provider,model:tariff.model,
+    maximumMicroUsd:8610n,nowMs:Date.now()-7200_000
+  });
+  assert.equal(held.ok,true);
+  const current=await x.audit({staleAfterSeconds:3600});
+  assert.equal(current.staleBudgetWithoutWallet,0);
+  assert.equal(current.reviewRequired,false);
 });
