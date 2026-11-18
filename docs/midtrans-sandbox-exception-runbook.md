@@ -77,3 +77,18 @@ promise, and an oversized response with the same failure mode.
 No timeout or interrupted response authorizes a payment grant. This does
 not replace Midtrans production activation, merchant review or invoice
 verification.
+
+
+### Independent IDR confirmation before credit (18 November 2026)
+The isolated sandbox webhook path, like authenticated operator
+reconciliation, now requires the independent Midtrans Status API to return
+an **explicit** `currency: "IDR"` matching the IDR order. A valid signed
+webhook and matching numeric amount alone cannot fill a missing or
+ambiguous currency claim from the authoritative status response.
+Missing, null, or foreign currency causes a fail-closed status error
+with no D1 order transition, ledger grant or account credit.
+An optional currency field omitted from the *signed notification* can
+still be accepted when its independent Status API response explicitly
+confirms IDR; the trusted status result remains the source of truth.
+Local synthetic SQLite tests cover missing currency, USD/null and the
+positive signed-webhook case. This is not real Midtrans invoice evidence.
