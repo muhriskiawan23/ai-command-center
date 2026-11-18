@@ -130,3 +130,29 @@ marker remain held for operator verification; they are not automatically
 released because a concurrent write could already have committed.
 Synthetic tests inject kill-switch changes inside the wallet adapter and
 journal callback to prove zero provider calls and zero automatic settlement.
+
+
+### Integrated, isolated Stage 3 plan + credit + usage proof — 18 November 2026
+The PR #264 staging Worker and its `tests/billing/stage3-staging-smoke.mjs`
+now combine draft migration `0016_plan_entitlements_draft.sql` with
+Stage 3 wallet, global/provider budget and immutable usage journal on
+**ephemeral local Miniflare D1**. Three fabricated paid verification rows
+activate test Basic/Pro subscriptions; a fourth test user remains Free.
+
+The staged routes `/api/chat`, `/api/public/chat` and the Telegram
+webhook use authenticated server identities. Before issuing a paid
+idempotency claim, the staging adapter checks the *actual D1 join*
+between `verified_plan_payments` and `plan_entitlements`, and the
+journaled inference gate checks it again before dispatch/settlement and
+output delivery. A Free user with synthetic wallet funds, a refunded Basic
+subscription and a charged-back Pro subscription must be rejected with no
+new request claim, provider reservation, credit debit or journal event.
+Paid cases continue to verify replay, multi-agent debits and held financial
+reservations on unknown outcomes. A new **NO SECRETS** CI step runs the
+entire Miniflare scenario on every PR #264 branch push.
+
+**Limit:** all payment evidence is fabricated test data and model answers
+are injected text. The run does not authenticate a Midtrans merchant,
+compare Cloudflare billed neurons or invoices, call any real AI service,
+deploy a Worker, touch production D1, or authorize charging customers.
+It is an integration regression proof, not a paid-release signoff.
