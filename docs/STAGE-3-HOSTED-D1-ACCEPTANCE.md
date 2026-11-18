@@ -46,6 +46,7 @@
 
 ## Required exact-head staging experiments
 
+- **Operator anti-replay:** apply and inspect draft migration 0019 **only** in an explicitly authorized isolated review schema; confirm two trusted synthetic signatures admit one transactional two-nonce record, replay refuses duplicates and history remains append-only. This is a separate operator test, never a customer funds migration.
 - **Remote SQL:** D1 credit, budget and usage event schemas, atomic
   concurrency admission, duplicate refusal and append-only audit.
 - **Hosted Worker A → B:** send one synthetic request with unknown
