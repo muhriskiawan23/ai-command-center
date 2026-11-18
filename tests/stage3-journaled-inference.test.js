@@ -251,3 +251,88 @@ test("Production Wrangler does not enable the synthetic Stage 3 bypass",()=>{
   const {vars={}}=JSON.parse(readFileSync(new URL("../wrangler.jsonc",import.meta.url),"utf8"));
   assert.notEqual(vars.STAGE3_SYNTHETIC_ONLY,"true");
 });
+
+test("stalled model callback times out and journals unknown cost without settling the wallet",async t=>{
+  const x=setup(t);
+  let signal;
+  const result=await x.run({
+    modelTimeoutMs:15,
+    invokeModel:async({signal:controllerSignal})=>{
+      signal=controllerSignal;
+      x.trace.push("model:stalled");
+      return new Promise(()=>{});
+    }
+  });
+  assert.deepEqual(result,{ok:false,reason:"provider_outcome_unknown_reservations_held",modelInvoked:true});
+  assert.equal(signal.aborted,true);
+  assert.equal(x.balance(),6390n);
+  assert.equal(x.paid(),0n);
+  assert.equal(x.trace.includes("budget:settle"),false);
+  assert.equal(x.trace.includes("wallet:finalize"),false);
+  assert.deepEqual(x.events().map(e=>e.event_kind),["dispatched","outcome_unknown"]);
+  assert.equal((await x.report()).unresolvedAttempts,1);
+});
+test("late provider success after timeout cannot produce settled credits or a measured event",async t=>{
+  const x=setup(t);
+  let signal,completed=false;
+  const result=await x.run({
+    modelTimeoutMs:15,
+    invokeModel:async({signal:s})=>{
+      signal=s;
+      await new Promise(resolve=>setTimeout(resolve,45));
+      completed=true;
+      return {output:"too late",usage:{prompt_tokens:1000,completion_tokens:100}};
+    }
+  });
+  assert.equal(result.reason,"provider_outcome_unknown_reservations_held");
+  assert.equal(signal.aborted,true);
+  await new Promise(resolve=>setTimeout(resolve,50));
+  assert.equal(completed,true);
+  assert.equal(x.balance(),6390n);
+  assert.equal(x.paid(),0n);
+  assert.deepEqual(x.events().map(e=>e.event_kind),["dispatched","outcome_unknown"]);
+  assert.equal((await x.report()).measuredAttempts,0);
+});
+test("late provider rejection after timeout stays handled and never releases reserved credit",async t=>{
+  const x=setup(t);
+  let rejected=false;
+  const result=await x.run({
+    modelTimeoutMs:10,
+    invokeModel:async()=>{
+      await new Promise(resolve=>setTimeout(resolve,30));
+      rejected=true;
+      throw new Error("late upstream rejection");
+    }
+  });
+  assert.equal(result.reason,"provider_outcome_unknown_reservations_held");
+  await new Promise(resolve=>setTimeout(resolve,35));
+  assert.equal(rejected,true);
+  assert.equal(x.balance(),6390n);
+  assert.equal(x.paid(),0n);
+  assert.deepEqual(x.events().map(e=>e.event_kind),["dispatched","outcome_unknown"]);
+});
+test("invalid paid-inference attempt deadline rejects before any provider budget reservation",async t=>{
+  const x=setup(t);
+  for(const modelTimeoutMs of [0,-1,60001,Infinity,1.25,"1000",null]){
+    await assert.rejects(x.run({modelTimeoutMs}),/Bounded Stage 3 model timeout/);
+  }
+  assert.deepEqual(x.trace,[]);
+  assert.equal(x.balance(),15000n);
+  assert.equal(x.events().length,0);
+});
+test("retrying a timed-out request cannot silently invoke a second model attempt",async t=>{
+  const x=setup(t);
+  let calls=0;
+  const attempt=()=>x.run({
+    modelTimeoutMs:15,
+    invokeModel:async()=>{calls++;return new Promise(()=>{});}
+  });
+  const first=await attempt();
+  assert.equal(first.reason,"provider_outcome_unknown_reservations_held");
+  const second=await attempt();
+  assert.equal(second.modelInvoked,false);
+  assert.equal(second.reason,"provider_budget_reservation_rejected");
+  assert.equal(calls,1);
+  assert.equal(x.balance(),6390n);
+  assert.deepEqual(x.events().map(e=>e.event_kind),["dispatched","outcome_unknown"]);
+});
