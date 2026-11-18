@@ -57,7 +57,20 @@ function mockDB({ user = { id: "google-sub-123", email: "owner@example.com", nam
 test("public configuration does not claim Google sign-in is ready without bindings", async () => {
   const res = await worker.fetch(request("/api/config"), {});
   assert.equal(res.status, 200);
-  assert.deepEqual(await res.json(), { googleClientId: null, googleSignInEnabled: false });
+  assert.deepEqual(await res.json(), { googleClientId: null, googleSignInEnabled: false, browserAgentEnabled: false });
+});
+
+test("browser beta readiness is advertised only when private binding and approval secrets are active", async () => {
+  const env = {
+    BROWSER_AGENT_ENABLED: "true",
+    BROWSER_AGENT: { fetch: async () => Response.json({ok:true}) },
+    BROWSER_AGENT_TOKEN: "t".repeat(40),
+    BROWSER_APPROVAL_SECRET: "s".repeat(40)
+  };
+  const enabled = await worker.fetch(request("/api/config"), env);
+  assert.equal((await enabled.json()).browserAgentEnabled, true);
+  const disabled = await worker.fetch(request("/api/config"), { ...env, BROWSER_AGENT: null });
+  assert.equal((await disabled.json()).browserAgentEnabled, false);
 });
 
 test("guest chat remains temporary: only usage counters touch D1, never conversations or messages", async () => {
