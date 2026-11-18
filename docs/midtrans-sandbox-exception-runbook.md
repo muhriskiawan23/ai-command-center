@@ -125,3 +125,18 @@ and never make the wallet negative. Direct manual SQL status edits are
 Dedicated SQLite and real local D1 smoke regressions check the new guard.
 These review-only SQL files are not production migrations and are not
 authorized to run against remote D1 without staging review.
+
+
+### Append-only reversal and dispute evidence (18 November 2026)
+The reviewed sandbox SQL now forbids deleting `sandbox_payment_reversals`
+records and prevents updating their final outcomes or original financial
+identity. The only legitimate internal update is the atomic reversal
+INSERT trigger moving `pending` to `reversed` or `review_required`.
+`sandbox_payment_reversal_reviews` markers are likewise immutable and
+cannot be deleted using ad hoc SQL. Repeated dispute notifications remain
+idempotent through their composite primary key and `ON CONFLICT DO NOTHING`.
+These integrity constraints are tested with SQLite and real local Cloudflare
+D1, including failed UPDATE/DELETE attempts without changing credit balances.
+This is a **sandbox-only review schema**, not an approved retention/deletion
+policy or a production migration. A legal erasure/retention process needs a
+separately reviewed approach that preserves required financial auditability.
