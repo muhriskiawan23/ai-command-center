@@ -71,7 +71,9 @@ export async function inspectStage3OperatorEvidence({
     const result = await safeVerify(verifyReviewer, approval, proposal);
     if (result?.verified !== true ||
         !sameBinding(result, proposal) ||
-        !PRINCIPAL.test(result.principalId || "") ||
+        typeof result.principalId !== "string" ||
+        !PRINCIPAL.test(result.principalId) ||
+        typeof result.role !== "string" ||
         !["security", "finance"].includes(result.role)) {
       return denied("independent_reviewer_verification_failed");
     }
