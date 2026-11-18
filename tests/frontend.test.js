@@ -54,7 +54,8 @@ test("link-reading answers show numbered citations mapped to safe clickable sour
 });
 
 test("guest mode never persists browser chat history and account history is server-backed", () => {
-  assert.doesNotMatch(html, /localStorage/);
+  // Per-device theme and account preferences may use localStorage; guest chat transcripts must not.
+  assert.doesNotMatch(appJs, /localStorage\.(?:getItem|setItem)\([^)]*(?:conversations|messages|chatHistory)/i);
   assert.match(html, /Guest Mode/);
   assert.match(html, /api\/conversations/);
   assert.match(html, /api\/auth\/google/);
