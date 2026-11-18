@@ -126,3 +126,19 @@ The passing account audit **does not** close Issue #156 or authorize URL reader 
 2. **Synthetic hosted peer-IP and TLS evidence:** in an isolated non-production environment, record selected vetted numeric IP and observed connected peer IP equality; verify original-host SNI, certificate chain and hostname; reject wrong-host and untrusted certificates; prove redirect and DNS-rebinding fail-closed behavior. Use only controlled test domains and privacy-minimized logs.
 3. **Independent privacy and retention signoff:** review URL/query strings and page content passing through proxy; chat message contents, historical citations, user export/deletion semantics, backups, log retention and jurisdiction. Document reviewer, date, findings and explicit decision; no self-attested signoff.
 4. **Controlled production smoke only after gates 1–3 and explicit owner authorization.** Keep the reader fail-closed; do not create a tunnel, VPC binding, proxy, secret or production deploy as part of evidence documentation.
+
+
+## Additional read-only inventory hardening — 18 November 2026
+The draft Gateway-policy account audit now traverses every reported page,
+or, if pagination metadata is absent, continues until an **explicit empty
+terminal page**. A single first page with no `total_pages` can no longer be
+mistaken for a complete account-level policy inventory. Its report contains
+only aggregate counts, completion proof, and filter categories, never policy
+IDs, names, or credentials. A repeated nonterminal page is bounded by the
+existing ten-page audit cap and exits **PAGINATION INCOMPLETE**, not clean.
+
+This work changes **read-only evidence collection only** and is separately
+tested using synthetic Cloudflare envelopes. It does not activate DNS-pinned
+network egress, configure Gateway policies, create a VPC/proxy, or close
+Issue #156. Actual peer-IP/TLS pinning, independently controlled DNS fixture,
+privacy approvals, and operator-approved deployment remain required.

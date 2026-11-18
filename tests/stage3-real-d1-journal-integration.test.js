@@ -60,7 +60,7 @@ function fixture(t,{balance=50000,providerCap=limits.provider,globalCap=limits.g
       }
     }
   };
-  const env={DB};
+  const env={DB,STAGE3_SYNTHETIC_ONLY:"true"};
   const actualBudget=providerSpendBudget(env);
   const actualLedger={reserve:reserveCredits,finalize:finalizeCredits};
   let invoked=0;
@@ -406,4 +406,66 @@ test("simulated concurrent unknown outcomes obey real SQLite global budget cap",
     nowMs:Date.now()+3600000,staleAfterSeconds:60
   });
   assert.equal(report.staleDualHolds,2);
+});
+
+for(const [label,patch] of [
+  ["error",{error:{message:"provider internal detail"}}],
+  ["truncated",{finish_reason:"length"}],
+  ["filtered",{finish_reason:"content_filter"}],
+  ["unknown completion",{finish_reason:"future_success"}],
+  ["invalid completion",{finish_reason:null}],
+  ["empty",{response:"  "}],
+  ["nontext",{response:{text:"unsafe"}}],
+  ["oversized",{response:"x".repeat(64001)}],
+  ["conflicting aliases",{output:"different"}],
+  ["control characters",{response:"answer\u0000hidden"}]
+]){
+  test(`real SQL keeps measured exposure held for ${label} text response`,async t=>{
+    const x=fixture(t);
+    let calls=0;
+    const run=()=>x.run({invokeModel:async()=>{calls++;return {...meteredAnswer,...patch};}});
+    const result=await run();
+    assert.equal(result.ok,false);
+    assert.equal(result.reason,"provider_completion_invalid_reservations_held");
+    assert.equal(result.response,undefined);
+    assert.equal(x.budget().status,"reserved");
+    assert.equal(x.reservation().status,"reserved");
+    assert.equal(x.reservation().settled_microcredits,null);
+    assert.equal(x.balance(),41390);
+    assert.deepEqual(x.money(),[-8610]);
+    assert.deepEqual(x.journal().map(e=>e.event_kind),["dispatched","usage_measured"]);
+    assert.equal(x.journal()[1].provider_cost_micro_usd,519);
+    assert.equal((await inspectDraftBillingReconciliation(x.env,{nowMs:Date.now()+7200000})).reviewRequired,true);
+    assert.equal((await run()).modelInvoked,false);
+    assert.equal(calls,1);
+  });
+}
+test("explicit stop permits settlement with a minimal immutable text/usage snapshot",async t=>{
+  const x=fixture(t);
+  const upstream={...meteredAnswer,usage:{...meteredAnswer.usage},finish_reason:"stop",error:null};
+  const result=await x.run({invokeModel:async()=>upstream,journal:async(env,entry)=>{
+    if(entry.kind==="usage_measured"){
+      upstream.response="changed while D1 writes";
+      upstream.usage.prompt_tokens=20000;
+      upstream.finish_reason="length";
+    }
+    return appendProviderUsageEvent(env,entry);
+  }});
+  assert.equal(result.ok,true);
+  assert.equal(result.response.response,syntheticAnswer);
+  assert.equal(result.response.usage.prompt_tokens,1000);
+  assert.equal(Object.isFrozen(result.response),true);
+  assert.equal(Object.isFrozen(result.response.usage),true);
+  assert.equal(x.journal()[1].provider_cost_micro_usd,519);
+  assert.equal(x.reservation().settled_microcredits,519);
+});
+test("authenticated Worker boundary withholds error-marked measured text without disclosing detail",async t=>{
+  const x=fixture(t);
+  const chat=testBillingBinding(x,{...meteredAnswer,error:"sensitive provider detail"});
+  const response=await chat.submit();
+  assert.equal(response.status,502);
+  assert.doesNotMatch(await response.text(),/Tokyo|sensitive provider detail|completion_invalid/);
+  assert.equal(x.reservation().status,"reserved");
+  assert.equal(x.budget().status,"reserved");
+  assert.equal(chat.providerCalls(),1);
 });

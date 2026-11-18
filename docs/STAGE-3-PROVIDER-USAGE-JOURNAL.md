@@ -233,6 +233,7 @@ The workflow verified that Worker routing was disabled after the proof.
 Tracked in [Stage 3 issue #253](https://github.com/muhriskiawan23/ai-command-center/issues/253) and [Stage 2 PR #245](https://github.com/muhriskiawan23/ai-command-center/pull/245). Preserve production quota controls and keep URL Reader off.
 
 
+
 ### Stale provider budget allocated before the wallet (18 November 2026)
 The read-only Stage 3 cross-ledger report now flags
 `staleBudgetWithoutWallet`: a token-AI (`ai:`-scoped) **reserved**

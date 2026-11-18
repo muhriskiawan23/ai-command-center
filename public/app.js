@@ -236,6 +236,8 @@ function setState(next,notice=""){
   $("gateRetry").hidden=next!==AppState.ERROR;
   if(!inChatView()){closeMemoryDom(false);closeDrawerDom(false)}
   syncInert();renderAuth();
+  if(inChatView())void refreshPlanView();
+  else {planRequestSeq++;clearTimeout(planRefreshTimer);}
 }
 function resetChatView(){
   navSeq++;loadingChat=false;activePdf=null;activeCsv=null;renderPdfAttachment();renderCsvAttachment();lockComposer();
@@ -270,6 +272,50 @@ function renderAuth(){
   if(logged) refreshGitHubConnection(); else resetGitHubConnection();
 }
 
+// Display the server-verified active subscription. There is no app mode
+// selector: a Pro member is always Pro until renewal/expiry/revocation.
+let planRequestSeq=0;
+let planRefreshTimer=null;
+const TIER_LABELS={free:"Free",basic:"Basic",pro:"Pro"};
+async function refreshPlanView(){
+  clearTimeout(planRefreshTimer);
+  const sequence=++planRequestSeq;
+  let refreshSeconds=60;
+  const notice=$("planStatus"),badge=$("planBadge");
+  badge.textContent="Memeriksa…";
+  notice.textContent="Status paket sedang diverifikasi server.";
+  try{
+    const result=await api("/api/plan");
+    if(sequence!==planRequestSeq||!inChatView())return;
+    const plan=result.plan;
+    if(!plan || !Object.hasOwn(TIER_LABELS,plan.plan))
+      throw new Error("Paket tidak valid");
+    if(Number.isSafeInteger(plan.recheckAfterSeconds)&&plan.recheckAfterSeconds>=1)
+      refreshSeconds=Math.min(60,plan.recheckAfterSeconds);
+    badge.textContent=TIER_LABELS[plan.plan];
+    notice.textContent=plan.plan==="pro"
+      ?"Pro aktif: otomatis termasuk seluruh fitur Basic dan Free sesuai kuota."
+      :plan.plan==="basic"
+        ?"Basic aktif: otomatis termasuk seluruh fitur Free sesuai kuota."
+        :"Free aktif: fitur Basic dan Pro memerlukan langganan terverifikasi.";
+  }catch{
+    if(sequence!==planRequestSeq||!inChatView())return;
+    badge.textContent="Belum terverifikasi";
+    notice.textContent="Status paket tidak dapat diperiksa. Fitur berbayar tetap terkunci.";
+  }finally{
+    if(sequence===planRequestSeq&&inChatView()&&!document.hidden)
+      planRefreshTimer=setTimeout(()=>void refreshPlanView(),refreshSeconds*1000);
+  }
+}
+function refreshPlanOnResume(){
+  clearTimeout(planRefreshTimer);
+  if(inChatView()&&!document.hidden)
+    planRefreshTimer=setTimeout(()=>void refreshPlanView(),100);
+}
+document.addEventListener("visibilitychange",refreshPlanOnResume);
+window.addEventListener("focus",refreshPlanOnResume);
+window.addEventListener("pageshow",refreshPlanOnResume);
+window.addEventListener("pagehide",()=>{clearTimeout(planRefreshTimer);planRequestSeq++;});
 let githubConnection=null;
 let githubConnectionLoading=false;
 let githubConnectionRequest=0;
@@ -1043,6 +1089,12 @@ async function boot(){
   try{me=await api("/api/auth/me")}
   catch{setState(AppState.ERROR,"Status akun tidak dapat diperiksa. Periksa koneksi lalu coba lagi, atau lanjutkan sebagai Guest.");loadGoogle();return}
   if(me.authenticated){currentUser=me.user;setState(AppState.AUTH);await enterChat();return}
+  // The Free plan is an opt-in guest-chat link, not a payment or subscription route.
+  // Keep a pre-existing signed-in session above; otherwise use the same Guest flow
+  // as the welcome screen, with no checkout and no saved Guest chat content.
+  if(new URLSearchParams(location.search).get("plan")==="free"){
+    writeGuestFlag(true);currentUser=null;setState(AppState.GUEST);await enterChat();loadGoogle();return;
+  }
   if(readGuestFlag()){setState(AppState.GUEST);await enterChat();loadGoogle();return}
   setState(AppState.UNAUTH);loadGoogle();
 }

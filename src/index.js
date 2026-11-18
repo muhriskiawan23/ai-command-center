@@ -14,6 +14,8 @@ import { selectModel, taskProfileForAgent, summarizeModelTrace } from "./model-g
 import { COMMUNICATION_NOTICE, CAPABILITY_NOTICE, AGENTS } from "./prompts.js";
 import { json, sha256Hex } from "./http.js";
 import { dailyLimit, usageDay, secondsUntilNextUtcDay, consumeUsage, refundUsage, limitResponse, enforceDailyLimits, DAILY_LIMIT_DEFAULTS, MULTI_AGENT_UNITS } from "./daily-limits.js";
+import { resolvePlanAccess } from "./plan-entitlements.js";
+import { handleMediaRoute } from "./media-api.js";
 
 const MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 const MAX_REQUEST_BYTES = 64 * 1024;
@@ -237,7 +239,7 @@ async function serveAsset(request, env) {
   if (/^text\/html(?:;|$)/i.test(headers.get("Content-Type") || "")) {
     headers.set(
       "Content-Security-Policy",
-      "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; connect-src 'self' https://accounts.google.com https://cdn.jsdelivr.net https://tessdata.projectnaptha.com; script-src 'self' https://accounts.google.com/gsi/client https://cdn.jsdelivr.net https://cdn.sheetjs.com; worker-src 'self' blob: https://cdn.jsdelivr.net; style-src 'self' https://accounts.google.com/gsi/style; style-src-attr 'unsafe-inline'; img-src 'self' data: blob: https://*.googleusercontent.com; frame-src https://accounts.google.com/gsi/; upgrade-insecure-requests"
+      "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; connect-src 'self' https://accounts.google.com https://cdn.jsdelivr.net https://tessdata.projectnaptha.com; script-src 'self' https://accounts.google.com/gsi/client https://cdn.jsdelivr.net https://cdn.sheetjs.com; worker-src 'self' blob: https://cdn.jsdelivr.net; style-src 'self' https://accounts.google.com/gsi/style; style-src-attr 'unsafe-inline'; img-src 'self' data: blob: https://*.googleusercontent.com; media-src 'self' blob:; frame-src https://accounts.google.com/gsi/; upgrade-insecure-requests"
     );
   }
 
@@ -1276,6 +1278,26 @@ export default {
       const response = await handleAuthRoute(request, env, url);
       if (response) return response;
     }
+    // Current authenticated subscription is fixed by verified payment, not
+    // by browser-selected modes. The old /api/plan/select is intentionally
+    // removed; POSTing a tier never changes or grants a subscription.
+    if(url.pathname==="/api/plan/select")
+      return json({error:"Paket aktif hanya ditentukan oleh pembayaran yang diverifikasi.",code:"plan_selection_removed"},404,{"Cache-Control":"no-store"});
+    if(url.pathname==="/api/plan"){
+      if(request.method!=="GET")
+        return json({error:"Metode tidak didukung."},405,{Allow:"GET","Cache-Control":"no-store"});
+      try{
+        const user=await getSession(request,env);
+        const plan=await resolvePlanAccess(env,user?.id??null);
+        return json({plan},200,{"Cache-Control":"no-store"});
+      }catch(error){
+        console.error("Plan status lookup failed:",safeError(error));
+        return json({error:"Verifikasi paket sedang tidak tersedia.",code:"plan_verification_unavailable"},503,{"Cache-Control":"no-store"});
+      }
+    }
+    if(url.pathname==="/api/media"||url.pathname==="/api/media/quote"||url.pathname==="/api/media/status"){
+      return handleMediaRoute(request,env,url,{getSession,sameOrigin});
+    }
     if (url.pathname.startsWith("/api/github/")) {
       try {
         const oauthResponse = await handleGitHubOAuthRoute(request, env, url, { getSession, sameOrigin, randomToken, sha256Hex, json });
@@ -1381,6 +1403,13 @@ export default {
       let body;
       try { body = JSON.parse(bodyResult.text); }
       catch { return json({ error: "Request JSON tidak valid." }, 400); }
+      // A client may request a feature, but must never self-assign a paid tier
+      // through a chat request. Paid authorization uses the D1-backed plan
+      // selection and authoritative verified payment records only.
+      if(body && typeof body==="object" && (
+        Object.hasOwn(body,"tier") || Object.hasOwn(body,"plan") ||
+        Object.hasOwn(body,"paidTier") || Object.hasOwn(body,"credits")
+      ))return json({error:"Paket dan kredit tidak dapat diubah melalui pesan chat.",code:"client_tier_override_rejected"},400);
       const message = typeof body?.message === "string" ? body.message.trim() : "";
       const document = body?.document;
       if (document !== undefined && (!document || typeof document !== "object" || typeof document.name !== "string" || typeof document.content !== "string" || !document.content.trim() || document.content.length > PDF_CONTEXT_MAX_CHARS)) return json({ error: "Konteks PDF tidak valid atau terlalu besar. Unggah ulang dokumen." }, 400);

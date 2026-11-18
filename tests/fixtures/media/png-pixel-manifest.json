@@ -1,0 +1,32 @@
+{
+  "filters-color-0.png": {
+    "width": 64,
+    "height": 64,
+    "channels": 1,
+    "pixelSha256": "c08c11369eb7e2d3c7183708a71c9e37a3086d8876737587d7661ed93e55fd5b"
+  },
+  "filters-color-2.png": {
+    "width": 64,
+    "height": 64,
+    "channels": 3,
+    "pixelSha256": "c9ad1955829f6cca5de680e053bfbfb377d2022246bb78bcdf5f0af14e58ed1f"
+  },
+  "filters-color-4.png": {
+    "width": 64,
+    "height": 64,
+    "channels": 2,
+    "pixelSha256": "08c585baf9b7d4ac4a6efefe5a7c737e44f126943f4c5d655b22659a718dd66b"
+  },
+  "filters-color-6.png": {
+    "width": 64,
+    "height": 64,
+    "channels": 4,
+    "pixelSha256": "b66fa54be6e8744c7e78c77a0ac726d8bbe4f032fd1a1be49493cb7390227780"
+  },
+  "repository-icon-192": {
+    "pixelSha256": "9c922fb434d69ca57a4b8ce0c679dca6a089b57dc4e0a32889c340796942867a",
+    "channels": 4,
+    "width": 192,
+    "height": 192
+  }
+}

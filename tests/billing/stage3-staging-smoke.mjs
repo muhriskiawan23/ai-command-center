@@ -35,21 +35,38 @@ try {
   const sql = async source => db.batch(unstable_splitSqlQuery(source).map(statement => db.prepare(statement)));
   const migrations = ["0001_auth_and_chat", "0002_daily_usage", "0003_user_memory", "0004_conversation_pinning",
     "0005_conversation_archive", "0006_chat_request_idempotency", "0008_message_link_sources", "0009_public_api_keys",
-    "0012_credit_ledger", "0013_provider_spend_budget", "0014_provider_usage_journal"];
+    "0012_credit_ledger", "0013_provider_spend_budget", "0014_provider_usage_journal",
+    "0016_plan_entitlements_draft","0018_provider_emergency_stop_draft"];
   for (const name of migrations) await sql(readFileSync(new URL(`../../migrations/${name}.sql`, import.meta.url), "utf8"));
   await sql(`
     CREATE TABLE stage3_staging_requests (id TEXT PRIMARY KEY);
     CREATE TABLE stage3_telegram_accounts (telegram_id INTEGER PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id));
     INSERT INTO users (id,email,created_at,updated_at) VALUES
-      ('stage3-web','web@example.test',1,1),('stage3-api','api@example.test',1,1),('stage3-telegram','telegram@example.test',1,1);
+      ('stage3-web','web@example.test',1,1),('stage3-api','api@example.test',1,1),
+      ('stage3-telegram','telegram@example.test',1,1),('stage3-free','free@example.test',1,1);
     INSERT INTO credit_accounts (user_id,balance_microcredits,updated_at) VALUES
-      ('stage3-web',100000,1),('stage3-api',100000,1),('stage3-telegram',100000,1);
+      ('stage3-web',100000,1),('stage3-api',100000,1),
+      ('stage3-telegram',100000,1),('stage3-free',100000,1);
     INSERT INTO stage3_telegram_accounts (telegram_id,user_id) VALUES (77,'stage3-telegram');
     INSERT INTO provider_budget_limits (provider,daily_cap_micro_usd,updated_at) VALUES
       ('stage3-synthetic',100000,1),('__global__',100000,1);
   `);
+  // Disposable, fictional payment proofs are the *only* source of paid
+  // entitlement in this local workerd proof; no gateway/provider is called.
+  const now = Math.floor(Date.now()/1000);
+  for (const [user,tier] of [["stage3-web","pro"],["stage3-api","basic"],["stage3-telegram","basic"]]) {
+    const orderId="synthetic-plan-"+user;
+    await db.prepare("INSERT INTO verified_plan_payments "+
+      "(order_id,user_id,purchased_tier,verification_status,verified_at,updated_at) "+
+      "VALUES (?,?,?,'verified_paid',?,?)")
+      .bind(orderId,user,tier,now-120,now-60).run();
+    await db.prepare("INSERT INTO plan_entitlements "+
+      "(user_id,paid_tier,payment_order_id,status,starts_at,ends_at,updated_at) "+
+      "VALUES (?,?,?,'active',?,?,?)")
+      .bind(user,tier,orderId,now-60,now+3600,now).run();
+  }
   const sessionHeaders = {};
-  for (const user of ["stage3-web", "stage3-api"]) {
+  for (const user of ["stage3-web", "stage3-api", "stage3-free"]) {
     const token = randomBytes(32).toString("hex");
     await db.prepare("INSERT INTO sessions (token_hash,user_id,expires_at,created_at) VALUES (?,?,?,1)")
       .bind(createHash("sha256").update(token).digest("hex"), user, Math.floor(Date.now() / 1000) + 3600).run();
@@ -71,6 +88,24 @@ try {
   assert.equal((await send("/api/chat", single, { ...web, Origin: "https://other.example" })).status, 403);
   assert.equal((await send("/api/chat", { message: single.message }, web)).status, 400);
   assert.equal(await readCount("stage3_staging_requests"), 0);
+  // Every newly provisioned DB is OFF. The synthetic operator must enable
+  // spending explicitly; paused paid requests cannot consume a claim ID.
+  const offRequest={message:single.message,requestId:randomUUID()};
+  assert.equal((await send("/api/chat",offRequest,web)).status,503);
+  assert.equal(await readCount("stage3_staging_requests"),0);
+  assert.equal(await readCount("provider_budget_reservations"),0);
+  assert.equal(await readCount("credit_reservations"),0);
+  await db.prepare("UPDATE provider_runtime_controls SET enabled=1,updated_at=? "+
+    "WHERE control_name='paid_provider_dispatch'").bind(now).run();
+  // Even a Free user with positive (synthetic) wallet balance cannot
+  // consume paid inference merely by possessing credits.
+  const freeRequest = {message:single.message,requestId:randomUUID()};
+  const unentitled = await send("/api/chat",freeRequest,sessionHeaders["stage3-free"]);
+  assert.equal(unentitled.status,403,"Free account must not call paid AI");
+  assert.equal(await readCount("stage3_staging_requests"),0,"Free cannot claim a paid request");
+  assert.equal(await readCount("provider_usage_events"),0);
+  assert.equal(await readCount("provider_budget_reservations"),0);
+  assert.equal(await readCount("credit_reservations"),0);
   const duplicates = await Promise.all(Array.from({ length: 3 }, () => send("/api/chat", single, web)));
   assert.ok(duplicates.every(response => response.status === 200 || response.status === 409));
   const accepted = await Promise.all(duplicates.filter(response => response.status === 200).map(response => response.json()));
@@ -106,6 +141,7 @@ try {
   const wallets = await db.prepare("SELECT user_id, balance_microcredits FROM credit_accounts ORDER BY user_id").all();
   assert.deepEqual(wallets.results, [
     { user_id: "stage3-api", balance_microcredits: 100000 - 2 * 519 },
+    { user_id: "stage3-free", balance_microcredits: 100000 },
     { user_id: "stage3-telegram", balance_microcredits: 100000 - 519 },
     { user_id: "stage3-web", balance_microcredits: 100000 - 5 * 519 }
   ]);
@@ -118,15 +154,103 @@ try {
   assert.equal(await readCount("credit_reservations", "status='reserved'"), 1);
   assert.equal(await readCount("provider_budget_reservations", "status='reserved'"), 1);
 
+  // An injected provider that never returns must not hang the HTTP request.
+  // It may still have incurred upstream cost, so both holds remain pending.
+  const timedOutBody = { ...single, requestId: randomUUID() };
+  const timedOut = await send("/api/chat", timedOutBody,
+    { ...web, "X-BOR-Stage3-Usage": "provider-timeout" });
+  assert.equal(timedOut.status,502);
+  assert.equal((await send("/api/chat", timedOutBody, web)).status,409);
+  assert.equal(await readCount("provider_usage_events","event_kind='outcome_unknown'"),1);
+  assert.equal(await readCount("provider_usage_events","event_kind='usage_unverified'"),1);
+  assert.equal(await readCount("credit_reservations","status='reserved'"),2);
+  assert.equal(await readCount("provider_budget_reservations","status='reserved'"),2);
+  assert.equal(await readCount("provider_usage_events","event_kind='usage_measured'"),8);
+
   const walletFailure = { ...single, requestId: randomUUID() };
   const partial = await send("/api/chat", walletFailure, { ...web, "X-BOR-Stage3-Usage": "wallet-finalization-failure" });
   assert.equal(partial.status, 502);
   assert.equal((await send("/api/chat", walletFailure, web)).status, 409);
   assert.equal(await readCount("provider_usage_events", "event_kind='usage_measured'"), 9);
-  assert.equal(await readCount("credit_reservations", "status='reserved'"), 2);
-  assert.equal(await readCount("provider_budget_reservations", "status='reserved'"), 1);
+  assert.equal(await readCount("credit_reservations", "status='reserved'"), 3);
+  assert.equal(await readCount("provider_budget_reservations", "status='reserved'"), 2);
   assert.equal(await readCount("provider_budget_reservations", "status='settled'"), 9);
-  console.log("PASS: authenticated Worker routes, isolated account wallets, replay rejection and recoverable settlement holds");
+  // Payment proof reversal must immediately revoke access with no new
+  // provider call, budget hold or debit, even if the wallet has credits.
+  const before = {
+    journal:await readCount("provider_usage_events"),
+    budget:await readCount("provider_budget_reservations"),
+    wallet:await readCount("credit_reservations"),
+    claims:await readCount("stage3_staging_requests")
+  };
+  await db.prepare("UPDATE verified_plan_payments SET verification_status='refunded' "+
+    "WHERE order_id='synthetic-plan-stage3-api'").run();
+  const deniedPaidApi = await send("/api/public/chat",
+    {...single,requestId:randomUUID()},publicHeaders,randomBytes(16).toString("hex"));
+  assert.equal(deniedPaidApi.status,403,"Refunded Basic must lose paid API access");
+  assert.equal(await readCount("stage3_staging_requests"),before.claims);
+  assert.equal(await readCount("provider_usage_events"),before.journal);
+  assert.equal(await readCount("provider_budget_reservations"),before.budget);
+  assert.equal(await readCount("credit_reservations"),before.wallet);
+  await db.prepare("UPDATE verified_plan_payments SET verification_status='chargeback' "+
+    "WHERE order_id='synthetic-plan-stage3-web'").run();
+  const deniedWeb = await send("/api/chat",
+    {message:single.message,requestId:randomUUID()},web);
+  assert.equal(deniedWeb.status,403,"Charged-back Pro must lose web paid access");
+  assert.equal(await readCount("stage3_staging_requests"),before.claims);
+  assert.equal(await readCount("provider_usage_events"),before.journal);
+  assert.equal(await readCount("provider_budget_reservations"),before.budget);
+  assert.equal(await readCount("credit_reservations"),before.wallet);
+  // A denied Free request must not poison its idempotency key: after a
+  // fabricated, verified Basic purchase, the exact same request can be
+  // accepted once and charged only once.
+  const measuredBeforeUpgrade=await readCount("provider_usage_events","event_kind='usage_measured'");
+  await db.prepare("INSERT INTO verified_plan_payments "+
+    "(order_id,user_id,purchased_tier,verification_status,verified_at,updated_at) "+
+    "VALUES ('synthetic-plan-stage3-free','stage3-free','basic','verified_paid',?,?)")
+    .bind(now-120,now-60).run();
+  await db.prepare("INSERT INTO plan_entitlements "+
+    "(user_id,paid_tier,payment_order_id,status,starts_at,ends_at,updated_at) "+
+    "VALUES ('stage3-free','basic','synthetic-plan-stage3-free','active',?,?,?)")
+    .bind(now-60,now+3600,now).run();
+  const upgraded = await send("/api/chat",freeRequest,sessionHeaders["stage3-free"]);
+  assert.equal(upgraded.status,200,"Synthetic Basic subscription must unlock an unclaimed request");
+  const upgradedBody=await upgraded.json();
+  assert.notEqual(upgradedBody.replayed,true);
+  assert.equal(await readCount("provider_usage_events","event_kind='usage_measured'"),measuredBeforeUpgrade+1);
+  assert.equal((await db.prepare("SELECT balance_microcredits AS balance FROM credit_accounts WHERE user_id='stage3-free'").first()).balance,100000-519);
+  const upgradedReplay=await send("/api/chat",freeRequest,sessionHeaders["stage3-free"]);
+  assert.equal(upgradedReplay.status,200);
+  assert.equal((await upgradedReplay.json()).replayed,true);
+  assert.equal(await readCount("provider_usage_events","event_kind='usage_measured'"),measuredBeforeUpgrade+1);
+  // Cross-Worker D1 pause is authoritative for NEW requests even when the
+  // application still has a paid-plan flag set. Re-enable safely after OFF,
+  // proving the denied idempotency key was not consumed.
+  const pausedPaid={message:single.message,requestId:randomUUID()};
+  const snap={claims:await readCount("stage3_staging_requests"),
+    budget:await readCount("provider_budget_reservations"),
+    wallet:await readCount("credit_reservations"),
+    journal:await readCount("provider_usage_events")};
+  await db.prepare("UPDATE provider_runtime_controls SET enabled=0,updated_at=? "+
+    "WHERE control_name='paid_provider_dispatch'").bind(now+1).run();
+  const stopped=await send("/api/chat",pausedPaid,sessionHeaders["stage3-free"]);
+  assert.equal(stopped.status,503);
+  assert.equal(await readCount("stage3_staging_requests"),snap.claims);
+  assert.equal(await readCount("provider_budget_reservations"),snap.budget);
+  assert.equal(await readCount("credit_reservations"),snap.wallet);
+  assert.equal(await readCount("provider_usage_events"),snap.journal);
+  await db.prepare("UPDATE provider_runtime_controls SET enabled=1,updated_at=? "+
+    "WHERE control_name='paid_provider_dispatch'").bind(now+2).run();
+  const resumed=await send("/api/chat",pausedPaid,sessionHeaders["stage3-free"]);
+  assert.equal(resumed.status,200);
+  assert.equal(await readCount("stage3_staging_requests"),snap.claims+1);
+  assert.equal(await readCount("provider_budget_reservations"),snap.budget+1);
+  assert.equal(await readCount("credit_reservations"),snap.wallet+1);
+  const resumeReplay=await send("/api/chat",pausedPaid,sessionHeaders["stage3-free"]);
+  assert.equal(resumeReplay.status,200);
+  assert.equal((await resumeReplay.json()).replayed,true);
+  assert.equal(await readCount("provider_budget_reservations"),snap.budget+1);
+  console.log("PASS: D1 global emergency OFF->ON, authenticated synthetic plans, provider timeout/unknown holds, refunds, credit idempotency and Free-to-Basic upgrade");
 } finally {
   await miniflare.dispose();
 }

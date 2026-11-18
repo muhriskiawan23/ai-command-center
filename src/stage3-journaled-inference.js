@@ -4,6 +4,7 @@
 // This module alone does not authorize paid inference, pricing or deployment.
 import { calculateProviderCostMicroUsd } from "./credit-metering.js";
 import { appendProviderUsageEvent, strictProviderTokenUsage } from "./provider-usage-journal.js";
+import { authorizePlanFeature } from "./plan-entitlements.js";
 
 const MAX=BigInt(Number.MAX_SAFE_INTEGER);
 const OPAQUE=/^[A-Za-z0-9][A-Za-z0-9:_-]{0,119}$/;
@@ -32,8 +33,12 @@ function checkedTariff(tariff){
   if(!tariff || tariff.approved!==true || !valid(tariff.version,VERSION) ||
     !valid(tariff.provider,PROVIDER) || !valid(tariff.model,MODEL))
     throw new TypeError("Server-approved, bounded tariff required");
+  if(tariff.requiredPlan!==undefined &&
+     !["basic","pro"].includes(tariff.requiredPlan))
+    throw new TypeError("Server-approved minimum plan tier required");
   return {
     ...tariff,
+    requiredPlan:tariff.requiredPlan??"basic",
     inputRateMicroUsdPerMillion:positive(tariff.inputRateMicroUsdPerMillion,"inputRate"),
     outputRateMicroUsdPerMillion:positive(tariff.outputRateMicroUsdPerMillion,"outputRate"),
     creditNumerator:positive(tariff.creditNumerator,"creditNumerator"),
@@ -61,13 +66,37 @@ export function quoteJournaledInference({tariff,maxInputTokens,maxOutputTokens})
 }
 const declined=(reason,modelInvoked=false)=>({ok:false,reason,modelInvoked});
 const callSafe=async(fn)=>{try{return await fn();}catch{return null;}};
+const MAX_MODEL_TIMEOUT_MS=60000;
+// Bound each already-journaled provider attempt independently. The upstream
+// callback may ignore AbortSignal, so abort alone is not a sufficient deadline.
+// Promise.race keeps a rejection handler attached to a late failed callback;
+// its late success cannot publish output or settle a reserved credit.
+async function invokeBoundedModel(invokeModel,args,timeoutMs){
+  const controller=new AbortController();
+  let timer;
+  try{
+    const deadline=new Promise((_,reject)=>{
+      timer=setTimeout(()=>{
+        controller.abort();
+        reject(new Error("provider_attempt_timeout"));
+      },timeoutMs);
+    });
+    return await Promise.race([
+      Promise.resolve().then(()=>invokeModel({...args,signal:controller.signal})),
+      deadline
+    ]);
+  }finally{
+    clearTimeout(timer);
+  }
+}
 // In production the request/attempt IDs must be generated and authenticated
 // server-side. A new attempt MUST be created for every provider retry.
 // DO NOT expose provider output unless both independent financial settlements
 // succeed and the usage journal has acknowledged its durable measured event.
 export async function runJournaledInferencePrototype({
   env,userId,requestId,attemptId,tariff,maxInputTokens,maxOutputTokens,
-  providerBudget,ledger,invokeModel,journal=appendProviderUsageEvent
+  providerBudget,ledger,invokeModel,journal=appendProviderUsageEvent,
+  modelTimeoutMs=30000
 }){
   if(!env?.DB?.prepare || !valid(userId,OPAQUE) ||
     !valid(requestId,OPAQUE) || !valid(attemptId,OPAQUE) ||
@@ -76,9 +105,44 @@ export async function runJournaledInferencePrototype({
     typeof providerBudget?.settle!=="function" ||
     typeof ledger?.reserve!=="function" || typeof ledger?.finalize!=="function")
     throw new TypeError("Server-authenticated IDs, D1, journal and two financial adapters required");
+  if(!Number.isSafeInteger(modelTimeoutMs)||modelTimeoutMs<1||modelTimeoutMs>MAX_MODEL_TIMEOUT_MS)
+    throw new TypeError("Bounded Stage 3 model timeout required");
   const policy=checkedTariff(tariff);
   const quote=quoteJournaledInference({tariff:policy,maxInputTokens,maxOutputTokens});
   if(!quote.allowed) return declined(quote.reason);
+  // In a future authorized Stage 3 environment, the account's actual paid
+  // subscription tier must be verified BEFORE reserving provider spend or
+  // dispatching inference. There is no client-selectable downgrade/upgrade.
+  // The server-approved tariff determines the required Basic/Pro capability.
+  // The prototype is inactive and never a production billing authorization.
+  // Capture whether a verified plan was required at dispatch. A later
+  // configuration change must NOT silently skip revocation checks.
+  const paidPlanGate=env.PLAN_ENTITLEMENTS_ENABLED==="true";
+  // Ordinary paid inference must refuse to reserve spend unless server-side
+  // subscription verification is enabled. Only the isolated synthetic proof
+  // runner may opt into a DB-only test path; production must never set this.
+  const syntheticProof=env.STAGE3_SYNTHETIC_ONLY==="true" && !env.AI;
+  if(!paidPlanGate && !syntheticProof)
+    return declined("paid_plan_entitlement_disabled");
+  // Independent emergency stop: a valid subscription is insufficient to
+  // authorize billable AI if the operator has disabled new paid inference.
+  if(paidPlanGate && env.PAID_INFERENCE_ENABLED!=="true")
+    return declined("paid_inference_disabled");
+  const feature=policy.requiredPlan==="pro"?"pro_credit_capacity":"basic_paid_credits";
+  const hasPaidAccess=async()=>{
+    if(env.PLAN_ENTITLEMENTS_ENABLED!=="true" || env.PAID_INFERENCE_ENABLED!=="true")
+      return false;
+    const permission=await callSafe(()=>authorizePlanFeature(env,userId,feature));
+    if(permission?.allowed!==true)return false;
+    // D1 is the shared authority for all Workers/instances, not a cached
+    // per-isolate flag. A missing table, missing row or failed read is OFF.
+    const shared=await callSafe(()=>env.DB.prepare(
+      "SELECT enabled FROM provider_runtime_controls WHERE control_name='paid_provider_dispatch'"
+    ).first());
+    return shared?.enabled===1;
+  };
+  if(paidPlanGate && !await hasPaidAccess())
+    return declined("paid_plan_entitlement_rejected");
   const budgetId="ai:"+requestId;
   const budget=await callSafe(()=>providerBudget.reserve({
     id:budgetId,provider:policy.provider,model:policy.model,
@@ -97,6 +161,11 @@ export async function runJournaledInferencePrototype({
     return declined(release?.ok===true?
       "credit_reservation_rejected":"credit_rejected_budget_hold_for_review");
   }
+  // An operator kill switch, refund or revocation can happen while the
+  // two independent DB reservations are in flight. Stop before recording
+  // dispatch; any existing hold needs explicit reconciliation.
+  if(paidPlanGate && !await hasPaidAccess())
+    return declined("paid_plan_revoked_before_dispatch_reservations_held");
   const entry={attemptId,requestId,provider:policy.provider,
     model:policy.model,rateVersion:policy.version};
   // A failed/ambiguous dispatch journal acknowledgment may still mean a
@@ -105,16 +174,34 @@ export async function runJournaledInferencePrototype({
   const dispatch=await callSafe(()=>journal(env,{...entry,kind:"dispatched"}));
   if(dispatch?.ok!==true)
     return declined("journal_dispatch_unconfirmed_reservations_held");
+  // Journaling can itself be delayed by D1. Never call the provider after a
+  // mid-journal revocation or kill switch disable, even if the marker exists.
+  if(paidPlanGate && !await hasPaidAccess())
+    return declined("paid_plan_revoked_after_dispatch_marker_reservations_held");
   let response;
   try {
-    response=await invokeModel({
+    response=await invokeBoundedModel(invokeModel,{
       model:policy.model,maxOutputTokens,maxInputTokens
-    });
+    },modelTimeoutMs);
   } catch {
     await callSafe(()=>journal(env,{...entry,kind:"outcome_unknown"}));
     return declined("provider_outcome_unknown_reservations_held",true);
   }
-  const usage=strictProviderTokenUsage(response?.usage);
+  // Copy the provider envelope and counters BEFORE the next await. An injected
+  // invoker must not replace a validated answer/usage while D1 is journaling.
+  const envelope=response&&typeof response==="object"&&!Array.isArray(response)
+    ? response:null;
+  const usageSnapshot=envelope?.usage&&typeof envelope.usage==="object"
+    &&!Array.isArray(envelope.usage)?Object.freeze({...envelope.usage}):null;
+  const answer=envelope?.response??envelope?.output;
+  const completionValid=!!envelope&&
+    (envelope.error===undefined||envelope.error===null)&&
+    (envelope.finish_reason===undefined||envelope.finish_reason==="stop")&&
+    typeof answer==="string"&&answer.trim().length>0&&answer.length<=64000&&
+    !/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(answer)&&
+    (envelope.response===undefined||envelope.output===undefined||envelope.response===envelope.output);
+  response=Object.freeze({response:answer,usage:usageSnapshot});
+  const usage=strictProviderTokenUsage(usageSnapshot);
   if(!usage){
     await callSafe(()=>journal(env,{...entry,kind:"usage_unverified"}));
     return declined("metering_unverified_reservations_held",true);
@@ -136,6 +223,15 @@ export async function runJournaledInferencePrototype({
       cost>quote.maximumMicroUsd || debit>quote.reservedMicrocredits ||
       cost>policy.maxCallMicroUsd || debit>policy.maxCallMicrocredits)
     return declined("inference_cost_over_ceiling_reservations_held",true);
+  // Measured tokens establish exposure, not a successful deliverable. Keep
+  // the measured immutable evidence and both holds for a separate review.
+  if(!completionValid)
+    return declined("provider_completion_invalid_reservations_held",true);
+  // A refund/revocation after provider dispatch must never deliver an
+  // answer. Upstream cost may already exist: hold both reservations for
+  // operator reconciliation instead of releasing them as a free call.
+  if(paidPlanGate && !await hasPaidAccess())
+    return declined("paid_plan_revoked_reservations_held",true);
   const budgetSettled=await callSafe(()=>providerBudget.settle({
     id:budgetId,actualMicroUsd:cost
   }));
@@ -146,6 +242,10 @@ export async function runJournaledInferencePrototype({
   }));
   if(walletSettled?.ok!==true)
     return declined("credit_settlement_failed_reservation_held",true);
+  // The plan may be revoked while either settlement is in flight. Financial
+  // writes already committed; never claim rollback, but withhold paid output.
+  if(paidPlanGate && !await hasPaidAccess())
+    return declined("paid_plan_revoked_after_settlement",true);
   return {
     ok:true,modelInvoked:true,response,
     inputTokens:usage.inputTokens,outputTokens:usage.outputTokens,

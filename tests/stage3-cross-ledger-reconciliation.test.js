@@ -19,12 +19,14 @@ function setup(t){
   const db=new DatabaseSync(":memory:");
   t.after(()=>db.close());
   for(const file of ["0012_credit_ledger.sql","0013_provider_spend_budget.sql",
-    "0014_provider_usage_journal.sql"])
+    "0014_provider_usage_journal.sql","0018_provider_emergency_stop_draft.sql"])
     db.exec(readFileSync(new URL("../migrations/"+file,import.meta.url),"utf8"));
   db.exec("INSERT INTO credit_accounts VALUES ('test-user',50000,1)");
   db.exec("INSERT INTO provider_budget_limits VALUES ('cloudflare-workers-ai',50000,1)");
   db.exec("INSERT INTO provider_budget_limits VALUES ('__global__',50000,1)");
-  const env={DB:{prepare(sql){
+  // Only the ephemeral local financial test opts in: default production is OFF.
+  db.exec("UPDATE provider_runtime_controls SET enabled=1,updated_at=1 WHERE control_name='paid_provider_dispatch'");
+  const env={STAGE3_SYNTHETIC_ONLY:"true",DB:{prepare(sql){
     return {
       bind(...params){return{first:async()=>db.prepare(sql).get(...params)};},
       first:async()=>db.prepare(sql).get()
@@ -64,7 +66,7 @@ function setup(t){
       providerBudget:providerSpendBudget(env),
       ledger:{reserve:reserveCredits,finalize:finalizeCredits},
       invokeModel:async()=>({
-        result:"synthetic-only",usage:{prompt_tokens:1000,completion_tokens:100}
+        response:"synthetic-only",usage:{prompt_tokens:1000,completion_tokens:100}
       })
     });
   const sum=(sql)=>db.prepare(sql).get();

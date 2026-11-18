@@ -2,6 +2,7 @@ import worker from "../src/index.js";
 import { finalizeCredits, reserveCredits } from "../src/credit-ledger.js";
 import { providerSpendBudget } from "../src/provider-spend-budget.js";
 import { runJournaledInferencePrototype } from "../src/stage3-journaled-inference.js";
+import { authorizePlanFeature } from "../src/plan-entitlements.js";
 import { sha256Hex } from "../src/http.js";
 
 const allowedPaths = new Set(["/api/chat", "/api/public/chat", "/api/integrations/telegram/webhook"]);
@@ -47,7 +48,7 @@ export default {
       return result("Stage 3 authentication required", 401);
     }
     const usageMode = request.headers.get("X-BOR-Stage3-Usage") || "measured";
-    if (!["measured", "unverified", "wallet-finalization-failure"].includes(usageMode)) return result("Invalid synthetic usage mode", 400);
+    if (!["measured", "unverified", "wallet-finalization-failure", "provider-timeout"].includes(usageMode)) return result("Invalid synthetic usage mode", 400);
 
     const DB = env.STAGE3_DB;
     const providerBudget = providerSpendBudget({ DB });
@@ -55,6 +56,10 @@ export default {
     let modelCalls = 0;
     return worker.fetch(request, {
       DB,
+      // This standalone synthetic Worker must verify the *same* signed-off
+      // payment-backed D1 entitlement tables as the production plan gate.
+      // All provider responses remain fake; nothing turns on production AI.
+      PLAN_ENTITLEMENTS_ENABLED: "true",
       URL_READER_ENABLED: "false",
       TELEGRAM_BOT_TOKEN: "stage3-synthetic",
       TELEGRAM_WEBHOOK_SECRET: env.STAGE3_TELEGRAM_WEBHOOK_SECRET,
@@ -70,6 +75,18 @@ export default {
           if (!userId) return result("Stage 3 account required", 401);
           if (channel === "public") logicalId = request.headers.get("X-BOR-Stage3-Request");
           if (!logicalId || (channel === "public" && !requestKey.test(logicalId))) return result("Invalid Stage 3 request ID", 400);
+          // Validate verified D1 payment proof BEFORE claiming the request ID.
+          // Free/refunded accounts cannot burn staging idempotency keys.
+          const access = await authorizePlanFeature(
+            { DB, PLAN_ENTITLEMENTS_ENABLED: "true" },userId,"basic_paid_credits"
+          );
+          if (access.allowed !== true) return result("Stage 3 paid plan required", 403);
+          // The shared D1 emergency control must be ON before claiming a
+          // request. This preserves the idempotency key during an outage.
+          const shared = await DB.prepare(
+            "SELECT enabled FROM provider_runtime_controls WHERE control_name='paid_provider_dispatch'"
+          ).first();
+          if (shared?.enabled !== 1) return result("Stage 3 paid provider spending paused", 503);
           const id = await sha256Hex(JSON.stringify([channel, userId, String(logicalId).toLowerCase()]));
           // Each route supplies identity only after its normal authentication.
           const claim = await DB.prepare(
@@ -88,16 +105,21 @@ export default {
           const call = ++modelCalls;
           if (call > 12) throw new Error("Stage 3 synthetic call limit exceeded");
           const billing = await runJournaledInferencePrototype({
-            env: { DB },
+            // Stage 3 proof now exercises authentic D1 plan checks with
+            // disposable, fabricated payment rows. No synthetic bypass.
+            env: { DB, PLAN_ENTITLEMENTS_ENABLED: "true", PAID_INFERENCE_ENABLED: "true" },
             userId: scope.userId,
             requestId: `staging:${scope.id}:${call}`,
             attemptId: `staging:${scope.id}:${call}`,
             tariff: { ...syntheticTariff, model },
             maxInputTokens: 12000,
             maxOutputTokens: payload.max_tokens,
+            modelTimeoutMs: usageMode === "provider-timeout" ? 25 : 30000,
             providerBudget,
             ledger: usageMode === "wallet-finalization-failure" ? failingWalletLedger : ledger,
-            invokeModel: async () => usageMode === "unverified"
+            invokeModel: async () => usageMode === "provider-timeout"
+              ? new Promise(() => {})
+              : usageMode === "unverified"
               ? { response: answer }
               : { response: answer, usage: { prompt_tokens: 1000, completion_tokens: 100 } }
           });

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createVerifiedLinkFetcher } from "../src/verified-egress.js";
+import { createVerifiedLinkFetcher,MAX_PROXY_RESPONSE_BYTES } from "../src/verified-egress.js";
 
 const token = "a".repeat(48);
 function fakeEnv(handler) {
@@ -58,5 +58,43 @@ test("configured credentials do not activate reader without explicit opt-in", ()
     const env = fakeEnv(() => { throw Error("must not contact proxy"); });
     env.URL_READER_ENABLED = value;
     assert.equal(createVerifiedLinkFetcher(env), null);
+  }
+});
+
+test("private-hop envelope rejects an oversized declared body before consuming it",async()=>{
+  let pulled=0,cancelled=false;
+  const body=new ReadableStream({pull(){pulled++;},cancel(){cancelled=true;}},{highWaterMark:0});
+  const fetcher=createVerifiedLinkFetcher(fakeEnv(async()=>new Response(body,{
+    headers:{"Content-Length":String(MAX_PROXY_RESPONSE_BYTES+1)}
+  })));
+  await assert.rejects(fetcher("https://example.com/"),/proxy_envelope_too_large/);
+  assert.equal(pulled,0);assert.equal(cancelled,true);
+});
+test("private-hop streaming cap cannot be bypassed with a false small Content-Length",async()=>{
+  let cancelled=false;
+  const bytes=new TextEncoder().encode(" ".repeat(500001));
+  const body=new ReadableStream({pull(c){c.enqueue(bytes);},cancel(){cancelled=true;}});
+  const fetcher=createVerifiedLinkFetcher(fakeEnv(async()=>new Response(body,{
+    headers:{"Content-Length":"1"}
+  })));
+  await assert.rejects(fetcher("https://example.com/"),/proxy_envelope_too_large/);
+  assert.equal(cancelled,true);
+});
+test("caller abort bounds an uncooperative stalled envelope and cancellation",async()=>{
+  let started,cancelled=false;
+  const reading=new Promise(resolve=>{started=resolve;});
+  const body=new ReadableStream({pull(){started();return new Promise(()=>{});},
+    cancel(){cancelled=true;return new Promise(()=>{});}});
+  const fetcher=createVerifiedLinkFetcher(fakeEnv(async()=>new Response(body)));
+  const controller=new AbortController();
+  const result=fetcher("https://example.com/",{signal:controller.signal});
+  await reading;controller.abort();
+  await assert.rejects(result,/proxy_request_aborted/);
+  assert.equal(cancelled,true);
+});
+test("private-hop malformed JSON or UTF-8 never delivers content",async()=>{
+  for(const body of ["{",new Uint8Array([0xc3,0x28])]){
+    const fetcher=createVerifiedLinkFetcher(fakeEnv(async()=>new Response(body)));
+    await assert.rejects(fetcher("https://example.com/"));
   }
 });
