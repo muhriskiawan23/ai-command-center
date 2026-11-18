@@ -67,6 +67,6 @@ test("Google token is requested only via explicit user call and least-privilege 
  assert.equal(requested,1);
  assert.equal(clientId,"123.apps.googleusercontent.com");
  assert.equal(scope,"https://www.googleapis.com/auth/forms.body");
- await assert.rejects(forms.requestFormsAccess("bad-client-id",oauth),/google_forms_oauth_unavailable/);
+ assert.throws(()=>forms.requestFormsAccess("bad-client-id",oauth),/google_forms_oauth_unavailable/);
  assert.equal(requested,1);
 });
