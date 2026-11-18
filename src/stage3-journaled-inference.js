@@ -98,9 +98,14 @@ export async function runJournaledInferencePrototype({
   const syntheticProof=env.STAGE3_SYNTHETIC_ONLY==="true" && !env.AI;
   if(!paidPlanGate && !syntheticProof)
     return declined("paid_plan_entitlement_disabled");
+  // Independent emergency stop: a valid subscription is insufficient to
+  // authorize billable AI if the operator has disabled new paid inference.
+  if(paidPlanGate && env.PAID_INFERENCE_ENABLED!=="true")
+    return declined("paid_inference_disabled");
   const feature=policy.requiredPlan==="pro"?"pro_credit_capacity":"basic_paid_credits";
   const hasPaidAccess=async()=>{
-    if(env.PLAN_ENTITLEMENTS_ENABLED!=="true")return false;
+    if(env.PLAN_ENTITLEMENTS_ENABLED!=="true" || env.PAID_INFERENCE_ENABLED!=="true")
+      return false;
     const permission=await callSafe(()=>authorizePlanFeature(env,userId,feature));
     return permission?.allowed===true;
   };
