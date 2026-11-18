@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { checkMidtransSandboxOrder } from "../src/midtrans-status-api.js";
+import { checkMidtransSandboxOrder,readVerifiedSandboxStatus } from "../src/midtrans-status-api.js";
 const order={orderId:"bor-123",amountIdr:36254,currency:"IDR",environment:"sandbox"};
 const key="SB-Mid-server-FAKE-TEST-KEY";
 const status={status_code:"200",order_id:"bor-123",gross_amount:"36254.00",currency:"IDR",transaction_status:"settlement",transaction_id:"tx-123",merchant_id:"M123"};
@@ -64,4 +64,49 @@ test("reject malformed streamed UTF-8 instead of silently replacing bytes", asyn
    checkMidtransSandboxOrder(order, {serverKey:key,expectedMerchantId:"M123",fetchImpl}),
    /encoded|UTF-8|valid/i
  );
+});
+
+test("stalled Midtrans status response body fails within the trusted deadline",async()=>{
+ let observedSignal;
+ const stream=new ReadableStream({start(controller){
+   controller.enqueue(new TextEncoder().encode('{"status_code":"200",'));
+ }});
+ await assert.rejects(readVerifiedSandboxStatus(order,{
+   serverKey:key,expectedMerchantId:"M123",timeoutMs:25,
+   fetchImpl:async(_,options)=>{
+     observedSignal=options.signal;
+     return new Response(stream,{status:200});
+   }
+ }),/deadline exceeded/);
+ assert.equal(observedSignal?.aborted,true);
+});
+test("stalled status request before HTTP headers fails without granting a payment",async()=>{
+ let observedSignal;
+ await assert.rejects(checkMidtransSandboxOrder(order,{
+   serverKey:key,expectedMerchantId:"M123",timeoutMs:25,
+   fetchImpl:async(_,options)=>{
+     observedSignal=options.signal;
+     return new Promise(()=>{});
+   }
+ }),/deadline exceeded/);
+ assert.equal(observedSignal?.aborted,true);
+});
+test("pre-aborted status lookup fails before an upstream request is made",async()=>{
+ const controller=new AbortController();controller.abort();
+ let calls=0;
+ await assert.rejects(readVerifiedSandboxStatus(order,{
+   serverKey:key,expectedMerchantId:"M123",signal:controller.signal,
+   fetchImpl:async()=>{calls++;return Response.json(status);}
+ }),/cancelled/);
+ assert.equal(calls,0);
+});
+test("invalid or unbounded status timeout is rejected before upstream requests",async()=>{
+ let calls=0;
+ for(const timeoutMs of [0,-1,8001,Infinity,1.5,"10"]){
+   await assert.rejects(readVerifiedSandboxStatus(order,{
+     serverKey:key,expectedMerchantId:"M123",timeoutMs,
+     fetchImpl:async()=>{calls++;return Response.json(status);}
+   }),/Bounded Midtrans status timeout/);
+ }
+ assert.equal(calls,0);
 });
