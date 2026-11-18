@@ -263,6 +263,11 @@ export async function inspectMediaBilling(env){
       (SELECT COUNT(*) FROM media_usage_events d WHERE d.event_kind='dispatched' AND
         NOT EXISTS (SELECT 1 FROM media_usage_events m
           WHERE m.attempt_id=d.attempt_id AND m.event_kind='usage_measured')) AS unresolved_attempts,
+      (SELECT COUNT(*) FROM (
+        SELECT attempt_id FROM media_usage_events
+        WHERE event_kind IN ('usage_measured','outcome_unknown','usage_unverified')
+        GROUP BY attempt_id HAVING COUNT(*)>1
+      )) AS terminal_conflicts,
       (SELECT COUNT(*) FROM media_usage_events d WHERE d.event_kind='dispatched' AND
         NOT EXISTS (SELECT 1 FROM jobs j WHERE j.id=d.request_id
           AND j.provider=d.provider AND j.model=d.model)) AS orphan_or_mismatched_dispatches,
@@ -272,7 +277,7 @@ export async function inspectMediaBilling(env){
         ((dispatched=0 AND wallet_status='settled' AND settled_microcredits>0)
           OR (dispatched>0 AND wallet_status='released'))) AS invalid_wallet_settlements
   `).first();
-  const names=["jobs","held_jobs","cost_mismatches","incomplete_dispatched_jobs","unresolved_attempts",
+  const names=["jobs","held_jobs","cost_mismatches","incomplete_dispatched_jobs","unresolved_attempts","terminal_conflicts",
     "orphan_or_mismatched_dispatches","orphan_wallets","invalid_wallet_settlements"];
   if(!row||names.some(name=>!Number.isSafeInteger(row[name])||row[name]<0))
     throw new Error("Media billing audit unavailable");
