@@ -238,9 +238,63 @@ function renderAuth(){
     const email=document.createElement("small");email.textContent=currentUser.email||"";
     info.append(name,email);wrap.append(info);$("userProfile").append(wrap);
   }
+  $("accountName").textContent=logged?(currentUser.name||"Akun Google"):"Akun Google";
+  $("accountEmail").textContent=logged?(currentUser.email||"Email tidak tersedia"):"—";
   renderHistory();
   if(logged) refreshGitHubConnection(); else resetGitHubConnection();
 }
+
+/* Account panel: a dedicated accessible page-like dialog, not extra sidebar settings. */
+const accountDialog=$("accountDialog");
+function customizationKey(){return "borai-customization:v1:" + String(currentUser?.id||currentUser?.email||"guest");}
+function readCustomization(){
+  if(state!==AppState.AUTH||!currentUser)return null;
+  try{
+    const data=JSON.parse(localStorage.getItem(customizationKey())||"null");
+    if(!data||typeof data!=="object")return null;
+    return {
+      nickname:typeof data.nickname==="string"?data.nickname.slice(0,60):"",
+      tone:["natural","professional","direct"].includes(data.tone)?data.tone:"natural",
+      length:["short","balanced","detailed"].includes(data.length)?data.length:"balanced"
+    };
+  }catch{return null;}
+}
+function accountView(page="home"){
+  for(const [name,id] of [["home","accountHome"],["customize","accountCustomization"],["privacy","accountPrivacy"]])$(id).hidden=name!==page;
+  $("accountBack").dataset.page=page;
+  $("accountBack").setAttribute("aria-label",page==="home"?"Kembali ke chat":"Kembali ke profil");
+  $("accountBack").focus();
+}
+function closeAccount(){if(accountDialog.open)accountDialog.close();}
+$("userProfile").addEventListener("click",()=>{
+  if(state!==AppState.AUTH||!currentUser)return;
+  if(drawerOpen)closeDrawer();
+  if(!accountDialog.open)accountDialog.showModal();
+  accountView("home");
+});
+$("accountClose").addEventListener("click",closeAccount);
+$("accountBack").addEventListener("click",()=>{
+  if($("accountBack").dataset.page==="home")closeAccount();else accountView("home");
+});
+accountDialog.addEventListener("click",event=>{
+  if(event.target.closest("#openMemory,#openIntegrations,#about"))closeAccount();
+},true);
+accountDialog.addEventListener("close",()=>{
+  if($("userProfile").isConnected&&!$("userProfile").hidden)$("userProfile").focus();
+});
+$("openCustomization").addEventListener("click",()=>{
+  const prefs=readCustomization()||{nickname:"",tone:"natural",length:"balanced"};
+  $("customNickname").value=prefs.nickname;$("customTone").value=prefs.tone;$("customLength").value=prefs.length;
+  $("customizeStatus").textContent="";accountView("customize");$("customNickname").focus();
+});
+$("customizeForm").addEventListener("submit",event=>{
+  event.preventDefault();if(state!==AppState.AUTH||!currentUser)return;
+  const value={nickname:$("customNickname").value.trim().slice(0,60),tone:$("customTone").value,length:$("customLength").value};
+  if(!["natural","professional","direct"].includes(value.tone)||!["short","balanced","detailed"].includes(value.length))return;
+  try{localStorage.setItem(customizationKey(),JSON.stringify(value));$("customizeStatus").textContent="Tersimpan di perangkat ini. Akan diterapkan pada jawaban berikutnya.";}
+  catch{$("customizeStatus").textContent="Browser tidak mengizinkan penyimpanan preferensi.";}
+});
+$("openPrivacy").addEventListener("click",()=>accountView("privacy"));
 
 let githubConnection=null;
 let githubConnectionLoading=false;
@@ -884,7 +938,7 @@ async function submit(options={}){
   if(createdNew)replaceRoute({name:"chat",id:chat.id});
   const stillActive=()=>activeId===startId;const start=Date.now();
   try{
-    const payload={message:text,agent,requestId,language:window.BORLocale?.current||"en"};if(activePdf)payload.document={name:activePdf.name,content:activePdf.content,truncated:activePdf.truncated};if(activeCsv?.kind==="word-document")payload.wordDocument={name:activeCsv.name,content:activeCsv.content,paragraphCount:activeCsv.paragraphCount,truncated:activeCsv.truncated};else if(activeCsv?.kind==="presentation")payload.presentation={name:activeCsv.name,content:activeCsv.content,slideCount:activeCsv.slideCount,truncated:activeCsv.truncated};else if(activeCsv)payload.spreadsheet={name:activeCsv.name,content:activeCsv.content,rowCount:activeCsv.rowCount,columnCount:activeCsv.columnCount,truncated:activeCsv.truncated};if(history.length)payload.history=history;if(state===AppState.AUTH&&chat.serverId)payload.conversationId=chat.serverId;if(replacing&&state===AppState.AUTH&&chat.serverId)payload.replaceLastTurn=true;
+    const payload={message:text,agent,requestId,language:window.BORLocale?.current||"en"};const customization=readCustomization();if(customization)payload.customization=customization;if(activePdf)payload.document={name:activePdf.name,content:activePdf.content,truncated:activePdf.truncated};if(activeCsv?.kind==="word-document")payload.wordDocument={name:activeCsv.name,content:activeCsv.content,paragraphCount:activeCsv.paragraphCount,truncated:activeCsv.truncated};else if(activeCsv?.kind==="presentation")payload.presentation={name:activeCsv.name,content:activeCsv.content,slideCount:activeCsv.slideCount,truncated:activeCsv.truncated};else if(activeCsv)payload.spreadsheet={name:activeCsv.name,content:activeCsv.content,rowCount:activeCsv.rowCount,columnCount:activeCsv.columnCount,truncated:activeCsv.truncated};if(history.length)payload.history=history;if(state===AppState.AUTH&&chat.serverId)payload.conversationId=chat.serverId;if(replacing&&state===AppState.AUTH&&chat.serverId)payload.replaceLastTurn=true;
     const data=await postJson("/api/chat",payload,CHAT_TIMEOUT_MS,activeChatController.signal);
     if(typeof data.response!=="string"||!data.response.trim())throw new Error("AI tidak menghasilkan jawaban.");
     if(pendingRetryRequest?.requestId===requestId)pendingRetryRequest=null;
