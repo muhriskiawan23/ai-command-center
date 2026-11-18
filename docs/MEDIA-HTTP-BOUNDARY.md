@@ -96,3 +96,13 @@ and input-token-bound validation, measured cost and quality evidence, durable
 queue and combined token/media reconciliation, reviewed delivery/recovery and
 retention, merchant payment lifecycle, and production rollout/security/finance
 verification. Synthetic tests do not prove live AI quality or invoice accuracy.
+
+### Emergency status-only gate (18 November 2026)
+`MEDIA_API_ENABLED` remains OFF in checked-in deployments. Disabling it
+stops all quotes, uploads and provider calls. A **separate default-OFF**
+server flag `MEDIA_STATUS_ENABLED=true` allows only an existing,
+authenticated, same-origin, rate-limited `POST /api/media/status` to remain
+available in incident response. The account-scoped query is read-only;
+it cannot refund held credits, reconcile invoice data, invoke a model,
+or expose a stored output. Do not enable until the applicable D1 tables
+and rate-limit binding have been verified for the intended environment.
