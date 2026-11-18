@@ -15,7 +15,7 @@ provider billing audit. Do not cite it as a launch approval.
 | Stage 3 Workerd restart | Same local persistent D1 reused across two runtime recreations | Verified locally only |
 | Exact-head unit/browser CI | Check linked Actions for final SHA; cancelled intermediate runs are not passes | Verify latest run |
 | Hosted D1 cross-instance | No successful exact-head, newly approved remote run | **OPEN** |
-| Operator identity | Ed25519 offline signed review prototype with key allowlist, bounded timestamps, distinct finance/security roles | **PARTIAL**; no SSO/production key enrollment, revocation distribution, persistent nonce replay ledger |
+| Operator identity | Ed25519 offline signed review and unapplied draft D1 append-only nonce ledger, with transactional double-review admission | **PARTIAL**; no deployed SSO, key enrollment/revocation distribution, hosted nonce proof or operator service |
 | Provider cost reconciliation | Read-only provider-period comparison; injected source-verification callback; aggregate match never releases holds | **PARTIAL**; no real invoice source/authentication or per-attempt allocation |
 | Emergency OFF and idempotency | Local shared-D1 proofs; hosted cross-instance proof missing | **OPEN** |
 | Stale/unknown charge handling | Hold preservation; no automatic replay, debit or refund | Local validation; manual recovery service missing |
