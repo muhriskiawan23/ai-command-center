@@ -1,4 +1,4 @@
-import { test, expect, loginAs, drawerMode, openSettings } from "./fixtures.js";
+import { test, expect, loginAs, seedConversation, drawerMode, openSettings } from "./fixtures.js";
 const ALICE={id:"account-experience-alice",name:"Alice",email:"alice@example.test"};
 
 async function openSidebar(page) {
@@ -31,7 +31,7 @@ test("signed-in account opens accessible profile and privacy center on every vie
  await page.locator("#openPrivacy").click();
  await expect(page.locator("#privacyTitle")).toBeVisible();
  await expect(page.locator(".privacy-cards article")).toHaveCount(4);
- await expect(page.locator("#accountDialog")).toContainText("Layanan AI eksternal");
+ await expect(page.locator("#accountDialog")).toContainText(/External AI services|Layanan AI eksternal/);
  await page.locator("#accountBack").click();
  await expect(page.locator("#accountHome")).toBeVisible();
  await page.locator("#accountClose").click();
@@ -49,7 +49,7 @@ test("personalization is saved for the account and reaches AI only as lower-prio
  await page.locator("#customTone").selectOption("professional");
  await page.locator("#customLength").selectOption("short");
  await page.locator("#customizeForm button[type=submit]").click();
- await expect(page.locator("#customizeStatus")).toContainText("Tersimpan");
+ await expect(page.locator("#customizeStatus")).toContainText(/Tersimpan|Saved on this device/);
  await page.locator("#accountClose").click();
  await page.locator("#prompt").fill("Halo");
  await page.locator("#send").click();
@@ -76,4 +76,48 @@ test("flat list Markdown and headings render safely without staircase indentatio
  await expect(content.locator("strong")).toContainText("Pendidikan");
  const widths=await page.evaluate(()=>({doc:document.documentElement.scrollWidth,viewport:innerWidth}));
  expect(widths.doc).toBeLessThanOrEqual(widths.viewport);
+});
+
+test("Integrations and About return to Profile on X without null-control errors",async({page,context,app})=>{
+ await loginAs(context,app,ALICE);
+ const exceptions=[];page.on("pageerror",e=>exceptions.push(e.message));
+ await page.goto(app.url);await expect(page.locator("#prompt")).toBeVisible();
+ await openSidebar(page);await page.locator("#userProfile").click();
+ await page.locator("#openIntegrations").click();
+ await expect(page.locator("#integrationsDialog")).toBeVisible();
+ await expect(page.locator("#githubConnectionMessage")).not.toContainText("Cannot set properties of null");
+ await page.locator("#integrationsClose").click();
+ await expect(page.locator("#accountDialog")).toBeVisible();
+ await page.locator("#about").click();
+ await expect(page.locator("#aboutDialog")).toBeVisible();
+ await page.locator("#aboutClose").click();
+ await expect(page.locator("#accountDialog")).toBeVisible();
+ await expect(page.locator("#accountHome")).toBeVisible();
+ expect(exceptions).toEqual([]);
+});
+async function selectLanguageAndAwaitReload(page,language) {
+ const load=page.waitForEvent("load",{timeout:20000});
+ await page.locator("#languagePreference").selectOption(language);
+ await load;
+ // A transient synthetic backend 503 shows the retry gate instead of authenticated chat.
+ if (await page.locator("#gateRetry").isVisible()) await page.locator("#gateRetry").click();
+ await expect(page.locator("#prompt")).toBeVisible({timeout:20000});
+}
+test("English and Indonesian account labels plus known generic history titles follow language preference",async({page,context,app})=>{
+ await loginAs(context,app,ALICE);
+ seedConversation(app.db,{id:"conv-title-rinkas-1",userId:ALICE.id,title:"ringkas",updatedAt:100,messages:[{role:"user",content:"ringkas"},{role:"assistant",content:"halo"}]});
+ await page.goto(app.url);await expect(page.locator("#prompt")).toBeVisible();
+ await openSidebar(page);await openSettings(page);
+ await selectLanguageAndAwaitReload(page,"en");
+ await openSidebar(page);await openSettings(page);
+ await expect(page.locator("#toggleArchived")).toContainText("View archive");
+ await expect(page.locator(".history-item")).toContainText("summarize");
+ await page.locator("#userProfile").click();
+ await expect(page.locator("#accountTitle")).toHaveText("User profile");
+ await page.locator("#openPrivacy").click();await expect(page.locator("#privacyTitle")).toHaveText("Privacy center");
+ await page.locator("#accountClose").click();
+ await openSidebar(page);await openSettings(page);
+ await selectLanguageAndAwaitReload(page,"id");await openSidebar(page);await openSettings(page);
+ await expect(page.locator("#toggleArchived")).toContainText("Lihat arsip");
+ await expect(page.locator(".history-item")).toContainText("ringkas");
 });

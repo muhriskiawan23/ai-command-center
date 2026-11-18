@@ -66,7 +66,9 @@ test("Tavily adapter is feature-flagged in both chat URL and research paths", as
   const occurrences = source.match(/env\.URL_READER_ENABLED === "true" && env\.URL_READER_PROVIDER === "tavily"/g) || [];
   assert.equal(occurrences.length, 2);
   const config = readFileSync(new URL("../wrangler.jsonc", import.meta.url), "utf8");
-  assert.match(config, /"URL_READER_ENABLED": "false"/);
+  assert.match(config, /"URL_READER_ENABLED": "true"/);
+  assert.match(config, /"URL_READER_PROVIDER": "tavily"/);
+  assert.match(config, /"TAVILY_EXTRACT_DAILY_URL_LIMIT": "8"/);
 });
 
 test("Tavily Extract deduplicates repeated URLs before charging provider", async () => {
@@ -186,10 +188,12 @@ test("Tavily blocks camelCase and signed URL credential query keys", async () =>
   }
 });
 
-test("production config omits retired VPC egress and keeps URL reader disabled", async () => {
+test("production config uses bounded managed Tavily extraction instead of retired VPC egress", async () => {
   const { readFileSync } = await import("node:fs");
   const config = JSON.parse(readFileSync(new URL("../wrangler.jsonc", import.meta.url), "utf8"));
-  assert.equal(config.vars.URL_READER_ENABLED, "false");
+  assert.equal(config.vars.URL_READER_ENABLED, "true");
+  assert.equal(config.vars.URL_READER_PROVIDER, "tavily");
+  assert.ok(Number(config.vars.TAVILY_EXTRACT_DAILY_URL_LIMIT)>0 && Number(config.vars.TAVILY_EXTRACT_DAILY_URL_LIMIT)<=8);
   assert.ok(!config.vpc_services?.some(binding => binding.binding === "EGRESS_PROXY"));
 });
 

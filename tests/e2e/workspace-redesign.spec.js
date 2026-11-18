@@ -13,7 +13,7 @@ test('workspace uses the original logo, readable light surfaces and a bounded vi
 });
 test('attachment and tools disclosures support Escape without dispatching AI',async({page,app})=>{
  await enter(page,app);
- await page.locator('#attachmentMenu > summary').click();await expect(page.locator('#attachPdf')).toBeVisible();await expect(page.locator('#attachCsv')).toBeVisible();
+ await page.locator('#attachmentMenu > summary').click();await expect(page.locator('#attachPdf')).toBeVisible();await expect(page.locator('#attachCsv')).toBeHidden();
  await page.locator('#attachmentMenu > summary').press('Escape');await expect(page.locator('#attachPdf')).toBeHidden();await expect(page.locator('#attachmentMenu > summary')).toBeFocused();
  await page.locator('#toolsMenu > summary').click();await expect(page.locator('#agent')).toBeVisible();await expect(page.locator('#openEmailDraft')).toBeVisible();
  await page.locator('#toolsMenu > summary').press('Escape');await expect(page.locator('#agent')).toBeHidden();
@@ -31,7 +31,7 @@ test('appearance preference survives reload without persisting guest messages',a
 });
 test('attachment chooser remains reachable through the compact plus menu',async({page,app})=>{
  await enter(page,app);await page.locator('#attachmentMenu > summary').click();
- const pending=page.waitForEvent('filechooser');await page.locator('#attachCsv').click();
+ const pending=page.waitForEvent('filechooser');await page.locator('#attachPdf').click();
  const chooser=await pending;await chooser.setFiles({name:'preview.csv',mimeType:'text/csv',buffer:Buffer.from('Name,Value\nSample,42')});
  await expect(page.locator('#csvName')).toContainText('preview.csv');await expect(page.locator('#csvAttachment')).toBeVisible();
  await expect(page.locator('#attachmentMenu')).not.toHaveAttribute('open','');expect(app.aiCalls).toHaveLength(0);

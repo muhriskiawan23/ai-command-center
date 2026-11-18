@@ -4,7 +4,7 @@ import { CONFIDENTIALITY_NOTICE, isConfidentialityRequest, confidentialityReply,
 import { extractUrls, readLinks, buildPageContext, summarizeLinks } from "./links.js";
 import { createVerifiedLinkFetcher } from "./verified-egress.js";
 import { extractWithTavily } from "./tavily-extract.js";
-import { PDF_MAX_BYTES, PDF_CONTEXT_MAX_CHARS, safePdfName, normalizePdfConversion, buildPdfContext, validatePdfPageCitations, SPREADSHEET_CONTEXT_MAX_CHARS, safeSpreadsheetName, buildSpreadsheetContext, PRESENTATION_CONTEXT_MAX_CHARS, safePresentationName, buildPresentationContext, WORD_CONTEXT_MAX_CHARS, buildWordDocumentContext } from "./documents.js";
+import { PDF_MAX_BYTES, PDF_CONTEXT_MAX_CHARS, safePdfName, normalizePdfConversion, buildPdfContext, validatePdfPageCitations, SPREADSHEET_CONTEXT_MAX_CHARS, safeSpreadsheetName, buildSpreadsheetContext, PRESENTATION_CONTEXT_MAX_CHARS, safePresentationName, buildPresentationContext, WORD_CONTEXT_MAX_CHARS, buildWordDocumentContext, IMAGE_OCR_CONTEXT_MAX_CHARS, buildImageOcrContext } from "./documents.js";
 import { validateCitationReferences } from "./citations.js";
 import { detectResearchMode, isSearchProviderConfigured, searchExternal, buildResearchContext, retrieveCuratedKnowledge } from "./research.js";
 import { MEMORY_MAX_ITEMS, MEMORY_MAX_CHARS, getMemoryState, setMemoryEnabled, addMemory, deleteMemory, deleteAllMemories, parseRememberCommand, buildMemoryBlock } from "./memory.js";
@@ -341,17 +341,17 @@ async function runAgent(env, agentId, userMessage, context = "", history = [], p
 
   const tokenLimits = {
     researcher: 500,
-    analyst: 600,
-    fact_checker: 350,
-    writer: 1400,
+    analyst: 800,
+    fact_checker: 500,
+    writer: 1800,
     strategist: 800,
     coder: 1400,
     planner: 800,
     critic: 500,
-    summarizer: 500,
+    summarizer: 1100,
     translator: 1200,
     text_analyst: 1000,
-    coordinator: 700
+    coordinator: 950
   };
 
   const cleanOutput = (value) => String(value || "").trim().split("\n").filter((line) => {
@@ -421,7 +421,7 @@ async function runAgent(env, agentId, userMessage, context = "", history = [], p
         messages: extraInstruction
           ? [...messages, { role: "user", content: extraInstruction }]
           : messages,
-        max_tokens: tokenLimits[agentId] || 700,
+        max_tokens: Math.min(2200, (tokenLimits[agentId] || 950) + (/\b(mendalam|detail|lengkap|komprehensif|thorough|in.depth|step.by.step|detailed|comprehensive)\b/i.test(userMessage) ? 300 : 0)),
         temperature: 0.4,
         repetition_penalty: 1.1
       });
@@ -485,7 +485,7 @@ async function runAgent(env, agentId, userMessage, context = "", history = [], p
 
 // Use a single model call for straightforward requests; reserve orchestration for complex tasks.
 function shouldUseMultiAgent(message) {
-  const complexIntent = /\b(analisis|analisa|bandingkan|evaluasi|strategi|rencana|perencanaan|penelitian|risiko|debug|refactor|arsitektur|forecast|prediksi|proposal|roadmap|audit|business plan|coding|kode)\b/i;
+  const complexIntent = /\b(analisis|analisa|bandingkan|evaluasi|strategi|rencana|perencanaan|penelitian|risiko|debug|refactor|arsitektur|forecast|prediksi|proposal|roadmap|audit|business plan|coding|kode|compare|comparison|evaluate|evaluation|analyze|analyse|analysis|investigate|investigation|diagnose|diagnosis|architecture|optimization|optimise|optimize|financial model|reasoning|algorithm|proof|trade-offs|tradeoffs|root cause|system design|análisis|comparar|évaluer|analysieren)\b/i;
   const zeroBudgetPromotion =
     /(?:rp\s*0|modal\s*(?:sebesar\s*)?0|tanpa\s+(?:modal|biaya)|zero[- ]budget|no[- ]budget)/i.test(message) &&
     /(?:promosi|marketing|kampanye|konten|media\s+sosial|mahasiswa|warkop|bisnis)/i.test(message);
@@ -1410,6 +1410,8 @@ export default {
       if (presentation !== undefined && (!presentation || typeof presentation !== "object" || typeof presentation.name !== "string" || typeof presentation.content !== "string" || !presentation.content.trim() || presentation.content.length > PRESENTATION_CONTEXT_MAX_CHARS)) return json({ error: "Konteks PowerPoint tidak valid atau terlalu besar. Unggah ulang file." }, 400);
       const spreadsheet = body?.spreadsheet;
       if (spreadsheet !== undefined && (!spreadsheet || typeof spreadsheet !== "object" || typeof spreadsheet.name !== "string" || typeof spreadsheet.content !== "string" || !spreadsheet.content.trim() || spreadsheet.content.length > SPREADSHEET_CONTEXT_MAX_CHARS)) return json({ error: "Konteks spreadsheet tidak valid atau terlalu besar. Unggah ulang file." }, 400);
+      const imageOcr = body?.imageOcr;
+      if (imageOcr !== undefined && (!imageOcr || typeof imageOcr !== "object" || typeof imageOcr.name !== "string" || !/\.(jpg|jpeg|png|webp)$/i.test(imageOcr.name) || typeof imageOcr.content !== "string" || !imageOcr.content.trim() || imageOcr.content.length > IMAGE_OCR_CONTEXT_MAX_CHARS || (imageOcr.truncated !== undefined && typeof imageOcr.truncated !== "boolean"))) return json({ error: "Konteks OCR gambar tidak valid." }, 400);
       const wordDocument = body?.wordDocument;
       if (wordDocument !== undefined && (!wordDocument || typeof wordDocument !== "object" || typeof wordDocument.name !== "string" || typeof wordDocument.content !== "string" || !wordDocument.content.trim() || wordDocument.content.length > WORD_CONTEXT_MAX_CHARS)) return json({ error: "Konteks Word tidak valid atau terlalu besar. Unggah ulang file." }, 400);
       if (body?.agent !== undefined && (typeof body.agent !== "string" || !Object.prototype.hasOwnProperty.call(AGENTS, body.agent))) return json({ error: "Agent tidak dikenal." }, 400);
@@ -1521,6 +1523,7 @@ export default {
       const spreadsheetContext = spreadsheet ? buildSpreadsheetContext(spreadsheet) : "";
       const presentationContext = presentation ? buildPresentationContext(presentation) : "";
       const wordDocumentContext = wordDocument ? buildWordDocumentContext(wordDocument) : "";
+      const imageOcrContext = imageOcr ? buildImageOcrContext(imageOcr) : "";
       if (found.urls.length && env.URL_READER_ENABLED === "true") {
         const results = env.URL_READER_ENABLED === "true" && env.URL_READER_PROVIDER === "tavily"
           ? await extractWithTavily(found.urls, env, { ownHost: url.hostname, fetcher: env.TAVILY_EXTRACT_FETCHER || fetch })
@@ -1570,7 +1573,7 @@ export default {
         pages = [pages, research.context].filter(Boolean).join("\n\n");
         links.push(...research.sources);
       }
-      if (pdfContext || spreadsheetContext || presentationContext || wordDocumentContext) pages = [pages, pdfContext, spreadsheetContext, presentationContext, wordDocumentContext].filter(Boolean).join("\n\n");
+      if (pdfContext || spreadsheetContext || presentationContext || wordDocumentContext || imageOcrContext) pages = [pages, pdfContext, spreadsheetContext, presentationContext, wordDocumentContext, imageOcrContext].filter(Boolean).join("\n\n");
       try {
         let result;
         if (useMultiAgent) result = { ...await runMultiAgent(aiEnv, message, history, pages) };

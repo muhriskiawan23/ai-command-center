@@ -183,8 +183,7 @@ html[dir="rtl"] .composer-bottom{flex-direction:row}
 .new-chat{margin:0;width:100%}.new-chat span{color:var(--accent);font:inherit}
 .sidebar{overflow-x:hidden}.history-heading{padding:6px 10px 3px}
 .side-action span{color:inherit}.workspace-preferences .language-picker{width:100%}
-.workspace-preferences .language-picker::before{content:"Language";font-size:11px}
-html[lang="id"] .workspace-preferences .language-picker::before{content:"Bahasa"}
+.workspace-preferences .language-picker::before{content:attr(data-label);font-size:11px}
 .history-row{grid-template-columns:minmax(0,1fr) 40px}.history-menu>summary{width:40px;min-height:44px}
 .message-actions{display:flex;flex-wrap:wrap;align-items:center;gap:3px;margin-top:10px}
 .message-action{min-height:32px;padding:5px 8px;border:0;border-radius:7px;background:transparent;color:var(--muted);font-size:11px;line-height:1.5}

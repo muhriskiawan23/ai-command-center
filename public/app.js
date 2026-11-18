@@ -246,6 +246,7 @@ function renderAuth(){
 
 /* Account panel: a dedicated accessible page-like dialog, not extra sidebar settings. */
 const accountDialog=$("accountDialog");
+let returnToAccountOnChildClose=false;
 function customizationKey(){return "borai-customization:v1:" + String(currentUser?.id||currentUser?.email||"guest");}
 function readCustomization(){
   if(state!==AppState.AUTH||!currentUser)return null;
@@ -287,11 +288,14 @@ $("accountBack").addEventListener("click",()=>{
 accountDialog.addEventListener("click",event=>{
   // Opening an existing account feature closes only the visible dialog; keep the
   // account history entry so Back from Memory can return to this account view.
-  if(event.target.closest("#openMemory,#openIntegrations,#about"))accountDialog.close();
+  if(event.target.closest("#openMemory,#openIntegrations,#about")){
+    returnToAccountOnChildClose = Boolean(event.target.closest("#openIntegrations,#about"));
+    accountDialog.close();
+  }
 },true);
 accountDialog.addEventListener("cancel",event=>{event.preventDefault();closeAccount();});
 accountDialog.addEventListener("close",()=>{
-  if($("userProfile").isConnected&&!$("userProfile").hidden)$("userProfile").focus();
+  if(!returnToAccountOnChildClose && $("userProfile").isConnected&&!$("userProfile").hidden)$("userProfile").focus();
 });
 $("openCustomization").addEventListener("click",()=>{
   const prefs=readCustomization()||{nickname:"",tone:"natural",length:"balanced"};
@@ -333,7 +337,7 @@ async function refreshGitHubConnection(){
     $("githubStatusDot").className="github-status-dot "+(githubConnection?"is-connected":"");
     $("githubConnect").textContent=githubConnection?"Hubungkan akun lain":"Hubungkan akun GitHub";
     $("githubDisconnect").hidden=!githubConnection;
-    $("openGithubRepos").disabled=!githubConnection;
+    if($("openGithubRepos")) $("openGithubRepos").disabled=!githubConnection;
   }catch(error){
     if(request!==githubConnectionRequest)return;
     $("githubConnectionStatus").textContent="Status belum dapat diperiksa";
@@ -695,7 +699,7 @@ function renderHistory(){
   if(!inChatView()){$("historyCount").textContent="";return}
   $("historyLabel").textContent=archivedView?"Arsip":state===AppState.AUTH?"Riwayat akun":"Sesi ini · Guest Mode";
   $("historyCount").textContent=conversations.length?String(conversations.length):"";
-  $("toggleArchived").textContent=archivedView?"▤ Lihat riwayat":"▣ Lihat arsip";
+  $("toggleArchived").textContent=(archivedView?"▤ ":"▣ ")+(window.BORLocale?.translate?.(archivedView?"Lihat riwayat":"Lihat arsip")||(archivedView?"Lihat riwayat":"Lihat arsip"));
   $("toggleArchived").setAttribute("aria-pressed",String(archivedView));
   const query=historyQuery.toLocaleLowerCase();
   const visible=sortedConversations().filter(c=>Boolean(c.archived)===archivedView&&(!query||String(c.title||"").toLocaleLowerCase().includes(query)||(state===AppState.GUEST&&c.messages.some(m=>String(m.content||"").toLocaleLowerCase().includes(query)))));
@@ -704,7 +708,7 @@ function renderHistory(){
     const b=document.createElement("button");b.className="history-item"+(c.id===activeId?" active":"");b.type="button";
     if(c.id===activeId)b.setAttribute("aria-current","page");
     const icon=document.createElement("span");icon.textContent="▤";icon.setAttribute("aria-hidden","true");
-    const title=document.createElement("span");title.textContent=c.title||"Percakapan baru";
+    const title=document.createElement("span");title.textContent=window.BORLocale?.translateTitle?.(c.title||"Percakapan baru")||(c.title||"Percakapan baru");
     b.append(icon,title);b.title=c.title||"Percakapan baru";b.onclick=()=>selectChat(c.id);
     const pin=document.createElement("button");pin.className="pin-chat";pin.type="button";pin.textContent=c.pinned?"★":"☆";pin.title=c.pinned?"Lepas sematan":"Sematkan";pin.setAttribute("aria-label",(c.pinned?"Lepas sematan ":"Sematkan ")+(c.title||"chat"));pin.setAttribute("aria-pressed",String(Boolean(c.pinned)));pin.onclick=e=>{e.stopPropagation();pinChat(c.id)};
     const archive=document.createElement("button");archive.className="archive-chat";archive.type="button";archive.textContent=archivedView?"↩":"▣";archive.title=archivedView?"Pulihkan dari arsip":"Arsipkan";archive.setAttribute("aria-label",(archivedView?"Pulihkan dari arsip ":"Arsipkan ")+(c.title||"chat"));archive.onclick=e=>{e.stopPropagation();archiveChat(c.id)};
@@ -852,7 +856,7 @@ function appendPdfSource(pdf){
 function renderPdfAttachment(){
   const wrap=$("pdfAttachment"),name=$("pdfName");if(!wrap||!name)return;
   wrap.hidden=!activePdf;name.textContent=activePdf?activePdf.name+" · PDF siap":"";
-  $("attachPdf").textContent=activePdf?"Ganti PDF":"＋ PDF";
+  $("attachPdf").textContent=activePdf?"Ganti file":"＋ Unggah file";
 }
 function appendSpreadsheetSource(spreadsheet){
   const row=messagesEl.lastElementChild;const body=row&&row.querySelector(".message-body");if(!body||!spreadsheet)return;
@@ -871,10 +875,18 @@ function appendWordDocumentSource(doc){
   item.textContent="✓ "+String(doc.name||"document.docx")+(Number.isSafeInteger(doc.paragraphCount)?" · "+doc.paragraphCount.toLocaleString("id-ID")+" paragraf":"")+(doc.truncated?" · teks dibatasi":"");
   box.append(item);body.append(box);
 }
+function appendImageOcrSource(item){
+  const row=messagesEl.lastElementChild,body=row?.querySelector(".message-body");if(!body)return;
+  const box=document.createElement("div");box.className="sources image-ocr-source";
+  const label=document.createElement("strong");label.textContent="Teks gambar (OCR lokal):";
+  const detail=document.createElement("div");detail.className="source ok";
+  detail.textContent="✓ "+item.name+" · Hanya teks dikenali, bukan analisis visual"+(item.truncated?" · teks dibatasi":"");
+  box.append(label,detail);body.append(box);
+}
 function renderCsvAttachment(){
   const wrap=$("csvAttachment"),name=$("csvName");if(!wrap||!name)return;
   wrap.hidden=!activeCsv;const filename=activeCsv?.name||"",isDocx=/\.docx$/i.test(filename),isPptx=/\.pptx$/i.test(filename),isExcel=/\.xlsx$/i.test(filename);
-  const label=isDocx?"Word siap":isPptx?"PowerPoint siap":isExcel?"Excel siap":"CSV siap";
+  const label=activeCsv?.kind==="image-ocr"?"Gambar OCR siap":isDocx?"Word siap":isPptx?"PowerPoint siap":isExcel?"Excel siap":"CSV siap";
   name.textContent=activeCsv?filename+" · "+label:"";
   $("attachCsv").textContent=activeCsv?(isDocx?"Ganti Word":isPptx?"Ganti PowerPoint":isExcel?"Ganti Excel":"Ganti CSV"):"＋ File · CSV / XLSX / PPTX / DOCX";
 }
@@ -921,7 +933,7 @@ async function uploadCsv(file){
   if(!isDocx&&!isExcel&&!isPptx&&!filename.endsWith(".csv")){toast("Pilih file CSV, Excel (.xlsx), PowerPoint (.pptx), atau Word (.docx).");return;}
   if(file.size>5*1024*1024){toast("Ukuran file maksimal 5 MB.");return;}
   if(file.size<1){toast("File kosong.");return;}
-  const button=$("attachCsv");button.disabled=true;button.textContent="Membaca…";
+  const button=$("attachPdf");button.disabled=true;button.textContent="Membaca…";
   try{
     let parsed;
     if(isDocx){const jszip=await ensurePptxLibrary();const {parseDocxLocally}=await import("/docx-reader.js");parsed=await parseDocxLocally(file,{jszip});parsed.kind="word-document";}
@@ -931,7 +943,26 @@ async function uploadCsv(file){
     activePdf=null;renderPdfAttachment();activeCsv=parsed;renderCsvAttachment();
     toast(isDocx?"Word berhasil dibaca secara lokal. Tanyakan isi dokumen di kolom chat.":isPptx?"PowerPoint berhasil dibaca secara lokal. Tanyakan isi slide di kolom chat.":isExcel?"Excel berhasil dibaca secara lokal. Tanyakan analisisnya di kolom chat.":"CSV berhasil dibaca secara lokal. Tanyakan analisisnya di kolom chat.");
   }catch(error){toast(error.message||"File gagal dibaca.");}
-  finally{button.disabled=busy||loadingChat;renderCsvAttachment()}
+  finally{button.disabled=busy||loadingChat;renderCsvAttachment();renderPdfAttachment()}
+}
+async function uploadImage(file){
+  if(!file)return;
+  const button=$("attachPdf");button.disabled=true;button.textContent="Membaca gambar…";
+  try{
+    const {parseImageOcrLocally}=await import("/image-ocr.js");
+    const parsed=await parseImageOcrLocally(file,{tesseract:window.Tesseract,onProgress:message=>button.textContent=message});
+    activePdf=null;activeCsv=parsed;renderPdfAttachment();renderCsvAttachment();
+    toast("Teks gambar berhasil dibaca secara lokal. BOR AI belum memeriksa gambar secara visual.");
+  }catch(e){toast(e.message||"Gambar gagal dibaca.");}
+  finally{button.disabled=busy||loadingChat;renderPdfAttachment();}
+}
+async function uploadAnyFile(file){
+  if(!file)return;
+  const name=String(file.name||"").toLowerCase();
+  if(name.endsWith(".pdf"))return uploadPdf(file);
+  if(/\.(?:jpe?g|png|webp)$/i.test(name))return uploadImage(file);
+  if(/\.(?:csv|xlsx|pptx|docx)$/i.test(name))return uploadCsv(file);
+  toast("Format belum didukung. Pilih PDF, DOCX, XLSX, PPTX, CSV, JPG, PNG, atau WEBP.");
 }
 function appendFailedTurn(message,text,noRetry=false,requestId=null){
   appendMessage("assistant",message);
@@ -959,12 +990,12 @@ async function submit(options={}){
   if(createdNew)replaceRoute({name:"chat",id:chat.id});
   const stillActive=()=>activeId===startId;const start=Date.now();
   try{
-    const payload={message:text,agent,requestId,language:window.BORLocale?.current||"en"};const customization=readCustomization();if(customization)payload.customization=customization;if(activePdf)payload.document={name:activePdf.name,content:activePdf.content,truncated:activePdf.truncated};if(activeCsv?.kind==="word-document")payload.wordDocument={name:activeCsv.name,content:activeCsv.content,paragraphCount:activeCsv.paragraphCount,truncated:activeCsv.truncated};else if(activeCsv?.kind==="presentation")payload.presentation={name:activeCsv.name,content:activeCsv.content,slideCount:activeCsv.slideCount,truncated:activeCsv.truncated};else if(activeCsv)payload.spreadsheet={name:activeCsv.name,content:activeCsv.content,rowCount:activeCsv.rowCount,columnCount:activeCsv.columnCount,truncated:activeCsv.truncated};if(history.length)payload.history=history;if(state===AppState.AUTH&&chat.serverId)payload.conversationId=chat.serverId;if(replacing&&state===AppState.AUTH&&chat.serverId)payload.replaceLastTurn=true;
+    const payload={message:text,agent,requestId,language:window.BORLocale?.current||"en"};const customization=readCustomization();if(customization)payload.customization=customization;if(activePdf)payload.document={name:activePdf.name,content:activePdf.content,truncated:activePdf.truncated};if(activeCsv?.kind==="image-ocr")payload.imageOcr={name:activeCsv.name,content:activeCsv.content,truncated:activeCsv.truncated};else if(activeCsv?.kind==="word-document")payload.wordDocument={name:activeCsv.name,content:activeCsv.content,paragraphCount:activeCsv.paragraphCount,truncated:activeCsv.truncated};else if(activeCsv?.kind==="presentation")payload.presentation={name:activeCsv.name,content:activeCsv.content,slideCount:activeCsv.slideCount,truncated:activeCsv.truncated};else if(activeCsv)payload.spreadsheet={name:activeCsv.name,content:activeCsv.content,rowCount:activeCsv.rowCount,columnCount:activeCsv.columnCount,truncated:activeCsv.truncated};if(history.length)payload.history=history;if(state===AppState.AUTH&&chat.serverId)payload.conversationId=chat.serverId;if(replacing&&state===AppState.AUTH&&chat.serverId)payload.replaceLastTurn=true;
     const data=await postJson("/api/chat",payload,CHAT_TIMEOUT_MS,activeChatController.signal);
     if(typeof data.response!=="string"||!data.response.trim())throw new Error("AI tidak menghasilkan jawaban.");
     if(pendingRetryRequest?.requestId===requestId)pendingRetryRequest=null;
     chat.messages.push({role:"assistant",content:data.response,id:data.responseId||null,feedback:null,links:data.links||[],pdf:data.pdf||null,spreadsheet:data.spreadsheet||null,wordDocument:activeCsv?.kind==="word-document"?{name:activeCsv.name,paragraphCount:activeCsv.paragraphCount,truncated:activeCsv.truncated}:null});chat.updated=Date.now();
-    if(stillActive()){$("typing")?.remove();appendMessage("assistant",data.response,true,{regenerate:true,responseId:data.saved?data.responseId:null,conversationId:data.saved?data.conversationId:null});addEditActionToLastUser();appendSources(data.links);if(data.pdf)appendPdfSource(data.pdf);if(data.spreadsheet)appendSpreadsheetSource(data.spreadsheet);if(data.presentation)appendPresentationSource(data.presentation);if(activeCsv?.kind==="word-document")appendWordDocumentSource(activeCsv);renderWorkflow(data.steps)}
+    if(stillActive()){$("typing")?.remove();appendMessage("assistant",data.response,true,{regenerate:true,responseId:data.saved?data.responseId:null,conversationId:data.saved?data.conversationId:null});addEditActionToLastUser();appendSources(data.links);if(data.pdf)appendPdfSource(data.pdf);if(data.spreadsheet)appendSpreadsheetSource(data.spreadsheet);if(data.presentation)appendPresentationSource(data.presentation);if(activeCsv?.kind==="word-document")appendWordDocumentSource(activeCsv);if(activeCsv?.kind==="image-ocr")appendImageOcrSource(activeCsv);renderWorkflow(data.steps)}
     if(state===AppState.AUTH&&data.saved&&data.conversationId){
       chat.serverId=data.conversationId;chat.id=data.conversationId;chat.loaded=true;
       if(stillActive()){activeId=chat.id;replaceRoute({name:"chat",id:chat.id})}
@@ -1111,7 +1142,7 @@ $("gateRetry").addEventListener("click",boot);
 $("googleRetry").addEventListener("click",()=>loadGoogle(true));
 $("chatForm").addEventListener("submit",e=>{e.preventDefault();submit()});
 $("attachPdf").addEventListener("click",()=>{if(!busy&&!loadingChat)$("pdfFile").click()});
-$("pdfFile").addEventListener("change",event=>{const file=event.target.files?.[0];event.target.value="";uploadPdf(file)});
+$("pdfFile").addEventListener("change",event=>{const file=event.target.files?.[0];event.target.value="";uploadAnyFile(file)});
 $("clearPdf").addEventListener("click",()=>{activePdf=null;renderPdfAttachment();toast("PDF dilepas dari chat.")});
 $("attachCsv").addEventListener("click",()=>{if(!busy&&!loadingChat)$("csvFile").click()});
 $("csvFile").addEventListener("change",event=>{const file=event.target.files?.[0];event.target.value="";uploadCsv(file)});
@@ -1160,10 +1191,18 @@ $("githubReposRefresh").addEventListener("click",loadGitHubRepositories);
 $("githubRepoSearch").addEventListener("input",renderGitHubRepositories);
 $("githubRepoVisibility").addEventListener("change",renderGitHubRepositories);
 $("githubReposDialog").addEventListener("click",event=>{const dialog=$("githubReposDialog");if(event.target!==dialog)return;const rect=dialog.getBoundingClientRect();if(event.clientX<rect.left||event.clientX>rect.right||event.clientY<rect.top||event.clientY>rect.bottom)dialog.close()});
+function restoreAccountAfterChildDialog(){
+  if(!returnToAccountOnChildClose)return;
+  returnToAccountOnChildClose=false;
+  if(history.state?.overlay==="account"&&state===AppState.AUTH&&currentUser&&!accountDialog.open){
+    accountDialog.showModal();accountView("home");
+  }
+}
 const integrationsDialog=$("integrationsDialog");
 $("openIntegrations").addEventListener("click",()=>{if(!integrationsDialog.open)integrationsDialog.showModal();if(state===AppState.AUTH)refreshGitHubConnection();$("integrationsClose").focus()});
 $("integrationsClose").addEventListener("click",()=>integrationsDialog.close());
 integrationsDialog.addEventListener("click",event=>{if(event.target!==integrationsDialog)return;const rect=integrationsDialog.getBoundingClientRect();if(event.clientX<rect.left||event.clientX>rect.right||event.clientY<rect.top||event.clientY>rect.bottom)integrationsDialog.close()});
+integrationsDialog.addEventListener("close",restoreAccountAfterChildDialog);
 const aboutDialog=$("aboutDialog");
 $("about").addEventListener("click",()=>{
   if(!aboutDialog.open)aboutDialog.showModal();
@@ -1175,6 +1214,7 @@ aboutDialog.addEventListener("click",event=>{
   const rect=aboutDialog.getBoundingClientRect();
   if(event.clientX<rect.left||event.clientX>rect.right||event.clientY<rect.top||event.clientY>rect.bottom)aboutDialog.close();
 });
+aboutDialog.addEventListener("close",restoreAccountAfterChildDialog);
 document.querySelectorAll("[data-prompt]").forEach(b=>b.addEventListener("click",()=>{promptEl.value=b.dataset.prompt;resizePrompt();promptEl.focus()}));
 history.scrollRestoration="manual";
 syncInert();health();boot();
