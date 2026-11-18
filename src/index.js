@@ -14,6 +14,7 @@ import { handleGitHubReadRoute } from "./github-reader.js";
 import { handleGitHubOAuthRoute } from "./github-oauth.js";
 import { selectModel, taskProfileForAgent, summarizeModelTrace } from "./model-gateway.js";
 import { GPT_OSS_MODEL_ID, mayUseGptOss, reserveGptOssCall, extractModelAnswer } from "./gpt-oss.js";
+import { planFeedbackForm, generateFormsScript } from "./form-draft.js";
 import { COMMUNICATION_NOTICE, CAPABILITY_NOTICE, AGENTS } from "./prompts.js";
 import { json, sha256Hex } from "./http.js";
 import { dailyLimit, usageDay, secondsUntilNextUtcDay, consumeUsage, refundUsage, limitResponse, enforceDailyLimits, DAILY_LIMIT_DEFAULTS, MULTI_AGENT_UNITS } from "./daily-limits.js";
@@ -1546,6 +1547,7 @@ export default {
       const aiEnv = withAiDeadline(localizedEnv, Date.now() + budgetMs, request.signal);
       let pages = "";
       let links = [];
+      const toolActivity = [];
       if (found.urls.length && env.URL_READER_ENABLED !== "true") {
         // A disabled reader must neither charge for link retrieval nor imply that URLs were read.
         pages = "USER LINKS NOT READ: The user supplied web links but safe link extraction is not enabled. No linked page was opened. Do not claim to have read them; request pasted page content if it is needed.";
@@ -1562,6 +1564,7 @@ export default {
           : await readLinks(found.urls, { fetcher: createVerifiedLinkFetcher(env) || env.LINK_FETCHER || null, ownHost: url.hostname }); // LINK_FETCHER: test hook, unset in production
         pages = buildPageContext(results);
         links = summarizeLinks(results);
+        toolActivity.push({ tool: "read_links", status: results.some(x => x.ok) ? "completed" : "unavailable", count: results.filter(x => x.ok).length });
         if (found.ignored) links.push({ ok: false, host: "", reason: `hanya ${found.urls.length} link pertama yang dibaca; ${found.ignored} lainnya diabaikan` });
       }
       // Curated first-party knowledge is retrieved locally; it never makes an external request.
@@ -1569,6 +1572,7 @@ export default {
       if (curated.context) { pages = [pages, curated.context].filter(Boolean).join("\n\n"); links.push(...curated.sources); }
       if (researchMode) {
         const search = await searchExternal(message, researchMode, env);
+        toolActivity.push({ tool: "web_search", status: search.reason || !search.configured ? "unavailable" : "completed", provider: search.provider === "tavily" ? "Tavily" : search.provider === "brave" ? "Brave" : "Other", count: (search.results || []).filter(item => item.ok).length });
         // Read up to three eligible result pages through the same SSRF-safe link reader used for user URLs.
         // Keep the Brave result as a citable source even when the destination page cannot be read.
         const pageCandidates = search.results.filter((item) => item?.ok && typeof item.url === "string").slice(0, 3);
@@ -1671,6 +1675,9 @@ export default {
           }
         } else result.saved = false;
         if (links.length) result.links = links;
+        if (toolActivity.length) result.toolActivity = toolActivity;
+        const draft = planFeedbackForm(message);
+        if (draft) result.formDraft = { ...draft, script: generateFormsScript(draft) };
         return json(result);
       } catch (error) {
         if (error instanceof AiCancelledError || request.signal.aborted) {
