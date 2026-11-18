@@ -214,3 +214,42 @@ test("read-only audit fails on incomplete transaction batch rather than reportin
  const failed={DB:{prepare:x.env.DB.prepare,batch:async()=>Array.from({length:7},()=>({success:false,results:[{}]}))}};
  await assert.rejects(inspectDraftBillingReconciliation(failed),/result incomplete/);
 });
+test("shared financial audit pairs settled text and media jobs in one read-only snapshot",async t=>{
+ const x=setup(t);
+ await x.reserveBudget("text-job");await x.reserveWallet("text-job");
+ await x.finalizeBudget("text-job");await x.finalizeWallet("text-job");
+ assert.equal((await reserveProviderSpend(x.env,{id:"media:image-job",provider:"cloudflare-workers-ai",
+   model:"synthetic-image",maximumMicroUsd:9000n})).ok,true);
+ await x.reserveWallet("media:image-job");
+ assert.equal((await settleProviderSpend(x.env,{id:"media:image-job",actualMicroUsd:519n})).ok,true);
+ await x.finalizeWallet("media:image-job");
+ const before=x.sqlite.prepare("SELECT total_changes() n").get().n;
+ const r=await x.report();
+ assert.equal(r.budgetOrders,2);assert.equal(r.bothSettled,2);
+ assert.equal(r.paidProviderWithoutCreditDebit,0);assert.equal(r.unpairedReservedCredit,0);
+ assert.equal(r.mismatchedWalletJournals,0);assert.equal(r.ambiguousReservationPairs,0);
+ assert.equal(r.reviewRequired,false);assert.equal(r.providerInvoiceVerified,false);
+ assert.equal(x.sqlite.prepare("SELECT total_changes() n").get().n,before);
+});
+test("media holds and missing media wallets receive the same accounting checks as text",async t=>{
+ const x=setup(t),old=Date.now()-7200_000;
+ for(const id of ["media:held","media:no-wallet"])
+   assert.equal((await reserveProviderSpend(x.env,{id,provider:"cloudflare-workers-ai",model:"synthetic",
+     maximumMicroUsd:9000n,nowMs:old})).ok,true);
+ await x.reserveWallet("media:held",Math.floor(old/1000));
+ let r=await x.report();
+ assert.equal(r.staleDualHolds,1);assert.equal(r.unmatchedBudgetHolds,1);
+ assert.equal(r.unpairedReservedCredit,0);assert.equal(r.reviewRequired,true);
+ await settleProviderSpend(x.env,{id:"media:held",actualMicroUsd:519n});
+ r=await x.report();assert.equal(r.creditFinalizationPending,1);
+});
+test("historical text IDs beginning media remain paired and dual namespace aliases are flagged",async t=>{
+ const x=setup(t);
+ await x.reserveBudget("media:legacy");await x.reserveWallet("media:legacy");
+ await x.finalizeBudget("media:legacy");await x.finalizeWallet("media:legacy");
+ assert.equal((await x.report()).reviewRequired,false);
+ await reserveProviderSpend(x.env,{id:"media:legacy",provider:"cloudflare-workers-ai",
+   model:"synthetic",maximumMicroUsd:9000n});
+ const r=await x.report();
+ assert.equal(r.ambiguousReservationPairs,1);assert.equal(r.reviewRequired,true);
+});

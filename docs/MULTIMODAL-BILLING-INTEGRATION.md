@@ -43,6 +43,10 @@ reservations. A lost journal acknowledgement, timeout, in-flight cancellation,
 invalid receipt/output, partial video job or financial settlement failure retains
 unresolved reservations for review. Aborting a network request does not prove
 that the provider did not charge. Late callbacks cannot settle or publish output.
+Usage measurement and output validation receive their own per-step abort signals,
+which abort at the call deadline as well as on whole-job/client cancellation.
+Adapters should pass these signals to cancellable I/O; ignoring cancellation does
+not allow a late result to settle credits or return media.
 
 Video output is explicitly `sampled_visual_frames_only`, with timestamps and
 `audioAnalyzed:false`. There is no audio processing or temporal synthesis yet.
@@ -95,8 +99,14 @@ or refunds anything, never exposes per-user records, and always returns
 `providerInvoiceVerified:false`. A clean arithmetic report is not an invoice
 attestation or proof that the configured credit conversion is profitable.
 
-The earlier Stage 3 token-only journal/audits do not cover this media journal.
-Combined production reconciliation remains a release gate; do not interpret
+The shared `inspectDraftBillingReconciliation` financial snapshot now pairs
+both text (`ai:<wallet-request>`) and media (`media:<request>` in both tables)
+reservations, checks their actual wallet journals and shared daily counters,
+and flags ambiguous historical text/media aliases. Tests include both kinds of
+settled jobs in one actual SQLite snapshot; the audit performs no repairs.
+It does not check model usage or attest invoices. The separate earlier Stage 3
+token-only usage audit still does not cover this media journal. Combined
+production usage reconciliation remains a release gate; do not interpret
 token-only missing-usage alerts for `media:` jobs as proof of free media usage.
 
 ## Verification and remaining integration

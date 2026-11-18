@@ -1,6 +1,11 @@
 // Read-only review of the INACTIVE paid-inference prototype.
 // Does not grant, debit, release, settle, write logs or expose customer IDs.
 // Operational triage only: it is NOT a provider invoice reconciliation.
+// Text jobs reserve provider id ai:<wallet request>; media jobs use the
+// same media:<request> id in both tables. Match both explicitly. Never use
+// a generic prefix strip: historical text IDs may themselves start media:.
+const matchingReservationSql = "((substr(b.id,1,3)='ai:' AND b.id='ai:' || c.request_id) OR " +
+  "(substr(b.id,1,6)='media:' AND b.id=c.request_id))";
 function validateInputs(env, nowMs, staleAfterSeconds) {
   if (!env?.DB?.prepare || typeof env.DB.prepare !== "function" ||
       typeof env.DB.batch !== "function")
@@ -12,6 +17,11 @@ function validateInputs(env, nowMs, staleAfterSeconds) {
 const budgetCasesSql = `
 SELECT
  COUNT(*) AS budget_orders,
+ (SELECT COUNT(*) FROM (
+   SELECT c.request_id FROM credit_reservations c
+   JOIN provider_budget_reservations b ON ${matchingReservationSql}
+   GROUP BY c.request_id HAVING COUNT(*)>1
+ )) AS ambiguous_reservation_pairs,
  COALESCE(SUM(CASE WHEN b.status='settled' AND c.status='settled' THEN 1 ELSE 0 END),0) AS both_settled,
  COALESCE(SUM(CASE WHEN b.status='reserved' AND b.created_at <= ? THEN 1 ELSE 0 END),0) AS stale_budget_holds,
  COALESCE(SUM(CASE WHEN b.status='reserved' AND c.status='reserved' AND c.created_at <= ? THEN 1 ELSE 0 END),0) AS stale_dual_holds,
@@ -21,12 +31,12 @@ SELECT
  COALESCE(SUM(CASE WHEN b.status='settled' AND b.actual_micro_usd > 0
       AND (c.request_id IS NULL OR c.status='released') THEN 1 ELSE 0 END),0) AS paid_provider_without_credit_debit
 FROM provider_budget_reservations b
-LEFT JOIN credit_reservations c ON b.id='ai:' || c.request_id
+LEFT JOIN credit_reservations c ON ${matchingReservationSql}
 `;
 const unpairedCreditSql = `
 SELECT COUNT(*) AS unpaired_reserved_credit
 FROM credit_reservations c
-LEFT JOIN provider_budget_reservations b ON b.id='ai:' || c.request_id
+LEFT JOIN provider_budget_reservations b ON ${matchingReservationSql}
 WHERE c.status='reserved' AND b.id IS NULL
 `;
 const counterMismatchSql = `
@@ -127,6 +137,7 @@ export async function inspectDraftBillingReconciliation(env, {
   const report = {
     budgetOrders: integer(pairs,"budget_orders"),
     bothSettled: integer(pairs,"both_settled"),
+    ambiguousReservationPairs: integer(pairs,"ambiguous_reservation_pairs"),
     staleBudgetHolds: integer(pairs,"stale_budget_holds"),
     staleDualHolds: integer(pairs,"stale_dual_holds"),
     unmatchedBudgetHolds: integer(pairs,"unmatched_budget_holds"),
@@ -141,7 +152,7 @@ export async function inspectDraftBillingReconciliation(env, {
     dailyCountersOverCurrentCap: integer(ceilings,"daily_counters_over_current_cap")
   };
   const reviewFields = [
-    "staleBudgetHolds","unmatchedBudgetHolds","unpairedReservedCredit",
+    "ambiguousReservationPairs","staleBudgetHolds","unmatchedBudgetHolds","unpairedReservedCredit",
     "creditFinalizationPending","providerFinalizationPending",
     "paidProviderWithoutCreditDebit","mismatchedDailyCounters",
     "reservationsWithoutDailyCounters","counterRowsWithoutCurrentCap",

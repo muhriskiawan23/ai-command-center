@@ -334,3 +334,33 @@ test("output moderation and its deadline must complete before financial settleme
   assert.equal(r.reason,"media_output_unverified_reservations_held");assert.equal(r.outputs,undefined);
   assert.equal(x.reservation().status,"reserved");assert.equal(x.events().at(-1).event_kind,"usage_measured");
 });
+for(const step of ["measureUsage","validateOutput"]){
+  test(step+" receives its own aborted signal at the step deadline and ignores late success",async t=>{
+    const x=fixture(t),parent=new AbortController();let stepSignal,complete;
+    const r=await x.run({signal:parent.signal,
+      tariffs:{[VISION_MODEL]:{...tariffs[VISION_MODEL],callTimeoutMs:15}},
+      [step]:({signal})=>{stepSignal=signal;return new Promise(resolve=>{complete=resolve})}
+    });
+    assert.equal(stepSignal instanceof AbortSignal,true);
+    assert.notEqual(stepSignal,parent.signal);
+    assert.equal(stepSignal.aborted,true);
+    assert.equal(parent.signal.aborted,false);
+    assert.equal(r.reason,step==="measureUsage"?"media_usage_unverified_reservations_held":"media_output_unverified_reservations_held");
+    complete(step==="measureUsage"?await x.measureUsage({attemptId:"media:job-1:0",requestId:"media:job-1",
+      provider:common.provider,model:VISION_MODEL,rateVersion:common.version}):{ok:true});
+    await new Promise(resolve=>setImmediate(resolve));
+    assert.equal(r.outputs,undefined);
+    assert.equal(x.reservation().status,"reserved");assert.equal(x.budget().status,"reserved");
+    assert.equal(x.events().filter(e=>e.event_kind==="usage_measured").length,step==="measureUsage"?0:1);
+  });
+  test("parent cancellation reaches the active "+step+" adapter without returning output",async t=>{
+    const x=fixture(t),parent=new AbortController();let stepSignal;
+    const r=await x.run({signal:parent.signal,[step]:({signal})=>{
+      stepSignal=signal;setImmediate(()=>parent.abort());return new Promise(()=>{});
+    }});
+    assert.equal(parent.signal.aborted,true);assert.equal(stepSignal.aborted,true);
+    assert.equal(r.ok,false);assert.equal(r.outputs,undefined);
+    assert.equal(x.reservation().status,"reserved");assert.equal(x.budget().status,"reserved");
+    assert.equal(x.calls(),1);
+  });
+}

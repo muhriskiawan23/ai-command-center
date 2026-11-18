@@ -197,7 +197,7 @@ async function runMediaJob({
     }
     // Receipt verification is a server adapter, never a boolean supplied in
     // an uploaded JSON body. It must attest model/attempt/rate AND actual cost.
-    const receipt=await safe(()=>invokeWithDeadline(()=>measureUsage({...scope,response,policy,
+    const receipt=await safe(()=>invokeWithDeadline(({signal:stepSignal})=>measureUsage({...scope,response,policy,signal:stepSignal,
       bounds:Object.freeze({maxInputTokens:policy.maxInputTokens,maxOutputTokens:policy.maxOutputTokens,
         width:operation.width,height:operation.height,referenceDimensions:operation.referenceDimensions})}),{},signal,policy.callTimeoutMs));
     const measured=receiptCost(receipt,scope);
@@ -213,7 +213,7 @@ async function runMediaJob({
       let output=checkedOutput(response,operation,call);
       if(validateOutput!==undefined){
         if(typeof validateOutput!=="function")throw new TypeError("Output validator required");
-        const reviewed=await invokeWithDeadline(()=>validateOutput({output,feature:operation.feature,signal}),{},signal,policy.callTimeoutMs);
+        const reviewed=await invokeWithDeadline(({signal:stepSignal})=>validateOutput({output,feature:operation.feature,signal:stepSignal}),{},signal,policy.callTimeoutMs);
         if(reviewed?.ok!==true)throw new TypeError("Media output rejected");
         // Trusted validation may strip metadata/re-encode. Reapply the same
         // output shape/geometry/provenance bounds before returning its result.
