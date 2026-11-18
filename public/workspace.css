@@ -261,3 +261,16 @@ html[dir="rtl"] .composer-bottom{flex-direction:row}
  .message-text :is(ul,ol){padding-inline-start:1.25rem;margin-inline-end:0}
  .message-text li+li{margin-top:7px}
 }
+
+
+/* Grounded, optional agent activity and explicit manual Google Forms handoff. */
+.tool-activity,.form-draft{margin:13px 0 8px;border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:11px 13px;color:var(--text);font-size:12px}
+.tool-activity summary{font-weight:650;cursor:pointer;color:var(--text);padding:2px}
+.tool-activity ul{margin:8px 0 0;padding-inline-start:20px;line-height:1.8;color:var(--muted)}
+.tool-activity li{overflow-wrap:anywhere}
+.form-draft{display:grid;gap:8px}
+.form-draft strong{font-size:13px}
+.form-draft p{margin:0;color:var(--muted);line-height:1.65}
+.form-draft-actions{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.form-draft-actions button,.form-draft-actions a{display:inline-flex;align-items:center;min-height:38px;padding:8px 12px;border:1px solid var(--line);border-radius:9px;color:var(--text);background:var(--surface);font-size:12px;font-weight:600;text-decoration:none}
+.form-draft-actions button:hover,.form-draft-actions a:hover{border-color:var(--accent);background:var(--soft-accent)}
