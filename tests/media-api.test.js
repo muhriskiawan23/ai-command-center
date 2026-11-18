@@ -6,7 +6,7 @@ import {createD1,seedSession} from "./e2e/harness.js";
 import {VISION_MODEL,IMAGE_MODEL} from "../src/multimodal-contract.js";
 import {MEDIA_REQUEST_MAX_BYTES} from "../src/media-api.js";
 import {pngDataUri} from "./helpers/media-fixtures.js";
-import {createPngMediaPreflight,createPngOutputValidator} from "../src/png-preflight.js";
+import {createPngMediaPreflight} from "../src/png-preflight.js";
 import {pngBytes,pngChunk} from "./helpers/media-fixtures.js";
 const BASE="https://borai.test";
 const image=pngDataUri();
@@ -209,7 +209,7 @@ test("preflight and moderation cannot change the customer's media operation or p
   x.runtime.preflightInput=async()=>({ok:true,request:generate});
   assert.equal((await x.send()).status,422);assert.equal(x.calls.model,0);
   const y=fixture(t);y.runtime.moderateInput=async({request})=>{request.input.question="Do something else";return {ok:true}};
-  assert.equal((await y.send()).status,422);assert.equal(y.calls.model,0);assert.equal(y.count("credit_reservations"),0);
+  assert.equal((await y.send()).status,503);assert.equal(y.calls.model,0);assert.equal(y.count("credit_reservations"),0);
 });
 test("status is account-scoped, read-only, and remains readable after refund or runtime failure",async t=>{
   const x=fixture(t);await x.send();const before=x.count("credit_ledger");
@@ -238,7 +238,9 @@ test("real PNG pixel preflight composes with authenticated API and actual financ
   const r=await x.send();assert.equal(r.status,200);assert.equal(x.account(),999200);
 });
 test("a PNG with a valid envelope but invalid compressed pixels cannot reach a model",async t=>{
-  const x=fixture(t);x.runtime.preflightInput=createPngMediaPreflight();
+  // The fixture preflight says ok:true; the mandatory built-in decoder must
+  // still reject it. A runtime callback cannot waive pixel verification.
+  const x=fixture(t);
   const original=pngBytes();
   const corrupt=Buffer.concat([original.subarray(0,33),pngChunk("IDAT",Buffer.from("broken")),pngChunk("IEND")]);
   const request={action:"describe_image",input:{imageDataUri:"data:image/png;base64,"+corrupt.toString("base64")}};
@@ -247,11 +249,25 @@ test("a PNG with a valid envelope but invalid compressed pixels cannot reach a m
 });
 test("generated PNG output is really decoded and delivered without its original metadata",async t=>{
   const x=fixture(t);x.runtime.preflightInput=createPngMediaPreflight();
-  x.runtime.validateOutput=createPngOutputValidator({moderate:async()=>({ok:true})});
+  x.runtime.validateOutput=async()=>({ok:true});
   const original=pngBytes({width:256,height:256});
   const bytes=Buffer.concat([original.subarray(0,33),pngChunk("tEXt",Buffer.from("Comment\0private email test@example.test")),original.subarray(33)]);
   x.runtime.invokeModel=async()=>({imageDataUri:"data:image/png;base64,"+bytes.toString("base64")});
   const r=await x.send("/api/media",generate);assert.equal(r.status,200);
   assert.doesNotMatch(Buffer.from(r.data.outputs[0].imageDataUri.split(",")[1],"base64").toString("latin1"),/private email|test@example.test|tEXt/);
   assert.equal(r.data.outputs[0].provenance,"AI-generated-or-edited");
+});
+test("an unconditional output callback cannot waive actual PNG pixel validation",async t=>{
+  const x=fixture(t);x.runtime.validateOutput=async()=>({ok:true});
+  const original=pngBytes({width:256,height:256});
+  const corrupt=Buffer.concat([original.subarray(0,33),pngChunk("IDAT",Buffer.from("broken")),pngChunk("IEND")]);
+  x.runtime.invokeModel=async()=>({imageDataUri:"data:image/png;base64,"+corrupt.toString("base64")});
+  const r=await x.send("/api/media",generate);assert.equal(r.status,502);assert.equal(r.data.outputs,undefined);
+  assert.equal(x.sql.prepare("SELECT status FROM credit_reservations").get().status,"reserved");
+});
+test("moderation callbacks cannot replace verified input/output pixel bytes",async t=>{
+  const x=fixture(t);x.runtime.moderateInput=async({request})=>{request.input.imageDataUri="corrupt";return {ok:true}};
+  assert.equal((await x.send()).status,503);assert.equal(x.calls.model,0);assert.equal(x.count("credit_reservations"),0);
+  const y=fixture(t);y.runtime.validateOutput=async({output})=>{output.imageDataUri="corrupt";return {ok:true}};
+  const r=await y.send("/api/media",generate);assert.equal(r.status,502);assert.equal(r.data.outputs,undefined);
 });

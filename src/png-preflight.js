@@ -136,9 +136,10 @@ export function createPngOutputValidator({moderate}={}){
   return async function validate({output,feature,signal}){
     try{
       cancelled(signal);
-      const clean=typeof output?.imageDataUri==="string"
+      const value=typeof output?.imageDataUri==="string"
         ?{...output,imageDataUri:(await normalizePngDataUri(output.imageDataUri,{signal})).dataUri}
         :output;
+      const clean=Object.freeze({...value});
       const reviewed=await moderate({output:clean,feature,signal});cancelled(signal);
       return reviewed?.ok===true?{ok:true,output:clean}:{ok:false};
     }catch{return {ok:false};}

@@ -24,10 +24,12 @@ trusted server-only `MEDIA_RUNTIME` object containing versioned `tariffs`,
 `invokeModel`, `measureUsage`, `preflightInput`, `moderateInput`,
 `validateOutput` and a whole-job `jobTimeoutMs` (at most 120 seconds).
 
-An optional real bounded PNG decoder/re-encoder is now supplied by
+The mandatory real bounded PNG decoder/re-encoder is supplied by
 `src/png-preflight.js`; its supported subset and local JPG/WebP normalization
-are documented in [PNG pixel preflight](PNG-PIXEL-PREFLIGHT.md). The runtime must
-explicitly install it. No semantic moderator or trusted usage/invoice verifier
+are documented in [PNG pixel preflight](PNG-PIXEL-PREFLIGHT.md). The HTTP boundary
+always applies it after the custom input hook and to generated PNG output.
+Verified requests/outputs are frozen before moderation; callbacks cannot waive
+decoding or replace verified pixels. No semantic moderator or trusted usage/invoice verifier
 is supplied here. Tests use fictional moderation/receipt implementations.
 Setting a flag alone cannot make
 the API usable. Native provider metrics or uploaded `measured:true` are not

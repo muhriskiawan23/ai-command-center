@@ -31,11 +31,13 @@ No network, storage, Node runtime, external package or paid service is used.
   with stream backpressure and bounded expanded reads. It cooperatively yields
   during reconstruction so cancellation can be observed.
 
-`createPngMediaPreflight` composes with the authenticated media API and preserves
+`createPngMediaPreflight` is mandatory in the authenticated media API and preserves
 request intent. It returns failure on unsupported formats or decoder errors.
 `createPngOutputValidator` similarly decodes/re-encodes image output, but requires
 an independent moderation callback. It does not install an unconditional pass.
-The coordinator revalidates any sanitized output's shape and dimensions before
+The API always decodes pixels even when custom callbacks return ok:true;
+verified requests and outputs are immutable during moderation. The coordinator
+revalidates sanitized output shape and dimensions before
 financial settlement/delivery. Mandatory moderation and metering remain separate.
 
 ## Browser preparation

@@ -4,9 +4,11 @@ import {json,sha256Hex} from "./http.js";
 import {resolvePlanAccess,authorizePlanFeature} from "./plan-entitlements.js";
 import {prepareMultimodalOperation,runMultimodalInferencePrototype} from "./multimodal-inference.js";
 import {quoteMediaOperation} from "./multimodal-metering.js";
+import {createPngMediaPreflight,createPngOutputValidator} from "./png-preflight.js";
 export const MEDIA_REQUEST_MAX_BYTES=8*1024*1024;
 const BODY_TIMEOUT_MS=10000;
 const creditPattern=/^[1-9][0-9]{0,15}$/;
+const verifyInputPixels=createPngMediaPreflight();
 const fail=(code,status,message,headers={})=>json({error:message,code},status,headers);
 async function readMediaJson(request,signal){
   const length=request.headers.get("Content-Length");
@@ -53,6 +55,13 @@ function mediaIntent({action,input}){
   return JSON.stringify({action,question:input.question,prompt:input.prompt,width:input.width,height:input.height,
     durationSeconds:input.durationSeconds,references:input.references?.length??0,
     timestamps:input.frames?.map(frame=>frame.atSeconds)});
+}
+function freezeVerifiedRequest(value){
+  if(value&&typeof value==="object"&&!Object.isFrozen(value)){
+    for(const child of Object.values(value))freezeVerifiedRequest(child);
+    Object.freeze(value);
+  }
+  return value;
 }
 function publicFailure(result){
   if(result.reason==="paid_plan_entitlement_rejected")return fail("media_plan_required",403,"Paket aktif tidak mendukung fitur ini.");
@@ -189,13 +198,19 @@ async function handleEnabledMediaRoute(request,env,url,{getSession,sameOrigin,ru
     if(preflight?.ok!==true||!preflight.request)return fail("media_input_rejected",422,"Berkas media tidak lolos pemeriksaan.");
     prepareMultimodalOperation(preflight.request);
     if(mediaIntent(preflight.request)!==intent)return fail("media_input_rejected",422,"Parameter permintaan berubah saat pemeriksaan berkas.");
-    if((await runtime.moderateInput({request:preflight.request,userId:user.id,signal:request.signal}))?.ok!==true)
+    // A configured callback's ok:true is not evidence of valid pixels.
+    // Enforce the built-in bounded codec before moderation or any dispatch.
+    const pixels=await verifyInputPixels({request:preflight.request,signal:request.signal});
+    if(pixels.ok!==true)return fail("media_input_rejected",422,"Berkas media tidak lolos pemeriksaan piksel PNG.");
+    freezeVerifiedRequest(pixels.request);
+    if((await runtime.moderateInput({request:pixels.request,userId:user.id,signal:request.signal}))?.ok!==true)
       return fail("media_input_rejected",422,"Media tidak dapat diproses sesuai ketentuan layanan.");
     if(request.signal.aborted)return fail("media_request_cancelled",408,"Proses media dibatalkan.");
-    if(mediaIntent(preflight.request)!==intent)return fail("media_input_rejected",422,"Parameter permintaan berubah saat pemeriksaan berkas.");
+    if(mediaIntent(pixels.request)!==intent)return fail("media_input_rejected",422,"Parameter permintaan berubah saat pemeriksaan berkas.");
     const result=await runMultimodalInferencePrototype({env,userId:user.id,requestId,
-      request:preflight.request,tariffs:runtime.tariffs,maximumMicrocredits:maximum,
-      invokeModel:runtime.invokeModel,measureUsage:runtime.measureUsage,validateOutput:runtime.validateOutput,
+      request:pixels.request,tariffs:runtime.tariffs,maximumMicrocredits:maximum,
+      invokeModel:runtime.invokeModel,measureUsage:runtime.measureUsage,
+      validateOutput:createPngOutputValidator({moderate:runtime.validateOutput}),
       jobTimeoutMs:runtime.jobTimeoutMs,signal:request.signal});
     if(!result.ok)return publicFailure(result);
     return json({ok:true,feature:result.feature,outputs:result.outputs,
