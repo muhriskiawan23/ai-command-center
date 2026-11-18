@@ -92,6 +92,12 @@ export async function runJournaledInferencePrototype({
   // Capture whether a verified plan was required at dispatch. A later
   // configuration change must NOT silently skip revocation checks.
   const paidPlanGate=env.PLAN_ENTITLEMENTS_ENABLED==="true";
+  // Ordinary paid inference must refuse to reserve spend unless server-side
+  // subscription verification is enabled. Only the isolated synthetic proof
+  // runner may opt into a DB-only test path; production must never set this.
+  const syntheticProof=env.STAGE3_SYNTHETIC_ONLY==="true" && !env.AI;
+  if(!paidPlanGate && !syntheticProof)
+    return declined("paid_plan_entitlement_disabled");
   const feature=policy.requiredPlan==="pro"?"pro_credit_capacity":"basic_paid_credits";
   const hasPaidAccess=async()=>{
     if(env.PLAN_ENTITLEMENTS_ENABLED!=="true")return false;
