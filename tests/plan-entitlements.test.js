@@ -14,6 +14,9 @@ const BASE="https://borai.test";
 const NOW=Math.floor(Date.now()/1000);
 function setup(t,{enabled=true}={}){
   const db=createD1();t.after(()=>db.sqlite.close());
+  if(enabled)db.sqlite.prepare(
+    "UPDATE provider_runtime_controls SET enabled=1,updated_at=? WHERE control_name='paid_provider_dispatch'"
+  ).run(NOW);
   const alice=seedSession(db,{id:"alice-test",email:"alice@example.test"});
   const bob=seedSession(db,{id:"bob-test",email:"bob@example.test"});
   const env={DB:db,...(enabled?{PLAN_ENTITLEMENTS_ENABLED:"true",PAID_INFERENCE_ENABLED:"true"}:{})};
