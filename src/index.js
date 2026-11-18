@@ -341,17 +341,17 @@ async function runAgent(env, agentId, userMessage, context = "", history = [], p
 
   const tokenLimits = {
     researcher: 500,
-    analyst: 600,
-    fact_checker: 350,
-    writer: 1400,
+    analyst: 800,
+    fact_checker: 500,
+    writer: 1800,
     strategist: 800,
     coder: 1400,
     planner: 800,
     critic: 500,
-    summarizer: 500,
+    summarizer: 1100,
     translator: 1200,
     text_analyst: 1000,
-    coordinator: 700
+    coordinator: 950
   };
 
   const cleanOutput = (value) => String(value || "").trim().split("\n").filter((line) => {
@@ -421,7 +421,7 @@ async function runAgent(env, agentId, userMessage, context = "", history = [], p
         messages: extraInstruction
           ? [...messages, { role: "user", content: extraInstruction }]
           : messages,
-        max_tokens: tokenLimits[agentId] || 700,
+        max_tokens: Math.min(2200, (tokenLimits[agentId] || 950) + (/\b(mendalam|detail|lengkap|komprehensif|thorough|in.depth|step.by.step|detailed|comprehensive)\b/i.test(userMessage) ? 300 : 0)),
         temperature: 0.4,
         repetition_penalty: 1.1
       });
@@ -485,7 +485,7 @@ async function runAgent(env, agentId, userMessage, context = "", history = [], p
 
 // Use a single model call for straightforward requests; reserve orchestration for complex tasks.
 function shouldUseMultiAgent(message) {
-  const complexIntent = /\b(analisis|analisa|bandingkan|evaluasi|strategi|rencana|perencanaan|penelitian|risiko|debug|refactor|arsitektur|forecast|prediksi|proposal|roadmap|audit|business plan|coding|kode)\b/i;
+  const complexIntent = /\b(analisis|analisa|bandingkan|evaluasi|strategi|rencana|perencanaan|penelitian|risiko|debug|refactor|arsitektur|forecast|prediksi|proposal|roadmap|audit|business plan|coding|kode|compare|comparison|evaluate|evaluation|analyze|analyse|analysis|investigate|investigation|diagnose|diagnosis|architecture|optimization|optimise|optimize|financial model|reasoning|algorithm|proof|trade-offs|tradeoffs|root cause|system design|análisis|comparar|évaluer|analysieren)\b/i;
   const zeroBudgetPromotion =
     /(?:rp\s*0|modal\s*(?:sebesar\s*)?0|tanpa\s+(?:modal|biaya)|zero[- ]budget|no[- ]budget)/i.test(message) &&
     /(?:promosi|marketing|kampanye|konten|media\s+sosial|mahasiswa|warkop|bisnis)/i.test(message);
