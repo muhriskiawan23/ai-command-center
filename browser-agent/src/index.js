@@ -29,12 +29,16 @@ async function snapshot(page, host){
     page.title(),
     page.locator("body").innerText({timeout:4000}),
     page.locator("button, a, input, textarea, select, [role='button']").evaluateAll(nodes=>
-      nodes.slice(0,80).filter(el=>!["password","hidden","file"].includes(el.type?.toLowerCase())).map(el=>({
-        role:(el.getAttribute("role")||({
+      nodes.slice(0,80).filter(el=>!["password","hidden","file"].includes(el.type?.toLowerCase())).map(el=>{
+        const role=(el.getAttribute("role")||({
           BUTTON:"button",A:"link",INPUT:"textbox",TEXTAREA:"textbox",SELECT:"combobox"
-        }[el.tagName]||"element")).slice(0,24),
-        name:(el.getAttribute("aria-label")||el.innerText||el.labels?.[0]?.innerText||el.getAttribute("placeholder")||"").trim().slice(0,110)
-      })).filter(item=>item.name).slice(0,24)
+        }[el.tagName]||"element")).slice(0,24);
+        const accessible=el.getAttribute("aria-label")||el.labels?.[0]?.innerText||el.innerText||"";
+        const placeholder=el.getAttribute("placeholder")||"";
+        const name=(accessible||placeholder).trim().slice(0,100);
+        const by=accessible?"role":(placeholder?"placeholder":"role");
+        return {role,by,name};
+      }).filter(item=>item.name&&["button","link","textbox","combobox","checkbox"].includes(item.role)).slice(0,24)
     )
   ]);
   return {host,url:current.url,title:trimText(title,220),text:trimText(body,BROWSER_TEXT_MAX),
