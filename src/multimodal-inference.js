@@ -266,7 +266,8 @@ export async function inspectMediaBilling(env){
   const row=await env.DB.prepare(`
     WITH jobs AS (
       SELECT b.id,b.provider,b.model,b.status AS budget_status,b.actual_micro_usd,
-        c.status AS wallet_status,c.settled_microcredits,
+        b.reserved_micro_usd, c.status AS wallet_status,c.settled_microcredits,
+        c.reserved_microcredits,
         (SELECT COUNT(*) FROM media_usage_events d WHERE d.request_id=b.id AND d.event_kind='dispatched') AS dispatched,
         (SELECT COALESCE(SUM(m.provider_cost_micro_usd),0) FROM media_usage_events m
           WHERE m.request_id=b.id AND m.event_kind='usage_measured') AS measured_cost
@@ -276,6 +277,16 @@ export async function inspectMediaBilling(env){
     )
     SELECT
       (SELECT COUNT(*) FROM jobs) AS jobs,
+      -- Bounded, aggregated financial exposure. These are journal/reservation
+      -- values, NOT attested third-party invoices or recognized revenue.
+      (SELECT COALESCE(SUM(reserved_micro_usd),0) FROM jobs
+        WHERE budget_status='reserved') AS held_provider_micro_usd,
+      (SELECT COALESCE(SUM(reserved_microcredits),0) FROM jobs
+        WHERE wallet_status='reserved') AS held_customer_microcredits,
+      (SELECT COALESCE(SUM(actual_micro_usd),0) FROM jobs
+        WHERE budget_status='settled') AS settled_provider_micro_usd,
+      (SELECT COALESCE(SUM(settled_microcredits),0) FROM jobs
+        WHERE wallet_status='settled') AS settled_customer_microcredits,
       (SELECT COUNT(*) FROM jobs WHERE budget_status='reserved' OR wallet_status='reserved') AS held_jobs,
       (SELECT COUNT(*) FROM jobs WHERE budget_status='settled' AND actual_micro_usd!=measured_cost) AS cost_mismatches,
       (SELECT COUNT(*) FROM jobs WHERE dispatched>0 AND
@@ -300,8 +311,12 @@ export async function inspectMediaBilling(env){
   `).first();
   const names=["jobs","held_jobs","cost_mismatches","incomplete_dispatched_jobs","unresolved_attempts","terminal_conflicts",
     "orphan_or_mismatched_dispatches","orphan_wallets","invalid_wallet_settlements"];
-  if(!row||names.some(name=>!Number.isSafeInteger(row[name])||row[name]<0))
+  const exposureNames=["held_provider_micro_usd","held_customer_microcredits",
+    "settled_provider_micro_usd","settled_customer_microcredits"];
+  if(!row||[...names,...exposureNames].some(name=>!Number.isSafeInteger(row[name])||row[name]<0))
     throw new Error("Media billing audit unavailable");
+  // Financial totals are informational. Only exception counters determine
+  // reviewRequired; normal settled spend must never become an audit alert.
   return Object.freeze({...row,reviewRequired:names.slice(1).some(name=>row[name]>0),
     providerInvoiceVerified:false,scope:"inactive_media_journal_only"});
 }
