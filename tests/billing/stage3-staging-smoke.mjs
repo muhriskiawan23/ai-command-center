@@ -90,8 +90,8 @@ try {
   assert.equal(await readCount("stage3_staging_requests"), 0);
   // Even a Free user with positive (synthetic) wallet balance cannot
   // consume paid inference merely by possessing credits.
-  const unentitled = await send("/api/chat",
-    {message:single.message,requestId:randomUUID()},sessionHeaders["stage3-free"]);
+  const freeRequest = {message:single.message,requestId:randomUUID()};
+  const unentitled = await send("/api/chat",freeRequest,sessionHeaders["stage3-free"]);
   assert.equal(unentitled.status,403,"Free account must not call paid AI");
   assert.equal(await readCount("stage3_staging_requests"),0,"Free cannot claim a paid request");
   assert.equal(await readCount("provider_usage_events"),0);
@@ -179,7 +179,28 @@ try {
   assert.equal(await readCount("provider_usage_events"),before.journal);
   assert.equal(await readCount("provider_budget_reservations"),before.budget);
   assert.equal(await readCount("credit_reservations"),before.wallet);
-  console.log("PASS: verified synthetic Basic/Pro payments, Free denial, refunds, chargebacks, authenticated routes, isolated wallets, replay rejection and recoverable settlement holds");
+  // A denied Free request must not poison its idempotency key: after a
+  // fabricated, verified Basic purchase, the exact same request can be
+  // accepted once and charged only once.
+  await db.prepare("INSERT INTO verified_plan_payments "+
+    "(order_id,user_id,purchased_tier,verification_status,verified_at,updated_at) "+
+    "VALUES ('synthetic-plan-stage3-free','stage3-free','basic','verified_paid',?,?)")
+    .bind(now-120,now-60).run();
+  await db.prepare("INSERT INTO plan_entitlements "+
+    "(user_id,paid_tier,payment_order_id,status,starts_at,ends_at,updated_at) "+
+    "VALUES ('stage3-free','basic','synthetic-plan-stage3-free','active',?,?,?)")
+    .bind(now-60,now+3600,now).run();
+  const upgraded = await send("/api/chat",freeRequest,sessionHeaders["stage3-free"]);
+  assert.equal(upgraded.status,200,"Synthetic Basic subscription must unlock an unclaimed request");
+  const upgradedBody=await upgraded.json();
+  assert.equal(upgradedBody.replayed,false);
+  assert.equal(await readCount("provider_usage_events","event_kind='usage_measured'"),before.journal-1+1);
+  assert.equal((await db.prepare("SELECT balance_microcredits AS balance FROM credit_accounts WHERE user_id='stage3-free'").first()).balance,100000-519);
+  const upgradedReplay=await send("/api/chat",freeRequest,sessionHeaders["stage3-free"]);
+  assert.equal(upgradedReplay.status,200);
+  assert.equal((await upgradedReplay.json()).replayed,true);
+  assert.equal(await readCount("provider_usage_events","event_kind='usage_measured'"),10);
+  console.log("PASS: verified synthetic Basic/Pro payments, Free-to-Basic upgrade without poisoned claims, refunds, chargebacks, authenticated routes, isolated wallets, replay rejection and recoverable settlement holds");
 } finally {
   await miniflare.dispose();
 }
