@@ -75,3 +75,29 @@ The UI rechecks the package at server-reported expiry, within 60 seconds while
 visible, and when the tab resumes. A stale badge never authorizes a request.
 The linked `/paket.html` comparison page exists and labels unreleased media
 features as planned; it offers no tier selector or checkout.
+
+
+### Stage 3 mid-flight revocation and default-deny gates — 18 November 2026
+The inactive journaled AI-spend prototype now **defaults to refusing any
+billable operation** when `PLAN_ENTITLEMENTS_ENABLED` is not exactly
+`true`, before reserving provider budget or customer credits. Its only
+alternative is a separate, explicit `STAGE3_SYNTHETIC_ONLY=true` switch
+used by isolated mock providers/disposable D1 tests; the production Wrangler
+configuration does not set it, and an environment with a real `AI` binding
+cannot use this proof-only bypass. It is not a production deployment flag
+or permission to charge users.
+
+When verified plans are enabled, the prototype checks the server-verified
+Basic/Pro entitlement before reservation **and again before settlement and
+after both financial settlements**. A refund, revocation, plan-gate disable
+or database uncertainty mid-flight prevents the paid model output from
+being returned. After model dispatch, provider cost may have accrued: the
+prototype **holds** unsettled reservations for independent operator
+reconciliation rather than incorrectly claiming zero provider cost.
+If revocation occurs while settlement commits, the committed entries are
+not automatically reversed; the result remains private and needs review.
+This behavior is covered by synthetic tests for refund during provider
+dispatch, refund during wallet settlement, removal of the plan flag and
+missing plan-gate default denial. Live provider usage and invoice checks,
+a real subscription merchant, and independent financial/security review
+are still required before paid production activation.
