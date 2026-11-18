@@ -5,6 +5,7 @@ import { classifyMidtransStatus } from "./midtrans-status.js";
 const BASE = "https://api.sandbox.midtrans.com";
 const ORDER_ID = /^[A-Za-z0-9_-]{1,100}$/;
 const MAX_STATUS_BYTES = 32768;
+const MAX_STATUS_DEADLINE_MS = 8000;
 
 // Enforce the limit while streaming: a Content-Length check alone does not
 // protect against oversized/chunked responses from the payment provider.
@@ -40,30 +41,60 @@ async function readBoundedStatusBody(response) {
     reader.releaseLock();
   }
 }
-export async function readVerifiedSandboxStatus(order, { serverKey, expectedMerchantId, fetchImpl = fetch, signal, requireCurrency = false } = {}) {
+export async function readVerifiedSandboxStatus(order, { serverKey, expectedMerchantId, fetchImpl = fetch, signal, requireCurrency = false, timeoutMs = MAX_STATUS_DEADLINE_MS } = {}) {
   if (!order || order.environment !== "sandbox" || !ORDER_ID.test(order.orderId || ""))
     throw new TypeError("Sandbox order with safe ID required");
   if (typeof serverKey !== "string" || !serverKey.startsWith("SB-Mid-server-"))
     throw new TypeError("Sandbox server key required");
   if (typeof expectedMerchantId !== "string" || !expectedMerchantId.trim())
     throw new TypeError("Expected Midtrans sandbox merchant ID required");
-  const authorization = "Basic " + btoa(serverKey + ":");
-  const response = await fetchImpl(BASE + "/v2/" + encodeURIComponent(order.orderId) + "/status", {
-    method: "GET", headers: { Accept: "application/json", Authorization: authorization },
-    redirect: "manual", signal
+  // An upstream fetch or a body stream can stall independently. Do not rely
+  // on the caller's fetch implementation respecting an AbortSignal: enforce
+  // one bounded, adapter-owned deadline across headers AND the full body.
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > MAX_STATUS_DEADLINE_MS)
+    throw new TypeError("Bounded Midtrans status timeout required");
+  const controller = new AbortController();
+  let timer, stop;
+  const stopped = new Promise((_, reject) => {
+    stop = reason => {
+      controller.abort();
+      reject(new Error(reason));
+    };
+    timer = setTimeout(() => stop("Midtrans status deadline exceeded"), timeoutMs);
   });
-  if (!response.ok) throw new Error("Midtrans sandbox status unavailable");
-  const body = await readBoundedStatusBody(response);
-  let status;
-  try { status = JSON.parse(body); } catch { throw new Error("Invalid Midtrans JSON"); }
-  if (status.status_code !== "200") throw new Error("Midtrans status not confirmed");
-  if ((requireCurrency || status.currency !== undefined) && status.currency !== "IDR") throw new Error("Midtrans currency mismatch");
-  assertMidtransPaymentMatchesOrder(order,status,"sandbox");
-  if (typeof status.transaction_id !== "string" || !status.transaction_id ||
-      typeof status.merchant_id !== "string" || !status.merchant_id)
-    throw new Error("Midtrans transaction identity missing");
-  if (status.merchant_id !== expectedMerchantId) throw new Error("Midtrans merchant mismatch");
-  return status;
+  const abort = () => stop("Midtrans status cancelled");
+  signal?.addEventListener("abort", abort, { once: true });
+  if (signal?.aborted) abort();
+  let response;
+  try {
+    const authorization = "Basic " + btoa(serverKey + ":");
+    response = await Promise.race([
+      fetchImpl(BASE + "/v2/" + encodeURIComponent(order.orderId) + "/status", {
+        method: "GET", headers: { Accept: "application/json", Authorization: authorization },
+        redirect: "manual", signal: controller.signal
+      }),
+      stopped
+    ]);
+    if (!response?.ok) throw new Error("Midtrans sandbox status unavailable");
+    const body = await Promise.race([readBoundedStatusBody(response), stopped]);
+    let status;
+    try { status = JSON.parse(body); } catch { throw new Error("Invalid Midtrans JSON"); }
+    if (status.status_code !== "200") throw new Error("Midtrans status not confirmed");
+    if ((requireCurrency || status.currency !== undefined) && status.currency !== "IDR") throw new Error("Midtrans currency mismatch");
+    assertMidtransPaymentMatchesOrder(order,status,"sandbox");
+    if (typeof status.transaction_id !== "string" || !status.transaction_id ||
+        typeof status.merchant_id !== "string" || !status.merchant_id)
+      throw new Error("Midtrans transaction identity missing");
+    if (status.merchant_id !== expectedMerchantId) throw new Error("Midtrans merchant mismatch");
+    return status;
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener("abort", abort);
+    // Abort only failed/incomplete requests. A late provider response may not
+    // authorize credits after our deadline, regardless of how fetch resolves.
+    if (controller.signal.aborted)
+      void response?.body?.cancel?.().catch(() => {});
+  }
 }
 
 export async function checkMidtransSandboxOrder(order, options) {
