@@ -50,6 +50,6 @@ test("signed-in beta can inspect allowed page and execute only a reviewed, user-
  expect(calls[1].steps).toHaveLength(1);
  await page.locator("#browserCopyToChat").click();
  await expect(page.locator("#browserDialog")).toBeHidden();
- await expect(page.locator("#prompt")).toContainText("Sumber browser");
+ await expect(page.locator("#prompt")).toHaveValue(/Sumber browser/);
  expect(app.aiCalls).toHaveLength(0);
 });
