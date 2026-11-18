@@ -96,9 +96,14 @@ async function mediaStatus(request,env,user){
       WHERE b.id=?
     `).bind(user.id,id).first();
     if(!row)return fail("media_request_not_found",404,"Permintaan media tidak ditemukan untuk akun ini.");
-    if(["dispatched","measured","measured_cost","uncertain_events"].some(k=>!Number.isSafeInteger(row[k])||row[k]<0)||
-      (row.settled_microcredits!==null&&row.settled_microcredits!==undefined&&
-        (!Number.isSafeInteger(row.settled_microcredits)||row.settled_microcredits<0)))throw new Error("Invalid status");
+    const budgetValid=(row.budget_status==="reserved"&&row.actual_micro_usd===null)||
+      (row.budget_status==="settled"&&Number.isSafeInteger(row.actual_micro_usd)&&row.actual_micro_usd>=0);
+    const walletValid=(["reserved","released"].includes(row.wallet_status)&&row.settled_microcredits===null)||
+      (row.wallet_status==="settled"&&Number.isSafeInteger(row.settled_microcredits)&&row.settled_microcredits>=0)||
+      (row.wallet_status===null&&row.settled_microcredits===null);
+    if(!budgetValid||!walletValid||
+      ["dispatched","measured","measured_cost","uncertain_events"].some(k=>!Number.isSafeInteger(row[k])||row[k]<0))
+      throw new Error("Invalid financial status snapshot");
     const cancelled=row.budget_status==="settled"&&row.actual_micro_usd===0&&row.dispatched===0&&
       (row.wallet_status==null||(row.wallet_status==="settled"&&row.settled_microcredits===0));
     const complete=row.budget_status==="settled"&&row.actual_micro_usd>0&&row.wallet_status==="settled"&&
