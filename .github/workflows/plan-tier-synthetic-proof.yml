@@ -45,6 +45,8 @@ jobs:
         run: node tests/billing/stage3-staging-smoke.mjs
       - name: Recreate local workerd and verify persisted D1 holds + emergency OFF (NO SECRETS)
         run: node tests/billing/stage3-workerd-restart-smoke.mjs
+      - name: Two separate local workerd scripts share persistent D1, reject double-billing and honor global OFF (NO ACCOUNT)
+        run: node tests/billing/stage3-two-worker-shared-d1-smoke.mjs
       - name: Decode and re-encode PNG pixels in actual local workerd (NO ACCOUNT)
         run: node tests/media/codec-workerd-proof.mjs
 
