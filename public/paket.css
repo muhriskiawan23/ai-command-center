@@ -40,3 +40,9 @@ tbody tr:nth-child(even){background:#fbfdfe}
 .package-free .package-summary{margin-bottom:16px}
 @media(max-width:940px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:680px){.grid{grid-template-columns:1fr}}
+
+/* Package facts and unreleased media share the merchant catalog's theme. */
+caption{text-align:left;padding:12px 13px;font-weight:650;color:#174058}
+.media-details .notice{max-width:none}
+.media-table{min-width:700px}
+.media-table tbody th{width:34%}
