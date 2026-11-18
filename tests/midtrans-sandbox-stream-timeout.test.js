@@ -30,8 +30,8 @@ test("aborted stalled Midtrans notification stops promptly before verification o
   await new Promise(resolve=>setImmediate(resolve));
   controller.abort();
   const response=await promise;
-  assert.equal(response.status,400);
-  assert.equal((await response.json()).error,"Invalid JSON notification");
+  assert.equal(response.status,503);
+  assert.equal((await response.json()).error,"Sandbox notification interrupted; provider retry required");
   assert.equal(providerCalls,0);
   assert.equal(cancelled,true);
 });
@@ -67,4 +67,31 @@ test("invalid UTF-8 is rejected instead of replacing bytes in signed notificatio
   });
   assert.equal(response.status,400);
   assert.equal(calls,0);
+});
+
+test("unresponsive stream cancellation cannot block interrupted webhook retry response",{
+  timeout:2000
+},async()=>{
+  let cancelAttempted=false,upstream=0;
+  const controller=new AbortController();
+  const stream=new ReadableStream({
+    start(queue){queue.enqueue(new TextEncoder().encode("{"));},
+    cancel(){cancelAttempted=true;return new Promise(()=>{});}
+  });
+  const pending=handleSandboxPayment(webhook(stream,{signal:controller.signal}),sandbox(),async()=>{
+    upstream++;throw Error("No provider verification allowed");
+  });
+  await new Promise(resolve=>setImmediate(resolve));
+  controller.abort();
+  const response=await pending;
+  assert.equal(response.status,503);
+  assert.equal(cancelAttempted,true);
+  assert.equal(upstream,0);
+});
+test("malformed but fully received sandbox callback remains non-retryable 400",async()=>{
+  const response=await handleSandboxPayment(webhook(new TextEncoder().encode("{")),sandbox(),async()=>{
+    throw Error("No provider call should be attempted");
+  });
+  assert.equal(response.status,400);
+  assert.equal((await response.json()).error,"Invalid JSON notification");
 });
