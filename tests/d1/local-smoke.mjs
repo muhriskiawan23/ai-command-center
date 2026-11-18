@@ -47,6 +47,11 @@ try{
  run("UPDATE payment_orders SET state='fulfilled',updated_at=2 WHERE order_id='order1';");
  run("UPDATE payment_orders SET state='fulfilled',updated_at=3 WHERE order_id='order1' AND state='paid_unfulfilled';");
  run("UPDATE payment_orders SET state='fulfilled',updated_at=3 WHERE order_id='order1';",/payment_fulfillment_transition_invalid/);
+ // D1 must refuse terminal refund/dispute labels without a matching
+ // recorded reversal. A direct SQL UPDATE cannot substitute for provider
+ // verification, the credit ledger or an operator review.
+ run("UPDATE payment_orders SET state='refunded' WHERE order_id='order1';",/sandbox_reversal_evidence_required/);
+ run("UPDATE payment_orders SET state='disputed' WHERE order_id='order1';",/sandbox_reversal_evidence_required/);
  const out=run("SELECT (SELECT balance_microcredits FROM credit_accounts WHERE user_id='u') AS balance,(SELECT count(*) FROM credit_ledger) AS grants,(SELECT state FROM payment_orders WHERE order_id='order1') AS state;");
  const row=out[0]?.results?.[0];
  assert.deepEqual({balance:row?.balance,grants:row?.grants,state:row?.state},{balance:25,grants:1,state:"fulfilled"});
