@@ -1,0 +1,53 @@
+name: BOR AI isolated local D1 billing proof
+
+# Entirely local D1 smoke; DOES NOT target Cloudflare remote resources.
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/bor-ai-isolated-billing-d1.yml'
+      - 'tests/billing/isolated-d1-smoke.mjs'
+      - 'tests/billing/stage2-d1-proof.mjs'
+      - 'tests/billing/stage3-d1-proof.mjs'
+      - 'tests/billing/stage3-staging-smoke.mjs'
+      - 'tests/billing/stage3-wrangler-lock/**'
+      - 'staging/stage3-worker.js'
+      - 'migrations/0012_credit_ledger.sql'
+      - 'migrations/0013_provider_spend_budget.sql'
+      - 'migrations/0014_provider_usage_journal.sql'
+      - 'src/credit-ledger.js'
+      - 'src/provider-spend-budget.js'
+      - 'src/billable-inference-gate.js'
+      - 'src/billing-reconciliation.js'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  isolated-local-d1:
+    name: Disposable Wrangler local-D1 billing SQL smoke
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      CI: 'true'
+      # No production environment/secrets, no Cloudflare identity or account.
+      CLOUDFLARE_SEND_METRICS: 'false'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install locked test dependencies
+        run: npm ci
+      - name: Verify the isolated synthetic Stage 3 Worker against local D1
+        run: |
+          npm ci --prefix tests/billing/stage3-wrangler-lock --ignore-scripts --no-audit --no-fund
+          node tests/billing/stage3-staging-smoke.mjs
+      - name: Test D1 migrations, global budget and ledger with isolated local Wrangler state
+        run: node tests/billing/isolated-d1-smoke.mjs
+      - name: Stage 2 multi-request local D1 atomicity and timeout/refund proof
+        run: node tests/billing/stage2-d1-proof.mjs --local
+      - name: Stage 3 three-schema SQL and journal safety proof (LOCAL ONLY)
+        run: node tests/billing/stage3-d1-proof.mjs --local

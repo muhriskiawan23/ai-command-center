@@ -1,0 +1,55 @@
+name: BOR AI Stage 3 Wrangler lockfile integrity proof (NO SECRETS)
+
+# Offline review of committed dependency lock, no Cloudflare credentials.
+on:
+  pull_request:
+    paths:
+      - 'tests/billing/stage3-wrangler-lock/**'
+      - '.github/workflows/bor-ai-stage3-wrangler-lock-review.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  locked-dependencies:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Checkout Stage 3 lockfile evidence
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 22
+      - name: Reproduce exact locked Wrangler dependencies without credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --prefix tests/billing/stage3-wrangler-lock --ignore-scripts --no-audit --no-fund
+          tests/billing/stage3-wrangler-lock/node_modules/.bin/wrangler --version
+      - name: Fail on currently known high or critical npm advisories (no secrets)
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm audit --prefix tests/billing/stage3-wrangler-lock --audit-level=high --no-fund
+      - name: Verify exact package version and every registry integrity pin
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs=require('node:fs');
+          const crypto=require('node:crypto');
+          const content=fs.readFileSync('tests/billing/stage3-wrangler-lock/package-lock.json','utf8');
+          const lock=JSON.parse(content);
+          if(lock.lockfileVersion!==3 || lock.packages?.['']?.devDependencies?.wrangler!=='4.160.0' ||
+             lock.packages?.['node_modules/wrangler']?.version!=='4.160.0')
+             throw Error('Stage 3 Wrangler dependency lock drift');
+          for(const [k,v] of Object.entries(lock.packages||{}))
+            if(k && v.resolved?.startsWith('https://') && !v.integrity)
+              throw Error('Unpinned registry package '+k);
+          console.log('LOCKED_CLI=wrangler@4.160.0');
+          console.log('LOCKFILE_PACKAGE_COUNT='+Object.keys(lock.packages).length);
+          console.log('LOCKFILE_SHA256='+crypto.createHash('sha256').update(content).digest('hex'));
+          NODE

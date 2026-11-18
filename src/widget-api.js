@@ -124,6 +124,10 @@ export async function handlePublicChatRoute(request, env, deps) {
   const agentId = body?.agent || "coordinator";
   if (typeof agentId !== "string" || !Object.hasOwn(deps.AGENTS, agentId)) return fail("Agent tidak dikenal.", 400);
 
+  if (typeof env.STAGE3_AUTHORIZE_INFERENCE === "function") {
+    const denial = await env.STAGE3_AUTHORIZE_INFERENCE({ channel: "public", userId: row.user_id });
+    if (denial) return withCors(denial, origin);
+  }
   if (deps.CHAT_LIMITER?.limit) {
     try {
       const ip = request.headers.get("CF-Connecting-IP") || "unknown-client";
