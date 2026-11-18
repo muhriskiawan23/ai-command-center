@@ -364,3 +364,21 @@ for(const step of ["measureUsage","validateOutput"]){
     assert.equal(x.calls(),1);
   });
 }
+for(const stage of ["provider","wallet"]){
+  test("cancellation during "+stage+" settlement completes confirmed accounting without publishing output",async t=>{
+    const x=fixture(t),parent=new AbortController(),budget=providerSpendBudget(x.env);
+    const r=await x.run({signal:parent.signal,
+      providerBudget:{reserve:budget.reserve,settle:async entry=>{
+        const result=await budget.settle(entry);if(stage==="provider")parent.abort();return result;
+      }},
+      ledger:{reserve:reserveCredits,finalize:async(env,entry)=>{
+        const result=await finalizeCredits(env,entry);if(stage==="wallet")parent.abort();return result;
+      }}
+    });
+    assert.equal(r.reason,"cancelled_after_financial_settlement");assert.equal(r.outputs,undefined);
+    assert.equal(x.budget().actual_micro_usd,400);assert.equal(x.reservation().settled_microcredits,800);
+    assert.equal(x.balanceOf(),999200);assert.equal(x.calls(),1);
+    assert.equal((await inspectMediaBilling(x.env)).reviewRequired,false);
+    assert.equal((await x.run()).ok,false);assert.equal(x.calls(),1);assert.equal(x.balanceOf(),999200);
+  });
+}

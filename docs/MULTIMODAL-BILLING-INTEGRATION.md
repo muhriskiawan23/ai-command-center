@@ -47,6 +47,10 @@ Usage measurement and output validation receive their own per-step abort signals
 which abort at the call deadline as well as on whole-job/client cancellation.
 Adapters should pass these signals to cancellable I/O; ignoring cancellation does
 not allow a late result to settle credits or return media.
+If cancellation arrives while financial writes are committing, confirmed
+bookkeeping completes but output remains suppressed. Settled verified costs are
+not automatically refunded as though no provider call occurred. Result recovery
+after disconnection still requires the separate durable delivery design.
 
 Video output is explicitly `sampled_visual_frames_only`, with timestamps and
 `audioAnalyzed:false`. There is no audio processing or temporal synthesis yet.
