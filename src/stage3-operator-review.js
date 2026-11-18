@@ -42,8 +42,9 @@ export async function inspectStage3OperatorEvidence({
   caseId, evidenceSha256, providerStatementSha256, actualCostMicroUsd,
   disposition, approvals, verifyProviderStatement, verifyReviewer
 } = {}) {
-  if (!CASE.test(caseId || "") || !HASH.test(evidenceSha256 || "") ||
-      !HASH.test(providerStatementSha256 || "") ||
+  if (typeof caseId !== "string" || !CASE.test(caseId) ||
+      typeof evidenceSha256 !== "string" || !HASH.test(evidenceSha256) ||
+      typeof providerStatementSha256 !== "string" || !HASH.test(providerStatementSha256) ||
       !Number.isSafeInteger(actualCostMicroUsd) || actualCostMicroUsd < 0 ||
       !DISPOSITIONS.has(disposition) ||
       typeof verifyProviderStatement !== "function" ||
