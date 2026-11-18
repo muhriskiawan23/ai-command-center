@@ -1,6 +1,7 @@
 // Authenticated, feature-gated BOR AI -> isolated private Browser Run Worker.
 import { json } from "./http.js";
-import { consumeUsage, refundUsage, usageDay } from "./daily-limits.js";
+import { consumeUsage, refundUsage, usageDay, enforceDailyLimits } from "./daily-limits.js";
+import { suggestBrowserStep } from "./browser-action-planner.js";
 import {browserAllowedHosts,canonicalBrowserPlan,browserPlanNeedsApproval,safeBrowserResult} from "./browser-automation-policy.js";
 
 const encoder=new TextEncoder();
@@ -70,7 +71,7 @@ async function reserveBrowserJob(env,userId){
 }
 export async function handleBrowserAutomationRoute(request,env,{getSession,sameOrigin}){
   const path=new URL(request.url).pathname;
-  if(!["/api/browser/plan","/api/browser/execute"].includes(path))return null;
+  if(!["/api/browser/plan","/api/browser/execute","/api/browser/suggest"].includes(path))return null;
   if(request.method!=="POST")return json({error:"method_not_allowed"},405,{Allow:"POST"});
   if(!sameOrigin(request))return json({error:"invalid_origin"},403);
   if(env.BROWSER_AGENT_ENABLED!=="true"||!env.BROWSER_AGENT?.fetch||
@@ -86,6 +87,15 @@ export async function handleBrowserAutomationRoute(request,env,{getSession,sameO
     if(!limited) return json({error:"Pembatasan browser tidak tersedia."},503);
   }catch{return json({error:"Pembatasan browser tidak tersedia."},503);}
   const body=await readSmallJson(request);
+  if(path==="/api/browser/suggest"){
+    if(!body||typeof body.instruction!=="string"||body.instruction.length>400)
+      return json({error:"Instruksi browser tidak valid."},400);
+    const charged=await enforceDailyLimits(env,request,user,1);
+    if(!charged.ok)return charged.response;
+    const outcome=await suggestBrowserStep(env,body.instruction,body.page,browserAllowedHosts(env.BROWSER_AGENT_ALLOWED_HOSTS));
+    if(outcome.error)return json({error:"AI belum menemukan langkah browser yang aman.",code:outcome.error},422);
+    return json(outcome);
+  }
   const plan=canonicalBrowserPlan(body?.plan,browserAllowedHosts(env.BROWSER_AGENT_ALLOWED_HOSTS));
   if(!plan)return json({error:"URL atau langkah tidak aman/tidak diizinkan.",code:"browser_plan_invalid"},400);
   if(path==="/api/browser/plan"){
