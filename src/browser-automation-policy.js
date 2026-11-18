@@ -63,7 +63,7 @@ export function safeBrowserResult(raw,expectedHost){
     ok:true,host:raw.host,url:String(raw.url||"").slice(0,1500),
     title:String(raw.title||"").slice(0,220),
     text:String(raw.text||"").slice(0,BROWSER_TEXT_MAX),
-    elements:Array.isArray(raw.elements)?raw.elements.slice(0,24).map(x=>({role:String(x.role||"").slice(0,25),name:String(x.name||"").slice(0,110)})):[],
+    elements:Array.isArray(raw.elements)?raw.elements.slice(0,24).map(x=>({role:String(x.role||"").slice(0,25),by:["role","label","placeholder"].includes(x.by)?x.by:"role",name:String(x.name||"").slice(0,100)})):[],
     stepsExecuted:Number.isSafeInteger(raw.stepsExecuted)?Math.max(0,Math.min(raw.stepsExecuted,BROWSER_MAX_STEPS)):0,
     truncated:raw.truncated===true
   };
