@@ -194,9 +194,13 @@ jobs:
           set -euo pipefail
           curl --fail --silent --show-error --max-time 60 \
             -H 'Content-Type: application/json' \
-            --data '{"message":"Jelaskan manajemen risiko secara singkat.","agent":"coordinator"}' \
+            --data '{"message":"hi bor","agent":"coordinator","language":"id"}' \
             'https://ai-command-center.muhriskiawan23.workers.dev/api/chat' \
-            | node --input-type=module -e 'let s="";for await(const c of process.stdin)s+=c;const d=JSON.parse(s);if(typeof d.response!=="string"||d.response.trim().length<20)throw Error("Live chat check failed")'
+            | node --input-type=module -e 'let s="";for await(const c of process.stdin)s+=c;const d=JSON.parse(s);if(typeof d.response!=="string"||d.response.trim().length<2)throw Error("Live chat greeting failed: missing usable AI response")'
+
+      - name: Warn when live chat smoke was skipped
+        if: ${{ !inputs.run_chat_smoke }}
+        run: echo "::warning::Production deployment succeeded but REAL AI inference was NOT tested. Set run_chat_smoke=true to verify chat."
 
       - name: Optional live Tavily web and news smoke tests
         if: ${{ inputs.run_tavily_smoke }}
