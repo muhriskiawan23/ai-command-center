@@ -468,6 +468,7 @@ async function runAgent(env, agentId, userMessage, context = "", history = [], p
       primaryError instanceof AiTimeoutError){
       throw primaryError || new Error("Model returned an empty final answer");
     }
+    if(Array.isArray(env.MODEL_TRACE))env.MODEL_TRACE.gptOssDegraded=true;
     // Exactly one baseline fallback (not another paid GPT-OSS attempt).
     // Use Llama's original output allowance, not the reasoning model's 1600+.
     traceEntry.modelId=selection.model.id;
