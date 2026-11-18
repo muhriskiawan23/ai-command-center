@@ -453,3 +453,32 @@ test("coordinator rejects truncated, filtered, error-marked provider outputs eve
     assert.equal((await inspectMediaBilling(x.env)).reviewRequired,true);
   }
 });
+
+test("single-frame entitlement revoked during provider usage cannot settle or deliver media",async t=>{
+  const x=fixture(t);
+  const r=await x.run({invokeModel:async()=>{
+    x.sql.prepare("UPDATE verified_plan_payments SET verification_status='refunded'").run();
+    return {answer:"Gambar sintetis."};
+  }});
+  assert.equal(r.ok,false);
+  assert.equal(r.reason,"media_final_entitlement_unverified_reservations_held");
+  assert.equal(r.outputs,undefined);
+  assert.equal(x.reservation().status,"reserved");
+  assert.equal(x.budget().status,"reserved");
+  assert.equal(x.events().at(-1).event_kind,"usage_measured");
+  assert.equal((await inspectMediaBilling(x.env)).reviewRequired,true);
+});
+test("refund arriving during credit finalization suppresses delivery after measured settlement",async t=>{
+  const x=fixture(t);
+  const result=await x.run({ledger:{reserve:reserveCredits,finalize:async(env,entry)=>{
+    const finalized=await finalizeCredits(env,entry);
+    x.sql.prepare("UPDATE verified_plan_payments SET verification_status='refunded'").run();
+    return finalized;
+  }}});
+  assert.equal(result.ok,false);
+  assert.equal(result.reason,"media_delivery_entitlement_revoked_after_settlement");
+  assert.equal(result.outputs,undefined);
+  assert.equal(x.budget().status,"settled");
+  assert.equal(x.reservation().status,"settled");
+  assert.equal((await inspectMediaBilling(x.env)).reviewRequired,false);
+});
