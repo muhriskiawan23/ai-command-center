@@ -1,0 +1,17 @@
+{
+  "name": "bor-ai-browser-agent",
+  "main": "src/index.js",
+  "compatibility_date": "2026-11-12",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "workers_dev": false,
+  "browser": {
+    "binding": "BROWSER"
+  },
+  "vars": {
+    "BROWSER_EXECUTION_ENABLED": "false",
+    "BROWSER_ALLOWED_HOSTS": "demo.playwright.dev,example.com",
+    "BROWSER_ASSET_ALLOWED_HOSTS": ""
+  }
+}
