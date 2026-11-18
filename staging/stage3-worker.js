@@ -88,7 +88,7 @@ export default {
           const call = ++modelCalls;
           if (call > 12) throw new Error("Stage 3 synthetic call limit exceeded");
           const billing = await runJournaledInferencePrototype({
-            env: { DB },
+            env: { DB, STAGE3_SYNTHETIC_ONLY: "true" },
             userId: scope.userId,
             requestId: `staging:${scope.id}:${call}`,
             attemptId: `staging:${scope.id}:${call}`,
