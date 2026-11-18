@@ -361,3 +361,49 @@ test("Stage 3 kill switch changes during inference withhold output and preserve 
   assert.deepEqual(result,{ok:false,reason:"paid_plan_revoked_reservations_held",modelInvoked:true});
   assert.deepEqual(calls,["budget","wallet","dispatched","model","usage_measured"]);
 });
+
+test("Stage 3 stops before dispatch when kill switch turns off during wallet admission",async t=>{
+  const x=setup(t);x.paid({tier:"pro"});
+  const trace=[];
+  const tariff={
+    approved:true,provider:"workers-ai",model:"@cf/synthetic",
+    version:"kill-v2",requiredPlan:"pro",inputRateMicroUsdPerMillion:293000n,
+    outputRateMicroUsdPerMillion:2253000n,creditNumerator:1n,creditDenominator:1n,
+    maxCallMicroUsd:9000n,maxCallMicrocredits:9000n
+  };
+  const result=await runJournaledInferencePrototype({
+    env:x.env,userId:"alice-test",requestId:"stop-during-wallet",attemptId:"stop-attempt-wallet",
+    tariff,maxInputTokens:1000,maxOutputTokens:100,
+    providerBudget:{reserve:async()=>{trace.push("budget");return {ok:true};},
+      settle:async()=>{trace.push("settle");return {ok:true};}},
+    ledger:{reserve:async()=>{
+      trace.push("wallet");x.env.PAID_INFERENCE_ENABLED="false";return {ok:true};
+    },finalize:async()=>{trace.push("finalize");return {ok:true};}},
+    journal:async()=>{trace.push("journal");return {ok:true};},
+    invokeModel:async()=>{trace.push("model");return {usage:{prompt_tokens:10,completion_tokens:1}};}
+  });
+  assert.deepEqual(result,{ok:false,reason:"paid_plan_revoked_before_dispatch_reservations_held",modelInvoked:false});
+  assert.deepEqual(trace,["budget","wallet"]);
+});
+test("Stage 3 refuses a model call when kill switch turns off during journal acknowledgement",async t=>{
+  const x=setup(t);x.paid({tier:"pro"});
+  const trace=[];
+  const tariff={
+    approved:true,provider:"workers-ai",model:"@cf/synthetic",
+    version:"kill-v2",requiredPlan:"pro",inputRateMicroUsdPerMillion:293000n,
+    outputRateMicroUsdPerMillion:2253000n,creditNumerator:1n,creditDenominator:1n,
+    maxCallMicroUsd:9000n,maxCallMicrocredits:9000n
+  };
+  const result=await runJournaledInferencePrototype({
+    env:x.env,userId:"alice-test",requestId:"stop-during-journal",attemptId:"stop-attempt-journal",
+    tariff,maxInputTokens:1000,maxOutputTokens:100,
+    providerBudget:{reserve:async()=>{trace.push("budget");return {ok:true};},
+      settle:async()=>{trace.push("settle");return {ok:true};}},
+    ledger:{reserve:async()=>{trace.push("wallet");return {ok:true};},
+      finalize:async()=>{trace.push("finalize");return {ok:true};}},
+    journal:async()=>{trace.push("journal");x.env.PAID_INFERENCE_ENABLED="false";return {ok:true};},
+    invokeModel:async()=>{trace.push("model");return {usage:{prompt_tokens:10,completion_tokens:1}};}
+  });
+  assert.deepEqual(result,{ok:false,reason:"paid_plan_revoked_after_dispatch_marker_reservations_held",modelInvoked:false});
+  assert.deepEqual(trace,["budget","wallet","journal"]);
+});
