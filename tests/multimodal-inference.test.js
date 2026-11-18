@@ -382,3 +382,38 @@ for(const stage of ["provider","wallet"]){
     assert.equal((await x.run()).ok,false);assert.equal(x.calls(),1);assert.equal(x.balanceOf(),999200);
   });
 }
+
+test("an unknown-cost attempt cannot be backfilled as measured or reclassified automatically",async t=>{
+  const x=fixture(t);
+  const r=await x.run({invokeModel:async()=>{throw Error("synthetic provider timeout");}});
+  assert.equal(r.reason,"provider_outcome_unknown_reservations_held");
+  const [dispatch,unknown]=x.events();
+  assert.equal(dispatch.event_kind,"dispatched");assert.equal(unknown.event_kind,"outcome_unknown");
+  const scope={attemptId:dispatch.attempt_id,requestId:dispatch.request_id,
+    provider:dispatch.provider,model:dispatch.model,rateVersion:dispatch.rate_version,
+    feature:dispatch.feature};
+  await assert.rejects(
+    appendMediaUsageEvent(x.env,{...scope,kind:"usage_measured",providerCostMicroUsd:400n}),
+    /media_event_terminal_conflict/
+  );
+  await assert.rejects(appendMediaUsageEvent(x.env,{...scope,kind:"usage_unverified"}),
+    /media_event_terminal_conflict/);
+  assert.equal(x.events().length,2);
+  assert.equal(x.reservation().status,"reserved");
+  assert.equal((await inspectMediaBilling(x.env)).reviewRequired,true);
+});
+test("an unverified-usage attempt cannot become measured by replay or late callback",async t=>{
+  const x=fixture(t);
+  const r=await x.run({measureUsage:async()=>null});
+  assert.equal(r.reason,"media_usage_unverified_reservations_held");
+  const [dispatch,unverified]=x.events();
+  assert.equal(dispatch.event_kind,"dispatched");
+  assert.equal(unverified.event_kind,"usage_unverified");
+  await assert.rejects(appendMediaUsageEvent(x.env,{
+    attemptId:dispatch.attempt_id,requestId:dispatch.request_id,provider:dispatch.provider,
+    model:dispatch.model,rateVersion:dispatch.rate_version,feature:dispatch.feature,
+    kind:"usage_measured",providerCostMicroUsd:400n
+  }),/media_event_terminal_conflict/);
+  assert.equal(x.events().length,2);
+  assert.equal(x.budget().status,"reserved");
+});
