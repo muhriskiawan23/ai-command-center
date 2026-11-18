@@ -66,13 +66,37 @@ export function quoteJournaledInference({tariff,maxInputTokens,maxOutputTokens})
 }
 const declined=(reason,modelInvoked=false)=>({ok:false,reason,modelInvoked});
 const callSafe=async(fn)=>{try{return await fn();}catch{return null;}};
+const MAX_MODEL_TIMEOUT_MS=60000;
+// Bound each already-journaled provider attempt independently. The upstream
+// callback may ignore AbortSignal, so abort alone is not a sufficient deadline.
+// Promise.race keeps a rejection handler attached to a late failed callback;
+// its late success cannot publish output or settle a reserved credit.
+async function invokeBoundedModel(invokeModel,args,timeoutMs){
+  const controller=new AbortController();
+  let timer;
+  try{
+    const deadline=new Promise((_,reject)=>{
+      timer=setTimeout(()=>{
+        controller.abort();
+        reject(new Error("provider_attempt_timeout"));
+      },timeoutMs);
+    });
+    return await Promise.race([
+      Promise.resolve().then(()=>invokeModel({...args,signal:controller.signal})),
+      deadline
+    ]);
+  }finally{
+    clearTimeout(timer);
+  }
+}
 // In production the request/attempt IDs must be generated and authenticated
 // server-side. A new attempt MUST be created for every provider retry.
 // DO NOT expose provider output unless both independent financial settlements
 // succeed and the usage journal has acknowledged its durable measured event.
 export async function runJournaledInferencePrototype({
   env,userId,requestId,attemptId,tariff,maxInputTokens,maxOutputTokens,
-  providerBudget,ledger,invokeModel,journal=appendProviderUsageEvent
+  providerBudget,ledger,invokeModel,journal=appendProviderUsageEvent,
+  modelTimeoutMs=30000
 }){
   if(!env?.DB?.prepare || !valid(userId,OPAQUE) ||
     !valid(requestId,OPAQUE) || !valid(attemptId,OPAQUE) ||
@@ -81,6 +105,8 @@ export async function runJournaledInferencePrototype({
     typeof providerBudget?.settle!=="function" ||
     typeof ledger?.reserve!=="function" || typeof ledger?.finalize!=="function")
     throw new TypeError("Server-authenticated IDs, D1, journal and two financial adapters required");
+  if(!Number.isSafeInteger(modelTimeoutMs)||modelTimeoutMs<1||modelTimeoutMs>MAX_MODEL_TIMEOUT_MS)
+    throw new TypeError("Bounded Stage 3 model timeout required");
   const policy=checkedTariff(tariff);
   const quote=quoteJournaledInference({tariff:policy,maxInputTokens,maxOutputTokens});
   if(!quote.allowed) return declined(quote.reason);
@@ -148,9 +174,9 @@ export async function runJournaledInferencePrototype({
     return declined("paid_plan_revoked_after_dispatch_marker_reservations_held");
   let response;
   try {
-    response=await invokeModel({
+    response=await invokeBoundedModel(invokeModel,{
       model:policy.model,maxOutputTokens,maxInputTokens
-    });
+    },modelTimeoutMs);
   } catch {
     await callSafe(()=>journal(env,{...entry,kind:"outcome_unknown"}));
     return declined("provider_outcome_unknown_reservations_held",true);
