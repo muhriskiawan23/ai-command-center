@@ -56,7 +56,7 @@ test("cancelled requests never start binding calls and late answers are rejected
 
 test("vision finish reasons cannot turn truncated/filtered text into a successful paid output",async()=>{
   const request=buildImageUnderstandingRequest({imageDataUri:image});
-  for(const finish_reason of ["length","max_tokens","content_filter",42]){
+  for(const finish_reason of ["length","max_tokens","content_filter","error","cancelled","eos",42,null]){
     let calls=0;
     const invoke=createCloudflareMediaInvoker({AI:{run:async()=>{
       calls++;return {answer:"Partial output",finish_reason};
@@ -68,4 +68,20 @@ test("vision finish reasons cannot turn truncated/filtered text into a successfu
     answer:"Selesai.",finish_reason:"stop"
   })}});
   assert.equal((await complete(request)).answer,"Selesai.");
+});
+
+test("explicit provider errors cannot be disguised by an answer or generated image",async()=>{
+  const vision=buildImageUnderstandingRequest({imageDataUri:image});
+  const generation=buildImageGenerationRequest({prompt:"Sebuah danau biru"});
+  for(const request of [vision,generation]){
+    let calls=0;
+    const invoke=createCloudflareMediaInvoker({AI:{run:async()=>{
+      calls++;
+      return request.model===VISION_MODEL
+        ?{answer:"Looks fine",finish_reason:"stop",error:{message:"upstream failed"}}
+        :{image:image.split(",")[1],error:{message:"upstream failed"}};
+    }}});
+    await assert.rejects(invoke(request),/Provider .* response includes an error/);
+    assert.equal(calls,1);
+  }
 });
