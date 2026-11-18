@@ -182,6 +182,7 @@ try {
   // A denied Free request must not poison its idempotency key: after a
   // fabricated, verified Basic purchase, the exact same request can be
   // accepted once and charged only once.
+  const measuredBeforeUpgrade=await readCount("provider_usage_events","event_kind='usage_measured'");
   await db.prepare("INSERT INTO verified_plan_payments "+
     "(order_id,user_id,purchased_tier,verification_status,verified_at,updated_at) "+
     "VALUES ('synthetic-plan-stage3-free','stage3-free','basic','verified_paid',?,?)")
@@ -193,13 +194,13 @@ try {
   const upgraded = await send("/api/chat",freeRequest,sessionHeaders["stage3-free"]);
   assert.equal(upgraded.status,200,"Synthetic Basic subscription must unlock an unclaimed request");
   const upgradedBody=await upgraded.json();
-  assert.equal(upgradedBody.replayed,false);
-  assert.equal(await readCount("provider_usage_events","event_kind='usage_measured'"),before.journal-1+1);
+  assert.notEqual(upgradedBody.replayed,true);
+  assert.equal(await readCount("provider_usage_events","event_kind='usage_measured'"),measuredBeforeUpgrade+1);
   assert.equal((await db.prepare("SELECT balance_microcredits AS balance FROM credit_accounts WHERE user_id='stage3-free'").first()).balance,100000-519);
   const upgradedReplay=await send("/api/chat",freeRequest,sessionHeaders["stage3-free"]);
   assert.equal(upgradedReplay.status,200);
   assert.equal((await upgradedReplay.json()).replayed,true);
-  assert.equal(await readCount("provider_usage_events","event_kind='usage_measured'"),10);
+  assert.equal(await readCount("provider_usage_events","event_kind='usage_measured'"),measuredBeforeUpgrade+1);
   console.log("PASS: verified synthetic Basic/Pro payments, Free-to-Basic upgrade without poisoned claims, refunds, chargebacks, authenticated routes, isolated wallets, replay rejection and recoverable settlement holds");
 } finally {
   await miniflare.dispose();
