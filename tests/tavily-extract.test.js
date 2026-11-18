@@ -397,3 +397,69 @@ test("Tavily extraction never accepts an unrequested URL in provider results", a
   assert.equal(result[0].ok, true);
   assert.doesNotMatch(JSON.stringify(result), /SECRET|\/private/);
 });
+
+test("Tavily deadline rejects stalled response headers even when transport ignores AbortSignal",async()=>{
+ let signal;
+ const result=await extractWithTavily(["https://example.com/article"],testEnv(),{
+  timeoutMs:25,
+  fetcher:async(_,options)=>{signal=options.signal;return new Promise(()=>{});}
+ });
+ assert.equal(result[0].ok,false);
+ assert.equal(signal.aborted,true);
+});
+test("Tavily deadline cancels a stalled streamed JSON body without waiting for producer cancel",async()=>{
+ let signal,cancelled=false;
+ const stream=new ReadableStream({
+  start(controller){controller.enqueue(new TextEncoder().encode('{"results":['));},
+  cancel(){cancelled=true;return new Promise(()=>{});}
+ });
+ const result=await extractWithTavily(["https://example.com/article"],testEnv(),{
+  timeoutMs:25,
+  fetcher:async(_,options)=>{signal=options.signal;return new Response(stream);}
+ });
+ assert.equal(result[0].ok,false);
+ assert.equal(signal.aborted,true);
+ assert.equal(cancelled,true);
+});
+test("Tavily oversize streamed body cannot hang on a never-resolving cancellation",async()=>{
+ let cancelled=false;
+ const stream=new ReadableStream({
+  start(controller){controller.enqueue(new Uint8Array(1_000_001));},
+  cancel(){cancelled=true;return new Promise(()=>{});}
+ });
+ const result=await extractWithTavily(["https://example.com/article"],testEnv(),{
+  timeoutMs:25,fetcher:async()=>new Response(stream)
+ });
+ assert.equal(result[0].ok,false);
+ assert.equal(cancelled,true);
+});
+test("Tavily oversized Content-Length cancels without waiting for a hung stream",async()=>{
+ let cancelled=false;
+ const stream=new ReadableStream({
+  start(controller){controller.enqueue(new Uint8Array([1]));},
+  cancel(){cancelled=true;return new Promise(()=>{});}
+ });
+ const result=await extractWithTavily(["https://example.com/article"],testEnv(),{
+  timeoutMs:25,fetcher:async()=>new Response(stream,{
+   headers:{"Content-Length":"1000001"}
+  })
+ });
+ assert.equal(result[0].ok,false);
+ assert.equal(cancelled,true);
+});
+test("Tavily Extract rejects malformed UTF-8 instead of returning a page with replacement characters",async()=>{
+ const result=await extractWithTavily(["https://example.com/article"],testEnv(),{
+  fetcher:async()=>new Response(new Uint8Array([0xc3,0x28]))
+ });
+ assert.equal(result[0].ok,false);
+});
+test("Tavily Extract rejects an unbounded test timeout before a provider call",async()=>{
+ for(const timeoutMs of [0,-1,8001,Infinity,1.5,"100"]){
+  let calls=0;
+  const result=await extractWithTavily(["https://example.com/article"],testEnv(),{
+   timeoutMs,fetcher:async()=>{calls++;return Response.json({results:[]});}
+  });
+  assert.equal(calls,0);
+  assert.equal(result[0].ok,false);
+ }
+});
