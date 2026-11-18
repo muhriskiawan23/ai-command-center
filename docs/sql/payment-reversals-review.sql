@@ -67,3 +67,32 @@ BEGIN
         AND r.outcome IN ('reversed','review_required')
     );
 END;
+
+-- Reversal evidence must be immutable after a decision. The insert trigger
+-- has one legitimate internal transition from pending to reversed or
+-- review_required; no other in-place update is permitted.
+CREATE TRIGGER IF NOT EXISTS sandbox_reversal_no_rewrite
+BEFORE UPDATE ON sandbox_payment_reversals
+WHEN OLD.outcome!='pending'
+  OR NEW.outcome NOT IN ('reversed','review_required')
+  OR NEW.order_id!=OLD.order_id
+  OR NEW.provider_transaction_id!=OLD.provider_transaction_id
+  OR NEW.kind!=OLD.kind
+  OR NEW.amount_idr!=OLD.amount_idr
+  OR NEW.created_at!=OLD.created_at
+BEGIN SELECT RAISE(ABORT,'sandbox_reversal_append_only'); END;
+
+CREATE TRIGGER IF NOT EXISTS sandbox_reversal_no_delete
+BEFORE DELETE ON sandbox_payment_reversals
+BEGIN SELECT RAISE(ABORT,'sandbox_reversal_delete_forbidden'); END;
+
+-- Exception markers are historical, privacy-minimal operator evidence.
+-- Only INSERT OR IGNORE is allowed; cleanup requires a separately approved
+-- retention/migration process, never ad hoc mutation of financial history.
+CREATE TRIGGER IF NOT EXISTS sandbox_reversal_review_no_update
+BEFORE UPDATE ON sandbox_payment_reversal_reviews
+BEGIN SELECT RAISE(ABORT,'sandbox_reversal_review_append_only'); END;
+
+CREATE TRIGGER IF NOT EXISTS sandbox_reversal_review_no_delete
+BEFORE DELETE ON sandbox_payment_reversal_reviews
+BEGIN SELECT RAISE(ABORT,'sandbox_reversal_review_delete_forbidden'); END;
