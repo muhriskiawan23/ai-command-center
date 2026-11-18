@@ -61,23 +61,28 @@
     // its account and consent prompt without a popup blocker.
     let settled=false;
     return new Promise((resolve,reject)=>{
+      let timer;
+      const settle=(error,value)=>{
+        if(settled)return;
+        settled=true;
+        if(timer&&typeof clearTimeout==="function")clearTimeout(timer);
+        if(error)reject(error);else resolve(value);
+      };
       const client=oauth.initTokenClient({
         client_id:clientId,scope,
         callback:(reply)=>{
-          if(settled)return;
-          settled=true;
           if(reply?.error||typeof reply?.access_token!=="string"||reply.access_token.length<8){
-            reject(Error("google_forms_access_denied"));return;
+            settle(Error("google_forms_access_denied"));return;
           }
           if(typeof oauth.hasGrantedAllScopes==="function"&&!oauth.hasGrantedAllScopes(reply,scope)){
-            reject(Error("google_forms_scope_not_granted"));return;
+            settle(Error("google_forms_scope_not_granted"));return;
           }
-          resolve(reply.access_token);
+          settle(null,reply.access_token);
         },
-        error_callback:()=>{
-          if(settled)return;settled=true;reject(Error("google_forms_popup_failed"));
-        }
+        error_callback:()=>settle(Error("google_forms_popup_failed"))
       });
+      // Google may not fire the callback when the consent popup is closed.
+      if(typeof setTimeout==="function")timer=setTimeout(()=>settle(Error("google_forms_consent_timeout")),120000);
       client.requestAccessToken({prompt:"consent"});
     });
   }
