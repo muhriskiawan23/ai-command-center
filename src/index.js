@@ -1,4 +1,5 @@
 import { safeError } from "./safe-error.js";
+import { validateCustomization, customizationNotice } from "./customization.js";
 import { CONFIDENTIALITY_NOTICE, isConfidentialityRequest, confidentialityReply, containsProtectedOutput } from "./confidentiality.js";
 import { extractUrls, readLinks, buildPageContext, summarizeLinks } from "./links.js";
 import { createVerifiedLinkFetcher } from "./verified-egress.js";
@@ -333,6 +334,8 @@ async function runAgent(env, agentId, userMessage, context = "", history = [], p
         : userMessage
     }
   ];
+  // Account preferences are lower-trust presentation hints; never system policy.
+  if (env.BOR_CUSTOMIZATION) messages[messages.length - 1].content += customizationNotice(env.BOR_CUSTOMIZATION);
   // Fetched web pages travel with the user's turn (never with the system prompt), clearly delimited as untrusted data.
   if (pages) messages[messages.length - 1].content += `\n\n${pages}`;
 
@@ -1399,6 +1402,8 @@ export default {
       try { body = JSON.parse(bodyResult.text); }
       catch { return json({ error: "Request JSON tidak valid." }, 400); }
       const message = typeof body?.message === "string" ? body.message.trim() : "";
+      const custom = validateCustomization(body?.customization);
+      if (!custom.ok) return json({ error: "Preferensi jawaban tidak valid." }, 400);
       const document = body?.document;
       if (document !== undefined && (!document || typeof document !== "object" || typeof document.name !== "string" || typeof document.content !== "string" || !document.content.trim() || document.content.length > PDF_CONTEXT_MAX_CHARS)) return json({ error: "Konteks PDF tidak valid atau terlalu besar. Unggah ulang dokumen." }, 400);
       const presentation = body?.presentation;
@@ -1453,7 +1458,8 @@ export default {
       const researchMode = detectResearchMode(message);
       // External link reading and live search consume extra provider/network budget.
       const researchCharge = researchMode && isSearchProviderConfigured(env) ? 1 : 0;
-      const usage = await enforceDailyLimits(env, request, user, (useMultiAgent ? MULTI_AGENT_UNITS : 1) + (found.urls.length ? 1 : 0) + researchCharge);
+      const linkCharge = found.urls.length && env.URL_READER_ENABLED === "true" ? 1 : 0;
+      const usage = await enforceDailyLimits(env, request, user, (useMultiAgent ? MULTI_AGENT_UNITS : 1) + linkCharge + researchCharge);
       if (!usage.ok) return usage.response;
       let history = clientHistory.history;
       let replaceRows = [];
@@ -1502,10 +1508,15 @@ export default {
       const modelTrace = [];
       const requestEnv = { ...env, MODEL_TRACE: modelTrace };
       const memoryEnv = withSystemExtra(requestEnv, buildMemoryBlock(memoryItems));
-      const localizedEnv = withResponseLanguage(memoryEnv, language);
+      const localizedEnv = { ...withResponseLanguage(memoryEnv, language), BOR_CUSTOMIZATION: custom.value };
       const aiEnv = withAiDeadline(localizedEnv, Date.now() + budgetMs, request.signal);
       let pages = "";
       let links = [];
+      if (found.urls.length && env.URL_READER_ENABLED !== "true") {
+        // A disabled reader must neither charge for link retrieval nor imply that URLs were read.
+        pages = "USER LINKS NOT READ: The user supplied web links but safe link extraction is not enabled. No linked page was opened. Do not claim to have read them; request pasted page content if it is needed.";
+        links = found.urls.map(raw => ({ ok: false, host: new URL(raw).hostname, reason: "Pembacaan tautan belum tersedia pada layanan ini." }));
+      }
       const pdfContext = document ? buildPdfContext(document) : "";
       const spreadsheetContext = spreadsheet ? buildSpreadsheetContext(spreadsheet) : "";
       const presentationContext = presentation ? buildPresentationContext(presentation) : "";
