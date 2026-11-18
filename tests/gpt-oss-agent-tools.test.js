@@ -20,6 +20,8 @@ test("budget reservation is atomic, per turn max two calls and fails closed on m
   const cap=worstCaseGptOssMicroUsd(messages,900);
   assert.ok(cap>0&&cap<10000);
   assert.equal(worstCaseGptOssMicroUsd(messages,9999),null);
+  assert.equal(worstCaseGptOssMicroUsd(messages,900,50000),null);
+  assert.ok(worstCaseGptOssMicroUsd(messages,900,9000)>cap);
   assert.equal(worstCaseGptOssMicroUsd([{role:"user",content:"x".repeat(50000)}],500),null);
   const trace=[];
   const state={spent:0,cap:250000};
