@@ -5,6 +5,7 @@
 const FIELDS=[
   "dispatchedAttempts","measuredAttempts","unknownUnmeasuredAttempts",
   "staleUnmeasuredAttempts","stalePreDispatchBudgetHolds",
+  "staleBudgetWithoutWallet",
   "orphanDispatches","providerModelMismatches",
   "settledBudgetWithoutMeasuredUsage","zeroSettledBudgetAfterDispatch",
   "settledCostMismatches",
@@ -38,6 +39,14 @@ const query=[
 " AND NOT EXISTS (SELECT 1 FROM provider_usage_events d",
 "   WHERE d.event_kind='dispatched' AND b.id='ai:' || d.request_id))",
 " AS stalePreDispatchBudgetHolds,",
+"(SELECT COUNT(*) FROM provider_budget_reservations b",
+" WHERE b.status='reserved' AND b.created_at<=?",
+" AND substr(b.id,1,3)='ai:'",
+" AND NOT EXISTS (SELECT 1 FROM credit_reservations c",
+"   WHERE b.id='ai:' || c.request_id)",
+" AND NOT EXISTS (SELECT 1 FROM provider_usage_events d",
+"   WHERE d.event_kind='dispatched' AND b.id='ai:' || d.request_id))",
+" AS staleBudgetWithoutWallet,",
 "(SELECT COUNT(*) FROM provider_usage_events d",
 " WHERE d.event_kind='dispatched'",
 " AND (NOT EXISTS (SELECT 1 FROM provider_budget_reservations b",
@@ -118,7 +127,7 @@ export async function inspectStage3CrossLedgerReconciliation(env,{
   // A single SELECT gives one consistent SQLite snapshot even while other
   // requests are settling. No user/request/attempt identifiers are returned.
   // Do not catch missing tables, DB failures or malformed results.
-  const row=await env.DB.prepare(query).bind(cutoff,cutoff).first();
+  const row=await env.DB.prepare(query).bind(cutoff,cutoff,cutoff).first();
   if(!row || FIELDS.some(k=>!Number.isSafeInteger(row[k])||row[k]<0))
     throw new Error("Stage 3 cross-ledger snapshot unavailable or invalid");
   const counts=Object.fromEntries(FIELDS.map(k=>[k,row[k]]));
