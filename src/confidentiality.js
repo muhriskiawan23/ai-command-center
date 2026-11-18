@@ -31,6 +31,9 @@ function directRequest(text) {
   const reveal = /\b(?:show|reveal|print|dump|repeat|return|give|list|display|extract|translate|encode|decode|reconstruct|tell|what (?:is|are)|tampil\w*|bocor\w*|cetak|ulang\w*|beri\w*|sebut\w*|salin|ungkap\w*|terjemah\w*|apa(?:kah)?|bagaimana|gimana|how)\b/.test(t);
   const disclose = /\b(?:show|reveal|print|dump|repeat|display|extract|encode|decode|reconstruct|tampil\w*|bocor\w*|cetak|ulang\w*|salin|ungkap\w*)\b/.test(t);
   const prevention = /\b(?:melindungi|mencegah|menjaga|protect|prevent|avoid|keep.{0,20}safe)\b/.test(t) && !disclose;
+  // A safety pretext must not turn a direct demand for proprietary material into a permitted request.
+  // Restrict this to direct objects so ordinary advice such as "give tips to protect source code" stays allowed.
+  const materialDemand = /\b(?:give|provide|send|share|return|list|tell|beri\w*|bagikan|kirim\w*)\b(?:\s+(?:me|us|the|all|your|full|complete|entire|exact|detailed|saya|kami|semua|lengkap|seluruh|rinci|bor|ai|of)){0,8}\s+(?:source\s*code|kode\s*(?:sumber|internal)|internal\s+(?:architecture|backend|config\w*|security)|arsitektur\s+internal|(?:private|secret)\s+(?:config\w*|credentials?|keys?)|system\s+prompt|prompt\s+(?:internal|sistem)|kredensial|credentials?|secrets?)\b/.test(t);
   const hiddenPrompt = /\byour instructions\b|\binstruksi(?:mu| kamu| anda)\b|\b(?:system|developer|hidden|internal|initial|original|sistem|pengembang|tersembunyi)\s+(?:prompt|instructions?|messages?|pesan|instruksi)\b|\bprompt\s+(?:sistem|internal|asli|rahasia|kamu|anda|mu)\b/.test(t);
   const ownExample = /\b(?:contoh|example|aplikasi saya|my (?:app|system|chatbot)|my own)\b/.test(t);
   const promptOwnership = /\b(?:your|yours|kamu|anda|mu|milikmu|milik anda|milik kamu)\b/.test(t) || platform || !ownExample;
@@ -44,7 +47,7 @@ function directRequest(text) {
     && !disclose && !/\b(?:internal|provider|secret|rahasia|source|kode|backend|arsitektur)\b/.test(t);
   // Public safety questions must remain answerable; asking to reveal/audit actual
   // internals is separate from asking how to protect one's own information.
-  if (platform && internal && (reveal || inspect) && !prevention && !ownKeyHelp) return true;
+  if (platform && internal && (materialDemand || ((reveal || inspect) && !prevention)) && !ownKeyHelp) return true;
   if (!platform && reveal && /\b(?:your|milikmu|milik anda|milik kamu)\s+(?:backend|source\s*code|api\s*key|credentials?|secrets?|database\s+schema)\b|\b(?:kode\s+sumber|api\s*key|kredensial|rahasia|skema\s+database)(?:mu|\s+(?:kamu|anda))\b/.test(t)) return true;
   const harmful = /\b(?:clone|cloning|clon\w*|recreate|duplicate|duplikat\w*|meniru|tiru|salin|mencuri|curi|steal|exploit\w*|hack\w*|bobol\w*|bypass|bypass\w*|ddos|dos|lumpuhkan|menjatuhkan)\b|\b(?:buat|bikin|make).{0,45}\b(?:down|crash)\b/.test(t);
   const action = reveal || inspect || /\b(?:bantu|buat|bikin|ajari|ingin|mau|want|help|cara|steps?|langkah|to|i will)\b/.test(t);
