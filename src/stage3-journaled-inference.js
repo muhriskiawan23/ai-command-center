@@ -129,6 +129,11 @@ export async function runJournaledInferencePrototype({
     return declined(release?.ok===true?
       "credit_reservation_rejected":"credit_rejected_budget_hold_for_review");
   }
+  // An operator kill switch, refund or revocation can happen while the
+  // two independent DB reservations are in flight. Stop before recording
+  // dispatch; any existing hold needs explicit reconciliation.
+  if(paidPlanGate && !await hasPaidAccess())
+    return declined("paid_plan_revoked_before_dispatch_reservations_held");
   const entry={attemptId,requestId,provider:policy.provider,
     model:policy.model,rateVersion:policy.version};
   // A failed/ambiguous dispatch journal acknowledgment may still mean a
@@ -137,6 +142,10 @@ export async function runJournaledInferencePrototype({
   const dispatch=await callSafe(()=>journal(env,{...entry,kind:"dispatched"}));
   if(dispatch?.ok!==true)
     return declined("journal_dispatch_unconfirmed_reservations_held");
+  // Journaling can itself be delayed by D1. Never call the provider after a
+  // mid-journal revocation or kill switch disable, even if the marker exists.
+  if(paidPlanGate && !await hasPaidAccess())
+    return declined("paid_plan_revoked_after_dispatch_marker_reservations_held");
   let response;
   try {
     response=await invokeModel({
