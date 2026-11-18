@@ -944,7 +944,7 @@ async function handlePdfConversionRoute(request, env) {
 
 async function handleAuthRoute(request, env, url) {
   if (url.pathname === "/api/config" && request.method === "GET") {
-    return json({ googleClientId: env.GOOGLE_CLIENT_ID || null, googleSignInEnabled: Boolean(env.GOOGLE_CLIENT_ID && env.DB) });
+    return json({ googleClientId: env.GOOGLE_CLIENT_ID || null, googleSignInEnabled: Boolean(env.GOOGLE_CLIENT_ID && env.DB), browserAgentEnabled: env.BROWSER_AGENT_ENABLED === "true" && Boolean(env.BROWSER_AGENT?.fetch && env.BROWSER_AGENT_TOKEN && env.BROWSER_APPROVAL_SECRET) });
   }
   const authRateLimit = async (scope) => {
     if (!env.CHAT_LIMITER?.limit) return json({ error: "Pembatasan percobaan login belum tersedia." }, 503);
