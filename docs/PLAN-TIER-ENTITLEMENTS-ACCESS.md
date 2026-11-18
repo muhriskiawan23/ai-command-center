@@ -101,3 +101,20 @@ dispatch, refund during wallet settlement, removal of the plan flag and
 missing plan-gate default denial. Live provider usage and invoice checks,
 a real subscription merchant, and independent financial/security review
 are still required before paid production activation.
+
+
+### Independent paid-inference emergency stop
+For the future plan-verified Stage 3 orchestration, **both**
+`PLAN_ENTITLEMENTS_ENABLED=true` and `PAID_INFERENCE_ENABLED=true`
+must be present before reserving a real provider budget or customer
+credits. A paid subscription is not itself permission to call a billable
+model. If the paid-inference switch changes or becomes unavailable after
+dispatch, output is withheld and uncertain costs are held for operator
+review; no automatic zero-cost refund is inferred. Synthetic tests use a
+separate, never-production `STAGE3_SYNTHETIC_ONLY=true` marker.
+The production Wrangler configuration must keep paid inference disabled
+until provider usage and invoices, spend caps, independent reviews and
+founder GO approval are complete. This is a per-request server-side
+configuration gate, **not** yet a remotely controlled global emergency
+kill switch with atomic cross-Worker propagation, which remains a
+deployment/operational launch requirement.
