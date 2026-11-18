@@ -699,7 +699,7 @@ function renderHistory(){
   if(!inChatView()){$("historyCount").textContent="";return}
   $("historyLabel").textContent=archivedView?"Arsip":state===AppState.AUTH?"Riwayat akun":"Sesi ini · Guest Mode";
   $("historyCount").textContent=conversations.length?String(conversations.length):"";
-  $("toggleArchived").textContent=archivedView?"▤ Lihat riwayat":"▣ Lihat arsip";
+  $("toggleArchived").textContent=(archivedView?"▤ ":"▣ ")+(window.BORLocale?.translate?.(archivedView?"Lihat riwayat":"Lihat arsip")||(archivedView?"Lihat riwayat":"Lihat arsip"));
   $("toggleArchived").setAttribute("aria-pressed",String(archivedView));
   const query=historyQuery.toLocaleLowerCase();
   const visible=sortedConversations().filter(c=>Boolean(c.archived)===archivedView&&(!query||String(c.title||"").toLocaleLowerCase().includes(query)||(state===AppState.GUEST&&c.messages.some(m=>String(m.content||"").toLocaleLowerCase().includes(query)))));
@@ -708,7 +708,7 @@ function renderHistory(){
     const b=document.createElement("button");b.className="history-item"+(c.id===activeId?" active":"");b.type="button";
     if(c.id===activeId)b.setAttribute("aria-current","page");
     const icon=document.createElement("span");icon.textContent="▤";icon.setAttribute("aria-hidden","true");
-    const title=document.createElement("span");title.textContent=c.title||"Percakapan baru";
+    const title=document.createElement("span");title.textContent=window.BORLocale?.translateTitle?.(c.title||"Percakapan baru")||(c.title||"Percakapan baru");
     b.append(icon,title);b.title=c.title||"Percakapan baru";b.onclick=()=>selectChat(c.id);
     const pin=document.createElement("button");pin.className="pin-chat";pin.type="button";pin.textContent=c.pinned?"★":"☆";pin.title=c.pinned?"Lepas sematan":"Sematkan";pin.setAttribute("aria-label",(c.pinned?"Lepas sematan ":"Sematkan ")+(c.title||"chat"));pin.setAttribute("aria-pressed",String(Boolean(c.pinned)));pin.onclick=e=>{e.stopPropagation();pinChat(c.id)};
     const archive=document.createElement("button");archive.className="archive-chat";archive.type="button";archive.textContent=archivedView?"↩":"▣";archive.title=archivedView?"Pulihkan dari arsip":"Arsipkan";archive.setAttribute("aria-label",(archivedView?"Pulihkan dari arsip ":"Arsipkan ")+(c.title||"chat"));archive.onclick=e=>{e.stopPropagation();archiveChat(c.id)};
