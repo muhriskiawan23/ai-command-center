@@ -1,0 +1,11 @@
+{
+  "name": "bor-ai-browser-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Isolated, service-bound Cloudflare Browser Run Playwright executor",
+  "devDependencies": {
+    "@cloudflare/playwright": "1.3.6",
+    "wrangler": "4.53.0"
+  }
+}
