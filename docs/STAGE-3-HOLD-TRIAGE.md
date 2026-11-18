@@ -67,3 +67,34 @@ dispatch detector must then require a separate operator investigation.
 Neither a successful timeout test nor a provider-statement arithmetic
 match proves actual invoice costs. No live model call, real payment,
 automatic refund, production migration, deploy, or release approval.
+
+
+## Crash-boundary recovery evidence — 18 November 2026
+`tests/stage3-crash-recovery-matrix.test.js` simulates durable SQLite
+states at six specific interruption boundaries using the **real, unapplied**
+credit, provider-budget, usage-journal and shared emergency-stop SQL
+migrations. It checks all three read-only reports together, confirms zero
+financial mutations while inspecting, confirms no account/request/provider
+identifiers appear in results and keeps `providerInvoiceVerified=false`.
+
+The tested boundaries are:
+1. Provider budget reserved before wallet reservation (stale orphan) —
+   `staleBudgetWithoutWallet` and missing-wallet escalation
+2. Both provider and wallet reserved before dispatch (stale dual hold) —
+   investigative no-dispatch candidate, **not** refund authority
+3. Dispatch journal persisted but provider outcome never recorded —
+   stale unmeasured attempt and escalation
+4. Usage journal measured before provider settlement —
+   measured-but-held classification
+5. Provider settled before wallet finalized — pending wallet review
+6. Customer wallet settled before provider budget — unsafe-order escalation
+
+A duplicate budget ID cannot allocate spend twice. Switching the shared
+D1 provider gate OFF prevents new reservations without erasing any existing
+hold. No report mutates balances or changes statuses, and no report can
+authorize an automatic settlement.
+
+**Interpretation:** these are persisted-state *simulations*, not a proven
+Worker crash/restart, multi-instance Cloudflare D1 consistency test, provider
+invoice comparison, authentication workflow, or an independently approved
+compensation process. Those release gates remain open.
