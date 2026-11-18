@@ -265,10 +265,18 @@ function accountView(page="home"){
   $("accountBack").setAttribute("aria-label",page==="home"?"Kembali ke chat":"Kembali ke profil");
   $("accountBack").focus();
 }
-function closeAccount(){if(accountDialog.open)accountDialog.close();}
+function closeAccount(){
+  if(!accountDialog.open)return;
+  if(history.state?.overlay==="account")history.back();else accountDialog.close();
+}
 $("userProfile").addEventListener("click",()=>{
   if(state!==AppState.AUTH||!currentUser)return;
-  if(drawerOpen)closeDrawer();
+  if(drawerOpen){
+    // Replace the transient drawer entry; no async history.back race with the account overlay.
+    closeDrawerDom(false);
+    if(history.state?.overlay==="drawer")history.replaceState({borai:1,route:currentRoute()},"",location.href);
+  }
+  history.pushState({borai:1,overlay:"account",route:currentRoute()},"",location.href);
   if(!accountDialog.open)accountDialog.showModal();
   accountView("home");
 });
@@ -277,8 +285,11 @@ $("accountBack").addEventListener("click",()=>{
   if($("accountBack").dataset.page==="home")closeAccount();else accountView("home");
 });
 accountDialog.addEventListener("click",event=>{
-  if(event.target.closest("#openMemory,#openIntegrations,#about"))closeAccount();
+  // Opening an existing account feature closes only the visible dialog; keep the
+  // account history entry so Back from Memory can return to this account view.
+  if(event.target.closest("#openMemory,#openIntegrations,#about"))accountDialog.close();
 },true);
+accountDialog.addEventListener("cancel",event=>{event.preventDefault();closeAccount();});
 accountDialog.addEventListener("close",()=>{
   if($("userProfile").isConnected&&!$("userProfile").hidden)$("userProfile").focus();
 });
@@ -494,6 +505,7 @@ async function signOut(){
   catch{toast("Gagal keluar dari akun");return}
   try{window.google?.accounts?.id?.disableAutoSelect()}catch{}
   clearSessionData();writeGuestFlag(false);
+  if(accountDialog.open)accountDialog.close();
   history.replaceState({borai:1},"",location.pathname+location.search);
   setState(AppState.UNAUTH);loadGoogle(true);
 }
@@ -534,9 +546,18 @@ async function openRemoteChat(cid){
 }
 window.addEventListener("popstate",e=>{
   const s=e.state;
-  if(memoryOpen&&s?.overlay!=="memory"){closeMemoryDom();return}              /* prioritas 1: Back menutup panel Memori */
+  if(memoryOpen&&s?.overlay!=="memory"){
+    closeMemoryDom(false);
+    if(s?.overlay==="account"&&state===AppState.AUTH&&!accountDialog.open){accountDialog.showModal();accountView("home");}
+    return;
+  }
   if(s?.overlay==="memory"){if(state===AppState.AUTH&&!memoryOpen)openMemoryDom();return}
-  if(drawerOpen&&s?.overlay!=="drawer"){closeDrawerDom();return}           /* prioritas 2: Back menutup drawer */
+  if(s?.overlay==="account"){
+    if(state===AppState.AUTH&&!accountDialog.open){accountDialog.showModal();accountView("home");}
+    return;
+  }
+  if(accountDialog.open){accountDialog.close();return}
+  if(drawerOpen&&s?.overlay!=="drawer"){closeDrawerDom();return}           /* Back menutup drawer */
   if(s?.overlay==="drawer"){if(isDrawerMode()&&inChatView()&&!drawerOpen)openDrawerDom();return} /* Forward ke entri drawer */
   applyRoute();                                                              /* prioritas 3: rute in-app */
 });
