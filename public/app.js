@@ -845,6 +845,41 @@ function appendSources(links){
   }
   body.append(box);
 }
+/* Auditable tool summary. Only report actual server activity, never pretend Google was opened. */
+function appendToolActivity(items) {
+  const row=messagesEl.lastElementChild,body=row?.querySelector(".message-body");
+  if(!body||!Array.isArray(items)||!items.length)return;
+  const details=document.createElement("details");details.className="tool-activity";
+  const summary=document.createElement("summary");summary.textContent="Proses alat yang digunakan";details.append(summary);
+  const list=document.createElement("ul");
+  for(const item of items.slice(0,5)){
+    if(!["web_search","read_links"].includes(item?.tool))continue;
+    const line=document.createElement("li");
+    const noun=item.tool==="web_search"?"Pencarian web":"Pembacaan tautan";
+    const provider=item.tool==="web_search"&&["Tavily","Brave"].includes(item.provider)?" ("+item.provider+")":"";
+    line.textContent=noun+provider+" · "+(item.status==="completed"?(Number(item.count)||0)+" sumber berhasil":"Tidak tersedia atau gagal");
+    list.append(line);
+  }
+  if(!list.children.length)return;details.append(list);body.append(details);
+}
+function appendFormDraft(draft) {
+  const row=messagesEl.lastElementChild,body=row?.querySelector(".message-body");
+  if(!body||draft?.kind!=="google-forms-apps-script"||typeof draft.script!=="string"||draft.script.length>30000)return;
+  const panel=document.createElement("section");panel.className="form-draft";
+  const title=document.createElement("strong");title.textContent=draft.title||"Rancangan Google Forms";
+  const notice=document.createElement("p");
+  notice.textContent="Draf formulir siap. Belum dibuat di Google; kamu perlu menjalankan script dan meninjau link sebelum membagikannya.";
+  const actions=document.createElement("div");actions.className="form-draft-actions";
+  const copy=document.createElement("button");copy.type="button";copy.textContent="Salin Google Apps Script";
+  copy.addEventListener("click",async()=>{
+    try{await navigator.clipboard.writeText(draft.script);toast("Script berhasil disalin. Jalankan di akun Google milikmu.");}
+    catch{toast("Gagal menyalin script. Periksa izin clipboard browser.");}
+  });
+  const open=document.createElement("a");
+  open.href="https://script.google.com/home/projects/create";open.target="_blank";open.rel="noopener noreferrer";
+  open.textContent="Buka Google Apps Script";
+  actions.append(copy,open);panel.append(title,notice,actions);body.append(panel);
+}
 function appendPdfSource(pdf){
   const row=messagesEl.lastElementChild;const body=row&&row.querySelector(".message-body");if(!body||!pdf)return;
   const box=document.createElement("div");box.className="sources pdf-source";
@@ -995,7 +1030,7 @@ async function submit(options={}){
     if(typeof data.response!=="string"||!data.response.trim())throw new Error("AI tidak menghasilkan jawaban.");
     if(pendingRetryRequest?.requestId===requestId)pendingRetryRequest=null;
     chat.messages.push({role:"assistant",content:data.response,id:data.responseId||null,feedback:null,links:data.links||[],pdf:data.pdf||null,spreadsheet:data.spreadsheet||null,wordDocument:activeCsv?.kind==="word-document"?{name:activeCsv.name,paragraphCount:activeCsv.paragraphCount,truncated:activeCsv.truncated}:null});chat.updated=Date.now();
-    if(stillActive()){$("typing")?.remove();appendMessage("assistant",data.response,true,{regenerate:true,responseId:data.saved?data.responseId:null,conversationId:data.saved?data.conversationId:null});addEditActionToLastUser();appendSources(data.links);if(data.pdf)appendPdfSource(data.pdf);if(data.spreadsheet)appendSpreadsheetSource(data.spreadsheet);if(data.presentation)appendPresentationSource(data.presentation);if(activeCsv?.kind==="word-document")appendWordDocumentSource(activeCsv);if(activeCsv?.kind==="image-ocr")appendImageOcrSource(activeCsv);renderWorkflow(data.steps)}
+    if(stillActive()){$("typing")?.remove();appendMessage("assistant",data.response,true,{regenerate:true,responseId:data.saved?data.responseId:null,conversationId:data.saved?data.conversationId:null});addEditActionToLastUser();appendSources(data.links);appendToolActivity(data.toolActivity);appendFormDraft(data.formDraft);if(data.pdf)appendPdfSource(data.pdf);if(data.spreadsheet)appendSpreadsheetSource(data.spreadsheet);if(data.presentation)appendPresentationSource(data.presentation);if(activeCsv?.kind==="word-document")appendWordDocumentSource(activeCsv);if(activeCsv?.kind==="image-ocr")appendImageOcrSource(activeCsv);renderWorkflow(data.steps)}
     if(state===AppState.AUTH&&data.saved&&data.conversationId){
       chat.serverId=data.conversationId;chat.id=data.conversationId;chat.loaded=true;
       if(stillActive()){activeId=chat.id;replaceRoute({name:"chat",id:chat.id})}
