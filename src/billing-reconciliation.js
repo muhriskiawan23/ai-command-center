@@ -6,6 +6,10 @@
 // a generic prefix strip: historical text IDs may themselves start media:.
 const matchingReservationSql = "((substr(b.id,1,3)='ai:' AND b.id='ai:' || c.request_id) OR " +
   "(substr(b.id,1,6)='media:' AND b.id=c.request_id))";
+// Resolve the wallet key on the outer budget row, preserving a primary-key
+// lookup instead of scanning every wallet once for every provider job.
+const matchingWalletSql = "c.request_id=CASE WHEN substr(b.id,1,3)='ai:' THEN substr(b.id,4) " +
+  "WHEN substr(b.id,1,6)='media:' THEN b.id ELSE NULL END";
 function validateInputs(env, nowMs, staleAfterSeconds) {
   if (!env?.DB?.prepare || typeof env.DB.prepare !== "function" ||
       typeof env.DB.batch !== "function")
@@ -31,7 +35,7 @@ SELECT
  COALESCE(SUM(CASE WHEN b.status='settled' AND b.actual_micro_usd > 0
       AND (c.request_id IS NULL OR c.status='released') THEN 1 ELSE 0 END),0) AS paid_provider_without_credit_debit
 FROM provider_budget_reservations b
-LEFT JOIN credit_reservations c ON ${matchingReservationSql}
+LEFT JOIN credit_reservations c ON ${matchingWalletSql}
 `;
 const unpairedCreditSql = `
 SELECT COUNT(*) AS unpaired_reserved_credit
