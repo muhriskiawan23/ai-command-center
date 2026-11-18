@@ -410,3 +410,81 @@ test("Stage 3 refuses a model call when kill switch turns off during journal ack
   assert.deepEqual(result,{ok:false,reason:"paid_plan_revoked_after_dispatch_marker_reservations_held",modelInvoked:false});
   assert.deepEqual(trace,["budget","wallet","journal"]);
 });
+
+test("shared D1 paid-provider pause blocks an otherwise active Pro before any spend reservation",async t=>{
+  const x=setup(t);x.paid({tier:"pro"});
+  x.db.sqlite.prepare(
+    "UPDATE provider_runtime_controls SET enabled=0,updated_at=? WHERE control_name='paid_provider_dispatch'"
+  ).run(NOW+1);
+  const trace=[];
+  const tariff={
+    approved:true,provider:"workers-ai",model:"@cf/synthetic",version:"shared-switch-v1",
+    requiredPlan:"pro",inputRateMicroUsdPerMillion:293000n,outputRateMicroUsdPerMillion:2253000n,
+    creditNumerator:1n,creditDenominator:1n,maxCallMicroUsd:9000n,maxCallMicrocredits:9000n
+  };
+  const result=await runJournaledInferencePrototype({
+    env:x.env,userId:"alice-test",requestId:"shared-paused",attemptId:"shared-attempt",
+    tariff,maxInputTokens:1000,maxOutputTokens:100,
+    providerBudget:{reserve:async()=>{trace.push("budget");return {ok:true};},settle:async()=>({ok:true})},
+    ledger:{reserve:async()=>{trace.push("wallet");return {ok:true};},finalize:async()=>({ok:true})},
+    journal:async()=>{trace.push("journal");return {ok:true};},
+    invokeModel:async()=>{trace.push("model");return {usage:{prompt_tokens:10,completion_tokens:1}};}
+  });
+  assert.equal(result.ok,false);
+  assert.equal(result.modelInvoked,false);
+  assert.deepEqual(trace,[]);
+});
+test("shared D1 emergency OFF during journal write prevents dispatch and never frees uncertain holds",async t=>{
+  const x=setup(t);x.paid({tier:"pro"});
+  const trace=[];
+  const tariff={
+    approved:true,provider:"workers-ai",model:"@cf/synthetic",version:"shared-switch-v1",
+    requiredPlan:"pro",inputRateMicroUsdPerMillion:293000n,outputRateMicroUsdPerMillion:2253000n,
+    creditNumerator:1n,creditDenominator:1n,maxCallMicroUsd:9000n,maxCallMicrocredits:9000n
+  };
+  const result=await runJournaledInferencePrototype({
+    env:x.env,userId:"alice-test",requestId:"shared-stop-after-journal",
+    attemptId:"shared-stop-journal-attempt",tariff,maxInputTokens:1000,maxOutputTokens:100,
+    providerBudget:{reserve:async()=>{trace.push("budget");return {ok:true};},
+      settle:async()=>{trace.push("settle");return {ok:true};}},
+    ledger:{reserve:async()=>{trace.push("wallet");return {ok:true};},
+      finalize:async()=>{trace.push("finalize");return {ok:true};}},
+    journal:async()=>{
+      trace.push("journal");
+      x.db.sqlite.prepare(
+        "UPDATE provider_runtime_controls SET enabled=0,updated_at=? WHERE control_name='paid_provider_dispatch'"
+      ).run(NOW+1);
+      return {ok:true};
+    },
+    invokeModel:async()=>{trace.push("model");return {usage:{prompt_tokens:10,completion_tokens:1}};}
+  });
+  assert.deepEqual(result,{ok:false,reason:"paid_plan_revoked_after_dispatch_marker_reservations_held",modelInvoked:false});
+  assert.deepEqual(trace,["budget","wallet","journal"]);
+});
+test("shared D1 emergency OFF while provider is in flight withholds measured output and keeps both holds",async t=>{
+  const x=setup(t);x.paid({tier:"pro"});
+  const trace=[];
+  const tariff={
+    approved:true,provider:"workers-ai",model:"@cf/synthetic",version:"shared-switch-v1",
+    requiredPlan:"pro",inputRateMicroUsdPerMillion:293000n,outputRateMicroUsdPerMillion:2253000n,
+    creditNumerator:1n,creditDenominator:1n,maxCallMicroUsd:9000n,maxCallMicrocredits:9000n
+  };
+  const result=await runJournaledInferencePrototype({
+    env:x.env,userId:"alice-test",requestId:"shared-stop-during-model",
+    attemptId:"shared-stop-model-attempt",tariff,maxInputTokens:1000,maxOutputTokens:100,
+    providerBudget:{reserve:async()=>{trace.push("budget");return {ok:true};},
+      settle:async()=>{trace.push("settle");return {ok:true};}},
+    ledger:{reserve:async()=>{trace.push("wallet");return {ok:true};},
+      finalize:async()=>{trace.push("finalize");return {ok:true};}},
+    journal:async(_env,event)=>{trace.push("journal:"+event.kind);return {ok:true};},
+    invokeModel:async()=>{
+      trace.push("model");
+      x.db.sqlite.prepare(
+        "UPDATE provider_runtime_controls SET enabled=0,updated_at=? WHERE control_name='paid_provider_dispatch'"
+      ).run(NOW+1);
+      return {output:"withheld",usage:{prompt_tokens:1000,completion_tokens:100}};
+    }
+  });
+  assert.deepEqual(result,{ok:false,reason:"paid_plan_revoked_reservations_held",modelInvoked:true});
+  assert.deepEqual(trace,["budget","wallet","journal:dispatched","model","journal:usage_measured"]);
+});
