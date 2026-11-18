@@ -313,3 +313,51 @@ test("Stage 3 disabling plan verification during model execution cannot bypass r
   assert.equal(result.ok,false);
   assert.equal(settlements,0);
 });
+
+test("Stage 3 emergency paid-AI kill switch blocks an otherwise verified Pro before budget or wallet reservation",async t=>{
+  const x=setup(t);x.paid({tier:"pro"});
+  delete x.env.PAID_INFERENCE_ENABLED;
+  const calls=[];
+  const tariff={
+    approved:true,provider:"workers-ai",model:"@cf/synthetic",
+    version:"kill-v1",requiredPlan:"pro",inputRateMicroUsdPerMillion:293000n,
+    outputRateMicroUsdPerMillion:2253000n,creditNumerator:1n,creditDenominator:1n,
+    maxCallMicroUsd:9000n,maxCallMicrocredits:9000n
+  };
+  const result=await runJournaledInferencePrototype({
+    env:x.env,userId:"alice-test",requestId:"killed-before-reservation",attemptId:"kill-attempt-1",
+    tariff,maxInputTokens:1000,maxOutputTokens:100,
+    providerBudget:{reserve:async()=>{calls.push("budget");return {ok:true};},settle:async()=>{throw Error("not called");}},
+    ledger:{reserve:async()=>{calls.push("wallet");return {ok:true};},finalize:async()=>{throw Error("not called");}},
+    journal:async()=>{calls.push("journal");return {ok:true};},
+    invokeModel:async()=>{calls.push("model");return {usage:{prompt_tokens:100,completion_tokens:10}};}
+  });
+  assert.deepEqual(result,{ok:false,reason:"paid_inference_disabled",modelInvoked:false});
+  assert.deepEqual(calls,[]);
+});
+test("Stage 3 kill switch changes during inference withhold output and preserve uncertain financial holds",async t=>{
+  const x=setup(t);x.paid({tier:"pro"});
+  const calls=[];
+  const tariff={
+    approved:true,provider:"workers-ai",model:"@cf/synthetic",
+    version:"kill-v1",requiredPlan:"pro",inputRateMicroUsdPerMillion:293000n,
+    outputRateMicroUsdPerMillion:2253000n,creditNumerator:1n,creditDenominator:1n,
+    maxCallMicroUsd:9000n,maxCallMicrocredits:9000n
+  };
+  const result=await runJournaledInferencePrototype({
+    env:x.env,userId:"alice-test",requestId:"kill-during-model",attemptId:"kill-attempt-2",
+    tariff,maxInputTokens:1000,maxOutputTokens:100,
+    providerBudget:{reserve:async()=>{calls.push("budget");return {ok:true};},
+      settle:async()=>{calls.push("budget-settle");return {ok:true};}},
+    ledger:{reserve:async()=>{calls.push("wallet");return {ok:true};},
+      finalize:async()=>{calls.push("wallet-settle");return {ok:true};}},
+    journal:async(_env,entry)=>{calls.push(entry.kind);return {ok:true};},
+    invokeModel:async()=>{
+      calls.push("model");
+      x.env.PAID_INFERENCE_ENABLED="false";
+      return {answer:"should be withheld",usage:{prompt_tokens:100,completion_tokens:10}};
+    }
+  });
+  assert.deepEqual(result,{ok:false,reason:"paid_plan_revoked_reservations_held",modelInvoked:true});
+  assert.deepEqual(calls,["budget","wallet","dispatched","model","usage_measured"]);
+});
