@@ -14,9 +14,15 @@ function setup(t){
   const db=new DatabaseSync(":memory:");
   t.after(()=>db.close());
   db.exec(readFileSync(new URL("../migrations/0014_provider_usage_journal.sql",import.meta.url),"utf8"));
-  const env={DB:{prepare(sql){return{bind(...args){return{
-    first:async()=>db.prepare(sql).get(...args)
-  }};}}}};
+  const env={DB:{
+    prepare(sql){
+      return {
+        bind(...args){
+          return {first:async()=>db.prepare(sql).get(...args)};
+        }
+      };
+    }
+  }};
   const event=(request,attempt,kind,cost=null,at=T)=>{
     db.prepare(`INSERT INTO provider_usage_events
      (attempt_id,event_kind,request_id,provider,model,rate_version,
