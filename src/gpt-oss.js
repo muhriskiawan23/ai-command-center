@@ -13,6 +13,7 @@ const MAX_DAILY_USD = 10;
 export function mayUseGptOss(env, agentId) {
   return env?.BOR_GPT_OSS_ENABLED === "true" &&
     env?.BOR_AUTHENTICATED === true &&
+    env?.MODEL_TRACE?.gptOssDegraded !== true &&
     ["coordinator", "analyst", "writer", "coder", "researcher"].includes(agentId);
 }
 
@@ -60,6 +61,11 @@ export function extractModelAnswer(result) {
   const direct = result?.response ?? result?.result?.response;
   if (typeof direct === "string") return direct;
   if (typeof result?.output_text === "string") return result.output_text;
+  // Some Workers AI frontends return a chat-completions envelope rather than
+  // the Responses envelope. Read only final assistant content, never thoughts.
+  const choices = result?.choices ?? result?.result?.choices;
+  const first = Array.isArray(choices) ? choices[0]?.message : null;
+  if (first?.role === "assistant" && typeof first.content === "string") return first.content;
   const outputs = result?.output ?? result?.result?.output;
   if (!Array.isArray(outputs)) return "";
   return outputs.filter(item => item?.type === "message").flatMap(item =>

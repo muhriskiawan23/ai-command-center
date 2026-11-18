@@ -52,3 +52,54 @@ test("GPT-OSS provider error uses Llama fallback without a second paid GPT-OSS c
   assert.ok(row.units>0);
  } finally {await app.close();}
 });
+
+
+test("short 'hi bor' is a legitimate full answer: one baseline inference and HTTP 200",async()=>{
+ const app=await startHarness({extraEnv:{BOR_GPT_OSS_ENABLED:"false"}});
+ let calls=0;
+ app.env.AI.run=async()=>{calls++;return {response:"Halo!"};};
+ try{
+  const {status,body}=await message(app,"hi bor");
+  assert.equal(status,200,JSON.stringify(body));
+  assert.equal(body.response,"Halo!");
+  assert.equal(body.model,LLAMA);
+  assert.equal(calls,1,"a brief greeting must not trigger forced retry");
+ }finally{await app.close();}
+});
+
+test("empty GPT-OSS final output falls back to Llama instead of returning HTTP 502",async()=>{
+ const app=await startHarness({extraEnv:{BOR_GPT_OSS_ENABLED:"true",BOR_GPT_OSS_DAILY_USD_LIMIT:"0.25"}});
+ const models=[];
+ app.env.AI.run=async(model)=>{
+  models.push(model);
+  if(model===GPT_OSS_MODEL_ID)return {output:[{type:"reasoning",summary:[{text:"Do not reveal"}]}]};
+  return {response:"Halo! Ada yang bisa saya bantu?"};
+ };
+ try{
+  const {status,body}=await message(app,"hi bor");
+  assert.equal(status,200,JSON.stringify(body));
+  assert.equal(body.model,LLAMA);
+  assert.match(body.response,/Halo!/);
+  assert.deepEqual(models,[GPT_OSS_MODEL_ID,LLAMA]);
+  assert.equal(body.agentModels[0].calls,2);
+ }finally{await app.close();}
+});
+
+test("GPT-OSS empty final output cannot trigger a second paid call on short-response retry",async()=>{
+ const app=await startHarness({extraEnv:{BOR_GPT_OSS_ENABLED:"true",BOR_GPT_OSS_DAILY_USD_LIMIT:"0.25"}});
+ const models=[];let baselineResponses=0;
+ app.env.AI.run=async(model)=>{
+  models.push(model);
+  if(model===GPT_OSS_MODEL_ID)return {output:[]};
+  baselineResponses++;
+  return {response:baselineResponses===1
+    ?"OK"
+    :"Panel surya mengubah cahaya matahari menjadi energi listrik menggunakan sel fotovoltaik, yang membantu menghasilkan daya pada siang hari."};
+ };
+ try{
+  const {status,body}=await message(app,"Apa itu panel surya?");
+  assert.equal(status,200,JSON.stringify(body));
+  assert.deepEqual(models,[GPT_OSS_MODEL_ID,LLAMA,LLAMA]);
+  assert.equal(models.filter(model=>model===GPT_OSS_MODEL_ID).length,1);
+ }finally{await app.close();}
+});
