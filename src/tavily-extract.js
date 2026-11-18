@@ -59,13 +59,16 @@ export async function extractWithTavily(urls, env = {}, { fetcher = fetch, ownHo
       throw Error("invalid_timeout");
     // Deduplicate URLs to avoid unnecessary provider credits within one extraction batch.
     const uniqueUrls = [...new Set(eligible.map(x => x.check.url.toString()))];
-    if (!(await reserveTavilyExtractBudget(env, uniqueUrls.length))) throw Error("budget_unavailable");
     const deadline = new Promise((_, reject) => {
       timer = setTimeout(() => {
         controller.abort();
         reject(new Error("provider_timeout"));
       }, timeoutMs);
     });
+    // D1 admission can also stall. A timed-out reservation must never start
+    // the paid provider call, even if D1 commits the counter later.
+    if (!(await Promise.race([reserveTavilyExtractBudget(env, uniqueUrls.length), deadline])))
+      throw Error("budget_unavailable");
     response = await Promise.race([fetcher("https://api.tavily.com/extract", {
       method: "POST", redirect: "manual", signal: controller.signal,
       headers: { "Accept": "application/json", "Content-Type": "application/json", "Authorization": "Bearer " + key },
