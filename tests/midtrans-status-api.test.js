@@ -110,3 +110,34 @@ test("invalid or unbounded status timeout is rejected before upstream requests",
  }
  assert.equal(calls,0);
 });
+
+test("deadline cancels active Midtrans status reader even if producer cancel never resolves",async()=>{
+  let cancelled=false, observedSignal;
+  const stream=new ReadableStream({
+    start(controller){controller.enqueue(new TextEncoder().encode('{"status_code":"200",'));},
+    cancel(){cancelled=true;return new Promise(()=>{});}
+  });
+  await assert.rejects(readVerifiedSandboxStatus(order,{
+    serverKey:key,expectedMerchantId:"M123",timeoutMs:25,
+    fetchImpl:async(_,options)=>{
+      observedSignal=options.signal;
+      return new Response(stream,{status:200});
+    }
+  }),/deadline exceeded/);
+  assert.equal(cancelled,true);
+  assert.equal(observedSignal?.aborted,true);
+});
+test("oversized Midtrans status body is rejected even if stream cancel does not resolve",async()=>{
+  let cancelled=false;
+  const stream=new ReadableStream({
+    start(controller){controller.enqueue(new Uint8Array(1));},
+    cancel(){cancelled=true;return new Promise(()=>{});}
+  });
+  await assert.rejects(readVerifiedSandboxStatus(order,{
+    serverKey:key,expectedMerchantId:"M123",timeoutMs:25,
+    fetchImpl:async()=>new Response(stream,{
+      status:200,headers:{"Content-Length":"32769"}
+    })
+  }),/response too large/);
+  assert.equal(cancelled,true);
+});
