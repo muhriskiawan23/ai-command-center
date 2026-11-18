@@ -69,18 +69,11 @@
 <details class="workspace-settings" id="workspaceSettings"><summary><svg class="ui-icon" width="20" height="20" aria-hidden="true"><use href="/workspace-icons.svg#settings"></use></svg><span>Pengaturan</span><svg class="ui-icon settings-chevron" width="20" height="20" aria-hidden="true"><use href="/workspace-icons.svg#chevron"></use></svg></summary><div class="settings-content">
 <div class="workspace-preferences" id="workspacePreferences"><label class="theme-picker"><span>Tampilan</span><select id="themePreference" aria-label="Tema tampilan"><option value="light">Terang</option><option value="dark">Gelap</option><option value="auto">Ikuti perangkat</option></select></label></div>
 <button class="side-action" id="toggleArchived" type="button" aria-pressed="false">▣ <span>Lihat arsip</span></button>
-<button class="side-action" id="openUsage" type="button" aria-expanded="false">◷ <span>Penggunaan</span></button>
-<section class="usage-panel" id="usagePanel" aria-label="Penggunaan harian" hidden><div class="usage-heading"><strong>Penggunaan hari ini</strong><button class="usage-refresh" id="refreshUsage" type="button" aria-label="Muat ulang penggunaan">↻</button></div><p class="usage-summary" id="usageSummary" role="status">Belum dimuat</p><div class="usage-track" aria-hidden="true"><span id="usageFill"></span></div><p class="usage-remaining" id="usageRemaining"></p><p class="usage-reset" id="usageReset"></p><p class="usage-error" id="usageError" role="alert" hidden></p><p class="usage-note">1 unit untuk pesan biasa; 3 unit untuk permintaan multi-agent. Ini bukan estimasi biaya tagihan.</p></section>
-<button class="side-action" id="openIntegrations" type="button">⌘ <span>Integrasi</span><span class="integration-indicator" id="sidebarGithubIndicator" aria-label="Status GitHub belum diperiksa"></span></button>
-
-<button class="side-action" id="openMemory" type="button">♧ <span>Memori</span></button>
-<a class="side-action merchant-side-link" href="/paket.html">▤ <span>Paket &amp; harga</span></a>
-<button class="side-action" id="about" type="button">ⓘ <span>Tentang BOR AI</span></button>
 <button class="side-action" id="clearHistory" type="button">⌫ <span>Hapus semua riwayat</span></button>
 </div></details>
 <div class="auth-panel" id="authPanel">
 <div class="auth-title" id="authTitle" hidden>Guest Mode</div><p class="auth-copy" id="authDescription" hidden></p>
-<div id="googleButton"></div><p class="auth-copy" id="googleSideStatus" hidden></p><div id="userProfile" hidden></div><button class="auth-action" id="signOut" type="button" hidden>Keluar</button>
+<div id="googleButton"></div><p class="auth-copy" id="googleSideStatus" hidden></p><button class="account-launcher" id="userProfile" type="button" aria-haspopup="dialog" aria-controls="accountDialog" aria-label="Buka profil dan pengaturan akun" hidden></button>
 </div>
 </div>
 </aside>
@@ -97,6 +90,53 @@
 <div class="toast" id="toast" role="status" hidden></div>
 </main>
 </div>
+
+<dialog class="account-dialog" id="accountDialog" aria-labelledby="accountTitle">
+ <div class="account-shell">
+  <header class="account-header"><button class="account-back" id="accountBack" type="button" aria-label="Kembali ke chat">←</button><div class="account-header-brand"><img src="/logo-mark.svg" alt="" width="24" height="24"><strong>BOR AI</strong></div><button class="account-close" id="accountClose" type="button" aria-label="Tutup profil">✕</button></header>
+  <div class="account-scroll">
+   <section id="accountHome" class="account-view">
+    <div class="account-hero"><span class="account-hero-icon" aria-hidden="true">◯</span><h2 id="accountTitle">Profil pengguna</h2><p>Kelola akun dan pengalaman BOR AI.</p></div>
+    <section class="account-identity" aria-label="Informasi akun"><div><strong id="accountName">Akun Google</strong><span id="accountEmail">—</span><small>Email akun Google yang sedang digunakan</small></div><span class="account-signed-in">Masuk</span></section>
+    <h3 class="account-section-title">Akun dan layanan</h3>
+    <div class="account-links">
+     <button class="account-link" id="openUsage" type="button" aria-expanded="false"><span>◷</span><span>Penggunaan &amp; limit<small>Lihat kuota dan reset harian</small></span><b>›</b></button>
+     <section class="usage-panel account-usage" id="usagePanel" aria-label="Penggunaan harian" hidden><div class="usage-heading"><strong>Penggunaan hari ini</strong><button class="usage-refresh" id="refreshUsage" type="button" aria-label="Muat ulang penggunaan">↻</button></div><p class="usage-summary" id="usageSummary" role="status">Belum dimuat</p><div class="usage-track" aria-hidden="true"><span id="usageFill"></span></div><p class="usage-remaining" id="usageRemaining"></p><p class="usage-reset" id="usageReset"></p><p class="usage-error" id="usageError" role="alert" hidden></p><p class="usage-note">Kuota penggunaan, bukan biaya tagihan.</p></section>
+     <button class="account-link" id="openIntegrations" type="button"><span>⌘</span><span>Integrasi<small>Koneksi layanan eksternal</small></span><b><i class="integration-indicator" id="sidebarGithubIndicator" aria-label="Status GitHub belum diperiksa"></i> ›</b></button>
+     <button class="account-link" id="openMemory" type="button"><span>♧</span><span>Memori<small>Kelola hal yang ingin diingat</small></span><b>›</b></button>
+     <a class="account-link" href="/paket.html"><span>▤</span><span>Paket &amp; harga<small>Lihat paket dan status layanan</small></span><b>›</b></a>
+     <button class="account-link" id="about" type="button"><span>ⓘ</span><span>Tentang BOR AI<small>Fitur dan informasi produk</small></span><b>›</b></button>
+    </div>
+    <h3 class="account-section-title">Personalisasi dan privasi</h3>
+    <div class="account-links">
+     <button class="account-link" id="openCustomization" type="button"><span>✧</span><span>Sesuaikan BOR AI<small>Gaya jawaban dan sapaan</small></span><b>›</b></button>
+     <button class="account-link" id="openPrivacy" type="button"><span>♙</span><span>Pusat privasi<small>Penggunaan data dan kendali akun</small></span><b>›</b></button>
+     <div class="account-link account-age"><span>✓</span><span>Verifikasi usia<small>Belum tersedia — memerlukan penyedia verifikasi usia yang tepercaya. Jangan unggah identitas di chat.</small></span><b>—</b></div>
+    </div>
+    <button class="account-signout" id="signOut" type="button" hidden>Keluar dari akun</button>
+   </section>
+   <section id="accountCustomization" class="account-view" hidden aria-labelledby="customizeTitle">
+    <h2 id="customizeTitle">Sesuaikan BOR AI</h2><p class="account-view-copy">Preferensi ini disimpan di browser untuk akun yang sedang masuk dan digunakan untuk mengatur gaya jawaban berikutnya. Tidak disinkronkan ke perangkat lain.</p>
+    <form id="customizeForm" class="customize-form">
+     <label>Nama panggilan (opsional)<input id="customNickname" type="text" maxlength="60" autocomplete="off" placeholder="Apa panggilan yang kamu sukai?"></label>
+     <label>Gaya komunikasi<select id="customTone"><option value="natural">Natural dan ramah</option><option value="professional">Profesional</option><option value="direct">Langsung ke inti</option></select></label>
+     <label>Panjang jawaban<select id="customLength"><option value="balanced">Seimbang</option><option value="short">Ringkas</option><option value="detailed">Mendalam</option></select></label>
+     <button type="submit">Simpan preferensi</button><p id="customizeStatus" class="account-view-copy" role="status"></p>
+    </form>
+   </section>
+   <section id="accountPrivacy" class="account-view" hidden aria-labelledby="privacyTitle">
+    <div class="account-hero"><span class="account-hero-icon" aria-hidden="true">▣</span><h2 id="privacyTitle">Pusat privasi</h2><p>Keterangan jelas tentang data dan kendali yang tersedia.</p></div>
+    <div class="privacy-cards">
+      <article><h3>Riwayat percakapan</h3><p>Chat akun tersimpan di database BOR AI dan dibatasi ke akun yang masuk. Hapus seluruh riwayat dari Pengaturan di sidebar.</p></article>
+      <article><h3>File yang dikirim</h3><p>Pembacaan dokumen yang didukung berlangsung di browser. Isi teks hasil ekstraksi dapat dikirim ke model saat kamu mengajukan pertanyaan.</p></article>
+      <article><h3>Memori</h3><p>Memori opsional, dinonaktifkan secara default. Kamu dapat melihat dan menghapusnya dari menu Memori.</p></article>
+      <article><h3>Layanan AI eksternal</h3><p>Pesan dapat diproses penyedia AI dan pencarian eksternal sesuai fitur yang aktif. Hindari mengirim kata sandi dan data sensitif.</p></article>
+    </div>
+    <p class="account-view-copy">Halaman ini adalah penjelasan ringkas tentang fitur saat ini, bukan klaim sertifikasi keamanan atau pengganti kebijakan privasi resmi.</p>
+   </section>
+  </div>
+ </div>
+</dialog>
 <dialog class="integrations-dialog" id="integrationsDialog" aria-labelledby="integrationsTitle"><div class="integrations-inner"><header class="integrations-header"><div><h2 id="integrationsTitle">Integrasi</h2><p>Kelola koneksi layanan eksternal BOR AI.</p></div><button class="integrations-close" id="integrationsClose" type="button" aria-label="Tutup integrasi">✕</button></header><section class="integration-card" aria-label="Koneksi GitHub"><div class="integration-card-heading"><span class="github-mark" aria-hidden="true">GH</span><div><strong>GitHub</strong><small>Repository, perubahan kode, commit, dan deployment</small></div><span class="github-status-dot" id="githubStatusDot" aria-hidden="true"></span></div><p class="github-connect-copy" id="githubConnectionMessage">Hubungkan GitHub untuk membaca repository dan mengelola perubahan dengan izinmu.</p><p class="integration-status" id="githubConnectionStatus" role="status">Periksa koneksi akun</p><button class="github-connect-button" id="githubConnect" type="button">Hubungkan akun GitHub</button><button class="github-disconnect-button" id="githubDisconnect" type="button" hidden>Putuskan koneksi</button></section><p class="integration-note">Akses repository mengikuti izin yang kamu berikan melalui GitHub. BOR AI tidak melakukan perubahan tanpa persetujuanmu.</p></div></dialog>
 <dialog class="github-repos-dialog" id="githubReposDialog" aria-labelledby="githubReposTitle">
   <div class="github-repos-inner">
@@ -186,6 +226,7 @@
 <script src="/checklist.js" defer></script>
 <script src="/email-draft.js" defer></script>
 <script src="/i18n.js" defer></script>
+<script src="/markdown-renderer.js" defer></script>
 <script src="/app.js" defer></script>
 <script src="/workspace.js" defer></script>
 </body>
