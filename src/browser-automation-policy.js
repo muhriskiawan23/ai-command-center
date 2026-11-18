@@ -9,7 +9,7 @@ const ROLES = new Set(["button","link","textbox","combobox","checkbox"]);
 const MATCH_BY = new Set(["role","label","placeholder"]);
 
 export function browserAllowedHosts(value) {
-  return String(value||"").split(",").map(x=>x.trim().toLowerCase()).filter(x=>/^[a-z0-9.-]{4,253}$/.test(x)&&x.includes(".")&&!x.includes("..")&&!x.startsWith(".")&&!x.endsWith(".")).slice(0,20);
+  return String(value||"").split(",").map(x=>x.trim().toLowerCase()).filter(x=>/^[a-z0-9.-]{4,253}$/.test(x)&&x.includes(".")&&!x.includes("..")&&!x.startsWith(".")&&!x.endsWith(".")&&!/^(?:\d{1,3}\.){3}\d{1,3}$/.test(x)&&!/(?:^|\.)(?:localhost|local|internal|test|invalid|onion)$/.test(x)&&!/(?:^|\.)(?:nip|sslip)\.io$/.test(x)).slice(0,20);
 }
 export function browserPublicUrl(value, allowedHosts) {
   if(typeof value!=="string"||value.length>1500)return null;
@@ -59,8 +59,10 @@ export function canonicalBrowserPlan(raw, allowedHosts) {
 export function browserPlanNeedsApproval(plan) { return !!plan?.steps?.length; }
 export function safeBrowserResult(raw,expectedHost){
   if(!raw||raw.ok!==true||raw.host!==expectedHost)return null;
+  const current=browserPublicUrl(raw.url,[expectedHost]);
+  if(!current)return null;
   return {
-    ok:true,host:raw.host,url:String(raw.url||"").slice(0,1500),
+    ok:true,host:raw.host,url:current.url,
     title:String(raw.title||"").slice(0,220),
     text:String(raw.text||"").slice(0,BROWSER_TEXT_MAX),
     elements:Array.isArray(raw.elements)?raw.elements.slice(0,24).map(x=>({role:String(x.role||"").slice(0,25),by:["role","label","placeholder"].includes(x.by)?x.by:"role",name:String(x.name||"").slice(0,100)})):[],
