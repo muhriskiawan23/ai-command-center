@@ -46,3 +46,24 @@ CREATE TABLE IF NOT EXISTS sandbox_payment_reversal_reviews (
   created_at INTEGER NOT NULL,
   PRIMARY KEY (order_id, provider_status)
 );
+
+-- A direct UPDATE must never claim a sandbox refund/dispute with no recorded
+-- reversal decision. The reversal insert trigger changes the order only after
+-- updating its outcome and (for a successful reversal) the credit ledger.
+-- Historical terminal states are unchanged; this guard affects new transitions.
+CREATE TRIGGER IF NOT EXISTS sandbox_reversal_state_guard
+BEFORE UPDATE OF state ON payment_orders
+WHEN OLD.environment='sandbox' AND NEW.state!=OLD.state
+  AND NEW.state IN ('refunded','disputed')
+BEGIN
+  SELECT RAISE(ABORT,'sandbox_reversal_evidence_required')
+  WHERE OLD.state!='fulfilled'
+    OR NOT EXISTS (
+      SELECT 1 FROM sandbox_payment_reversals r
+      WHERE r.order_id=OLD.order_id
+        AND r.provider_transaction_id=OLD.provider_transaction_id
+        AND r.amount_idr=OLD.amount_idr
+        AND r.kind=CASE WHEN NEW.state='refunded' THEN 'refund' ELSE 'chargeback' END
+        AND r.outcome IN ('reversed','review_required')
+    );
+END;
