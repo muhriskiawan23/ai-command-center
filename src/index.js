@@ -13,6 +13,7 @@ import { handleTelegramWebhook } from "./telegram.js";
 import { handleGitHubReadRoute } from "./github-reader.js";
 import { handleGitHubOAuthRoute } from "./github-oauth.js";
 import { selectModel, taskProfileForAgent, summarizeModelTrace } from "./model-gateway.js";
+import { GPT_OSS_MODEL_ID, mayUseGptOss, reserveGptOssCall, extractModelAnswer } from "./gpt-oss.js";
 import { COMMUNICATION_NOTICE, CAPABILITY_NOTICE, AGENTS } from "./prompts.js";
 import { json, sha256Hex } from "./http.js";
 import { dailyLimit, usageDay, secondsUntilNextUtcDay, consumeUsage, refundUsage, limitResponse, enforceDailyLimits, DAILY_LIMIT_DEFAULTS, MULTI_AGENT_UNITS } from "./daily-limits.js";
@@ -363,6 +364,7 @@ async function runAgent(env, agentId, userMessage, context = "", history = [], p
 
   const taskProfile = taskProfileForAgent(agentId);
   const selection = selectModel({ task: taskProfile });
+  let activeModelId = selection.model.id;
   const requestId = Array.isArray(env.MODEL_TRACE)
     ? (env.MODEL_TRACE.requestId ||= crypto.randomUUID())
     : crypto.randomUUID();
@@ -414,22 +416,52 @@ async function runAgent(env, agentId, userMessage, context = "", history = [], p
     if (selection.model.adapter !== "workers-ai") {
       throw new Error(`Unsupported model adapter: ${selection.model.adapter}`);
     }
+    const modelMessages = extraInstruction
+      ? [...messages, { role: "user", content: extraInstruction }]
+      : messages;
+    const maxTokens = Math.min(2200, (tokenLimits[agentId] || 950) +
+      (/\b(mendalam|detail|lengkap|komprehensif|thorough|in.depth|step.by.step|detailed|comprehensive)\b/i.test(userMessage) ? 300 : 0));
+    let modelId = selection.model.id;
+    // Opt-in high-reasoning inference for signed-in turns only. Atomically reserve
+    // an upper cost bound in D1 BEFORE invoking the paid model; otherwise use Llama.
+    if (mayUseGptOss(env, agentId)) {
+      const allowance = await reserveGptOssCall(env, modelMessages, maxTokens);
+      if (allowance.allowed) modelId = GPT_OSS_MODEL_ID;
+    }
+    activeModelId = modelId;
+    traceEntry.modelId = modelId;
+    traceEntry.policyVersion = modelId === GPT_OSS_MODEL_ID ? "gpt-oss-budgeted-canary-v1" : selection.policyVersion;
     traceEntry.calls += 1;
     const startedAt = Date.now();
+    const payload = {
+      messages: modelMessages,
+      max_tokens: maxTokens,
+      temperature: 0.4,
+      repetition_penalty: 1.1
+    };
     try {
-      const generated = await env.AI.run(selection.model.id, {
-        messages: extraInstruction
-          ? [...messages, { role: "user", content: extraInstruction }]
-          : messages,
-        max_tokens: Math.min(2200, (tokenLimits[agentId] || 950) + (/\b(mendalam|detail|lengkap|komprehensif|thorough|in.depth|step.by.step|detailed|comprehensive)\b/i.test(userMessage) ? 300 : 0)),
-        temperature: 0.4,
-        repetition_penalty: 1.1
-      });
-      traceEntry.attempts.push({ outcome: "success", durationMs: Math.max(0, Date.now() - startedAt) });
-      return generated;
+      return await env.AI.run(modelId, payload);
     } catch (error) {
       traceEntry.attempts.push({ outcome: "error", durationMs: Math.max(0, Date.now() - startedAt) });
-      throw error;
+      if (modelId !== GPT_OSS_MODEL_ID) throw error;
+      // Cloudflare model outage: stay available with the previously audited
+      // baseline; do not retry the paid inference or bypass its global cap.
+      traceEntry.modelId = selection.model.id;
+      traceEntry.policyVersion = selection.policyVersion;
+      activeModelId = selection.model.id;
+      traceEntry.calls += 1;
+      const fallbackStart = Date.now();
+      try {
+        const fallback = await env.AI.run(selection.model.id, payload);
+        traceEntry.attempts.push({ outcome: "success", durationMs: Math.max(0, Date.now() - fallbackStart) });
+        return fallback;
+      } catch (fallbackError) {
+        traceEntry.attempts.push({ outcome: "error", durationMs: Math.max(0, Date.now() - fallbackStart) });
+        throw fallbackError;
+      }
+    } finally {
+      // Record successful first attempts only when the first call succeeded.
+      // (Fallback and error attempts have already been accounted for.)
     }
   };
 
@@ -441,7 +473,7 @@ async function runAgent(env, agentId, userMessage, context = "", history = [], p
   };
   try {
     let result = await generate();
-    let response = result?.response ?? result?.result?.response ?? "";
+    let response = extractModelAnswer(result);
     if (blockOutput(response)) return blockedOutput();
     let cleaned = cleanOutput(response);
     const countWords = (value) => value.replace(/[#*_\`>~-]/g, " ").match(/[\p{L}\p{N}]{2,}/gu) || [];
@@ -451,7 +483,7 @@ async function runAgent(env, agentId, userMessage, context = "", history = [], p
       result = await generate(
         "RETRY REQUIRED: Your previous answer contained empty Markdown headings or bullets and was unusable. Return substantive content in plain text or simple numbered points. Do not output empty headings, empty bullets, or Markdown-only lines. Include at least 3 concrete findings when appropriate. Every bullet must contain a complete sentence. Answer in the user's language."
       );
-      response = result?.response ?? result?.result?.response ?? "";
+      response = extractModelAnswer(result);
       if (blockOutput(response)) return blockedOutput();
       cleaned = cleanOutput(response);
     }
@@ -1510,7 +1542,7 @@ export default {
       const modelTrace = [];
       const requestEnv = { ...env, MODEL_TRACE: modelTrace };
       const memoryEnv = withSystemExtra(requestEnv, buildMemoryBlock(memoryItems));
-      const localizedEnv = { ...withResponseLanguage(memoryEnv, language), BOR_CUSTOMIZATION: custom.value };
+      const localizedEnv = { ...withResponseLanguage(memoryEnv, language), BOR_CUSTOMIZATION: custom.value, BOR_AUTHENTICATED: Boolean(user) };
       const aiEnv = withAiDeadline(localizedEnv, Date.now() + budgetMs, request.signal);
       let pages = "";
       let links = [];
