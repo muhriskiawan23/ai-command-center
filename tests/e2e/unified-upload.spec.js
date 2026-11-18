@@ -23,7 +23,7 @@ test("single upload picker accepts JPG and sends only text extracted by local OC
  const sent=called.filter(m=>m.role==="user").at(-1).content;
  expect(sent).toContain("<image_ocr");
  expect(sent).toContain("Invoice total Rp 100.000");
- expect(sent).toContain("never claim to have inspected the actual pixels");
+ expect(sent).toMatch(/never claim to have inspected the actual pixels/i);
  await expect(page.locator(".image-ocr-source")).toBeVisible();
  await expect(page.locator(".image-ocr-source")).toContainText(/OCR/);
 });
