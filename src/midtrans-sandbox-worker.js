@@ -13,21 +13,38 @@ function json(status, body) {
   return Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
 }
 
-async function parseJson(message) {
+// Payment callbacks must never leave a Worker hanging on a stalled stream.
+// The same 16 KiB cap applies to client notifications and Snap receipts.
+const MAX_JSON_BYTES = 16384;
+const BODY_DEADLINE_MS = 10000;
+async function parseJson(message, signal = message.signal) {
+  const advertised = message.headers?.get?.("Content-Length");
+  if (advertised !== null && advertised !== undefined &&
+      (!/^[0-9]+$/.test(advertised) || BigInt(advertised) > BigInt(MAX_JSON_BYTES)))
+    throw new Error("Invalid or oversized JSON length");
   const reader = message.body?.getReader();
   if (!reader) throw new Error("Missing body");
   const decoder = new TextDecoder("utf-8", { fatal: true });
   let bytes = 0;
   let text = "";
+  let timer, interrupt;
+  const stopped = new Promise((_, reject) => {
+    interrupt = () => reject(new Error("JSON stream interrupted or timed out"));
+    signal?.addEventListener("abort", interrupt, { once: true });
+    timer = setTimeout(interrupt, BODY_DEADLINE_MS);
+    if (signal?.aborted) interrupt();
+  });
   try {
     for (;;) {
-      const { value, done } = await reader.read();
+      const { value, done } = await Promise.race([reader.read(), stopped]);
       if (done) return JSON.parse(text + decoder.decode());
       bytes += value.byteLength;
-      if (bytes > 16384) throw new Error("Body exceeds limit");
+      if (bytes > MAX_JSON_BYTES) throw new Error("Body exceeds limit");
       text += decoder.decode(value, { stream: true });
     }
   } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener("abort", interrupt);
     await reader.cancel().catch(() => {});
     reader.releaseLock();
   }
@@ -79,7 +96,7 @@ async function checkout(request, env, providerFetch) {
   if (response.status !== 201) return failure("snap_http_" + response.status);
   let receipt;
   try {
-    receipt = await parseJson(response);
+    receipt = await parseJson(response, signal);
   } catch {
     return failure(signal.aborted ? "snap_timeout" : "snap_invalid_json");
   }
