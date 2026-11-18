@@ -1089,6 +1089,12 @@ async function boot(){
   try{me=await api("/api/auth/me")}
   catch{setState(AppState.ERROR,"Status akun tidak dapat diperiksa. Periksa koneksi lalu coba lagi, atau lanjutkan sebagai Guest.");loadGoogle();return}
   if(me.authenticated){currentUser=me.user;setState(AppState.AUTH);await enterChat();return}
+  // The Free plan is an opt-in guest-chat link, not a payment or subscription route.
+  // Keep a pre-existing signed-in session above; otherwise use the same Guest flow
+  // as the welcome screen, with no checkout and no saved Guest chat content.
+  if(new URLSearchParams(location.search).get("plan")==="free"){
+    writeGuestFlag(true);currentUser=null;setState(AppState.GUEST);await enterChat();loadGoogle();return;
+  }
   if(readGuestFlag()){setState(AppState.GUEST);await enterChat();loadGoogle();return}
   setState(AppState.UNAUTH);loadGoogle();
 }

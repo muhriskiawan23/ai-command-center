@@ -77,9 +77,32 @@ test("the package comparison link opens an existing honest catalog with no mode 
   await page.locator("#planPanel a").click();
   await expect(page).toHaveURL(app.url+"/paket.html");
   await expect(page.getByRole("heading",{name:"Satu langganan, manfaat otomatis"})).toBeVisible();
-  await expect(page.getByRole("table")).toBeVisible();
+  await expect(page.getByRole("table",{name:"Harga dan manfaat Free, Basic dan Pro"})).toBeVisible();
+  await expect(page.getByRole("table",{name:"Manfaat media setiap paket dan status ketersediaannya"})).toBeVisible();
+  await expect(page.locator("#plan-basic").locator("..")).toContainText("US$1,99");
+  await expect(page.locator("#plan-pro").locator("..")).toContainText("US$6,99");
   await expect(page.getByText("Belum dibuka untuk pembelian:")).toBeVisible();
   await expect(page.locator("select,button,form")).toHaveCount(0);
   const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth);
   expect(overflow).toBe(false);
+});
+test("the catalog Free link starts Guest chat without checkout or a subscription",async({page,app})=>{
+  await page.goto(app.url+"/paket.html");
+  await page.getByRole("link",{name:"Mulai chat Free — tanpa bayar",exact:true}).click();
+  await expect(page.locator("#app")).toBeVisible();await reveal(page);
+  await expect(page.locator("#planBadge")).toHaveText("Free");
+  await expect(page.locator("#signOut")).toBeHidden();
+  expect(app.db.sqlite.prepare("SELECT COUNT(*) n FROM verified_plan_payments").get().n).toBe(0);
+  expect(app.aiCalls).toHaveLength(0);
+});
+test("the catalog Free link preserves an existing Pro account and its server entitlement",async({page,context,app})=>{
+  await loginAs(context,app,USER);seedPaid(app,"pro");
+  await page.goto(app.url+"/paket.html");
+  await page.getByRole("link",{name:"Mulai chat Free — tanpa bayar",exact:true}).click();
+  await expect(page.locator("#app")).toBeVisible();await reveal(page);
+  await expect(page.locator("#planBadge")).toHaveText("Pro");
+  await expect(page.locator("#signOut")).toBeVisible();
+  const me=await context.request.get(app.url+"/api/auth/me");
+  expect((await me.json()).user.id).toBe(USER.id);
+  expect(app.aiCalls).toHaveLength(0);
 });
