@@ -233,6 +233,24 @@ try{
   assert.deepEqual(refundLedger.results.map(row=>row.delta_microcredits),[-25,25]);
   assert.equal(await db.prepare("SELECT state FROM payment_orders WHERE order_id=?").bind(lostOrderId).first("state"),"refunded");
   assert.equal(await db.prepare("SELECT balance_microcredits FROM credit_accounts WHERE user_id=?").bind("midtrans-sandbox-test").first("balance_microcredits"),25);
+  // A provider-verified dispute AFTER full refund is a fresh operator review.
+  // The completed refund must never be double-debited by callback replay.
+  const lateChargeback={...fullRefund,transaction_status:"chargeback"};
+  for(let replay=0;replay<2;replay++){
+    const response=await reversalCallback(lateChargeback,lateChargeback);
+    assert.equal(response.status,200);
+    assert.deepEqual(await response.json(),{outcome:"review_required"});
+  }
+  assert.equal(await db.prepare(
+    "SELECT COUNT(*) AS n FROM sandbox_payment_reversal_reviews WHERE order_id=? AND provider_status='chargeback'"
+  ).bind(lostOrderId).first("n"),1);
+  const preserved=await db.prepare(
+    "SELECT delta_microcredits FROM credit_ledger WHERE reference_id=? ORDER BY delta_microcredits"
+  ).bind(lostOrderId).all();
+  assert.deepEqual(preserved.results.map(row=>row.delta_microcredits),[-25,25]);
+  assert.equal(await db.prepare("SELECT state FROM payment_orders WHERE order_id=?").bind(lostOrderId).first("state"),"refunded");
+  assert.equal(await db.prepare("SELECT balance_microcredits FROM credit_accounts WHERE user_id=?").bind("midtrans-sandbox-test").first("balance_microcredits"),25);
+  console.log("PASS: post-refund chargeback replay records one review and no double debit");
   console.log("PASS: confirmed Sandbox refund reverses once, unconfirmed refunds and disputes require review");
   console.log("PASS: interrupted and cached checkout retries preserve one order and one credit grant");
   console.log("PASS: pending Status API retries without mutations, then concurrent callbacks and reconciliation grant credit once in D1");
