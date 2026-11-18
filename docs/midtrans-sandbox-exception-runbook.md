@@ -65,3 +65,15 @@ granted by this adapter. Local regression fixtures simulate stalled headers,
 stalled response body, cancellation and invalid timeout configuration.
 The existing 32 KiB streaming response cap and signed-webhook + independent
 Status API checks remain intact. No remote payment was initiated.
+
+### Status API stream cleanup on deadline (18 November 2026)
+The independent 8-second status deadline now actively aborts the network
+operation **and** cancels the current streamed JSON reader. Cancellation is
+not awaited, since a broken transport can return an unresolved cancellation
+promise. An oversized Content-Length is also rejected immediately without
+waiting for stream cancellation. Synthetic regression tests cover a provider
+that stalls after partial JSON, a provider with a never-resolving cancel
+promise, and an oversized response with the same failure mode.
+No timeout or interrupted response authorizes a payment grant. This does
+not replace Midtrans production activation, merchant review or invoice
+verification.
