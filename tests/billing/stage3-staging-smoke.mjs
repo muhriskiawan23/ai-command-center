@@ -36,7 +36,7 @@ try {
   const migrations = ["0001_auth_and_chat", "0002_daily_usage", "0003_user_memory", "0004_conversation_pinning",
     "0005_conversation_archive", "0006_chat_request_idempotency", "0008_message_link_sources", "0009_public_api_keys",
     "0012_credit_ledger", "0013_provider_spend_budget", "0014_provider_usage_journal",
-    "0016_plan_entitlements_draft"];
+    "0016_plan_entitlements_draft","0018_provider_emergency_stop_draft"];
   for (const name of migrations) await sql(readFileSync(new URL(`../../migrations/${name}.sql`, import.meta.url), "utf8"));
   await sql(`
     CREATE TABLE stage3_staging_requests (id TEXT PRIMARY KEY);
@@ -88,6 +88,15 @@ try {
   assert.equal((await send("/api/chat", single, { ...web, Origin: "https://other.example" })).status, 403);
   assert.equal((await send("/api/chat", { message: single.message }, web)).status, 400);
   assert.equal(await readCount("stage3_staging_requests"), 0);
+  // Every newly provisioned DB is OFF. The synthetic operator must enable
+  // spending explicitly; paused paid requests cannot consume a claim ID.
+  const offRequest={message:single.message,requestId:randomUUID()};
+  assert.equal((await send("/api/chat",offRequest,web)).status,503);
+  assert.equal(await readCount("stage3_staging_requests"),0);
+  assert.equal(await readCount("provider_budget_reservations"),0);
+  assert.equal(await readCount("credit_reservations"),0);
+  await db.prepare("UPDATE provider_runtime_controls SET enabled=1,updated_at=? "+
+    "WHERE control_name='paid_provider_dispatch'").bind(now).run();
   // Even a Free user with positive (synthetic) wallet balance cannot
   // consume paid inference merely by possessing credits.
   const freeRequest = {message:single.message,requestId:randomUUID()};
@@ -214,7 +223,34 @@ try {
   assert.equal(upgradedReplay.status,200);
   assert.equal((await upgradedReplay.json()).replayed,true);
   assert.equal(await readCount("provider_usage_events","event_kind='usage_measured'"),measuredBeforeUpgrade+1);
-  console.log("PASS: verified synthetic Basic/Pro payments, Free-to-Basic upgrade without poisoned claims, refunds, chargebacks, authenticated routes, isolated wallets, replay rejection and recoverable settlement holds");
+  // Cross-Worker D1 pause is authoritative for NEW requests even when the
+  // application still has a paid-plan flag set. Re-enable safely after OFF,
+  // proving the denied idempotency key was not consumed.
+  const pausedPaid={message:single.message,requestId:randomUUID()};
+  const snap={claims:await readCount("stage3_staging_requests"),
+    budget:await readCount("provider_budget_reservations"),
+    wallet:await readCount("credit_reservations"),
+    journal:await readCount("provider_usage_events")};
+  await db.prepare("UPDATE provider_runtime_controls SET enabled=0,updated_at=? "+
+    "WHERE control_name='paid_provider_dispatch'").bind(now+1).run();
+  const stopped=await send("/api/chat",pausedPaid,sessionHeaders["stage3-free"]);
+  assert.equal(stopped.status,503);
+  assert.equal(await readCount("stage3_staging_requests"),snap.claims);
+  assert.equal(await readCount("provider_budget_reservations"),snap.budget);
+  assert.equal(await readCount("credit_reservations"),snap.wallet);
+  assert.equal(await readCount("provider_usage_events"),snap.journal);
+  await db.prepare("UPDATE provider_runtime_controls SET enabled=1,updated_at=? "+
+    "WHERE control_name='paid_provider_dispatch'").bind(now+2).run();
+  const resumed=await send("/api/chat",pausedPaid,sessionHeaders["stage3-free"]);
+  assert.equal(resumed.status,200);
+  assert.equal(await readCount("stage3_staging_requests"),snap.claims+1);
+  assert.equal(await readCount("provider_budget_reservations"),snap.budget+1);
+  assert.equal(await readCount("credit_reservations"),snap.wallet+1);
+  const resumeReplay=await send("/api/chat",pausedPaid,sessionHeaders["stage3-free"]);
+  assert.equal(resumeReplay.status,200);
+  assert.equal((await resumeReplay.json()).replayed,true);
+  assert.equal(await readCount("provider_budget_reservations"),snap.budget+1);
+  console.log("PASS: D1 global emergency OFF->ON, authenticated synthetic plans, provider timeout/unknown holds, refunds, credit idempotency and Free-to-Basic upgrade");
 } finally {
   await miniflare.dispose();
 }
