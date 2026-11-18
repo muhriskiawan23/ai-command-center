@@ -5,8 +5,10 @@ on:
     paths:
       - "browser-agent/**"
       - "src/browser-automation*.js"
+      - "src/browser-action-planner.js"
       - "public/browser-panel.js"
       - "tests/browser-automation*.test.js"
+      - "tests/browser-action-planner.test.js"
       - ".github/workflows/bor-ai-browser-agent-ci.yml"
   workflow_dispatch:
     inputs:
@@ -38,7 +40,7 @@ jobs:
           set -euo pipefail
           node --check browser-agent/src/index.js
           node --check public/browser-panel.js
-          node --test tests/browser-automation-policy.test.js tests/browser-automation-route.test.js
+          node --test tests/browser-automation-policy.test.js tests/browser-automation-route.test.js tests/browser-action-planner.test.js
       - name: Install pinned Cloudflare Playwright in isolated Worker only
         run: npm --prefix browser-agent install --ignore-scripts --no-audit --no-fund --package-lock=false
       - name: Bundle isolated private Worker without deploying
