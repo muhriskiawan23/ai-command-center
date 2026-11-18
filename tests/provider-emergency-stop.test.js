@@ -14,9 +14,15 @@ function setup(t){
   }
   db.exec("INSERT INTO provider_budget_limits VALUES ('workers-ai',10000,1)");
   db.exec("INSERT INTO provider_budget_limits VALUES ('__global__',10000,1)");
-  const env={DB:{prepare(sql){return{bind(...params){return{
-    first:async()=>db.prepare(sql).get(...params)
-  }};}}}};
+  const env={DB:{
+    prepare(sql){
+      return {
+        bind(...params){
+          return {first:async()=>db.prepare(sql).get(...params)};
+        }
+      };
+    }
+  }};
   const set=(enabled,clock)=>db.prepare(
     "UPDATE provider_runtime_controls SET enabled=?,updated_at=? WHERE control_name='paid_provider_dispatch'"
   ).run(enabled,clock);
