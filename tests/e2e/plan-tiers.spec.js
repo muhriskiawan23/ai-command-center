@@ -74,6 +74,7 @@ test("an open tab rechecks the package when the server entitlement expires",asyn
 });
 test("the package comparison link opens an existing honest catalog with no mode selector",async({page,app})=>{
   await page.goto(app.url);await page.locator("#continueGuest").click();await reveal(page);
+  await page.locator("#planPanel > summary").click();
   await page.locator("#planPanel a").click();
   await expect(page).toHaveURL(app.url+"/paket.html");
   await expect(page.getByRole("heading",{name:"Satu langganan, manfaat otomatis"})).toBeVisible();

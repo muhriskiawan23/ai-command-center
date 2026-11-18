@@ -2,7 +2,7 @@
   "name": "ai-command-center",
   "version": "1.0.0",
   "private": true,
-  "description": "BOR AI — multi-agent AI workspace on Cloudflare Workers",
+  "description": "BOR AI \u2014 multi-agent AI workspace on Cloudflare Workers",
   "scripts": {
     "start": "npx --yes wrangler@4 dev --config wrangler.jsonc",
     "dev": "npx --yes wrangler@4 dev --config wrangler.jsonc",
@@ -21,7 +21,8 @@
     "eval:unblind": "node evaluation/unblind-model-selection.js",
     "eval:evidence:keygen": "node evaluation/evidence-provenance.js keygen",
     "eval:evidence:sign": "node evaluation/evidence-provenance.js sign",
-    "eval:evidence:verify": "node evaluation/evidence-provenance.js verify"
+    "eval:evidence:verify": "node evaluation/evidence-provenance.js verify",
+    "preview:workspace": "node tests/e2e/preview-workspace.mjs"
   },
   "engines": {
     "node": ">=22"

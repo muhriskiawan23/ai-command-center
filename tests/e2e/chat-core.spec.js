@@ -1,4 +1,4 @@
-import { test, expect, loginAs } from "./fixtures.js";
+import { test, expect, loginAs, openSettings, openHistoryOptions } from "./fixtures.js";
 
 const ALICE = { id: "google-sub-alice", email: "alice@example.com", name: "Alice" };
 const sentTurns = (call) => call.messages.filter((m) => m.role !== "system").map((m) => m.content);
@@ -20,6 +20,7 @@ test("akun dapat melihat ringkasan kuota harian dari sidebar, termasuk di mobile
   await send(page, "Tampilkan ringkasan penggunaan saya.");
   await expect(page.locator(".message.assistant:not(#typing)")).toHaveCount(1);
   if (page.viewportSize().width <= 1024) await page.locator("#menuBtn").click();
+  await openSettings(page);
   await page.locator("#openUsage").click();
   await expect(page.locator("#usagePanel")).toBeVisible();
   await expect(page.locator("#usageSummary")).toContainText("Akun Google");
@@ -253,6 +254,7 @@ test("mode Translator dan Text Analyst tersedia di pemilih mode dan terkirim ke 
   expect(options).toEqual(expect.arrayContaining(["translator", "text_analyst"]));
   const posts = [];
   page.on("request", (r) => { if (r.url().endsWith("/api/chat") && r.method() === "POST") posts.push(JSON.parse(r.postData())); });
+  await page.locator("#toolsMenu > summary").click();
   await page.locator("#agent").selectOption("translator");
   await page.locator("#prompt").fill("Translate to Indonesian: Good morning");
   await page.locator("#send").click();
@@ -288,6 +290,7 @@ test("akun: judul percakapan dapat diubah dan tetap tersimpan setelah reload", a
   if (page.viewportSize().width <= 1024) await page.locator("#menuBtn").click();
 
   page.on("dialog", (dialog) => dialog.accept("Judul hasil edit"));
+  await openHistoryOptions(page,"Judul awal percakapan");
   await page.getByRole("button", { name: "Ubah judul Judul awal percakapan" }).click();
   await expect(page.locator(".history-item")).toContainText("Judul hasil edit");
 
@@ -331,12 +334,15 @@ test("akun: percakapan dapat disematkan, diprioritaskan, dan tetap tersimpan set
   await send(page, "Percakapan terbaru");
   await expect(page.locator(".message.assistant:not(#typing)")).toHaveCount(1);
   if (page.viewportSize().width <= 1024) await page.locator("#menuBtn").click();
+  await openHistoryOptions(page,"Percakapan yang akan disematkan");
   await page.getByRole("button", { name: "Sematkan Percakapan yang akan disematkan" }).click();
   await expect(page.locator(".history-item").first()).toContainText("Percakapan yang akan disematkan");
+  await openHistoryOptions(page,"Percakapan yang akan disematkan");
   await expect(page.getByRole("button", { name: "Lepas sematan Percakapan yang akan disematkan" })).toBeVisible();
   await page.reload();
   if (page.viewportSize().width <= 1024) await page.locator("#menuBtn").click();
   await expect(page.locator(".history-item").first()).toContainText("Percakapan yang akan disematkan");
+  await openHistoryOptions(page,"Percakapan yang akan disematkan");
   await expect(page.getByRole("button", { name: "Lepas sematan Percakapan yang akan disematkan" })).toBeVisible();
   expect(app.db.sqlite.prepare("SELECT pinned FROM conversations WHERE title = ?").get("Percakapan yang akan disematkan").pinned).toBe(1);
 });
@@ -373,13 +379,19 @@ test("akun: percakapan dapat diarsipkan dan dipulihkan dari tampilan arsip", asy
   await send(page, "Percakapan untuk diarsipkan");
   await expect(page.locator(".message.assistant:not(#typing)")).toHaveCount(1);
   if (page.viewportSize().width <= 1024) await page.locator("#menuBtn").click();
+  await openHistoryOptions(page,"Percakapan untuk diarsipkan");
   await page.getByRole("button", { name: "Arsipkan Percakapan untuk diarsipkan" }).click();
   await expect(page.getByRole("button", { name: "Arsipkan Percakapan untuk diarsipkan" })).toHaveCount(0);
+  await openSettings(page);
   await page.locator("#toggleArchived").click();
+  await openHistoryOptions(page,"Percakapan untuk diarsipkan");
   await expect(page.getByRole("button", { name: "Pulihkan dari arsip Percakapan untuk diarsipkan" })).toBeVisible();
+  await openHistoryOptions(page,"Percakapan untuk diarsipkan");
   await page.getByRole("button", { name: "Pulihkan dari arsip Percakapan untuk diarsipkan" }).click();
   await expect(page.getByRole("button", { name: "Pulihkan dari arsip Percakapan untuk diarsipkan" })).toHaveCount(0);
+  await openSettings(page);
   await page.locator("#toggleArchived").click();
+  await openHistoryOptions(page,"Percakapan untuk diarsipkan");
   await expect(page.getByRole("button", { name: "Arsipkan Percakapan untuk diarsipkan" })).toBeVisible();
   expect(app.db.sqlite.prepare("SELECT archived FROM conversations WHERE title = ?").get("Percakapan untuk diarsipkan").archived).toBe(0);
 });

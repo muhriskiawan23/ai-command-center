@@ -104,7 +104,7 @@ function resizePrompt(){
   promptEl.style.height=Math.min(needed,max)+"px";
   promptEl.style.overflowY=needed>max?"auto":"hidden";
 }
-async function health(){try{const r=await fetch(API+"/api/health");if(!r.ok)throw Error();const d=await r.json();$("healthDot").className="dot "+(d.ok?"ok":"bad");$("healthText").textContent=d.ok?["Layanan aktif","Terhubung ke BOR AI"]:["Layanan tidak aktif","Status tidak siap"];$("healthDot").title=d.ok?"Layanan aktif":"Layanan gagal";}catch{const dot=$("healthDot");dot.className="dot bad";dot.title="Layanan tidak dapat dicek";$("healthText").textContent="Status tidak siap";}}
+async function health(){try{const r=await fetch(API+"/api/health");if(!r.ok)throw Error();const d=await r.json();$("healthDot").className="dot "+(d.ok?"ok":"bad");$("healthText").textContent=d.ok?"Layanan aktif":"Layanan tidak aktif";$("healthDot").title=d.ok?"Layanan aktif":"Layanan gagal";}catch{const dot=$("healthDot");dot.className="dot bad";dot.title="Layanan tidak dapat dicek";$("healthText").textContent="Status tidak siap";}}
 
 const CHAT_TIMEOUT_MS=150000; /* alur multi-agent bisa beberapa panggilan model berurutan; lewat ini dianggap macet */
 let activeChatController=null;
@@ -262,7 +262,7 @@ function renderAuth(){
   $("userProfile").replaceChildren();
   if(logged){
     const wrap=document.createElement("div");wrap.className="auth-user";
-    if(currentUser.picture){const img=document.createElement("img");img.src=currentUser.picture;img.alt="";wrap.append(img)}
+    if(currentUser.picture){const img=document.createElement("img");img.src=currentUser.picture;img.alt="";wrap.append(img)}else{const avatar=document.createElement("span");avatar.className="account-initials";avatar.textContent=String(currentUser.name||"Akun").trim().slice(0,2).toUpperCase();avatar.setAttribute("aria-hidden","true");wrap.append(avatar)}
     const info=document.createElement("div");info.className="auth-user-info";
     const name=document.createElement("strong");name.textContent=currentUser.name||"Akun Google";
     const email=document.createElement("small");email.textContent=currentUser.email||"";
@@ -711,7 +711,11 @@ function renderHistory(){
     rename.onclick=e=>{e.stopPropagation();renameChat(c.id)};
     const del=document.createElement("button");del.className="delete-chat";del.type="button";del.textContent="×";del.title="Hapus chat";del.setAttribute("aria-label","Hapus "+(c.title||"chat"));
     del.onclick=e=>{e.stopPropagation();deleteChat(c.id)};
-    row.append(b,pin,archive,rename,del);nav.append(row);
+    const menu=document.createElement("details");menu.className="history-menu";
+    const summary=document.createElement("summary");summary.textContent="⋯";summary.setAttribute("aria-label","Opsi percakapan "+(c.title||"chat"));
+    const actions=document.createElement("div");actions.className="history-actions";
+    for(const [button,label] of [[pin,c.pinned?"Lepas sematan":"Sematkan"],[archive,archivedView?"Pulihkan dari arsip":"Arsipkan"],[rename,"Ubah judul"],[del,"Hapus chat"]]){button.textContent=label;actions.append(button);}
+    menu.append(summary,actions);row.append(b,menu);nav.append(row);
   }
   if(!visible.length){
     const empty=document.createElement("p");empty.className="history-empty";empty.textContent=query?"Tidak ada percakapan yang cocok.":archivedView?"Belum ada percakapan yang diarsipkan.":"Belum ada percakapan.";nav.append(empty);

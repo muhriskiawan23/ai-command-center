@@ -1,4 +1,4 @@
-import { test, expect } from "./fixtures.js";
+import { test, expect, openSettings } from "./fixtures.js";
 
 async function enterGuest(page, app) {
   await page.goto(app.url);
@@ -136,11 +136,13 @@ test.describe("INPUT — Enter = baris baru, tombol panah = kirim", () => {
 
 test("pemilihan bahasa Arab menerapkan locale dan arah RTL", async ({ page, app }) => {
   await enterGuest(page, app);
+  await openSettings(page);
   const picker = page.locator("#languagePreference");
   await expect(picker).toBeVisible();
   await picker.selectOption("ar");
   await expect(page.locator("html")).toHaveAttribute("lang", "ar");
   await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
+  await openSettings(page);
   await expect(picker).toHaveValue("ar");
 });
 

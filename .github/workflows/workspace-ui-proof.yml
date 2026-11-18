@@ -1,0 +1,55 @@
+name: BOR AI workspace redesign (NO SECRETS)
+on:
+  push:
+    branches: [feat/workspace-redesign-20261118]
+  pull_request:
+    branches: [feat/plan-tier-server-gates-20261117]
+permissions:
+  contents: read
+concurrency:
+  group: bor-ai-workspace-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  unit-build:
+    name: Workspace regression and dry-run build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run check
+      - name: Check workspace scripts and unchanged original logo
+        run: |
+          node --check public/app.js
+          node --check public/i18n.js
+          node --check public/workspace.js
+          node --check public/workspace-theme.js
+          sha256sum --check <<'SHA256'
+          ebee397d3c4478e0a4f509cdc1abeb45d7438eee0a18652508b6d121efcb2fb4  public/logo-mark.svg
+          be50f7785b96da68e0f12e259959bf0636f92138c79d3b38b65fc4c0c3744476  public/icon.svg
+          d1e93e6a5de9bbbc1cc0337cea0205c2403d3ea4b4bdf358ddda0f51f41123c4  public/icon-192.png
+          4f6f21af6fc86569826ad1ac7f5443b0a04e347075654d2e522848b774a41ead  public/icon-512.png
+          c579f8ff17789a51a6575bf6bf9d0f335e5138aab8e2906106ddc6c0aa9ca8d9  public/favicon.ico
+          b17b96732d6248ea38ad9dd9d3cf95900dfb7c6bcc850d540a7ca7651e476d26  public/apple-touch-icon.png
+          SHA256
+      - run: npm ci --ignore-scripts --prefix tests/billing/stage3-wrangler-lock
+      - name: Bundle only, no deployment
+        run: tests/billing/stage3-wrangler-lock/node_modules/.bin/wrangler deploy --dry-run --config wrangler.jsonc
+  browser:
+    name: Workspace browser matrix, synthetic AI only
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
