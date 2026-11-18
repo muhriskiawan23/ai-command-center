@@ -4,7 +4,8 @@ const ALICE = { id: "google-sub-alice", email: "alice@example.com", name: "Alice
 
 async function openMemoryPanel(page) {
   if (drawerMode(page)) { await page.locator("#menuBtn").click(); await expect(page.locator("#sidebar")).toBeVisible(); }
-  await openSettings(page);
+  await page.locator("#userProfile").click();
+  await expect(page.locator("#accountDialog")).toBeVisible();
   await page.locator("#openMemory").click();
   await expect(page.locator("#memoryPanel")).toBeVisible();
 }
