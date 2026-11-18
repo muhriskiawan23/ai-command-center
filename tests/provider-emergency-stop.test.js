@@ -71,7 +71,8 @@ test("invalid, absent and corrupt global control states fail closed without spen
   const x=setup(t);
   assert.throws(()=>x.set(2,1),/CHECK/);
   assert.throws(()=>x.db.exec("DELETE FROM provider_runtime_controls"),/provider_runtime_control_delete_forbidden/);
-  assert.throws(()=>x.db.exec("UPDATE provider_runtime_controls SET updated_at=-1"),/CHECK/);
+  assert.throws(()=>x.db.exec("UPDATE provider_runtime_controls SET updated_at=-1"),
+    /provider_runtime_control_invalid_update|CHECK/);
   assert.equal((await x.reserve("ai:off")).ok,false);
   x.db.exec("DROP TABLE provider_runtime_controls");
   assert.equal((await x.reserve("ai:missing-table")).ok,false);
