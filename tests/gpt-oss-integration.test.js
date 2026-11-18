@@ -85,16 +85,21 @@ test("empty GPT-OSS final output falls back to Llama instead of returning HTTP 5
  }finally{await app.close();}
 });
 
-test("GPT-OSS response without final text must not repeatedly call paid canary on retry",async()=>{
+test("GPT-OSS empty final output cannot trigger a second paid call on short-response retry",async()=>{
  const app=await startHarness({extraEnv:{BOR_GPT_OSS_ENABLED:"true",BOR_GPT_OSS_DAILY_USD_LIMIT:"0.25"}});
- const models=[];
+ const models=[];let baselineResponses=0;
  app.env.AI.run=async(model)=>{
   models.push(model);
-  return model===GPT_OSS_MODEL_ID?{output:[]}:{response:"Ini adalah jawaban yang memadai dan menjelaskan dengan rinci, disertai dua kalimat pendukung untuk kebutuhan pengguna."};
+  if(model===GPT_OSS_MODEL_ID)return {output:[]};
+  baselineResponses++;
+  return {response:baselineResponses===1
+    ?"OK"
+    :"Panel surya mengubah cahaya matahari menjadi energi listrik menggunakan sel fotovoltaik, yang membantu menghasilkan daya pada siang hari."};
  };
  try{
-  const {status,body}=await message(app,"Jelaskan ringkas tentang risiko operasional.");
+  const {status,body}=await message(app,"Apa itu panel surya?");
   assert.equal(status,200,JSON.stringify(body));
-  assert.deepEqual(models,[GPT_OSS_MODEL_ID,LLAMA]);
+  assert.deepEqual(models,[GPT_OSS_MODEL_ID,LLAMA,LLAMA]);
+  assert.equal(models.filter(model=>model===GPT_OSS_MODEL_ID).length,1);
  }finally{await app.close();}
 });
