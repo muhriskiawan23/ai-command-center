@@ -48,7 +48,7 @@ export default {
       return result("Stage 3 authentication required", 401);
     }
     const usageMode = request.headers.get("X-BOR-Stage3-Usage") || "measured";
-    if (!["measured", "unverified", "wallet-finalization-failure"].includes(usageMode)) return result("Invalid synthetic usage mode", 400);
+    if (!["measured", "unverified", "wallet-finalization-failure", "provider-timeout"].includes(usageMode)) return result("Invalid synthetic usage mode", 400);
 
     const DB = env.STAGE3_DB;
     const providerBudget = providerSpendBudget({ DB });
@@ -108,9 +108,12 @@ export default {
             tariff: { ...syntheticTariff, model },
             maxInputTokens: 12000,
             maxOutputTokens: payload.max_tokens,
+            modelTimeoutMs: usageMode === "provider-timeout" ? 25 : 30000,
             providerBudget,
             ledger: usageMode === "wallet-finalization-failure" ? failingWalletLedger : ledger,
-            invokeModel: async () => usageMode === "unverified"
+            invokeModel: async () => usageMode === "provider-timeout"
+              ? new Promise(() => {})
+              : usageMode === "unverified"
               ? { response: answer }
               : { response: answer, usage: { prompt_tokens: 1000, completion_tokens: 100 } }
           });
