@@ -3,20 +3,23 @@ import { test, expect, loginAs, drawerMode, openSettings } from "./fixtures.js";
 const ALICE = { id: "google-sub-alice", email: "alice@example.com", name: "Alice" };
 
 async function openMemoryPanel(page) {
-  if (drawerMode(page)) { await page.locator("#menuBtn").click(); await expect(page.locator("#sidebar")).toBeVisible(); }
-  await openSettings(page);
+  if (!(await page.locator("#accountDialog").isVisible())) {
+    if (drawerMode(page)) { await page.locator("#menuBtn").click(); await expect(page.locator("#sidebar")).toBeVisible(); }
+    await page.locator("#userProfile").click();
+    await expect(page.locator("#accountDialog")).toBeVisible();
+  }
   await page.locator("#openMemory").click();
   await expect(page.locator("#memoryPanel")).toBeVisible();
 }
 
 test.describe("MEMORI — opsional, hanya akun login", () => {
-  test("tamu: tombol Memori hanya memberi petunjuk masuk dengan Google, tanpa membuka panel", async ({ page, app }) => {
+  test("tamu: kontrol memori akun tidak muncul sebelum login Google", async ({ page, app }) => {
     await page.goto(app.url);
     await page.locator("#continueGuest").click();
     if (drawerMode(page)) { await page.locator("#menuBtn").click(); await expect(page.locator("#sidebar")).toBeVisible(); }
     await openSettings(page);
-  await page.locator("#openMemory").click();
-    await expect(page.locator("#toast")).toContainText("Masuk dengan Google");
+    await expect(page.locator("#userProfile")).toBeHidden();
+    await expect(page.locator("#openMemory")).toBeHidden();
     await expect(page.locator("#memoryPanel")).toBeHidden();
   });
 
@@ -80,7 +83,9 @@ test.describe("MEMORI — opsional, hanya akun login", () => {
     await expect(page.locator(".memory-item")).toHaveCount(1);
     await page.locator("#memoryClose").click();
     await expect(page.locator("#memoryPanel")).toBeHidden();
-    if (drawerMode(page)) { await page.locator("#drawerClose").click(); await expect(page.locator("#sidebar")).toBeHidden(); }
+    await expect(page.locator("#accountDialog")).toBeVisible();
+    await page.locator("#accountClose").click();
+    await expect(page.locator("#accountDialog")).toBeHidden();
     await page.locator("#prompt").fill("Halo, siapa namaku?");
     await page.locator("#send").click();
     await expect(page.locator(".message.assistant:not(#typing)")).toHaveCount(1);
@@ -91,14 +96,16 @@ test.describe("MEMORI — opsional, hanya akun login", () => {
     await page.locator("#memoryToggle").uncheck();
     await expect.poll(() => app.db.sqlite.prepare("SELECT memory_enabled m FROM user_settings WHERE user_id = ?").get(ALICE.id).m).toBe(0);
     await page.locator("#memoryClose").click();
-    if (drawerMode(page)) { await page.locator("#drawerClose").click(); await expect(page.locator("#sidebar")).toBeHidden(); }
+    await expect(page.locator("#accountDialog")).toBeVisible();
+    await page.locator("#accountClose").click();
+    await expect(page.locator("#accountDialog")).toBeHidden();
     await page.locator("#prompt").fill("Halo lagi");
     await page.locator("#send").click();
     await expect(page.locator(".message.assistant:not(#typing)")).toHaveCount(2);
     expect(app.aiCalls.at(-1).messages.find((m) => m.role === "system").content).not.toContain("USER MEMORY");
   });
 
-  test("Back menutup panel Memori lebih dulu (drawer tetap terbuka), lalu drawer; Escape juga menutup panel", async ({ page, app, context }) => {
+  test("Back menutup Memori lalu Profil sebelum chat; Escape juga kembali ke Profil", async ({ page, app, context }) => {
     test.skip(!drawerMode(page), "hanya mode drawer");
     await loginAs(context, app, ALICE);
     await page.goto(app.url);
@@ -106,14 +113,14 @@ test.describe("MEMORI — opsional, hanya akun login", () => {
     await openMemoryPanel(page);
     await page.goBack();
     await expect(page.locator("#memoryPanel")).toBeHidden();
-    await expect(page.locator("#sidebar")).toBeVisible();                             // drawer masih terbuka
+    await expect(page.locator("#accountDialog")).toBeVisible();
     await page.goBack();
-    await expect(page.locator("#sidebar")).toBeHidden();
+    await expect(page.locator("#accountDialog")).toBeHidden();
     await expect(page.locator("#app")).toBeVisible();
     await openMemoryPanel(page);
     await page.keyboard.press("Escape");
     await expect(page.locator("#memoryPanel")).toBeHidden();
-    await expect(page.locator("#sidebar")).toBeVisible();
+    await expect(page.locator("#accountDialog")).toBeVisible();
   });
 
   test("Back/Escape di desktop menutup panel tanpa keluar aplikasi", async ({ page, app, context }) => {
@@ -124,6 +131,7 @@ test.describe("MEMORI — opsional, hanya akun login", () => {
     await openMemoryPanel(page);
     await page.goBack();
     await expect(page.locator("#memoryPanel")).toBeHidden();
+    await expect(page.locator("#accountDialog")).toBeVisible();
     expect(page.url().startsWith(app.url)).toBe(true);
     await openMemoryPanel(page);
     await page.keyboard.press("Escape");

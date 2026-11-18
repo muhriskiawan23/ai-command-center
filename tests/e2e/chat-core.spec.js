@@ -20,7 +20,8 @@ test("akun dapat melihat ringkasan kuota harian dari sidebar, termasuk di mobile
   await send(page, "Tampilkan ringkasan penggunaan saya.");
   await expect(page.locator(".message.assistant:not(#typing)")).toHaveCount(1);
   if (page.viewportSize().width <= 1024) await page.locator("#menuBtn").click();
-  await openSettings(page);
+  await page.locator("#userProfile").click();
+  await expect(page.locator("#accountDialog")).toBeVisible();
   await page.locator("#openUsage").click();
   await expect(page.locator("#usagePanel")).toBeVisible();
   await expect(page.locator("#usageSummary")).toContainText("Akun Google");
