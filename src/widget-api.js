@@ -1,3 +1,4 @@
+import { isConfidentialityRequest, confidentialityReply } from "./confidentiality.js";
 import { safeError } from "./safe-error.js";
 const MAX_ORIGINS = 5;
 const DEFAULT_DAILY_LIMIT = 100;
@@ -132,6 +133,11 @@ export async function handlePublicChatRoute(request, env, deps) {
       if (!keyLimit?.success) return fail("Terlalu banyak permintaan. Coba lagi dalam satu menit.", 429, { "Retry-After": "60" });
     } catch { return fail("Pembatasan permintaan sedang bermasalah.", 503); }
   }
+
+  if (isConfidentialityRequest(message)) return withCors(deps.json({
+    response: confidentialityReply(body?.language, message), agent: deps.AGENTS[agentId].name,
+    workflow: "confidentiality-protection"
+  }), origin);
 
   const day = new Date().toISOString().slice(0, 10);
   const now = Math.floor(Date.now() / 1000);

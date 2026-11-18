@@ -1,4 +1,5 @@
 import { safeError } from "./safe-error.js";
+import { CONFIDENTIALITY_NOTICE, isConfidentialityRequest, confidentialityReply, containsProtectedOutput } from "./confidentiality.js";
 import { extractUrls, readLinks, buildPageContext, summarizeLinks } from "./links.js";
 import { createVerifiedLinkFetcher } from "./verified-egress.js";
 import { extractWithTavily } from "./tavily-extract.js";
@@ -16,6 +17,11 @@ import { json, sha256Hex } from "./http.js";
 import { dailyLimit, usageDay, secondsUntilNextUtcDay, consumeUsage, refundUsage, limitResponse, enforceDailyLimits, DAILY_LIMIT_DEFAULTS, MULTI_AGENT_UNITS } from "./daily-limits.js";
 
 const MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
+const TRUSTED_PROMPT_TEXT = [CONFIDENTIALITY_NOTICE, CAPABILITY_NOTICE, COMMUNICATION_NOTICE, ...Object.values(AGENTS).map(agent => agent.prompt)];
+function protectSavedResponse(response, env, language, message) {
+  return containsProtectedOutput(response, env, TRUSTED_PROMPT_TEXT) ? confidentialityReply(language, message) : response;
+}
+
 const MAX_REQUEST_BYTES = 64 * 1024;
 const MESSAGES_PAGE_MAX = 500; // newest messages returned when opening one conversation
 
@@ -90,7 +96,7 @@ const SUPPORTED_CHAT_LANGUAGES = new Set(["en","id","es","fr","de","pt","ja","ko
 function withResponseLanguage(env, language) {
   if (!SUPPORTED_CHAT_LANGUAGES.has(language)) return env;
   const localeNames = { en:"English", id:"Bahasa Indonesia", es:"Spanish", fr:"French", de:"German", pt:"Brazilian Portuguese", ja:"Japanese", ko:"Korean", zh:"Simplified Chinese", ar:"Arabic" };
-  return { ...env, AI: { run(model, payload, options) {
+  return { ...env, BOR_RESPONSE_LANGUAGE: language, AI: { run(model, payload, options) {
     const instruction = [
       "MANDATORY RESPONSE LANGUAGE:",
       "Write every user-facing response entirely in " + localeNames[language] + ".",
@@ -299,10 +305,13 @@ async function runAgent(env, agentId, userMessage, context = "", history = [], p
     throw new Error(`Unknown agent: ${agentId}`);
   }
 
+  const refusal = () => confidentialityReply(env.BOR_RESPONSE_LANGUAGE, userMessage);
+  if (isConfidentialityRequest(userMessage, history)) return refusal();
+
   const messages = [
     {
       role: "system",
-      content: `${agent.prompt}\n\n${CAPABILITY_NOTICE}\n\n${COMMUNICATION_NOTICE}`
+      content: `${CONFIDENTIALITY_NOTICE}\n\n${agent.prompt}\n\n${CAPABILITY_NOTICE}\n\n${COMMUNICATION_NOTICE}`
     },
     ...history,
     {
@@ -421,9 +430,16 @@ async function runAgent(env, agentId, userMessage, context = "", history = [], p
     }
   };
 
+  const blockOutput = output => containsProtectedOutput(output, env, messages.filter(m => m.role === "system").map(m => m.content));
+  const blockedOutput = () => {
+    traceEntry.outcome = "policy-blocked";
+    emitTelemetry();
+    return refusal();
+  };
   try {
-      let result = await generate();
+    let result = await generate();
     let response = result?.response ?? result?.result?.response ?? "";
+    if (blockOutput(response)) return blockedOutput();
     let cleaned = cleanOutput(response);
     const countWords = (value) => value.replace(/[#*_\`>~-]/g, " ").match(/[\p{L}\p{N}]{2,}/gu) || [];
 
@@ -433,6 +449,7 @@ async function runAgent(env, agentId, userMessage, context = "", history = [], p
         "RETRY REQUIRED: Your previous answer contained empty Markdown headings or bullets and was unusable. Return substantive content in plain text or simple numbered points. Do not output empty headings, empty bullets, or Markdown-only lines. Include at least 3 concrete findings when appropriate. Every bullet must contain a complete sentence. Answer in the user's language."
       );
       response = result?.response ?? result?.result?.response ?? "";
+      if (blockOutput(response)) return blockedOutput();
       cleaned = cleanOutput(response);
     }
 
@@ -1409,15 +1426,6 @@ export default {
         if (!owned) return json({ error: "Chat tidak ditemukan." }, 404);
       }
       if (body.replaceLastTurn && !user) return json({ error: "Penggantian giliran memerlukan akun yang masuk." }, 401);
-      if (user && body.requestId) {
-        try {
-          const saved = await findSavedChatRequest(env, user, body.requestId);
-          if (saved) return json({ agent: AGENTS[agentId].name, model: MODEL, workflow: "idempotent-replay", response: saved.response, links: saved.links, conversationId: saved.conversationId, responseId: saved.responseId, saved: true, replayed: true });
-        } catch (error) {
-          console.error("Chat idempotency lookup failed:", safeError(error));
-          return json({ error: "Status permintaan sebelumnya tidak dapat diperiksa. Coba muat ulang riwayat chat." }, 503);
-        }
-      }
       if (env.CHAT_LIMITER?.limit) {
         let rateLimit;
         try {
@@ -1427,6 +1435,18 @@ export default {
           if (rateLimit?.success && user) rateLimit = await env.CHAT_LIMITER.limit({ key: `user:${user.id}` });
         } catch (error) { console.error("Chat rate limiter failed:", safeError(error)); return json({ error: "Layanan pembatasan permintaan sedang bermasalah." }, 503); }
         if (!rateLimit?.success) return json({ error: "Terlalu banyak permintaan. Coba lagi dalam satu menit." }, 429, { "Retry-After": "60" });
+      }
+      const language = SUPPORTED_CHAT_LANGUAGES.has(body?.language) ? body.language : "en";
+      const policyReply = () => json({ agent: AGENTS[agentId].name, workflow: "confidentiality-protection", response: confidentialityReply(language, message), saved: false });
+      if (isConfidentialityRequest(message, user ? [] : clientHistory.history)) return policyReply();
+      if (user && body.requestId) {
+        try {
+          const saved = await findSavedChatRequest(env, user, body.requestId);
+          if (saved) return json({ agent: AGENTS[agentId].name, model: MODEL, workflow: "idempotent-replay", response: protectSavedResponse(saved.response, env, language, message), links: saved.links, conversationId: saved.conversationId, responseId: saved.responseId, saved: true, replayed: true });
+        } catch (error) {
+          console.error("Chat idempotency lookup failed:", safeError(error));
+          return json({ error: "Status permintaan sebelumnya tidak dapat diperiksa. Coba muat ulang riwayat chat." }, 503);
+        }
       }
       const useMultiAgent = agentId === "coordinator" && shouldUseMultiAgent(message);
       const found = extractUrls(message);
@@ -1455,11 +1475,14 @@ export default {
           }
         } catch (error) { console.error("Chat history lookup failed:", safeError(error)); await refundUsage(env, usage.day, usage.charges); return json({ error: "Riwayat chat gagal dimuat. Coba muat ulang." }, 503); }
       }
+      if (isConfidentialityRequest(message, history)) {
+        await refundUsage(env, usage.day, usage.charges);
+        return policyReply();
+      }
       // Single answers may retry once (2 calls); the multi-agent chain gets its own total budget.
       const perCallMs = positiveMs(env.AI_CALL_TIMEOUT_MS, AI_CALL_TIMEOUT_DEFAULT_MS);
       const budgetMs = useMultiAgent ? positiveMs(env.AI_TOTAL_BUDGET_MS, AI_MULTI_AGENT_BUDGET_DEFAULT_MS) : perCallMs * 2;
       // Opt-in memory: only for signed-in users who switched it on. A failure here never blocks the chat.
-      const language = SUPPORTED_CHAT_LANGUAGES.has(body?.language) ? body.language : "en";
       let memoryNote = "";
       let memoryItems = [];
       let pendingRememberText = null;
@@ -1592,7 +1615,7 @@ export default {
                 const saved = await findSavedChatRequest(env, user, body.requestId);
                 if (saved) {
                   await refundUsage(env, usage.day, usage.charges);
-                  return json({ agent: AGENTS[agentId].name, model: MODEL, workflow: "idempotent-replay", response: saved.response, links: saved.links, conversationId: saved.conversationId, responseId: saved.responseId, saved: true, replayed: true });
+                  return json({ agent: AGENTS[agentId].name, model: MODEL, workflow: "idempotent-replay", response: protectSavedResponse(saved.response, env, language, message), links: saved.links, conversationId: saved.conversationId, responseId: saved.responseId, saved: true, replayed: true });
                 }
               } catch (lookupError) { console.error("Chat idempotency recovery failed:", safeError(lookupError)); }
             }
