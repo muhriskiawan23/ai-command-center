@@ -142,7 +142,7 @@ test("dispute review markers cannot be overwritten or deleted",t=>{
  ])assert.throws(()=>db.exec(sql),/sandbox_reversal_review_append_only/);
  assert.throws(()=>db.exec("DELETE FROM sandbox_payment_reversal_reviews WHERE order_id='order'"),
    /sandbox_reversal_review_delete_forbidden/);
- assert.deepEqual(db.prepare("SELECT provider_status,created_at FROM sandbox_payment_reversal_reviews").get(),
+ assert.deepEqual({...db.prepare("SELECT provider_status,created_at FROM sandbox_payment_reversal_reviews").get()},
    {provider_status:"chargeback",created_at:4});
  assert.equal(db.prepare("SELECT outcome FROM sandbox_payment_reversals").get().outcome,"review_required");
  assert.equal(state(),"disputed");
