@@ -36,6 +36,15 @@ BEGIN
     SELECT 1 FROM media_usage_events e
     WHERE e.attempt_id=NEW.attempt_id AND e.event_kind='usage_measured'
   );
+  -- Unknown/unverified usage is terminal until independent operator review.
+  -- A late callback must never launder an uncertain attempt into an
+  -- automatically measurable paid result or add a competing outcome.
+  SELECT RAISE(ABORT,'media_event_terminal_conflict')
+  WHERE NEW.event_kind!='dispatched' AND EXISTS (
+    SELECT 1 FROM media_usage_events e
+    WHERE e.attempt_id=NEW.attempt_id
+      AND e.event_kind IN ('outcome_unknown','usage_unverified')
+  );
 END;
 CREATE TRIGGER trg_media_usage_no_update BEFORE UPDATE ON media_usage_events
 BEGIN SELECT RAISE(ABORT,'media_event_append_only'); END;
