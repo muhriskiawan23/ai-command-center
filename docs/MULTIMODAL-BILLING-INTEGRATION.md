@@ -108,6 +108,12 @@ or refunds anything, never exposes per-user records, and always returns
 `providerInvoiceVerified:false`. A clean arithmetic report is not an invoice
 attestation or proof that the configured credit conversion is profitable.
 
+Account-scoped `/api/media/status` also rejects a supposedly completed job if
+any unknown/unverified marker exists, even in a legacy or inconsistent
+financial snapshot. Read-only `inspectMediaBilling` flags multiple competing
+terminal events as `terminal_conflicts`, without mutating balances or
+retroactively declaring an invoice verified.
+
 The shared `inspectDraftBillingReconciliation` financial snapshot now pairs
 both text (`ai:<wallet-request>`) and media (`media:<request>` in both tables)
 reservations, checks their actual wallet journals and shared daily counters,
