@@ -287,3 +287,14 @@ test("legacy contradictory provider outcomes never appear financially complete i
   assert.equal(r.status,200);assert.equal(r.data.state,"unresolved");
   assert.equal(r.data.reviewRequired,true);assert.equal(r.data.outputStored,false);
 });
+
+test("HTTP media route rejects a non-native custom runtime's truncated model output without delivering it",async t=>{
+  const x=fixture(t);
+  x.runtime.invokeModel=async()=>({answer:"This answer was cut off",finish_reason:"length"});
+  const r=await x.send();
+  assert.equal(r.status,502);
+  assert.equal(r.data.reviewRequired,true);
+  assert.equal(r.data.outputs,undefined);
+  assert.equal(x.sql.prepare("SELECT status FROM credit_reservations").get().status,"reserved");
+  assert.equal((await x.send("/api/media/status")).data.state,"unresolved");
+});
