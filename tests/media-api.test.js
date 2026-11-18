@@ -324,3 +324,18 @@ test("account media status fails closed if credit or provider settlement shape i
   row=valid;
   assert.equal((await x.send("/api/media/status")).data.state,"completed");
 });
+
+test("cancelled budget cannot conceal contradictory legacy usage evidence",async t=>{
+  const x=fixture(t,{balance:1});
+  assert.equal((await x.send()).status,402);
+  assert.equal((await x.send("/api/media/status")).data.state,"cancelled");
+  x.sql.exec("DROP TRIGGER trg_media_usage_insert_guard");
+  x.sql.prepare(`INSERT INTO media_usage_events
+    (attempt_id,event_kind,request_id,provider,model,rate_version,feature,provider_cost_micro_usd,created_at)
+    SELECT id||':0','outcome_unknown',id,provider,model,'synthetic-api-v1','image_understanding',NULL,1
+    FROM provider_budget_reservations`).run();
+  const state=await x.send("/api/media/status");
+  assert.equal(state.status,200);
+  assert.equal(state.data.state,"unresolved");
+  assert.equal(state.data.reviewRequired,true);
+});
