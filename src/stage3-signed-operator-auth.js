@@ -15,7 +15,8 @@ const validTime=x=>Number.isSafeInteger(x)&&x>=0;
 function bytes(text,length){
   if(typeof text!=="string") return null;
   try {
-    const raw=atob(text.replace(/-/g,"+").replace(/_/g,"/")+"==");
+    const b64=text.replace(/-/g,"+").replace(/_/g,"/");
+    const raw=atob(b64.padEnd(Math.ceil(b64.length/4)*4,"="));
     if(raw.length!==length)return null;
     return Uint8Array.from(raw,character=>character.charCodeAt(0));
   } catch { return null; }
