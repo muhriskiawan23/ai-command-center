@@ -92,3 +92,18 @@ still be accepted when its independent Status API response explicitly
 confirms IDR; the trusted status result remains the source of truth.
 Local synthetic SQLite tests cover missing currency, USD/null and the
 positive signed-webhook case. This is not real Midtrans invoice evidence.
+
+
+### New dispute after a completed refund (18 November 2026)
+Even when a verified **full refund** has already reversed the original credit
+grant and set the order to `refunded`, a *subsequent independently verified*
+`chargeback`, `partial_chargeback`, or `partial_refund` is not an ordinary
+refund replay. The Sandbox webhook records a privacy-minimal, idempotent
+`sandbox_payment_reversal_reviews` marker and returns `review_required`.
+It does **not** debit the customer twice, re-grant credit, overwrite the
+already-reconciled refund, or silently classify the dispute as `unchanged`.
+The provider transaction ID, merchant, currency and original amount must
+still match, and the Status API must confirm a reversal status before the
+marker is created. Identical later events do not duplicate the marker.
+Investigate the new provider dispute and reconcile it against the historical
+grant/reversal before any production policy is enabled.
