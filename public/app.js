@@ -246,6 +246,7 @@ function renderAuth(){
 
 /* Account panel: a dedicated accessible page-like dialog, not extra sidebar settings. */
 const accountDialog=$("accountDialog");
+let returnToAccountOnChildClose=false;
 function customizationKey(){return "borai-customization:v1:" + String(currentUser?.id||currentUser?.email||"guest");}
 function readCustomization(){
   if(state!==AppState.AUTH||!currentUser)return null;
@@ -287,11 +288,14 @@ $("accountBack").addEventListener("click",()=>{
 accountDialog.addEventListener("click",event=>{
   // Opening an existing account feature closes only the visible dialog; keep the
   // account history entry so Back from Memory can return to this account view.
-  if(event.target.closest("#openMemory,#openIntegrations,#about"))accountDialog.close();
+  if(event.target.closest("#openMemory,#openIntegrations,#about")){
+    returnToAccountOnChildClose = Boolean(event.target.closest("#openIntegrations,#about"));
+    accountDialog.close();
+  }
 },true);
 accountDialog.addEventListener("cancel",event=>{event.preventDefault();closeAccount();});
 accountDialog.addEventListener("close",()=>{
-  if($("userProfile").isConnected&&!$("userProfile").hidden)$("userProfile").focus();
+  if(!returnToAccountOnChildClose && $("userProfile").isConnected&&!$("userProfile").hidden)$("userProfile").focus();
 });
 $("openCustomization").addEventListener("click",()=>{
   const prefs=readCustomization()||{nickname:"",tone:"natural",length:"balanced"};
@@ -333,7 +337,7 @@ async function refreshGitHubConnection(){
     $("githubStatusDot").className="github-status-dot "+(githubConnection?"is-connected":"");
     $("githubConnect").textContent=githubConnection?"Hubungkan akun lain":"Hubungkan akun GitHub";
     $("githubDisconnect").hidden=!githubConnection;
-    $("openGithubRepos").disabled=!githubConnection;
+    if($("openGithubRepos")) $("openGithubRepos").disabled=!githubConnection;
   }catch(error){
     if(request!==githubConnectionRequest)return;
     $("githubConnectionStatus").textContent="Status belum dapat diperiksa";
@@ -1160,10 +1164,18 @@ $("githubReposRefresh").addEventListener("click",loadGitHubRepositories);
 $("githubRepoSearch").addEventListener("input",renderGitHubRepositories);
 $("githubRepoVisibility").addEventListener("change",renderGitHubRepositories);
 $("githubReposDialog").addEventListener("click",event=>{const dialog=$("githubReposDialog");if(event.target!==dialog)return;const rect=dialog.getBoundingClientRect();if(event.clientX<rect.left||event.clientX>rect.right||event.clientY<rect.top||event.clientY>rect.bottom)dialog.close()});
+function restoreAccountAfterChildDialog(){
+  if(!returnToAccountOnChildClose)return;
+  returnToAccountOnChildClose=false;
+  if(history.state?.overlay==="account"&&state===AppState.AUTH&&currentUser&&!accountDialog.open){
+    accountDialog.showModal();accountView("home");
+  }
+}
 const integrationsDialog=$("integrationsDialog");
 $("openIntegrations").addEventListener("click",()=>{if(!integrationsDialog.open)integrationsDialog.showModal();if(state===AppState.AUTH)refreshGitHubConnection();$("integrationsClose").focus()});
 $("integrationsClose").addEventListener("click",()=>integrationsDialog.close());
 integrationsDialog.addEventListener("click",event=>{if(event.target!==integrationsDialog)return;const rect=integrationsDialog.getBoundingClientRect();if(event.clientX<rect.left||event.clientX>rect.right||event.clientY<rect.top||event.clientY>rect.bottom)integrationsDialog.close()});
+integrationsDialog.addEventListener("close",restoreAccountAfterChildDialog);
 const aboutDialog=$("aboutDialog");
 $("about").addEventListener("click",()=>{
   if(!aboutDialog.open)aboutDialog.showModal();
@@ -1175,6 +1187,7 @@ aboutDialog.addEventListener("click",event=>{
   const rect=aboutDialog.getBoundingClientRect();
   if(event.clientX<rect.left||event.clientX>rect.right||event.clientY<rect.top||event.clientY>rect.bottom)aboutDialog.close();
 });
+aboutDialog.addEventListener("close",restoreAccountAfterChildDialog);
 document.querySelectorAll("[data-prompt]").forEach(b=>b.addEventListener("click",()=>{promptEl.value=b.dataset.prompt;resizePrompt();promptEl.focus()}));
 history.scrollRestoration="manual";
 syncInert();health();boot();
