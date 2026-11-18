@@ -339,3 +339,23 @@ test("cancelled budget cannot conceal contradictory legacy usage evidence",async
   assert.equal(state.data.state,"unresolved");
   assert.equal(state.data.reviewRequired,true);
 });
+
+test("separately opted-in read-only media status survives emergency AI kill switch",async t=>{
+  const x=fixture(t);
+  assert.equal((await x.send()).status,200);
+  const before=x.count("credit_ledger");
+  delete x.env.MEDIA_API_ENABLED;
+  assert.equal((await x.send("/api/media/status")).status,404);
+  x.env.MEDIA_STATUS_ENABLED="true";
+  const r=await x.send("/api/media/status");
+  assert.equal(r.status,200);
+  assert.equal(r.data.state,"completed");
+  assert.equal(r.data.outputStored,false);
+  assert.equal((await x.send("/api/media")).status,404);
+  assert.equal((await x.send("/api/media/quote")).status,404);
+  assert.equal((await x.send("/api/media/status",{}, {cookie:null})).status,401);
+  assert.equal((await x.send("/api/media/status",{}, {headers:{Origin:"https://other.test"}})).status,403);
+  assert.equal((await x.send("/api/media/status",{}, {cookie:x.bob})).status,404);
+  assert.equal(x.count("credit_ledger"),before);
+  assert.equal(x.calls.model,1);
+});
