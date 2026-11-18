@@ -14,7 +14,7 @@
   }
   function setBusy(value){
     busy=Boolean(value);
-    for(const id of ["browserInspect","browserReview","browserExecute","browserCopyToChat"]){
+    for(const id of ["browserInspect","browserReview","browserSuggest","browserExecute","browserCopyToChat"]){
       const button=$(id);if(button)button.disabled=busy;
     }
   }
@@ -75,6 +75,21 @@
     }catch(error){report(error.message||"Browser tidak tersedia.",true);}
     finally{setBusy(false);}
   });
+  async function reviewStep(step,label){
+    if(!current)return;
+    setBusy(true);clearApproval();report("Memeriksa keamanan langkah…");
+    try{
+      pending=await post("/api/browser/plan",{plan:{url:current.url,steps:[step]}});
+      if(!pending.requiresConfirmation||!pending.approvalToken)throw Error("Token persetujuan browser tidak tersedia.");
+      $("browserPlanReview").textContent=
+        "Situs: "+pending.plan.host+"\nTindakan: "+step.type+"\nTarget: "+label+
+        (step.type==="click"?"":"\nNilai: "+step.value)+
+        "\nBerlaku sampai: "+new Date(pending.expiresAt).toLocaleTimeString();
+      $("browserApproval").hidden=false;
+      report("Periksa detail tindakan sebelum menekan tombol persetujuan.");
+    }catch(error){report(error.message||"Langkah ditolak.",true);}
+    finally{setBusy(false);}
+  }
   $("browserReview").addEventListener("click",async()=>{
     if(busy||!current)return;
     const value=$("browserTarget").value;
@@ -87,18 +102,27 @@
     if(target.by==="role")target.role=item.role;
     const step={type,target};
     if(type!=="click")step.value=$("browserValue").value;
-    setBusy(true);clearApproval();report("Memeriksa keamanan langkah…");
-    try {
-      pending=await post("/api/browser/plan",{plan:{url:current.url,steps:[step]}});
-      if(!pending.requiresConfirmation||!pending.approvalToken)throw Error("Token persetujuan browser tidak tersedia.");
-      $("browserPlanReview").textContent=
-        "Situs: "+pending.plan.host+"\nTindakan: "+type+"\nTarget: "+item.name+
-        (type==="click"?"":"\nNilai: "+step.value)+
-        "\nBerlaku sampai: "+new Date(pending.expiresAt).toLocaleTimeString();
-      $("browserApproval").hidden=false;
-      report("Periksa detail tindakan sebelum menekan tombol persetujuan.");
-    }catch(error){report(error.message||"Langkah ditolak.",true);}
-    finally{setBusy(false);}
+    await reviewStep(step,item.name);
+  });
+  $("browserSuggest").addEventListener("click",async()=>{
+    if(busy||!current)return;
+    const instruction=$("browserGoal").value.trim();
+    if(!instruction){report("Tulis tujuan singkat yang ingin dikerjakan AI.",true);return;}
+    setBusy(true);clearApproval();report("AI sedang memilih satu langkah aman dari elemen halaman (1 unit)...");
+    let proposed;
+    try{
+      proposed=await post("/api/browser/suggest",{instruction,page:{
+        url:current.url,text:current.text.slice(0,1600),elements:current.elements
+      }});
+    }catch(error){report(error.message||"AI tidak menemukan langkah aman.",true);setBusy(false);return;}
+    setBusy(false);
+    if(!proposed?.suggestion||!Number.isInteger(proposed.index)||!current.elements[proposed.index]){
+      report("Saran AI tidak dapat digunakan.",true);return;
+    }
+    $("browserTarget").value=String(proposed.index);
+    $("browserTarget").dispatchEvent(new Event("change"));
+    $("browserValue").value=proposed.suggestion.value||"";
+    await reviewStep(proposed.suggestion,current.elements[proposed.index].name);
   });
   $("browserCancel").addEventListener("click",()=>{clearApproval();report("Langkah dibatalkan. Tidak ada interaksi dijalankan.");});
   $("browserExecute").addEventListener("click",async()=>{
