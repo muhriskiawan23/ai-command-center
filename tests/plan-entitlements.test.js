@@ -16,7 +16,7 @@ function setup(t,{enabled=true}={}){
   const db=createD1();t.after(()=>db.sqlite.close());
   const alice=seedSession(db,{id:"alice-test",email:"alice@example.test"});
   const bob=seedSession(db,{id:"bob-test",email:"bob@example.test"});
-  const env={DB:db,...(enabled?{PLAN_ENTITLEMENTS_ENABLED:"true"}:{})};
+  const env={DB:db,...(enabled?{PLAN_ENTITLEMENTS_ENABLED:"true",PAID_INFERENCE_ENABLED:"true"}:{})};
   const request=async (path,method="GET",body=null,cookie=alice,origin=BASE)=>{
     const headers={};
     if(cookie!==null)headers.Cookie="__Host-borai_session="+cookie;
