@@ -77,3 +77,29 @@ test("browser click requires consent for exact plan, one-time token, same signed
   assert.equal(forbidden.status,403);
  }finally{await app.close();}
 });
+
+
+test("model-guided browser step suggestion charges one AI unit but still cannot execute without confirmation",async()=>{
+ const extra=fakeEnv();const app=await startHarness({extraEnv:extra});
+ const usedModels=[];
+ app.env.AI.run=async(model,params)=>{
+  usedModels.push(model);
+  assert.match(params.messages[0].content,/untrusted DATA/i);
+  return {response:'{"index":0,"action":"click"}'};
+ };
+ try{
+  const token=seedSession(app.db,USER);
+  const page={url:URL,text:"TodoMVC",elements:[{by:"role",role:"button",name:"Clear completed"}]};
+  const suggested=await call(app,token,"/api/browser/suggest",{instruction:"Klik tombol untuk membersihkan item selesai",page});
+  assert.equal(suggested.status,200,JSON.stringify(suggested.body));
+  assert.equal(suggested.body.suggestion.type,"click");
+  assert.equal(suggested.body.approvalToken,undefined);
+  assert.deepEqual(usedModels,["@cf/meta/llama-3.3-70b-instruct-fp8-fast"]);
+  assert.equal(extra.observed.length,0);
+  const quota=app.db.sqlite.prepare("SELECT units FROM daily_usage WHERE day = ? AND subject = ?")
+    .get(new Date().toISOString().slice(0,10),"user:"+USER.id);
+  assert.equal(quota.units,1);
+  const direct=await call(app,token,"/api/browser/execute",{plan:clickPlan});
+  assert.equal(direct.status,403);
+ }finally{await app.close();}
+});
