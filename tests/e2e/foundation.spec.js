@@ -82,6 +82,8 @@ test.describe("AUTH — Welcome, Guest, session", () => {
     await page.goto(app.url);
     if (drawerMode(page)) await page.locator("#menuBtn").click();
     await expect(page.locator(".history-item")).toHaveCount(1);
+    await page.locator("#userProfile").click();
+    await expect(page.locator("#accountDialog")).toBeVisible();
     await page.locator("#signOut").click();
     await expect(page.locator("#gate")).toBeVisible();
     await expect(page.locator("#app")).toBeHidden();
