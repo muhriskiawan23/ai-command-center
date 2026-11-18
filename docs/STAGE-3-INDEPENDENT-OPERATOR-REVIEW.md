@@ -43,6 +43,25 @@ The only proposed classifications are `keep_hold`, `escalate` and
 not provider billing reconciliation or evidence that a backend service
 actually verified Cloudflare's invoices.
 
+## Optional append-only D1 one-time reviewer admission (still INACTIVE)
+
+`migrations/0019_stage3_operator_review_nonces_draft.sql` proposes
+a **separate, unapplied** D1 table storing only SHA-256 digests of
+trusted reviewer/key, unique signed nonce and review evidence binding.
+`src/stage3-operator-review-once.js` verifies both real Ed25519
+signatures, the separately trusted provider-statement callback and
+independent finance/security roles **before** submitting a two-row
+transactional D1 batch. A duplicate nonce causes a rollback and
+`escalation_required`; neither result can debit, refund, release holds,
+call AI, or approve production. Tests use disposable actual SQLite.
+
+This is a replay-resistant *review artifact*, not a deployed login or
+mutating financial authorization service. Trust-store enrollment,
+relying-party authentication, Cloudflare D1 deployment, public key
+revocation lifecycle, audit retention policy and actual provider
+statement source still require independent review. There are **no
+operational credentials or customer funds** in these test fixtures.
+
 ## Why the gate is deliberately separate from settlement
 
 A journaled provider dispatch can incur cost even when the Worker
