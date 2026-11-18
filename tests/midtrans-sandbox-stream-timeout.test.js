@@ -52,7 +52,7 @@ test("oversized declared notification fails before consuming its body",async()=>
   let readCalls=0,providerCalls=0;
   const stream=new ReadableStream({pull(queue){
     readCalls++;queue.enqueue(new TextEncoder().encode("{}"));queue.close();
-  }});
+  }},{highWaterMark:0});
   const response=await handleSandboxPayment(webhook(stream,{
     headers:{"Content-Length":"16385"}
   }),sandbox(),async()=>{providerCalls++;throw Error("External status must not be called");});
