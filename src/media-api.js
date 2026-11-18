@@ -117,7 +117,12 @@ async function mediaStatus(request,env,user){
 }
 export async function handleMediaRoute(request,env,url,dependencies){
   if(!["/api/media","/api/media/quote","/api/media/status"].includes(url.pathname))return null;
-  if(env.MEDIA_API_ENABLED!=="true")return fail("media_unavailable",404,"Fitur media AI belum tersedia.");
+  // Emergency disable must stop execution immediately. An independently
+  // opt-in read-only status route can remain available for already-held
+  // customer credits without permitting a quote, upload or model dispatch.
+  const statusOnly=url.pathname==="/api/media/status";
+  if(env.MEDIA_API_ENABLED!=="true"&&!(statusOnly&&env.MEDIA_STATUS_ENABLED==="true"))
+    return fail("media_unavailable",404,"Fitur media AI belum tersedia.");
   const milliseconds=env.MEDIA_HTTP_TIMEOUT_MS===undefined?120000:Number(env.MEDIA_HTTP_TIMEOUT_MS);
   if(!Number.isSafeInteger(milliseconds)||milliseconds<1||milliseconds>120000)
     return fail("media_runtime_unavailable",503,"Batas waktu layanan media belum tersedia.");
