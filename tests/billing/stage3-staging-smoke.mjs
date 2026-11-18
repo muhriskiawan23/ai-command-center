@@ -92,7 +92,8 @@ try {
   // consume paid inference merely by possessing credits.
   const unentitled = await send("/api/chat",
     {message:single.message,requestId:randomUUID()},sessionHeaders["stage3-free"]);
-  assert.ok(unentitled.status >= 400,"Free account must not call paid AI");
+  assert.equal(unentitled.status,403,"Free account must not call paid AI");
+  assert.equal(await readCount("stage3_staging_requests"),0,"Free cannot claim a paid request");
   assert.equal(await readCount("provider_usage_events"),0);
   assert.equal(await readCount("provider_budget_reservations"),0);
   assert.equal(await readCount("credit_reservations"),0);
@@ -157,13 +158,15 @@ try {
   const before = {
     journal:await readCount("provider_usage_events"),
     budget:await readCount("provider_budget_reservations"),
-    wallet:await readCount("credit_reservations")
+    wallet:await readCount("credit_reservations"),
+    claims:await readCount("stage3_staging_requests")
   };
   await db.prepare("UPDATE verified_plan_payments SET verification_status='refunded' "+
     "WHERE order_id='synthetic-plan-stage3-api'").run();
   const deniedPaidApi = await send("/api/public/chat",
     {...single,requestId:randomUUID()},publicHeaders,randomBytes(16).toString("hex"));
-  assert.ok(deniedPaidApi.status >= 400,"Refunded Basic must lose paid API access");
+  assert.equal(deniedPaidApi.status,403,"Refunded Basic must lose paid API access");
+  assert.equal(await readCount("stage3_staging_requests"),before.claims);
   assert.equal(await readCount("provider_usage_events"),before.journal);
   assert.equal(await readCount("provider_budget_reservations"),before.budget);
   assert.equal(await readCount("credit_reservations"),before.wallet);
@@ -171,7 +174,8 @@ try {
     "WHERE order_id='synthetic-plan-stage3-web'").run();
   const deniedWeb = await send("/api/chat",
     {message:single.message,requestId:randomUUID()},web);
-  assert.ok(deniedWeb.status >= 400,"Charged-back Pro must lose web paid access");
+  assert.equal(deniedWeb.status,403,"Charged-back Pro must lose web paid access");
+  assert.equal(await readCount("stage3_staging_requests"),before.claims);
   assert.equal(await readCount("provider_usage_events"),before.journal);
   assert.equal(await readCount("provider_budget_reservations"),before.budget);
   assert.equal(await readCount("credit_reservations"),before.wallet);
