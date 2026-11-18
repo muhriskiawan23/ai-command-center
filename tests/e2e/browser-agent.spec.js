@@ -53,3 +53,33 @@ test("signed-in beta can inspect allowed page and execute only a reviewed, user-
  await expect(page.locator("#prompt")).toHaveValue(/Sumber browser/);
  expect(app.aiCalls).toHaveLength(0);
 });
+
+
+test("natural-language AI browser suggestion needs separate explicit approval and is never auto-executed",async({page,context,app})=>{
+ const calls=[];
+ Object.assign(app.env,{
+  BROWSER_AGENT_ENABLED:"true",BROWSER_AGENT_ALLOWED_HOSTS:"demo.playwright.dev",
+  BROWSER_AGENT_TOKEN:"t".repeat(40),BROWSER_APPROVAL_SECRET:"s".repeat(40),
+  BROWSER_AGENT_DAILY_USER_JOBS:"2",BROWSER_AGENT_DAILY_GLOBAL_JOBS:"10",
+  BROWSER_AGENT:{async fetch(_url,request){
+   const plan=JSON.parse(request.body);calls.push(plan);
+   return Response.json({ok:true,host:"demo.playwright.dev",url:URL,title:"TodoMVC",text:"What needs to be done?",
+    elements:[{role:"button",by:"role",name:"Clear completed"}],stepsExecuted:plan.steps.length});
+  }}
+ });
+ app.env.AI.run=async()=>({response:'{"index":0,"action":"click"}'});
+ await loginAs(context,app,{id:"browser-ai-e2e",email:"browser-ai@example.test",name:"Agent Tester"});
+ await page.goto(app.url);
+ await openPanel(page);
+ await page.locator("#browserUrl").fill(URL);
+ await page.locator("#browserInspect").click();
+ await expect(page.locator("#browserPageResult")).toBeVisible();
+ await page.locator("#browserGoal").fill("Klik tombol Clear completed");
+ await page.locator("#browserSuggest").click();
+ await expect(page.locator("#browserApproval")).toBeVisible();
+ await expect(page.locator("#browserPlanReview")).toContainText("Clear completed");
+ expect(calls).toHaveLength(1);
+ await page.locator("#browserCancel").click();
+ await expect(page.locator("#browserApproval")).toBeHidden();
+ expect(calls).toHaveLength(1);
+});
