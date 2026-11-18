@@ -1542,8 +1542,9 @@ export default {
       } catch (error) { console.error("Memory handling failed:", safeError(error)); memoryNote = ""; memoryItems = []; }
       const modelTrace = [];
       const requestEnv = { ...env, MODEL_TRACE: modelTrace };
-      const memoryEnv = withSystemExtra(requestEnv, buildMemoryBlock(memoryItems));
-      const localizedEnv = { ...withResponseLanguage(memoryEnv, language), BOR_CUSTOMIZATION: custom.value, BOR_AUTHENTICATED: Boolean(user) };
+      const memoryContext = buildMemoryBlock(memoryItems);
+      const memoryEnv = withSystemExtra(requestEnv, memoryContext);
+      const localizedEnv = { ...withResponseLanguage(memoryEnv, language), BOR_CUSTOMIZATION: custom.value, BOR_AUTHENTICATED: Boolean(user), BOR_EXTRA_INPUT_BYTES: new TextEncoder().encode(memoryContext || "").length };
       const aiEnv = withAiDeadline(localizedEnv, Date.now() + budgetMs, request.signal);
       let pages = "";
       let links = [];
