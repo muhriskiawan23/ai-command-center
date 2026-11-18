@@ -53,3 +53,19 @@ test("cancelled requests never start binding calls and late answers are rejected
   const call=createCloudflareMediaInvoker({AI:{run:async()=>{late.abort();return {answer:"Late"}}}});
   await assert.rejects(call({...request,signal:late.signal}),/cancelled/);
 });
+
+test("vision finish reasons cannot turn truncated/filtered text into a successful paid output",async()=>{
+  const request=buildImageUnderstandingRequest({imageDataUri:image});
+  for(const finish_reason of ["length","max_tokens","content_filter",42]){
+    let calls=0;
+    const invoke=createCloudflareMediaInvoker({AI:{run:async()=>{
+      calls++;return {answer:"Partial output",finish_reason};
+    }}});
+    await assert.rejects(invoke(request),/Incomplete or blocked provider vision completion/);
+    assert.equal(calls,1);
+  }
+  const complete=createCloudflareMediaInvoker({AI:{run:async()=>({
+    answer:"Selesai.",finish_reason:"stop"
+  })}});
+  assert.equal((await complete(request)).answer,"Selesai.");
+});
