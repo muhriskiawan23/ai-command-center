@@ -133,7 +133,13 @@ export async function runJournaledInferencePrototype({
     if(env.PLAN_ENTITLEMENTS_ENABLED!=="true" || env.PAID_INFERENCE_ENABLED!=="true")
       return false;
     const permission=await callSafe(()=>authorizePlanFeature(env,userId,feature));
-    return permission?.allowed===true;
+    if(permission?.allowed!==true)return false;
+    // D1 is the shared authority for all Workers/instances, not a cached
+    // per-isolate flag. A missing table, missing row or failed read is OFF.
+    const shared=await callSafe(()=>env.DB.prepare(
+      "SELECT enabled FROM provider_runtime_controls WHERE control_name='paid_provider_dispatch'"
+    ).first());
+    return shared?.enabled===1;
   };
   if(paidPlanGate && !await hasPaidAccess())
     return declined("paid_plan_entitlement_rejected");
