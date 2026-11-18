@@ -21,7 +21,8 @@
     "eval:unblind": "node evaluation/unblind-model-selection.js",
     "eval:evidence:keygen": "node evaluation/evidence-provenance.js keygen",
     "eval:evidence:sign": "node evaluation/evidence-provenance.js sign",
-    "eval:evidence:verify": "node evaluation/evidence-provenance.js verify"
+    "eval:evidence:verify": "node evaluation/evidence-provenance.js verify",
+    "preview:workspace": "node tests/e2e/preview-workspace.mjs"
   },
   "engines": {
     "node": ">=22"

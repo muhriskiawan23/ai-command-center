@@ -43,3 +43,14 @@ export async function loginAs(context, app, user) {
   return token;
 }
 export const drawerMode = (page) => page.viewportSize().width <= 1024;
+
+// Follow the compact workspace disclosures just as a user does.
+export async function openSettings(page) {
+  if(drawerMode(page)&&!(await page.locator("#sidebar").isVisible())) await page.locator("#menuBtn").click();
+  if(await page.locator("#workspaceSettings").evaluate(el=>!el.open)) await page.locator("#workspaceSettings > summary").click();
+}
+export async function openHistoryOptions(page,title) {
+  const row=page.locator(".history-row").filter({hasText:title}).first();
+  const menu=row.locator(".history-menu");
+  if(await menu.evaluate(el=>!el.open)) await menu.locator("summary").click();
+}

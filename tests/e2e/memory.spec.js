@@ -1,9 +1,10 @@
-import { test, expect, loginAs, drawerMode } from "./fixtures.js";
+import { test, expect, loginAs, drawerMode, openSettings } from "./fixtures.js";
 
 const ALICE = { id: "google-sub-alice", email: "alice@example.com", name: "Alice" };
 
 async function openMemoryPanel(page) {
   if (drawerMode(page)) { await page.locator("#menuBtn").click(); await expect(page.locator("#sidebar")).toBeVisible(); }
+  await openSettings(page);
   await page.locator("#openMemory").click();
   await expect(page.locator("#memoryPanel")).toBeVisible();
 }
@@ -13,7 +14,8 @@ test.describe("MEMORI — opsional, hanya akun login", () => {
     await page.goto(app.url);
     await page.locator("#continueGuest").click();
     if (drawerMode(page)) { await page.locator("#menuBtn").click(); await expect(page.locator("#sidebar")).toBeVisible(); }
-    await page.locator("#openMemory").click();
+    await openSettings(page);
+  await page.locator("#openMemory").click();
     await expect(page.locator("#toast")).toContainText("Masuk dengan Google");
     await expect(page.locator("#memoryPanel")).toBeHidden();
   });
