@@ -463,3 +463,18 @@ test("Tavily Extract rejects an unbounded test timeout before a provider call",a
   assert.equal(result[0].ok,false);
  }
 });
+
+test("Tavily Extract times out a hung D1 quota admission without contacting provider",async()=>{
+ let calls=0;
+ const env={
+  TAVILY_API_KEY:"synthetic-only",
+  TAVILY_EXTRACT_DAILY_URL_LIMIT:1,
+  DB:{prepare(){return {bind(){return {first:async()=>new Promise(()=>{})};}};}}
+ };
+ const result=await extractWithTavily(["https://example.com/article"],env,{
+  timeoutMs:25,
+  fetcher:async()=>{calls++;throw Error("No provider call authorized");}
+ });
+ assert.equal(calls,0);
+ assert.equal(result[0].ok,false);
+});
