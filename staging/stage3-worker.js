@@ -81,6 +81,12 @@ export default {
             { DB, PLAN_ENTITLEMENTS_ENABLED: "true" },userId,"basic_paid_credits"
           );
           if (access.allowed !== true) return result("Stage 3 paid plan required", 403);
+          // The shared D1 emergency control must be ON before claiming a
+          // request. This preserves the idempotency key during an outage.
+          const shared = await DB.prepare(
+            "SELECT enabled FROM provider_runtime_controls WHERE control_name='paid_provider_dispatch'"
+          ).first();
+          if (shared?.enabled !== 1) return result("Stage 3 paid provider spending paused", 503);
           const id = await sha256Hex(JSON.stringify([channel, userId, String(logicalId).toLowerCase()]));
           // Each route supplies identity only after its normal authentication.
           const claim = await DB.prepare(
