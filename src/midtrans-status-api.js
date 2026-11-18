@@ -9,11 +9,11 @@ const MAX_STATUS_DEADLINE_MS = 8000;
 
 // Enforce the limit while streaming: a Content-Length check alone does not
 // protect against oversized/chunked responses from the payment provider.
-async function readBoundedStatusBody(response) {
+async function readBoundedStatusBody(response, signal) {
   const advertised = response.headers?.get?.("Content-Length");
   if (advertised !== undefined && advertised !== null &&
       /^\d+$/.test(advertised) && BigInt(advertised) > BigInt(MAX_STATUS_BYTES)) {
-    await response.body?.cancel?.().catch(() => {});
+    void response.body?.cancel?.().catch(() => {});
     throw new Error("Midtrans response too large");
   }
   const reader = response.body?.getReader?.();
@@ -28,16 +28,28 @@ async function readBoundedStatusBody(response) {
   const decoder = new TextDecoder("utf-8", { fatal: true });
   let size = 0;
   let text = "";
+  // The outer deadline must reach the active stream reader as well as fetch.
+  // A broken ReadableStream.cancel() may never resolve; never await it.
+  let rejectInterruption;
+  const interrupted = new Promise((_,reject) => { rejectInterruption=reject; });
+  const abort = () => {
+    void reader.cancel().catch(() => {});
+    rejectInterruption(signal?.reason instanceof Error ? signal.reason :
+      new Error("Midtrans status body interrupted"));
+  };
+  signal?.addEventListener("abort",abort,{once:true});
+  if(signal?.aborted)abort();
   try {
     for (;;) {
-      const { value, done } = await reader.read();
+      const { value, done } = await Promise.race([reader.read(),interrupted]);
       if (done) return text + decoder.decode();
       size += value.byteLength;
       if (size > MAX_STATUS_BYTES) throw new Error("Midtrans response too large");
       text += decoder.decode(value, { stream: true });
     }
   } finally {
-    await reader.cancel().catch(() => {});
+    signal?.removeEventListener("abort",abort);
+    void reader.cancel().catch(() => {});
     reader.releaseLock();
   }
 }
@@ -58,8 +70,9 @@ export async function readVerifiedSandboxStatus(order, { serverKey, expectedMerc
   let timer, stop;
   const stopped = new Promise((_, reject) => {
     stop = reason => {
-      controller.abort();
-      reject(new Error(reason));
+      const error = new Error(reason);
+      controller.abort(error);
+      reject(error);
     };
     timer = setTimeout(() => stop("Midtrans status deadline exceeded"), timeoutMs);
   });
@@ -77,7 +90,7 @@ export async function readVerifiedSandboxStatus(order, { serverKey, expectedMerc
       stopped
     ]);
     if (!response?.ok) throw new Error("Midtrans sandbox status unavailable");
-    const body = await Promise.race([readBoundedStatusBody(response), stopped]);
+    const body = await Promise.race([readBoundedStatusBody(response,controller.signal), stopped]);
     let status;
     try { status = JSON.parse(body); } catch { throw new Error("Invalid Midtrans JSON"); }
     if (status.status_code !== "200") throw new Error("Midtrans status not confirmed");
