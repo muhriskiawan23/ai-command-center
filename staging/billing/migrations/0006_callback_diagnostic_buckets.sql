@@ -10,3 +10,11 @@ CREATE TABLE staging_callback_diagnostic_buckets (
   PRIMARY KEY(window_start_ms, disposition, category)
 ) WITHOUT ROWID;
 -- Operator queries use time-bounded ranges. No relation to production tables.
+-- Bound retention to seven days of activity. Expired aggregates are pruned
+-- when a new five-minute bucket arrives. This trigger never reads payment data.
+CREATE TRIGGER staging_callback_diagnostic_retention
+AFTER INSERT ON staging_callback_diagnostic_buckets
+BEGIN
+  DELETE FROM staging_callback_diagnostic_buckets
+  WHERE window_start_ms < NEW.window_start_ms-604800000;
+END;
