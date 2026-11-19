@@ -18,7 +18,7 @@ import { planFeedbackForm, generateFormsScript } from "./form-draft.js";
 import { COMMUNICATION_NOTICE, CAPABILITY_NOTICE, AGENTS } from "./prompts.js";
 import { json, sha256Hex } from "./http.js";
 import { dailyLimit, usageDay, secondsUntilNextUtcDay, consumeUsage, refundUsage, limitResponse, enforceDailyLimits, DAILY_LIMIT_DEFAULTS, MULTI_AGENT_UNITS } from "./daily-limits.js";
-import { validateImageVision, analyzeImageWithVision, buildImageVisionContext, VISION_MAX_REQUEST_BYTES } from "./image-vision.js";
+import { validateImageVision, analyzeImageWithVision, buildImageVisionContext, reserveVisionDailyUsage, VISION_MAX_REQUEST_BYTES } from "./image-vision.js";
 
 const MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 const TRUSTED_PROMPT_TEXT = [CONFIDENTIALITY_NOTICE, CAPABILITY_NOTICE, COMMUNICATION_NOTICE, ...Object.values(AGENTS).map(agent => agent.prompt)];
@@ -1526,6 +1526,10 @@ export default {
       const linkCharge = found.urls.length && env.URL_READER_ENABLED === "true" ? 1 : 0;
       const usage = await enforceDailyLimits(env, request, user, (useMultiAgent ? MULTI_AGENT_UNITS : 1) + (imageVision ? 2 : 0) + linkCharge + researchCharge);
       if (!usage.ok) return usage.response;
+      if (imageVision) {
+        const photoQuota = await reserveVisionDailyUsage(env, request, user, usage);
+        if (!photoQuota.ok) { await refundUsage(env, usage.day, usage.charges); return photoQuota.response; }
+      }
       let history = clientHistory.history;
       let replaceRows = [];
       if (user) {
