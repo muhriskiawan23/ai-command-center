@@ -35,6 +35,7 @@ export const BILLING_RELEASE_GATES=Object.freeze([
   'liveCallbackSignatureAndFirstPaymentVerified',
   'providerStatusReconciliationReviewed',
   'idempotentSettlementAndCreditMeteringVerified',
+  'subscriptionRenewalCancellationAndEntitlementsVerified',
   'refundMoneyMovementSopAndEvidenceApproved',
   'chargebackAndDebtRecoverySopApproved',
   'publishedRefundAndBillingTermsReviewed',
