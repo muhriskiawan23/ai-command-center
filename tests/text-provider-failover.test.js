@@ -15,7 +15,7 @@ function fixture(error = quota, settings = {}) {
     DB: { prepare: () => ({ bind: (day, key, reserved) => ({
       async first() {
         assert.equal(key, "provider:openai:backup:text:global:micro-usd");
-        assert.ok(reserved > 0);
+        assert.equal(reserved, 924);
         return { units: reserved };
       }
     }) }) },
@@ -29,6 +29,8 @@ function fixture(error = quota, settings = {}) {
       assert.equal(request.redirect, "manual");
       const data = JSON.parse(request.body);
       assert.equal(data.store, false);
+      assert.equal(data.model, "gpt-6-luna");
+      assert.equal(data.reasoning_effort, "none");
       assert.equal(data.max_completion_tokens, payload.max_tokens);
       return Response.json({ choices: [{ message: { content: "Hello" } }] });
     }),
