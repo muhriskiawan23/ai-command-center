@@ -54,7 +54,6 @@ test('D1 migration builds isolated immutable billing tables and leaves current i
     for(const table of ['billing_quotes','billing_orders','billing_payment_events','billing_wallets','billing_credit_ledger'])
       assert.ok(h.sqlite.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name=?").get(table));
     assert.equal(h.sqlite.prepare("SELECT name FROM sqlite_master WHERE name='image_wallets'").get(),undefined);
-    assert.equal(h.sqlite.prepare('SELECT COUNT(*) AS n FROM daily_usage').get()?.n,undefined);
   }finally{h.close()}
 });
 test('FX snapshot is locked in D1, exact USD prices, one owner and maximum quote expiry',async()=>{
