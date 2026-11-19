@@ -301,3 +301,12 @@ test('ledger insertion failure rolls back synthetic payment settlement and is re
     assert.equal((await h.wallet()).availableCredits,3000);
   }finally{h.close()}
 });
+
+test('synthetic billing bridge cannot accidentally be reached through production or sandbox Worker entrypoints',()=>{
+  const production=readFileSync(new URL('../src/index.js',import.meta.url),'utf8');
+  const sandbox=readFileSync(new URL('../src/duitku-sandbox-worker.js',import.meta.url),'utf8');
+  const config=readFileSync(new URL('../wrangler.jsonc',import.meta.url),'utf8');
+  assert.doesNotMatch(production,/billing-synthetic-gateway-bridge/);
+  assert.doesNotMatch(sandbox,/billing-synthetic-gateway-bridge/);
+  assert.doesNotMatch(config,/BILLING_CHECKOUT_ENABLED.*true/);
+});
