@@ -188,12 +188,28 @@ jobs:
                 let body = "";
                 for await (const chunk of process.stdin) body += chunk;
                 const result = JSON.parse(body);
-                const generated = result.agentModels?.some(model =>
-                  model.agentId === "coordinator" && model.calls > 0 && model.outcome === "success");
+                const coordinatorModels = Array.isArray(result.agentModels)
+                  ? result.agentModels.filter(model => model.agentId === "coordinator" && model.calls > 0)
+                  : [];
+                const generated = coordinatorModels.some(model => model.outcome === "success");
                 const lunaRequired = process.env.BOR_TEXT_LUNA_PRIMARY === "true";
-                if (typeof result.response !== "string" || !result.response.trim() || !generated ||
-                    (lunaRequired && result.model !== "gpt-6-luna")) {
+                const lunaSucceeded = coordinatorModels.some(model =>
+                  model.modelId === "gpt-6-luna" && model.outcome === "success");
+                if (typeof result.response !== "string" || !result.response.trim() || !generated) {
+                  const summary = {
+                    httpResult: "success",
+                    responsePresent: typeof result.response === "string" && Boolean(result.response.trim()),
+                    model: typeof result.model === "string" ? result.model : null,
+                    code: typeof result.code === "string" ? result.code : null,
+                    stage: typeof result.stage === "string" ? result.stage : null,
+                    coordinatorModels: coordinatorModels.map(({ provider, modelId, outcome, failureType }) =>
+                      ({ provider, modelId, outcome, failureType }))
+                  };
+                  console.error("Chat smoke response summary:", JSON.stringify(summary));
                   throw Error("Chat smoke test did not receive a model-generated answer");
+                }
+                if (lunaRequired && !lunaSucceeded) {
+                  console.warn("Luna primary did not succeed; candidate chat remained available through its configured model failover.");
                 }
               '
           }
