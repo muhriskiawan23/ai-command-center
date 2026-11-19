@@ -132,10 +132,16 @@ function parseSyntheticCallback(callback){
   const form=typeof callback==='string'?new URLSearchParams(callback):callback;
   if(!(form instanceof URLSearchParams)||form.toString().length>4096)
     throw new Error('invalid_callback_body');
-  const fields=['merchantCode','amount','merchantOrderId','reference','resultCode','signature'];
-  if([...form.keys()].length!==fields.length||fields.some(k=>form.getAll(k).length!==1))
+  const required=['merchantCode','amount','merchantOrderId','reference','resultCode','signature'];
+  // Duitku V2 may include signed-callback metadata; never use untrusted extras
+  // to authorize payment. Reject unknown keys and ALL duplicated keys.
+  const optional=new Set(['productDetail','productDetails','additionalParam','paymentCode',
+    'merchantUserId','publisherOrderId','spUserHash','settlementDate','issuerCode','customerName']);
+  const keys=[...form.keys()];
+  if(required.some(k=>form.getAll(k).length!==1)||
+    keys.some(k=>(!required.includes(k)&&!optional.has(k))||form.getAll(k).length!==1))
     throw new Error('invalid_callback_fields');
-  const data=Object.fromEntries(fields.map(k=>[k,form.get(k)]));
+  const data=Object.fromEntries(required.map(k=>[k,form.get(k)]));
   if(!idPattern.test(data.merchantOrderId||'')||!refPattern.test(data.reference||'')||
     !['00','01'].includes(data.resultCode)||!sigPattern.test(data.signature||''))
     throw new Error('invalid_callback_parameters');
