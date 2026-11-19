@@ -1,0 +1,43 @@
+name: BOR AI billing prelaunch audit (NO LIVE PAYMENTS)
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/billing-launch-audit.js'
+      - 'tests/billing-launch-audit.test.js'
+      - 'scripts/report-billing-prelaunch.mjs'
+      - 'docs/BOR-AI-BILLING-PRELAUNCH-AUDIT-20261119.md'
+      - '.github/workflows/billing-prelaunch-audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  billing-finance-and-security:
+    name: Offline billing security and scenario economics
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository (read-only)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 22
+          cache: npm
+      - name: Locked dependency install
+        run: npm ci
+      - name: Run billing launch, quote, metering, callback and reversal tests
+        run: |
+          node --test \
+            tests/billing-launch-audit.test.js \
+            tests/billing-quote-core.test.js \
+            tests/credit-metering.test.js \
+            tests/billing-staging-worker.test.js \
+            tests/billing-synthetic-gateway-bridge.test.js
+      - name: Produce deterministic NO_GO and financial stress report
+        run: node scripts/report-billing-prelaunch.mjs
+      - name: Assert production stays separate from staging
+        run: node --check src/index.js && node --check src/billing-staging-worker.js
