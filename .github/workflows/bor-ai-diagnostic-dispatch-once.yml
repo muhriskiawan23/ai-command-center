@@ -1,0 +1,149 @@
+name: BOR AI one-time pinned AI binding diagnostic release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/bor-ai-diagnostic-dispatch-once.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bor-ai-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  pinned-diagnostic-release:
+    # Unique squash-merge subject plus exact path makes this a one-shot release.
+    if: "${{ startsWith(github.event.head_commit.message, 'chore(release): one-time BOR AI binding diagnostics 2026-11-19') }}"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: production
+    env:
+      PINNED_RELEASE_SHA: af20165d4b365d6b21371340499f04681aee2186
+    steps:
+      - name: Require exact one-shot merge and pinned source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main"
+      - name: Check out ONLY reviewed diagnostic code, excluding newer billing changes
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: af20165d4b365d6b21371340499f04681aee2186
+      - name: Verify pinned code and disabled optional image operations
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$PINNED_RELEASE_SHA"
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          const config=JSON.parse(fs.readFileSync("wrangler.jsonc","utf8"));
+          if(config.name!=="ai-command-center") throw Error("Unexpected Worker");
+          if(config.d1_databases?.find(x=>x.binding==="DB")?.database_name!=="bor-ai-chat") throw Error("Unexpected D1 binding");
+          if(config.vars?.BOR_IMAGES_ENABLED!=="false") throw Error("Image feature requires separate release");
+          NODE
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '22'
+      - name: Validate secrets are present (no values logged)
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_API_TOKEN"
+          test -n "$CLOUDFLARE_ACCOUNT_ID"
+          test -n "$GOOGLE_CLIENT_ID"
+      - name: Test and preview pinned code
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm test
+          npm run check
+          npm run preview
+      - name: Verify pinned D1 and preserve existing Worker plaintext configuration
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          const token=process.env.CLOUDFLARE_API_TOKEN;
+          const account=process.env.CLOUDFLARE_ACCOUNT_ID;
+          const config=JSON.parse(fs.readFileSync("wrangler.jsonc","utf8"));
+          const db=config.d1_databases?.find(x=>x.binding==="DB");
+          if(!db?.database_id || db?.database_name!=="bor-ai-chat") throw Error("Pinned D1 identity is unavailable");
+          async function api(url) {
+            const response=await fetch(url,{headers:{Authorization:"Bearer "+token,Accept:"application/json"},signal:AbortSignal.timeout(25000)});
+            if(!response.ok) throw Error("Cloudflare read-only preflight rejected (HTTP "+response.status+")");
+            const data=await response.json();
+            if(data.success!==true) throw Error("Cloudflare read-only preflight returned failure");
+            return data.result;
+          }
+          const base="https://api.cloudflare.com/client/v4/accounts/"+account;
+          const dbResult=await api(base+"/d1/database/"+encodeURIComponent(db.database_id));
+          if(dbResult.uuid!==db.database_id || dbResult.name!=="bor-ai-chat") throw Error("D1 mismatch: refusing deploy");
+          const deployments=await api(base+"/workers/scripts/ai-command-center/deployments?per_page=1");
+          const current=deployments?.deployments?.[0];
+          const active=current?.versions?.filter(v=>v.percentage>0);
+          if(active?.length!==1 || active[0].percentage!==100 || !active[0].version_id)
+            throw Error("Cannot confirm 100% active production Worker version");
+          const currentVersion=await api(base+"/workers/scripts/ai-command-center/versions/"+encodeURIComponent(active[0].version_id));
+          const bindings=currentVersion?.resources?.bindings;
+          if(!Array.isArray(bindings)) throw Error("Cannot audit live Worker bindings");
+          // Do not silently drop production resources that the pinned config does not know about.
+          const knownResources=new Set([
+            config.ai?.binding, config.assets?.binding,
+            ...config.d1_databases.map(b=>b.binding),
+            ...(config.ratelimits||[]).map(b=>b.name)
+          ]);
+          for(const b of bindings) {
+            if(b.type==="plain_text" || b.type==="secret_text" || b.type==="secret_key") continue;
+            if(!knownResources.has(b.name)) throw Error("Unreviewed active resource binding: refusing deploy");
+          }
+          const livePlain=bindings.filter(b=>b.type==="plain_text" && typeof b.name==="string");
+          for(const b of livePlain) {
+            if(!Object.hasOwn(config.vars,b.name)) throw Error("Unreviewed live plaintext binding: refusing deploy");
+          }
+          for(const key of Object.keys(config.vars)) {
+            const matches=bindings.filter(b=>b.name===key);
+            if(matches.length!==1 || matches[0].type!=="plain_text" || typeof matches[0].text!=="string")
+              throw Error("Cannot preserve deployed variable "+key);
+            config.vars[key]=matches[0].text;
+          }
+          if(config.vars.BOR_IMAGES_ENABLED!=="false") throw Error("Paid image generation is active: refusing diagnostic-only deploy");
+          // Generated file is runner-local; existing plaintext configuration stays unchanged.
+          fs.writeFileSync("wrangler.ai-diagnostic.generated.jsonc",JSON.stringify(config,null,2));
+          console.log("Production D1 identity confirmed; existing plaintext variables preserved by name only.");
+          NODE
+      - name: Deploy ONLY pinned diagnostic Worker (NO D1 migration)
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4 deploy --config wrangler.ai-diagnostic.generated.jsonc --message "diagnostic:github-sha:$PINNED_RELEASE_SHA"
+      - name: Verify production health and one real synthetic chat
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="https://ai-command-center.muhriskiawan23.workers.dev"
+          curl --fail --silent --show-error "$BASE/api/health?deep=1" | node -e 'let s="";process.stdin.on("data",c=>s+=c).on("end",()=>{const d=JSON.parse(s);if(d.ok!==true||d.checks?.database!==true||d.checks?.aiBinding!==true)process.exit(1);console.log("Deep health: PASS (binding presence, not inference)")})'
+          curl --fail --silent --show-error "$BASE/api/agents" | node -e 'let s="";process.stdin.on("data",c=>s+=c).on("end",()=>{const d=JSON.parse(s);if(!Array.isArray(d.agents)||d.agents.length<10)process.exit(1);console.log("Agents: PASS")})'
+          HTTP="$(curl --silent --show-error --max-time 60 --output "$RUNNER_TEMP/ai-smoke-result.json" --write-out '%{http_code}' \
+            --header 'Content-Type: application/json' \
+            --data '{"message":"hi bor","agent":"coordinator","language":"id"}' \
+            "$BASE/api/chat")"
+          if [[ "$HTTP" != "200" ]]; then
+            echo "::error::Live AI inference still failing (HTTP $HTTP). Check sanitized BOR_AI_AI_BINDING_FAILURE in Wrangler tail; no migration or payment change was made."
+            exit 1
+          fi
+          node -e 'const fs=require("fs");const d=JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP+"/ai-smoke-result.json","utf8"));if(typeof d.response!=="string"||!d.response.trim())process.exit(1);console.log("Live synthetic chat: PASS")'
