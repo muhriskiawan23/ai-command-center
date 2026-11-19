@@ -1,6 +1,6 @@
 import { handleImageRoute, imageConfig, consumeImageQueue, cleanupImageJobs } from "./image-jobs.js";
 import { imageIntent } from "../public/image-intent.js";
-import { safeError } from "./safe-error.js";
+import { safeError, safeAiBindingFailure } from "./safe-error.js";
 import { validateCustomization, customizationNotice } from "./customization.js";
 import { CONFIDENTIALITY_NOTICE, isConfidentialityRequest, confidentialityReply, containsProtectedOutput } from "./confidentiality.js";
 import { extractUrls, readLinks, buildPageContext, summarizeLinks } from "./links.js";
@@ -456,6 +456,7 @@ async function runAgent(env, agentId, userMessage, context = "", history = [], p
       generated=await env.AI.run(modelId,payload);
     } catch(error) {
       primaryError=error;
+      console.error("BOR_AI_AI_BINDING_FAILURE", { requestId, modelId, fallback: false, ...safeAiBindingFailure(error) });
     }
     if(primaryError===null){
       const finalText=extractModelAnswer(generated);
@@ -485,6 +486,7 @@ async function runAgent(env, agentId, userMessage, context = "", history = [], p
       return fallback;
     }catch(error){
       traceEntry.attempts.push({outcome:"error",durationMs:Math.max(0,Date.now()-fallbackStart)});
+      console.error("BOR_AI_AI_BINDING_FAILURE", { requestId, modelId: selection.model.id, fallback: true, ...safeAiBindingFailure(error) });
       throw error;
     }
   };
