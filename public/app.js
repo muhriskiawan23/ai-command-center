@@ -28,7 +28,7 @@ function markdown(input) {
     const body=document.createElement("div");body.className="message-body";
     const fileMessage=role==="user"?unpackAttachmentMessage(content):{text:content,attachment:null};
     const visibleContent=fileMessage.text;
-    if(fileMessage.attachment){row.classList.add("message-with-file");body.append(buildSentFileCard(fileMessage.attachment));}
+    if(fileMessage.attachment){row.classList.add("message-with-file");body.append(buildSentFileCard(fileMessage.attachment,controls.previewUrl));}
     const rendered=document.createElement("div");rendered.className="message-text";rendered.innerHTML=markdown(visibleContent);body.append(rendered);
     const actions=document.createElement("div");actions.className="message-actions";
     const copyBtn=document.createElement("button");copyBtn.type="button";copyBtn.className="message-action";copyBtn.textContent="Salin";copyBtn.addEventListener("click",()=>copyText(visibleContent));
@@ -189,7 +189,7 @@ function exportConversationFile(){
 const AppState={INIT:"initializing",UNAUTH:"unauthenticated",GUEST:"guest",AUTH:"authenticated",EXPIRED:"session-expired",ERROR:"error"};
 const promptEl=$("prompt"),messagesEl=$("messages"),welcomeEl=$("welcome"),conversation=$("conversation");
 const sidebar=$("sidebar"),backdrop=$("backdrop"),menuBtn=$("menuBtn"),workspace=$("workspace");
-let state=AppState.INIT,conversations=[],activeId=null,busy=false,currentUser=null,historyQuery="",archivedView=false,activePdf=null,activeCsv=null,attachmentPending=null,attachmentSequence=0;
+let state=AppState.INIT,conversations=[],activeId=null,busy=false,currentUser=null,historyQuery="",archivedView=false,activePdf=null,activeCsv=null,attachmentPending=null,attachmentSequence=0,attachmentThumbnailUrl=null,sentImageUrls=[];
 let historyCursor=null,historyHasMore=false,historyLoadingMore=false,historyRequestSeq=0;
 /* navSeq: setiap navigasi chat menaikkan penghitung ini; pemuatan yang tertimpa navigasi lebih baru dibatalkan. */
 let navSeq=0,loadingChat=false;
@@ -213,7 +213,7 @@ function setState(next,notice=""){
   syncInert();renderAuth();
 }
 function resetChatView(){
-  navSeq++;loadingChat=false;attachmentSequence++;attachmentPending=null;activePdf=null;activeCsv=null;renderPdfAttachment();renderCsvAttachment();lockComposer();
+  navSeq++;loadingChat=false;attachmentSequence++;releaseUnsentThumbnail();attachmentPending=null;activePdf=null;activeCsv=null;renderPdfAttachment();renderCsvAttachment();lockComposer();
   activeId=null;$("exportConversation").hidden=true;$("printConversation").hidden=true;messagesEl.replaceChildren();messagesEl.hidden=true;welcomeEl.hidden=false;
   $("workflow").hidden=true;promptEl.value="";resizePrompt();
 }
@@ -750,8 +750,8 @@ async function showChat(cid){
     finally{if(seq===navSeq){loadingChat=false;lockComposer()}}
   }
   if(seq!==navSeq)return null;
-  attachmentSequence++;attachmentPending=null;activePdf=null;activeCsv=null;renderPdfAttachment();renderCsvAttachment();activeId=cid;$("exportConversation").hidden=false;$("printConversation").hidden=false;welcomeEl.hidden=true;messagesEl.hidden=false;messagesEl.replaceChildren();
-  for(let i=0;i<c.messages.length;i++){const m=c.messages[i];const last=i===c.messages.length-1;const previous=i===c.messages.length-2;appendMessage(m.role,m.content,false,{edit:m.role==="user"&&previous&&c.messages.at(-1)?.role==="assistant",regenerate:m.role==="assistant"&&last&&c.messages.at(-2)?.role==="user",responseId:m.role==="assistant"?m.id:null,conversationId:c.serverId||c.id,feedback:m.feedback||null});if(m.role==="assistant"&&m.links?.length)appendSources(m.links);if(m.role==="assistant"&&m.pdf)appendPdfSource(m.pdf);if(m.role==="assistant"&&m.spreadsheet)appendSpreadsheetSource(m.spreadsheet);if(m.role==="assistant"&&m.wordDocument)appendWordDocumentSource(m.wordDocument);}
+  attachmentSequence++;releaseUnsentThumbnail();attachmentPending=null;activePdf=null;activeCsv=null;renderPdfAttachment();renderCsvAttachment();activeId=cid;$("exportConversation").hidden=false;$("printConversation").hidden=false;welcomeEl.hidden=true;messagesEl.hidden=false;messagesEl.replaceChildren();
+  for(let i=0;i<c.messages.length;i++){const m=c.messages[i];const last=i===c.messages.length-1;const previous=i===c.messages.length-2;appendMessage(m.role,m.content,false,{edit:m.role==="user"&&previous&&c.messages.at(-1)?.role==="assistant",regenerate:m.role==="assistant"&&last&&c.messages.at(-2)?.role==="user",responseId:m.role==="assistant"?m.id:null,conversationId:c.serverId||c.id,feedback:m.feedback||null,previewUrl:m.previewUrl||null});if(m.role==="assistant"&&m.links?.length)appendSources(m.links);if(m.role==="assistant"&&m.pdf)appendPdfSource(m.pdf);if(m.role==="assistant"&&m.spreadsheet)appendSpreadsheetSource(m.spreadsheet);if(m.role==="assistant"&&m.wordDocument)appendWordDocumentSource(m.wordDocument);}
   $("workflow").hidden=true;renderHistory();conversation.scrollTop=conversation.scrollHeight;
   return true;
 }
@@ -942,6 +942,40 @@ function appendPdfSource(pdf){
 // Only bounded, display-only file metadata is persisted in the user's text.
 // Raw file bytes never enter chat storage. Extracted text is sent separately
 // as the pre-existing bounded document context.
+function releaseUnsentThumbnail(){
+  if(attachmentThumbnailUrl){
+    URL.revokeObjectURL(attachmentThumbnailUrl);
+    attachmentThumbnailUrl=null;
+  }
+}
+function keepSentThumbnail(url){
+  if(!url||sentImageUrls.includes(url))return;
+  sentImageUrls.push(url);
+  // Bound client memory. History after a reload always has a file-type card,
+  // not raw image pixels or a stale binary link.
+  while(sentImageUrls.length>8){
+    const removed=sentImageUrls.shift();
+    URL.revokeObjectURL(removed);
+    for(const chat of conversations)for(const m of chat.messages||[]){
+      if(m.previewUrl===removed)m.previewUrl=null;
+    }
+  }
+}
+function showImageThumbnail(img,url,show){
+  if(!img)return;
+  if(!show||!url){
+    img.hidden=true;
+    if(img.dataset.url){img.removeAttribute("src");delete img.dataset.url;delete img.dataset.failed;}
+    return;
+  }
+  if(img.dataset.url!==url){
+    img.dataset.url=url;
+    delete img.dataset.failed;
+    img.onerror=()=>{img.dataset.failed=url;img.hidden=true;};
+    img.src=url;
+  }
+  img.hidden=img.dataset.failed===url;
+}
 function safeAttachmentName(name){
   return String(name||"lampiran").replace(/[\/\\\x00-\x1f\x7f]/g,"_").trim().slice(0,110)||"lampiran";
 }
@@ -961,10 +995,15 @@ function unpackAttachmentMessage(content){
     return {text:text.slice(0,-marker[0].length),attachment:{name,type:attachmentFileType(name)}};
   }catch{return {text,attachment:null};}
 }
-function buildSentFileCard(attached){
+function buildSentFileCard(attached,previewUrl=null){
   const tile=document.createElement("div");tile.className="sent-file-card";
   const badge=document.createElement("span");badge.className="sent-file-type";
   badge.textContent=attached.type||attachmentFileType(attached.name);
+  if(typeof previewUrl==="string"&&previewUrl.startsWith("blob:")){
+    const img=document.createElement("img");img.className="sent-file-image";img.alt="";
+    img.onerror=()=>{img.remove();badge.hidden=false;};
+    img.src=previewUrl;badge.hidden=true;tile.append(img);
+  }
   const summary=document.createElement("span");summary.className="sent-file-summary";
   const title=document.createElement("strong");title.textContent=safeAttachmentName(attached.name);
   const note=document.createElement("small");
@@ -986,6 +1025,10 @@ function renderAttachmentPreview(){
   preview.dataset.status=pending?(pending.error?"error":"processing"):(pdf||csv?"ready":"empty");
   $("clearPdf").setAttribute("aria-label","Lepas lampiran");
   $("clearCsv").setAttribute("aria-label","Lepas lampiran");
+
+  const isImage=name=>/\.(?:jpe?g|png|webp)$/i.test(String(name||""));
+  showImageThumbnail($("pdfThumbnail"),attachmentThumbnailUrl,Boolean(pdf&&isImage(pdf.name)));
+  showImageThumbnail($("csvThumbnail"),attachmentThumbnailUrl,Boolean(csv&&isImage(csv.name)));
   $("attachPdf").textContent=pdf||csv?"＋ Ganti lampiran":"＋ Unggah file";
 }
 function renderPdfAttachment(){renderAttachmentPreview();}
@@ -1076,6 +1119,8 @@ async function uploadAnyFile(file){
   const limit=pdf?8*1024*1024:5*1024*1024;
   if(file.size<1||file.size>limit){toast("Ukuran file harus 1 byte–"+(pdf?"8":"5")+" MB.");return;}
   const request=++attachmentSequence;
+  releaseUnsentThumbnail();
+  if(image&&URL.createObjectURL)attachmentThumbnailUrl=URL.createObjectURL(file);
   activePdf=null;activeCsv=null;
   attachmentPending={name,stage:image?"Menyiapkan OCR di perangkat…":pdf?"Membaca halaman PDF…":"Membaca dokumen di perangkat…",error:false};
   $("attachmentMenu").open=false;
@@ -1101,10 +1146,10 @@ async function uploadAnyFile(file){
   }
 }
 function clearSelectedAttachment(){
-  attachmentSequence++;attachmentPending=null;activePdf=null;activeCsv=null;
+  attachmentSequence++;releaseUnsentThumbnail();attachmentPending=null;activePdf=null;activeCsv=null;
   renderAttachmentPreview();lockComposer();
 }
-function appendFailedTurn(message,text,noRetry=false,requestId=null,attachmentData=null){
+function appendFailedTurn(message,text,noRetry=false,requestId=null,attachmentData=null,previewUrl=null){
   appendMessage("assistant",message);
   const row=messagesEl.lastElementChild;const body=row&&row.querySelector(".message-body");if(!body)return;
   row.classList.add("failed");
@@ -1113,7 +1158,7 @@ function appendFailedTurn(message,text,noRetry=false,requestId=null,attachmentDa
   btn.addEventListener("click",()=>{
     if(busy||loadingChat)return;
     const prev=row.previousElementSibling;row.remove();if(prev&&prev.classList.contains("user"))prev.remove();
-    promptEl.value=text;resizePrompt();submit({requestId,attachmentData});
+    promptEl.value=text;resizePrompt();submit({requestId,attachmentData,previewUrl});
   });
   body.append(btn);
 }
@@ -1131,8 +1176,11 @@ async function submit(options={}){
   let createdNew=false;
   if(!activeId){activeId=id();createdNew=true;conversations.push({id:activeId,serverId:null,title:text.replace(/\s+/g," ").slice(0,72),messages:[],updated:Date.now(),loaded:true})}
   const chat=conversations.find(c=>c.id===activeId);$("exportConversation").hidden=false;$("printConversation").hidden=false;const startId=chat.id;
-  const history=buildHistory(chat);const userEntry={role:"user",content:savedText};chat.messages.push(userEntry);chat.updated=Date.now();
-  welcomeEl.hidden=true;messagesEl.hidden=false;appendMessage("user",savedText);promptEl.value="";resizePrompt();clearSelectedAttachment();showTyping();renderHistory();
+  const history=buildHistory(chat);const sentPreviewUrl=options.previewUrl||attachmentThumbnailUrl;
+  if(attachmentThumbnailUrl===sentPreviewUrl)attachmentThumbnailUrl=null;
+  keepSentThumbnail(sentPreviewUrl);
+  const userEntry={role:"user",content:savedText,previewUrl:sentPreviewUrl||null};chat.messages.push(userEntry);chat.updated=Date.now();
+  welcomeEl.hidden=true;messagesEl.hidden=false;appendMessage("user",savedText,true,{previewUrl:sentPreviewUrl});promptEl.value="";resizePrompt();clearSelectedAttachment();showTyping();renderHistory();
   if(createdNew)replaceRoute({name:"chat",id:chat.id});
   const stillActive=()=>activeId===startId;const start=Date.now();
   try{
@@ -1156,7 +1204,7 @@ async function submit(options={}){
       const at=chat.messages.indexOf(userEntry);if(at>=0)chat.messages.splice(at,1);
       if(replacing&&previousTurn){chat.messages.push(previousTurn.user,previousTurn.assistant);if(stillActive()){$("typing")?.remove();messagesEl.lastElementChild?.remove();appendMessage("user",previousTurn.user.content,true,{edit:true});appendMessage("assistant",previousTurn.assistant.content,true,{regenerate:true})}}
       else if(stillActive()){$("typing")?.remove();messagesEl.lastElementChild?.remove()}
-      if(stillActive()){promptEl.value=text;resizePrompt();if(!activePdf&&!activeCsv){activePdf=selectedPdf;activeCsv=selectedCsv;renderAttachmentPreview();}}
+      if(stillActive()){promptEl.value=text;resizePrompt();if(!activePdf&&!activeCsv){activePdf=selectedPdf;activeCsv=selectedCsv;if(sentPreviewUrl){attachmentThumbnailUrl=sentPreviewUrl;sentImageUrls=sentImageUrls.filter(url=>url!==sentPreviewUrl);}renderAttachmentPreview();}}
       toast("Generasi dihentikan.");
       return;
     }
@@ -1172,7 +1220,7 @@ async function submit(options={}){
       }
       promptEl.value=text;resizePrompt();toast(message);
     }else{
-      if(stillActive()){$("typing")?.remove();appendFailedTurn(message,text,e.code==="daily_limit",requestId,{pdf:selectedPdf,csv:selectedCsv});if(e.data?.links?.length)appendSources(e.data.links)}
+      if(stillActive()){$("typing")?.remove();appendFailedTurn(message,text,e.code==="daily_limit",requestId,{pdf:selectedPdf,csv:selectedCsv},sentPreviewUrl);if(e.data?.links?.length)appendSources(e.data.links)}
       toast("Permintaan gagal");
     }
   }finally{busy=false;activeChatController=null;lockComposer();renderHistory();if(!isDrawerMode())promptEl.focus()}
