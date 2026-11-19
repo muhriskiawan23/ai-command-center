@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { validateImageVision, analyzeImageWithVision, buildImageVisionContext, VISION_MODEL, VISION_MAX_REQUEST_BYTES } from "../src/image-vision.js";
+import { validateImageVision, analyzeImageWithVision, buildImageVisionContext, VISION_MODEL, VISION_MAX_REQUEST_BYTES, reserveVisionDailyUsage } from "../src/image-vision.js";
+import { createD1 } from "./e2e/harness.js";
 import { prepareImageForVision } from "../public/image-vision.js";
 
 const imageData = "data:image/jpeg;base64," + Buffer.concat([
@@ -81,4 +82,25 @@ test("browser rejects oversized, invalid, and unprocessable images without uploa
    loadImage:async()=>({naturalWidth:100,naturalHeight:100}),
    createCanvas:()=>({getContext:()=>({fillRect(){},drawImage(){}}),toDataURL:()=> "x".repeat(900000)})
  }),/terlalu kompleks/);
+});
+
+test("photo quota is atomic, bounds guest abuse and refunds on failed requests",async()=>{
+ const db=createD1();
+ try {
+   const env={DB:db,USAGE_SALT:"test",VISION_DAILY_LIMIT_GUEST:"2",VISION_DAILY_LIMIT_GLOBAL:"5"};
+   const request=new Request("https://bor.ai/api/chat",{headers:{"CF-Connecting-IP":"198.51.100.1"}});
+   const day="2026-11-19";
+   const first={day,charges:[]};
+   assert.equal((await reserveVisionDailyUsage(env,request,null,first)).ok,true);
+   assert.equal(first.charges.length,2);
+   const second={day,charges:[]};
+   assert.equal((await reserveVisionDailyUsage(env,request,null,second)).ok,true);
+   const third={day,charges:[]};
+   const blocked=await reserveVisionDailyUsage(env,request,null,third);
+   assert.equal(blocked.ok,false);
+   assert.equal(blocked.response.status,429);
+   assert.equal((await blocked.response.json()).code,"vision_daily_limit");
+   const stored=db.sqlite.prepare("SELECT units FROM daily_usage WHERE day = ? AND subject = 'vision-global'").get(day);
+   assert.equal(stored.units,2);
+ } finally {db.sqlite.close()}
 });
