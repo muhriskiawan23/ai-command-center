@@ -278,9 +278,9 @@ export default {
       if(msg.includes('duitku_sandbox_unavailable'))return json({sandbox:true,error:'provider_unavailable'},502);
       if(msg.includes('idempotency_conflict')||msg.includes('invoice_reference_conflict'))
         return json({sandbox:true,error:'order_conflict'},409);
+      if(msg.includes('signature'))return json({sandbox:true,error:'invalid_signature'},403);
       if(msg.includes('invalid_callback')||msg.includes('callback_order')||msg.includes('merchant_mismatch'))
         return json({sandbox:true,error:'invalid_callback'},400);
-      if(msg.includes('signature'))return json({sandbox:true,error:'invalid_signature'},403);
       return json({sandbox:true,error:'billing_staging_unavailable'},503);
     }
   }
