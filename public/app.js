@@ -977,7 +977,10 @@ function showImageThumbnail(img,url,show){
   img.hidden=img.dataset.failed===url;
 }
 function safeAttachmentName(name){
-  return String(name||"lampiran").replace(/[\/\\\x00-\x1f\x7f]/g,"_").trim().slice(0,110)||"lampiran";
+  const clean=String(name||"lampiran").replace(/[\/\\\x00-\x1f\x7f]/g,"_").trim()||"lampiran";
+  if(clean.length<=110)return clean;
+  const ext=clean.match(/\.[a-z0-9]{1,5}$/i)?.[0]||"";
+  return clean.slice(0,109-ext.length)+"…"+ext;
 }
 function attachmentFileType(name){
   const extension=(String(name||"").match(/\.([a-z0-9]{2,5})$/i)?.[1]||"file").toUpperCase();
@@ -1112,7 +1115,7 @@ async function readImageFile(file,onProgress){
 }
 async function uploadAnyFile(file){
   if(!file||busy||loadingChat)return;
-  const name=safeAttachmentName(file.name),lower=name.toLowerCase();
+  const name=safeAttachmentName(file.name),lower=String(file.name||"").toLowerCase();
   const pdf=lower.endsWith(".pdf"),image=/\.(?:jpe?g|png|webp)$/.test(lower);
   const structured=/\.(?:csv|xlsx|pptx|docx)$/.test(lower);
   if(!pdf&&!image&&!structured){toast("Format belum didukung. Pilih PDF, Word, Excel, PowerPoint, CSV, JPG, PNG, atau WEBP.");return;}
