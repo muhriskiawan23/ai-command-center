@@ -21,3 +21,7 @@ playwright-report/
 .egress-token
 .bor-ai-keys/
 tools/egress-proxy/runtime/wrangler*.generated.json
+
+# Image activation config is generated from reviewed deployment variables.
+wrangler.images.generated.jsonc
+image-credit-grant.sql

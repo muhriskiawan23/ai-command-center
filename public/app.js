@@ -1111,7 +1111,10 @@ async function readStructuredFile(file){
 }
 async function readImageFile(file,onProgress){
   const {prepareImageForVision}=await import("/image-vision.js");
-  return prepareImageForVision(file,{onProgress});
+  const prepared=await prepareImageForVision(file,{onProgress});
+  // Keep original pixels only in volatile composer state for editing. Never in chat history.
+  prepared.originalFile=file;
+  return prepared;
 }
 async function uploadAnyFile(file){
   if(!file||busy||loadingChat)return;
@@ -1171,6 +1174,11 @@ async function submit(options={}){
   const selectedCsv=options.attachmentData?.csv||activeCsv;
   const text=promptEl.value.trim()||((selectedPdf||selectedCsv)?"Tolong analisis isi file terlampir.":"");
   if(!text)return;
+  if(!options.imageApproved){
+    const {imageIntent}=await import("/image-intent.js");
+    const mode=imageIntent(text,selectedCsv?.kind==="image-vision",$("imageTask").value);
+    if(mode){await prepareImageRequest(text,mode,selectedCsv);return;}
+  }
   const savedText=packAttachmentMessage(text,selectedPdf||selectedCsv);
   if(savedText.length>12000){toast("Pesan terlalu panjang. Pendekkan teks sebelum mengirim lampiran.");return;}
   const replacing=options.replaceLastTurn===true;const previousTurn=options.previousTurn||null;
@@ -1187,7 +1195,7 @@ async function submit(options={}){
   if(createdNew)replaceRoute({name:"chat",id:chat.id});
   const stillActive=()=>activeId===startId;const start=Date.now();
   try{
-    const payload={message:savedText,agent,requestId,language:window.BORLocale?.current||"en"};const customization=readCustomization();if(customization)payload.customization=customization;if(selectedPdf)payload.document={name:selectedPdf.name,content:selectedPdf.content,truncated:selectedPdf.truncated};if(selectedCsv?.kind==="image-vision")payload.imageVision={name:selectedCsv.name,dataUrl:selectedCsv.dataUrl};else if(selectedCsv?.kind==="image-ocr")payload.imageOcr={name:selectedCsv.name,content:selectedCsv.content,truncated:selectedCsv.truncated};else if(selectedCsv?.kind==="word-document")payload.wordDocument={name:selectedCsv.name,content:selectedCsv.content,paragraphCount:selectedCsv.paragraphCount,truncated:selectedCsv.truncated};else if(selectedCsv?.kind==="presentation")payload.presentation={name:selectedCsv.name,content:selectedCsv.content,slideCount:selectedCsv.slideCount,truncated:selectedCsv.truncated};else if(selectedCsv)payload.spreadsheet={name:selectedCsv.name,content:selectedCsv.content,rowCount:selectedCsv.rowCount,columnCount:selectedCsv.columnCount,truncated:selectedCsv.truncated};if(history.length)payload.history=history;if(state===AppState.AUTH&&chat.serverId)payload.conversationId=chat.serverId;if(replacing&&state===AppState.AUTH&&chat.serverId)payload.replaceLastTurn=true;
+    const payload={message:savedText,agent,requestId,imageMode:$("imageTask").value,language:window.BORLocale?.current||"en"};const customization=readCustomization();if(customization)payload.customization=customization;if(selectedPdf)payload.document={name:selectedPdf.name,content:selectedPdf.content,truncated:selectedPdf.truncated};if(selectedCsv?.kind==="image-vision")payload.imageVision={name:selectedCsv.name,dataUrl:selectedCsv.dataUrl};else if(selectedCsv?.kind==="image-ocr")payload.imageOcr={name:selectedCsv.name,content:selectedCsv.content,truncated:selectedCsv.truncated};else if(selectedCsv?.kind==="word-document")payload.wordDocument={name:selectedCsv.name,content:selectedCsv.content,paragraphCount:selectedCsv.paragraphCount,truncated:selectedCsv.truncated};else if(selectedCsv?.kind==="presentation")payload.presentation={name:selectedCsv.name,content:selectedCsv.content,slideCount:selectedCsv.slideCount,truncated:selectedCsv.truncated};else if(selectedCsv)payload.spreadsheet={name:selectedCsv.name,content:selectedCsv.content,rowCount:selectedCsv.rowCount,columnCount:selectedCsv.columnCount,truncated:selectedCsv.truncated};if(history.length)payload.history=history;if(state===AppState.AUTH&&chat.serverId)payload.conversationId=chat.serverId;if(replacing&&state===AppState.AUTH&&chat.serverId)payload.replaceLastTurn=true;
     const data=await postJson("/api/chat",payload,CHAT_TIMEOUT_MS,activeChatController.signal,selectedCsv?.kind==="image-vision");
     if(typeof data.response!=="string"||!data.response.trim())throw new Error("AI tidak menghasilkan jawaban.");
     if(pendingRetryRequest?.requestId===requestId)pendingRetryRequest=null;
@@ -1422,3 +1430,75 @@ aboutDialog.addEventListener("close",restoreAccountAfterChildDialog);
 document.querySelectorAll("[data-prompt]").forEach(b=>b.addEventListener("click",()=>{promptEl.value=b.dataset.prompt;resizePrompt();promptEl.focus()}));
 history.scrollRestoration="manual";
 syncInert();health();boot();
+
+// Image jobs live independently from text history and survive reloads in Gambar saya.
+let pendingImageRequest=null;
+let imageFollowupSource=null;
+const imageJobsWatching=new Set();
+const imageSleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+function originalImageData(file){return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(new Error('Foto gagal dibaca.'));reader.readAsDataURL(file);});}
+async function prepareImageRequest(text,mode,attachment){
+  if(state!==AppState.AUTH){toast('Masuk dengan akun Google untuk membuat atau mengedit gambar.');return;}
+  if(mode==='edit'&&!attachment?.originalFile&&!imageFollowupSource){toast('Unggah foto atau pilih Edit lagi pada hasil gambar.');return;}
+  try{
+    const config=await api('/api/images/config');
+    if(!config.enabled){toast('Fitur buat/edit gambar belum aktif di BOR AI saat ini.');return;}
+    pendingImageRequest={text,mode,tariffVersion:config.tariffVersion,maxCredits:config.credits[mode],file:attachment?.originalFile||null,sourceJobId:attachment?null:imageFollowupSource,requestId:crypto.randomUUID()};
+    $('imageQuote').textContent='Biaya: '+config.credits[mode]+' kredit gambar · tarif '+config.tariffVersion+'. Kredit dikembalikan jika job gagal.';
+    $('imageSourceNotice').textContent=mode==='edit'?'Sumber: '+(attachment?.name||'hasil gambar sebelumnya'):'';
+    $('imageGallery').replaceChildren();$('imageConfirm').hidden=false;$('imageConfirm').disabled=false;
+    $('imageDialog').showModal();
+  }catch(error){toast(error.message);}
+}
+function imageResultCard(job){
+  const card=document.createElement('section');card.className='image-result';card.dataset.jobId=job.id;
+  const title=document.createElement('p');title.textContent=job.prompt;card.append(title);
+  const status=document.createElement('p');status.setAttribute('role','status');
+  const statuses={queued:'Mengantre…',processing:'Membuat gambar…',completed:'Selesai',failed:'Gagal · kredit dikembalikan',expired:'File sudah kedaluwarsa'};
+  status.textContent=statuses[job.status]||job.status;card.append(status);
+  if(job.errorCode){const error=document.createElement('p');error.textContent='Kode: '+job.errorCode;card.append(error);}
+  const file=job.files?.[0];
+  if(file){
+    // Derive authenticated same-origin URLs; never render arbitrary provider URLs.
+    const img=document.createElement('img');img.src='/api/files/'+job.id+'/preview';img.alt=job.prompt.slice(0,180);img.loading='lazy';card.append(img);
+    const info=document.createElement('p');info.textContent=file.mimeType+' · '+Math.ceil(file.size/1024)+' KB · '+job.credits+' kredit · tersedia sampai '+new Date(job.expiresAt*1000).toLocaleDateString();card.append(info);
+    const download=document.createElement('a');download.href='/api/files/'+job.id+'/download';download.textContent='Download';download.className='message-action';download.download=file.name;card.append(download);
+    for(const [label,mode,prompt] of [['Edit lagi','edit',''],['Buat variasi','edit','Buat variasi dari gambar ini. '+job.prompt],['Buat ulang','generate',job.prompt]]){
+      const button=document.createElement('button');button.type='button';button.className='message-action';button.textContent=label;
+      button.addEventListener('click',()=>{$('imageDialog').close();imageFollowupSource=mode==='edit'?job.id:null;$('imageTask').value=mode;promptEl.value=prompt;resizePrompt();promptEl.focus();toast('Tulis instruksi, lalu kirim untuk melihat biaya.');});card.append(button);
+    }
+  }
+  if(!['queued','processing','expired'].includes(job.status)){
+    const remove=document.createElement('button');remove.type='button';remove.textContent='Hapus gambar';remove.className='message-action';
+    remove.addEventListener('click',async()=>{remove.disabled=true;try{await api('/api/images/jobs/'+job.id,{method:'DELETE'});card.remove();}catch(error){toast(error.message);remove.disabled=false;}});card.append(remove);
+  }
+  return card;
+}
+function updateImageCards(job){for(const card of document.querySelectorAll('.image-result'))if(card.dataset.jobId===job.id)card.replaceWith(imageResultCard(job));}
+async function watchImageJob(job){
+  if(imageJobsWatching.has(job.id)||!['queued','processing'].includes(job.status))return;
+  imageJobsWatching.add(job.id);
+  try{
+    // Stop polling after 4 minutes; server processing continues. Gallery resumes status checks.
+    for(let i=0;i<80;i++){await imageSleep(3000);const next=await api('/api/images/jobs/'+job.id);updateImageCards(next);if(!['queued','processing'].includes(next.status))break;}
+  }catch(error){toast(error.message);}finally{imageJobsWatching.delete(job.id);}
+}
+$('imageClose').addEventListener('click',()=>$('imageDialog').close());
+$('imageDialog').addEventListener('close',()=>{pendingImageRequest=null;});
+$('imageConfirm').addEventListener('click',async()=>{
+  const pending=pendingImageRequest;if(!pending)return;
+  $('imageConfirm').disabled=true;
+  $('imageQuote').textContent='Mengunggah dan mengantrekan gambar…';
+  try{
+    const sourceImage=pending.file?await originalImageData(pending.file):undefined;
+    const job=await postJson('/api/images/jobs',{requestId:pending.requestId,prompt:pending.text,mode:pending.mode,tariffVersion:pending.tariffVersion,maxCredits:pending.maxCredits,sourceImage,sourceJobId:pending.sourceJobId||undefined,size:$('imageSize').value,outputFormat:$('imageFormat').value},30000);
+    $('imageDialog').close();promptEl.value='';resizePrompt();clearSelectedAttachment();imageFollowupSource=null;$('imageTask').value='auto';
+    welcomeEl.hidden=true;messagesEl.hidden=false;messagesEl.append(imageResultCard(job));watchImageJob(job);
+  }catch(error){$('imageQuote').textContent=error.message+' Jika mengulang, gunakan tombol ini agar job tidak ditagih dua kali.';$('imageConfirm').disabled=false;}
+});
+$('openImageGallery').addEventListener('click',async()=>{
+  if(state!==AppState.AUTH){toast('Masuk untuk membuka gambar Anda.');return;}
+  $('imageConfirm').hidden=true;$('imageQuote').textContent='Memuat gambar…';$('imageGallery').replaceChildren();$('imageDialog').showModal();$('toolsMenu').open=false;
+  try{const data=await api('/api/images/jobs');$('imageQuote').textContent='Saldo: '+data.balance+' kredit gambar · '+data.jobs.length+' job terbaru';for(const job of data.jobs){$('imageGallery').append(imageResultCard(job));watchImageJob(job);}}
+  catch(error){$('imageQuote').textContent=error.message;}
+});

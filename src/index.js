@@ -1,3 +1,5 @@
+import { handleImageRoute, imageConfig, consumeImageQueue, cleanupImageJobs } from "./image-jobs.js";
+import { imageIntent } from "../public/image-intent.js";
 import { safeError } from "./safe-error.js";
 import { validateCustomization, customizationNotice } from "./customization.js";
 import { CONFIDENTIALITY_NOTICE, isConfidentialityRequest, confidentialityReply, containsProtectedOutput } from "./confidentiality.js";
@@ -1348,8 +1350,14 @@ async function handleUsageRoute(request, env) {
 }
 
 export default {
+  async queue(batch, env) { await consumeImageQueue(batch, env); },
+  async scheduled(event, env, ctx) { ctx.waitUntil(cleanupImageJobs(env)); },
   async fetch(request, env) {
     const url = new URL(request.url);
+    if (url.pathname.startsWith("/api/images/") || url.pathname.startsWith("/api/files/")) {
+      try { return await handleImageRoute(request, env, url, { getSession, sameOrigin, readJsonRequest }); }
+      catch { return json({ error: "Layanan gambar belum siap. Coba lagi nanti.", code: "image_service_error" }, 503); }
+    }
     if (url.pathname.startsWith("/api/auth/") || url.pathname === "/api/config") {
       const response = await handleAuthRoute(request, env, url);
       if (response) return response;
@@ -1517,6 +1525,12 @@ export default {
           console.error("Chat idempotency lookup failed:", safeError(error));
           return json({ error: "Status permintaan sebelumnya tidak dapat diperiksa. Coba muat ulang riwayat chat." }, 503);
         }
+      }
+      if (imageIntent(message, Boolean(imageVision), body.imageMode === "analyze" ? "analyze" : "auto")) {
+        const enabled = imageConfig(env).enabled;
+        return json({ type: "image_intent", response: enabled
+          ? "Gunakan mode Buat gambar atau Edit gambar di menu Alat untuk memproses gambar dan melihat biaya kredit sebelum mengirim."
+          : "Fitur buat/edit gambar belum aktif di BOR AI saat ini.", saved: false, imageFeatureEnabled: enabled });
       }
       const useMultiAgent = !imageVision && agentId === "coordinator" && shouldUseMultiAgent(message);
       const found = extractUrls(message);
