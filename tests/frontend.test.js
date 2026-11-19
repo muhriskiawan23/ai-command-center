@@ -144,10 +144,13 @@ test("file card is moved from composer to the sent user message with no raw bina
   assert.match(page, /id="attachmentProgress"/);
   assert.match(appJs, /function packAttachmentMessage/);
   assert.match(appJs, /function unpackAttachmentMessage/);
-  assert.match(appJs, /appendMessage\("user",savedText\)/);
+  assert.match(appJs, /appendMessage\("user",savedText,true,\{previewUrl:sentPreviewUrl\}\)/);
   assert.match(appJs, /clearSelectedAttachment\(\);showTyping\(\)/);
   assert.match(appJs, /const selectedCsv=options\.attachmentData\?\.csv\|\|activeCsv/);
   assert.match(appJs, /if\(request!==attachmentSequence\)return/);
+  assert.match(appJs, /URL\.createObjectURL\(file\)/);
+  assert.match(appJs, /function keepSentThumbnail/);
+  assert.match(appJs, /buildSentFileCard\(fileMessage\.attachment,controls\.previewUrl\)/);
 });
 
 test("appendWordDocumentSource does not shadow the browser document", () => {
