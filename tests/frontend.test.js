@@ -105,8 +105,8 @@ test("Plugins hub replaces the standalone GitHub integrations screen", () => {
   assert.doesNotMatch(page, /id="openIntegrations"|id="integrationsDialog"/);
   assert.doesNotMatch(appJs, /integrationsDialog|openIntegrations/);
   assert.match(appJs, /pluginsDialog\.showModal\(\)/);
-  assert.match(appCss, /\.plugin-card/);
-  assert.match(appCss, /\.plugins-nav/);
+  assert.match(workspaceCss, /\.plugin-card/);
+  assert.match(workspaceCss, /\.plugins-nav/);
 });
 
 test("GitHub repository browser stays available inside its plugin after account authorization", () => {
