@@ -13,7 +13,7 @@ permissions:
 jobs:
   trigger-reviewed-deploy:
     # A unique merge subject and exact file-path trigger avoid general auto-deploy.
-    if: ${{ startsWith(github.event.head_commit.message, 'chore(release): one-time BOR AI binding diagnostics 2026-11-19') }}
+    if: "${{ startsWith(github.event.head_commit.message, 'chore(release): one-time BOR AI binding diagnostics 2026-11-19') }}"
     runs-on: ubuntu-24.04
     timeout-minutes: 4
     steps:
