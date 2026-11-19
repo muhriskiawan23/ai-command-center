@@ -133,14 +133,18 @@ function parseSyntheticCallback(callback){
   if(!(form instanceof URLSearchParams)||form.toString().length>4096)
     throw new Error('invalid_callback_body');
   const required=['merchantCode','amount','merchantOrderId','reference','resultCode','signature'];
-  // Duitku V2 may include signed-callback metadata; never use untrusted extras
-  // to authorize payment. Reject unknown keys and ALL duplicated keys.
-  const optional=new Set(['productDetail','productDetails','additionalParam','paymentCode',
-    'merchantUserId','publisherOrderId','spUserHash','settlementDate','issuerCode','customerName']);
-  const keys=[...form.keys()];
-  if(required.some(k=>form.getAll(k).length!==1)||
-    keys.some(k=>(!required.includes(k)&&!optional.has(k))||form.getAll(k).length!==1))
-    throw new Error('invalid_callback_fields');
+  const entries=[...form.entries()];
+  // Duitku may add callback metadata across API versions/payment methods.
+  // Such fields are NEVER trusted, stored, logged or used in settlement decisions.
+  // Keep strict mandatory-field uniqueness and field-name/total-size bounds.
+  // Authenticity is always HMAC + immutable IDR/order/reference + server-side
+  // transactionStatus; metadata does not enter the HMAC or authorization path.
+  if(entries.length>32)throw new Error('callback_too_many_fields');
+  if(entries.some(([name])=>!/^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(name)))
+    throw new Error('callback_invalid_field_name');
+  const keys=entries.map(([name])=>name);
+  if(new Set(keys).size!==keys.length)throw new Error('callback_duplicate_field');
+  if(required.some(k=>!form.has(k)))throw new Error('callback_missing_required_field');
   const data=Object.fromEntries(required.map(k=>[k,form.get(k)]));
   if(!idPattern.test(data.merchantOrderId||'')||!refPattern.test(data.reference||'')||
     !['00','01'].includes(data.resultCode)||!sigPattern.test(data.signature||''))

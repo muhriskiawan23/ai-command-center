@@ -206,6 +206,8 @@ async function operatorReconcile(env,orderId,nowMs){
 const CALLBACK_REJECTION_CODES=new Set([
   'form_required','request_too_large','request_body_required','invalid_utf8',
   'invalid_callback_body','invalid_callback_fields','invalid_callback_parameters',
+  'callback_too_many_fields','callback_invalid_field_name',
+  'callback_duplicate_field','callback_missing_required_field',
   'invalid_provider_amount','invalid_callback_signature','merchant_mismatch',
   'callback_order_amount_or_reference_mismatch','unbound_synthetic_invoice',
   'authentication_required','sandbox_status_retry_later',
@@ -310,7 +312,9 @@ export default {
       if(msg.includes('idempotency_conflict')||msg.includes('invoice_reference_conflict'))
         return json({sandbox:true,error:'order_conflict'},409);
       if(msg.includes('signature'))return json({sandbox:true,error:'invalid_signature'},403);
-      if(msg.includes('invalid_callback')||msg.includes('callback_order')||msg.includes('merchant_mismatch'))
+      if(msg.includes('invalid_callback')||msg.includes('callback_order')||msg.includes('merchant_mismatch')||
+         msg.includes('callback_too_many_fields')||msg.includes('callback_invalid_field_name')||
+         msg.includes('callback_duplicate_field')||msg.includes('callback_missing_required_field'))
         return json({sandbox:true,error:'invalid_callback'},400);
       return json({sandbox:true,error:'billing_staging_unavailable'},503);
     }

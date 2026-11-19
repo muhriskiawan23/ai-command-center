@@ -248,24 +248,47 @@ test('forged callbacks, mismatched provider data, and missing auth never credit 
     assert.equal(h.requests.filter(x=>x==='transactionStatus').length,1);
   }finally{h.close()}
 });
-test('staging callback diagnostics log only fixed categories; never payload or payment secrets',async()=>{
+test('extra Duitku callback metadata is ignored; server status still controls grants',async()=>{
   const h=stage();
-  const original=console.warn;
-  const events=[];
+  const original=console.warn,events=[];
   console.warn=(...args)=>events.push(args);
   try{
-    const a=await h.makeAccount();
-    const order=(await h.checkout(a)).payload;
-    const response=await h.callback(order,{unknownField:'SECRET_CALLBACK_CANARY_98563'});
-    assert.equal(response.status,400);
-    assert.ok(events.some(event=>event[0]==='bor_billing_staging_callback_rejected' &&
-      event[1]?.category==='invalid_callback_fields'));
-    assert.doesNotMatch(JSON.stringify(events),/SECRET_CALLBACK_CANARY_98563/);
-    assert.doesNotMatch(JSON.stringify(events),/BSTAGE-|STAGE-REF-|operator-test-only-credential|sandbox-test-only-key/);
-  }finally{
-    console.warn=original;
-    h.close();
-  }
+    const a=await h.makeAccount(),order=(await h.checkout(a)).payload;
+    h.setMode('01');
+    const waiting=await h.callback(order,{newDuitkuMetadata:'SECRET_CALLBACK_CANARY_98563'});
+    assert.equal(waiting.status,503);
+    assert.equal((await (await h.audit(order.orderId)).json()).ledgerEntries,0);
+    h.s.prepare('UPDATE billing_orders SET sandbox_status_check_after=0 WHERE id=?').run(order.orderId);
+    h.setMode('00');
+    const settled=await h.callback(order,{newDuitkuMetadata:'SECRET_CALLBACK_CANARY_98563'});
+    assert.equal(settled.status,200);
+    assert.equal((await (await h.audit(order.orderId)).json()).ledgerEntries,1);
+    assert.doesNotMatch(JSON.stringify(events),/SECRET_CALLBACK_CANARY_98563|BSTAGE-|STAGE-REF-/);
+  }finally{console.warn=original;h.close()}
+});
+test('missing and duplicate mandatory callback keys are rejected with safe categories',async()=>{
+  const h=stage();
+  const original=console.warn,events=[];
+  console.warn=(...args)=>events.push(args);
+  try{
+    const a=await h.makeAccount(),order=(await h.checkout(a)).payload;
+    const fields=new URLSearchParams({
+      merchantCode:merchant,amount:String(order.amountIdr),
+      merchantOrderId:order.orderId,reference:'SECRET_TEST_REFERENCE',
+      resultCode:'00',signature:'0'.repeat(64),extra:'SECRET_CANARY_NOT_LOGGED'
+    });
+    fields.delete('resultCode');
+    const missing=await h.call('/api/billing-sandbox/callback',{method:'POST',form:fields,token:null});
+    assert.equal(missing.status,400);
+    assert.equal(events.at(-1)?.[1]?.category,'callback_missing_required_field');
+    fields.append('resultCode','00');
+    fields.append('amount',String(order.amountIdr));
+    const duplicated=await h.call('/api/billing-sandbox/callback',{method:'POST',form:fields,token:null});
+    assert.equal(duplicated.status,400);
+    assert.equal(events.at(-1)?.[1]?.category,'callback_duplicate_field');
+    assert.doesNotMatch(JSON.stringify(events),/SECRET_CANARY_NOT_LOGGED|SECRET_TEST_REFERENCE|BSTAGE-/);
+    assert.equal((await (await h.audit(order.orderId)).json()).ledgerEntries,0);
+  }finally{console.warn=original;h.close()}
 });
 test('lost callback can be reconciled only with operator authorization, using actual sandbox status',async()=>{
   const h=stage();try{
