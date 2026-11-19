@@ -77,5 +77,5 @@ test("image OCR shows meaningful status for zero progress", async () => {
     },
     onProgress: stage => { emitted = stage; }
   });
-  assert.notMatch(emitted, /0%/);
+  assert.doesNotMatch(emitted, /0%/);
 });
