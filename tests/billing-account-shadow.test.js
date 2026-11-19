@@ -6,7 +6,7 @@ import {
   deriveShadowSubject,handleBillingShadowAccountRequest
 } from '../src/billing-account-shadow.js';
 
-const URL='https://bor-ai.example.test/api/billing/account';
+const ENDPOINT='https://bor-ai.example.test/api/billing/account';
 const USER_A='123456789012345678901';
 const USER_B='234567890123456789012';
 const PEPPER='offline-shadow-only-fixture-pepper-not-a-real-secret-00000001';
@@ -38,7 +38,7 @@ function config(shadow,overrides={}){
 }
 const handler=async(env,options={})=>{
   const {user={id:USER_A,email:'private@example.invalid'},method='GET',
-    url=URL,headers={},getSession,...ignored}=options;
+    url=ENDPOINT,headers={},getSession,...ignored}=options;
   return handleBillingShadowAccountRequest(
     new Request(url,{method,headers}),
     env,{getSession:getSession??(async()=>user)}
@@ -65,8 +65,8 @@ test('only GET without query and without cross-site credentials is accepted',asy
       {method:'PUT'}
     ])assert.equal((await handler(env,options)).status,405);
     for(const options of [
-      {url:URL+'?userId='+USER_B},
-      {url:URL+'?credits=999999'},
+      {url:ENDPOINT+'?userId='+USER_B},
+      {url:ENDPOINT+'?credits=999999'},
       {headers:{'Sec-Fetch-Site':'cross-site'}}
     ])assert.equal((await handler(env,options)).status,403);
     assert.equal((await handler(env)).status,200);
@@ -149,7 +149,7 @@ test('read-only per-user account status never returns paid plan, credits, identi
     assert.doesNotMatch(JSON.stringify(visible),/a@secret|123456789|subject_hash/);
     assert.equal((await body(await handler(env,{user:{id:USER_B}}))).accountStatus,'not_enrolled');
     h.db.prepare('UPDATE billing_shadow_accounts SET status=? WHERE subject_hash=?').run('blocked',key);
-    assert.equal((await body(await handler(env)).accountStatus),'blocked');
+    assert.equal((await body(await handler(env))).accountStatus,'blocked');
     const changed=await body(await handler(config(h.wrapper,{BOR_BILLING_SHADOW_PEPPER:OTHER_PEPPER})));
     assert.equal(changed.accountStatus,'not_enrolled');
     assert.equal(h.db.prepare('SELECT COUNT(*) AS n FROM billing_shadow_accounts').get().n,1);
