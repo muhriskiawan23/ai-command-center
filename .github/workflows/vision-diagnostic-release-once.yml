@@ -1,4 +1,4 @@
-name: BOR AI one-time vision diagnostics release
+name: BOR AI one-time vision output hotfix release
 
 on:
   push:

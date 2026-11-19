@@ -1736,12 +1736,14 @@ export default {
         if (error instanceof VisionInferenceError) {
           console.error("BOR_AI_VISION_PROVIDER_FAILURE", {
             reason: error.reason, providerStatus: error.providerStatus,
-            providerCode: error.providerCode, modelId: VISION_MODEL
+            providerCode: error.providerCode, responseKind: error.responseKind || null,
+            modelId: VISION_MODEL
           });
           await refundUsage(env, usage.day, usage.charges);
           return json({
             error: "Analisis foto gagal di layanan AI vision. Coba lagi nanti.",
-            code: "vision_provider_error", stage: "image_vision", reason: error.reason
+            code: "vision_provider_error", stage: "image_vision", reason: error.reason,
+            ...(error.responseKind ? { responseKind: error.responseKind } : {})
           }, 502);
         }
         console.error("AI request failed:", safeError(error));

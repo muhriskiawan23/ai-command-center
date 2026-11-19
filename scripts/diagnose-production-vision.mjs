@@ -51,10 +51,16 @@ try {
     ok: response.ok && typeof body?.response === "string" && body.response.trim().length > 0,
     code: typeof body?.code === "string" ? body.code.slice(0, 80) : null,
     stage: typeof body?.stage === "string" ? body.stage.slice(0, 80) : null,
-    reason: typeof body?.reason === "string" ? body.reason.slice(0, 80) : null
+    reason: typeof body?.reason === "string" ? body.reason.slice(0, 80) : null,
+    responseKind: typeof body?.responseKind === "string" ? body.responseKind.slice(0, 80) : null
   };
 } catch (error) {
   summary.chat = { status: 0, ok: false, transportError: error?.name || "unknown" };
 }
 console.log("SYNTHETIC_VISION_DIAGNOSTIC " + JSON.stringify(summary));
-// The deploy token may lack REST Workers AI inference scope (401); the Worker\n// binding has separate authorization. Production chat is the release gate.\nif (!summary.chat.ok) process.exitCode = 1;
+// A deployment token lacking REST inference scope does not necessarily block
+// the Worker AI binding. Gate this check on the app's image chat result.
+if (!summary.chat.ok) {
+  console.error("PRODUCTION_VISION_SMOKE_FAILED");
+  process.exitCode = 1;
+}
