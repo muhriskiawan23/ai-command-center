@@ -1,6 +1,6 @@
 # BOR AI — customer-specific Duitku V2 Sandbox transport (pre-deployment)
 
-**Status:** coded and testable with mocked HTTP, NOT deployed or activated.
+**Status:** available to the isolated, disabled-by-default billing staging Worker; not deployed or activated on production.
 This is a transport contract, not a live checkout integration or financial
 authorization. It is deliberately NOT imported by src/index.js or any
 production/sandbox Worker entrypoint.
@@ -15,7 +15,8 @@ production/sandbox Worker entrypoint.
   separate security/finance/privacy go-live review.
 - src/billing-synthetic-gateway-bridge.js may accept a provider explicitly
   marked sandboxV2TransportOnly for local/staging test harnesses only.
-  No checkout route exposes this module to customers.
+  Only the separate operator-created staging user session route invokes it;
+  the production customer checkout remains disabled.
 - tests/billing-synthetic-gateway-bridge.test.js exercises fake HTTP
   responses in actual Duitku V2 format, exact IDR matching, callback signing,
   rejection of redirected/mismatched responses, issuer URL storage,

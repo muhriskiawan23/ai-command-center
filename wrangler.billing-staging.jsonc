@@ -1,0 +1,34 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "bor-ai-billing-staging",
+  "main": "src/billing-staging-worker.js",
+  "compatibility_date": "2026-10-28",
+  "workers_dev": true,
+  "d1_databases": [
+    {
+      "binding": "BILLING_DB",
+      "database_name": "bor-ai-billing-staging",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "staging/billing/migrations"
+    }
+  ],
+  "vars": {
+    "BILLING_STAGING_ENABLED": "false",
+    "BILLING_STAGING_ALLOW_TEST_INVOICES": "false",
+    "STAGING_D1_NAME": "bor-ai-billing-staging",
+    "STAGING_PUBLIC_ORIGIN": "https://not-configured.invalid",
+    "DUITKU_SANDBOX_MERCHANT_CODE": "DS38217",
+    "STAGING_TEST_TARIFF_VERSION": "UNAPPROVED-SANDBOX-ONLY",
+    "STAGING_TEST_BASIC_CREDITS": "3000",
+    "STAGING_TEST_PRO_CREDITS": "15000",
+    "STAGING_TEST_FX_IDR_PER_USD": "18000.25",
+    "STAGING_TEST_GATEWAY_FEE_IDR": "4000",
+    "STAGING_TEST_GATEWAY_FEE_TAX_IDR": "480",
+    "STAGING_TEST_PROVIDER_BUDGET_BASIC_USD": "0.30",
+    "STAGING_TEST_PROVIDER_BUDGET_PRO_USD": "1.50",
+    "STAGING_TEST_FX_RESERVE_IDR": "500",
+    "STAGING_TEST_REFUND_RESERVE_IDR": "700",
+    "STAGING_TEST_OTHER_COST_IDR": "1000",
+    "STAGING_TEST_MIN_CONTRIBUTION_BPS": "2000"
+  }
+}

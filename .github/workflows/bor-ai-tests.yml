@@ -46,3 +46,5 @@ jobs:
 
       - name: Build isolated Duitku sandbox preview (no deployment)
         run: npx --yes wrangler@4 deploy --dry-run --config wrangler.duitku-sandbox.jsonc
+      - name: Build isolated billing staging preview (no deployment, disabled template)
+        run: npx --yes wrangler@4 deploy --dry-run --config wrangler.billing-staging.jsonc
