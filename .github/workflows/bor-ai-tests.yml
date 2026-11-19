@@ -43,3 +43,6 @@ jobs:
 
       - name: Build Worker preview (no deployment)
         run: npm run preview
+
+      - name: Build isolated Duitku sandbox preview (no deployment)
+        run: npx --yes wrangler@4 deploy --dry-run --config wrangler.duitku-sandbox.jsonc

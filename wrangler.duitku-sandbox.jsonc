@@ -1,0 +1,12 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "bor-ai-duitku-sandbox",
+  "main": "src/duitku-sandbox-worker.js",
+  "compatibility_date": "2026-10-28",
+  "workers_dev": true,
+  "vars": {
+    "PAYMENT_SANDBOX_ENABLED": "true",
+    "DUITKU_SANDBOX_MERCHANT_CODE": "DS38217",
+    "SANDBOX_PUBLIC_ORIGIN": "https://bor-ai-duitku-sandbox.muhriskiawan23.workers.dev"
+  }
+}
