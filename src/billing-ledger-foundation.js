@@ -142,10 +142,10 @@ export async function recordSyntheticUsageDebit(db,{userId,requestId,credits,cre
   }
   const transactionId='BLEDGER:usage:'+crypto.randomUUID();
   // The SQL trigger guards balance and debt in the *same transaction* as debit.
-  await db.prepare("INSERT INTO billing_credit_ledger(id,user_id,order_id,event_type,source_key,delta,created_at) SELECT ?,?,NULL,'usage',?, ?,? WHERE NOT EXISTS (SELECT 1 FROM billing_credit_ledger WHERE user_id=? AND event_type='usage' AND source_key=?)")
+  const write=await db.prepare("INSERT INTO billing_credit_ledger(id,user_id,order_id,event_type,source_key,delta,created_at) SELECT ?,?,NULL,'usage',?, ?,? WHERE NOT EXISTS (SELECT 1 FROM billing_credit_ledger WHERE user_id=? AND event_type='usage' AND source_key=?)")
     .bind(transactionId,userId,requestId,-credits,createdAtMs,userId,requestId).run();
   const saved=await db.prepare("SELECT delta FROM billing_credit_ledger WHERE user_id=? AND event_type='usage' AND source_key=?")
     .bind(userId,requestId).first();
   if(saved?.delta!==-credits)throw new Error('usage_idempotency_conflict');
-  return {userId,credits,duplicate:saved.delta===-credits?false:false,synthetic:true};
+  return {userId,credits,duplicate:!write.meta?.changes,synthetic:true};
 }
