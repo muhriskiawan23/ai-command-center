@@ -26,7 +26,7 @@ function setup() {
     DUITKU_FETCHER: async (url, options) => {
       const data = JSON.parse(options.body); calls.push({ url, options, data });
       assert.ok(url.startsWith('https://sandbox.duitku.com/webapi/api/merchant/'));
-      assert.equal(options.redirect, 'error');
+      assert.equal(options.redirect, 'manual');
       if (url.endsWith('v2/inquiry')) {
         assert.equal(data.signature, sign('DS38217' + data.merchantOrderId + '10000'));
         assert.equal(data.callbackUrl, base + '/api/duitku/callback');
@@ -243,3 +243,30 @@ test('operator-only, read-only Duitku provider probe checks worker API key and B
 function sqliteCount(sqlite, name) {
   return sqlite.prepare('SELECT COUNT(*) AS count FROM ' + name).get().count;
 }
+
+test('Worker-safe manual redirect mode prevents checkout redirects and does not create test credits', async () => {
+  const h = setup();
+  try {
+    const input = h.input();
+    const visited = [];
+    h.env.DUITKU_FETCHER = async (url, options) => {
+      visited.push(url);
+      assert.equal(options.redirect, 'manual');
+      return new Response(null, { status: 302, headers: { Location: 'https://example.test/untrusted' } });
+    };
+    const checkout = await h.create(input);
+    assert.equal(checkout.status, 502);
+    assert.equal(h.row('BORTEST-' + input.requestId).status, 'provider_unknown');
+    const check = await worker.fetch(h.request('/api/sandbox/provider-check'), h.env);
+    assert.equal(check.status, 502);
+    assert.deepEqual(await check.json(), {
+      sandbox: true, probe: 'payment_methods', error: 'provider_http_error',
+      providerHttpStatus: 302
+    });
+    assert.deepEqual(visited, [
+      'https://sandbox.duitku.com/webapi/api/merchant/v2/inquiry',
+      'https://sandbox.duitku.com/webapi/api/merchant/paymentmethod/getpaymentmethod'
+    ]);
+    assert.equal(sqliteCount(h.sqlite, 'duitku_sandbox_credit_ledger'), 0);
+  } finally { h.close(); }
+});
