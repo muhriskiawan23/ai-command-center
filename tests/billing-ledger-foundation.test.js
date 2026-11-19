@@ -16,6 +16,7 @@ function setup(){
   sqlite.exec('PRAGMA foreign_keys=ON');
   sqlite.exec(readFileSync(new URL('../migrations/0001_auth_and_chat.sql',import.meta.url),'utf8'));
   sqlite.exec(readFileSync(new URL('../migrations/0013_billing_foundation.sql',import.meta.url),'utf8'));
+  sqlite.exec(readFileSync(new URL('../migrations/0014_billing_invoice_reference_guard.sql',import.meta.url),'utf8'));
   for(const id of [ownerA,ownerB]){
     sqlite.prepare('INSERT INTO users(id,email,name,created_at,updated_at) VALUES(?,?,?,?,?)')
       .run(id,id+'@example.test','',now,now);
@@ -40,14 +41,25 @@ function setup(){
   const order=async(quote,changes={})=>createSyntheticBillingOrder(db,{
     orderId:next('BORDER'),quoteId:quote.quoteId,userId:ownerA,nowMs:now+5000,...changes
   });
-  const pay=(orderId,quote,changes={})=>recordSyntheticBillingEvent(db,{
-    eventKey:next('PAY-EVENT'),orderId,eventType:'payment_verified',providerReference:next('REF'),
-    amountIdr:Number(quote.lockedIdr),checkedAtMs:now+20000,...changes
-  });
+  const bindRef=(orderId,reference)=>{
+    const invoice=sqlite.prepare('SELECT provider_reference FROM billing_orders WHERE id=?').get(orderId);
+    if(!invoice)throw new Error('order missing');
+    if(invoice.provider_reference===null)
+      sqlite.prepare('UPDATE billing_orders SET provider_reference=? WHERE id=?').run(reference,orderId);
+  };
+  const pay=async(orderId,quote,changes={})=>{
+    const invoice=sqlite.prepare('SELECT provider_reference FROM billing_orders WHERE id=?').get(orderId);
+    const providerReference=changes.providerReference??invoice?.provider_reference??next('REF');
+    bindRef(orderId,providerReference);
+    return recordSyntheticBillingEvent(db,{
+      eventKey:next('PAY-EVENT'),orderId,eventType:'payment_verified',providerReference,
+      amountIdr:Number(quote.lockedIdr),checkedAtMs:now+20000,...changes
+    });
+  };
   const events=()=>sqlite.prepare('SELECT * FROM billing_payment_events ORDER BY event_key').all();
   const ledger=()=>sqlite.prepare('SELECT * FROM billing_credit_ledger ORDER BY id').all();
   const row=id=>sqlite.prepare('SELECT * FROM billing_orders WHERE id=?').get(id);
-  return {sqlite,db,policy,q,order,pay,events,ledger,row,close:()=>sqlite.close()};
+  return {sqlite,db,policy,q,order,pay,bindRef,events,ledger,row,close:()=>sqlite.close()};
 }
 test('D1 migration builds isolated immutable billing tables and leaves current image/chat accounting untouched',()=>{
   const h=setup();try{
@@ -99,6 +111,7 @@ test('exact synthetic paid event grants only once; usage debit is idempotent and
     assert.equal((await getBillingWalletAudit(h.db,ownerA)).availableCredits,0);
     const ev={eventKey:next('PAY-EVENT'),orderId:order.orderId,eventType:'payment_verified',
       providerReference:'SYNTHETIC-PAYMENT-REF',amountIdr:Number(quote.lockedIdr),checkedAtMs:now+20000};
+    h.bindRef(order.orderId,ev.providerReference);
     const pay=await recordSyntheticBillingEvent(h.db,ev);
     assert.equal(pay.status,'paid');
     assert.equal((await recordSyntheticBillingEvent(h.db,ev)).duplicate,true);
@@ -160,7 +173,7 @@ test('events reject amount/reference replay, missing signed+status proof and una
   const h=setup();try{
     const q1=await h.q();const o1=await h.order(q1);
     const q2=await h.q();const o2=await h.order(q2);
-    await assert.rejects(()=>h.pay(o1.orderId,q1,{amountIdr:1}),/billing_event_order_amount_or_state_mismatch/);
+    await assert.rejects(()=>h.pay(o1.orderId,q1,{amountIdr:1,providerReference:'SYNTH-UNIQUE-REF-1'}),/billing_event_order_amount_or_state_mismatch/);
     assert.throws(()=>h.sqlite.prepare("UPDATE billing_orders SET status='paid' WHERE id=?").run(o1.orderId),/billing_unverified_or_invalid_transition/);
     assert.throws(()=>h.sqlite.prepare("INSERT INTO billing_payment_events(event_key,order_id,event_type,provider_reference,amount_idr,signature_checked,status_checked,verification_mode,checked_at) VALUES(?,?,'payment_verified','REF-FAKE',?,0,1,'synthetic_test',?)").run(next('FORGED'),o1.orderId,Number(q1.lockedIdr),now+20000),/CHECK constraint failed/);
     await h.pay(o1.orderId,q1,{providerReference:'SYNTH-UNIQUE-REF-1'});
