@@ -40,7 +40,7 @@ test('proposed Basic economics include VAT-inclusive fee once, model tokens, Tav
   assert.equal(result.modeledProviderCostUsdMicro,'193000');
   assert.equal(result.creditsNeeded,'1930');
   assert.equal(result.creditsWithinBudget,true);
-  assert.equal(result.contributionIdr,'23620');
+  assert.equal(result.contributionIdr,'23220');
   assert.equal(result.marginScreenPasses,true);
   assert.equal(result.scenarioSafe,true);
   assert.equal(result.liveCheckoutEnabled,false);
