@@ -49,7 +49,9 @@ function authorizedOperator(request,env){
 // operator token. Never put the operator token into GitHub Actions secrets.
 function authorizedReporter(request,env){
   const expected=env.BILLING_STAGING_REPORT_TOKEN;
-  if(typeof expected!=='string'||expected.length<32)fail(503,'staging_reporting_disabled');
+  if(typeof expected!=='string'||expected.length<32||
+     secretEqual(expected,env.BILLING_STAGING_OPERATOR_TOKEN))
+    fail(503,'staging_reporting_disabled');
   const provided=request.headers.get('Authorization')||'';
   if(!secretEqual(provided,'Bearer '+expected))fail(401,'report_auth_required');
 }
