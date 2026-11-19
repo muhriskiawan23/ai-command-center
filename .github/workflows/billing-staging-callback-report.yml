@@ -1,0 +1,57 @@
+name: BOR AI isolated billing callback report (READ ONLY)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  staging-callback-report:
+    name: Read isolated billing staging callback counts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Query bearer-protected staging-only diagnostics
+        env:
+          BILLING_STAGING_REPORT_TOKEN: ${{ secrets.BOR_BILLING_STAGING_REPORT_TOKEN }}
+          GITHUB_STEP_SUMMARY: ${{ env.GITHUB_STEP_SUMMARY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${BILLING_STAGING_REPORT_TOKEN:-}" ]]; then
+            echo "Missing BOR_BILLING_STAGING_REPORT_TOKEN repository secret; no request sent."
+            exit 1
+          fi
+          echo "::add-mask::${BILLING_STAGING_REPORT_TOKEN}"
+          URL="https://bor-ai-billing-staging.muhriskiawan23.workers.dev/api/billing-sandbox/operator/callback-diagnostics?hours=24"
+          STATUS="$(curl --silent --show-error --max-time 20 --output report.json --write-out '%{http_code}' \
+            --header "Authorization: Bearer ${BILLING_STAGING_REPORT_TOKEN}" \
+            --header 'Accept: application/json' \
+            --header 'Cache-Control: no-store' "$URL")"
+          if [[ "$STATUS" != "200" ]]; then
+            echo "Staging-only diagnostics HTTP $STATUS. Ensure dedicated D1 migration 0006 and Worker have been deployed."
+            exit 1
+          fi
+          node --input-type=module - <<'NODE'
+          import {readFileSync,appendFileSync} from 'node:fs';
+          const data=JSON.parse(readFileSync('report.json','utf8'));
+          if(data.sandbox!==true||data.isolatedBilling!==true||
+             data.realCreditsGranted!==false||data.payloadsStored!==false||
+             !Array.isArray(data.summary))throw new Error('Unexpected staging diagnostics response');
+          const allowed=/^[a-z_]{1,64}$/;
+          const rows=data.summary.map(x=>{
+            if(!['accepted','retry','rejected'].includes(x.disposition)||
+               !allowed.test(x.category)||!Number.isSafeInteger(x.hits)||
+               x.hits<0)throw new Error('Unexpected diagnostic row');
+            return `| ${x.disposition} | ${x.category} | ${x.hits} |`;
+          });
+          const out=['## Isolated BOR AI billing STAGING (past 24 hours)',
+            'Aggregate callback HTTP attempts only; no payment data, no payout or real credits.',
+            '| Outcome | Static category | Attempts |','|---|---|---:|',
+            ...(rows.length?rows:['| none | none | 0 |']),'',
+            'This report does NOT by itself prove a callback came from Duitku; signed HMAC and independent status check are required for accepted callbacks.'].join('\n');
+          appendFileSync(process.env.GITHUB_STEP_SUMMARY,out+'\n');
+          console.log('Read-only staging callback diagnostic summary written to Actions summary.');
+          NODE
+          rm -f report.json
