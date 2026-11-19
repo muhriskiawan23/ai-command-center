@@ -25,6 +25,7 @@ and protect the Basic $1.99 / Pro $6.99 hybrid subscription + top-up model.
 |---|---|---|---|
 | P0 | Live Duitku merchant/account and each chosen channel still unapproved or not independently documented | Sandbox merchant `DS...` only | Obtain merchant approval + written channel activation and separate scoped live credentials |
 | P0 | Real customer checkout/entitlement is **not implemented/activated** | Current billing foundation is synthetic, staging D1 is isolated | Reviewed, separately tested implementation with a production feature flag initially off and safe rollback |
+| P0 | Monthly subscription lifecycle is missing | Current Basic/Pro sandbox checkout creates a one-time invoice, not verified recurring renewal/cancellation/dunning/proration. Duitku subscription is a distinct API and supports certain channels, not generic VA monthly auto-debit | Define monthly entitlement periods, consent, manual vs recurring renewal, failed-payment grace, cancellation, credit expiry and refund policy; if recurring, verify merchant/channel eligibility and implement subscription webhooks separately |
 | P0 | First `pending -> paid` provider callback has not been demonstrated end-to-end against a real live merchant | Only a paid-order replay was observed and independently audited | Create a controlled approved canary only AFTER merchant authorization; independently check provider status and verify exactly one grant |
 | P0 | Actual money refund/chargeback automation **is not proven** | `checkReversal` exists only on synthetic/mock provider; Duitku V2 Sandbox adapter has NO `checkReversal` or refund/disbursement operation | Merchant-managed refund SOP with evidence and dual control; verified chargeback evidence, debt recovery, manual reconciliation; no fake reversal events |
 | P0 | Model/tool consumption is not connected to a hard customer credit budget in production billing | `credit-metering.js` is opt-in and billing budget is a synthetic policy assumption | Reserve cost before API call, settle measured cost exactly once, cap maximum tokens/tool usage and account liability, refund on failed calls |
@@ -126,7 +127,9 @@ Under nominal usage, BCA VA fees and full provider budget reservation:
    money-movement evidence from a database reversal.
 3. Obtain versioned OpenAI, Workers AI and Tavily invoices/rate cards and
    settle measured usage costs/credits. Design a credit reserve/finalize/undo
-   state machine with per-call max output and tool caps.
+   state machine with per-call max output and tool caps. Determine whether
+   Basic/Pro are manual monthly renewals or merchant-approved recurring debit:
+   do NOT imply a one-off VA payment auto-renews.
 4. Confirm server-owned FX rate, locked quote, USD accounting, IDR checkout
    and legal terms; test price rounding and cancellation.
 5. Verify protected credentials/separate live adapter, multi-tenant auth,
@@ -145,6 +148,8 @@ Under nominal usage, BCA VA fees and full provider budget reservation:
   https://www.duitku.com/harga/
 - Duitku onboarding, channel activation and virtual account settlement:
   https://docs.duitku.com/en/account/
+- Duitku distinct Subscription API (not implemented in BOR AI):
+  https://docs.duitku.com/subscription/id/
 
 **Audit type:** read-only GitHub code review + pure scenario simulation +
 existing independent staging proof. No actual Duitku live API key, live
