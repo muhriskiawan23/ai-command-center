@@ -248,6 +248,25 @@ test('forged callbacks, mismatched provider data, and missing auth never credit 
     assert.equal(h.requests.filter(x=>x==='transactionStatus').length,1);
   }finally{h.close()}
 });
+test('staging callback diagnostics log only fixed categories; never payload or payment secrets',async()=>{
+  const h=stage();
+  const original=console.warn;
+  const events=[];
+  console.warn=(...args)=>events.push(args);
+  try{
+    const a=await h.makeAccount();
+    const order=(await h.checkout(a)).payload;
+    const response=await h.callback(order,{unknownField:'SECRET_CALLBACK_CANARY_98563'});
+    assert.equal(response.status,400);
+    assert.ok(events.some(event=>event[0]==='bor_billing_staging_callback_rejected' &&
+      event[1]?.category==='invalid_callback_fields'));
+    assert.doesNotMatch(JSON.stringify(events),/SECRET_CALLBACK_CANARY_98563/);
+    assert.doesNotMatch(JSON.stringify(events),/BSTAGE-|STAGE-REF-|operator-test-only-credential|sandbox-test-only-key/);
+  }finally{
+    console.warn=original;
+    h.close();
+  }
+});
 test('lost callback can be reconciled only with operator authorization, using actual sandbox status',async()=>{
   const h=stage();try{
     const a=await h.makeAccount(),invoice=(await h.checkout(a)).payload;
