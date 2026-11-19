@@ -15,7 +15,7 @@ function stage(){
   s.exec('PRAGMA foreign_keys=ON');
   for(const name of [
     '0001_staging_identity.sql','0002_billing_core.sql','0003_invoice_reference_guard.sql',
-    '0004_invoice_recovery.sql','0005_daily_invoice_quota.sql','0006_callback_diagnostic_buckets.sql','0007_synthetic_usage_reservations.sql'
+    '0004_invoice_recovery.sql','0005_daily_invoice_quota.sql','0006_callback_diagnostic_buckets.sql','0007_synthetic_usage_reservations.sql','0008_manual_subscription_terms.sql'
   ])s.exec(readFileSync(new URL('../staging/billing/migrations/'+name,import.meta.url),'utf8'));
   function stmt(query,args=[]){
     return {
