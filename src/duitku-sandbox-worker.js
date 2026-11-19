@@ -54,7 +54,7 @@ async function provider(env, endpoint, payload) {
   try {
     response = await (env.DUITKU_FETCHER || fetch)(API + endpoint, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload), signal: AbortSignal.timeout(15000), redirect: 'error'
+      body: JSON.stringify(payload), signal: AbortSignal.timeout(15000), redirect: 'manual'
     });
     if (!response.ok) fail(502, 'duitku_unavailable');
     const raw = await readBody(response);
@@ -79,7 +79,7 @@ async function providerCheck(env) {
   try {
     response = await (env.DUITKU_FETCHER || fetch)(API + 'paymentmethod/getpaymentmethod', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload), redirect: 'error', signal: AbortSignal.timeout(15000)
+      body: JSON.stringify(payload), redirect: 'manual', signal: AbortSignal.timeout(15000)
     });
   } catch {
     return json({ sandbox: true, probe: 'payment_methods', error: 'provider_network_error' }, 502);
