@@ -67,3 +67,32 @@ test("cancelled and image-like calls never contact backup", async () => {
   await assert.rejects(env.AI.run(DEFAULT_MODEL_ID, { image: [] }), quota);
   assert.equal(sends(), 0);
 });
+
+test("Luna-first routing uses Cloudflare when Luna fails or its budget is exhausted", async () => {
+  let workersCalls = 0;
+  let openAiCalls = 0;
+  let lunaStatus = 200;
+  let budgetAvailable = true;
+  const env = withTextProviderFailover({
+    BOR_TEXT_LUNA_PRIMARY: "true",
+    BOR_TEXT_BACKUP_ENABLED: "true",
+    BOR_TEXT_BACKUP_API_KEY: "fixture-key",
+    BOR_TEXT_BACKUP_DAILY_USD_LIMIT: "1.00",
+    DB: { prepare: () => ({ bind: () => ({
+      first: async () => budgetAvailable ? { units: 924 } : null
+    }) }) },
+    AI: { async run() { workersCalls++; return { response: "Cloudflare" }; } }
+  }, async () => {
+    openAiCalls++;
+    return Response.json({ choices: [{ message: { content: "Luna" } }] }, { status: lunaStatus });
+  });
+
+  assert.equal((await env.AI.run(DEFAULT_MODEL_ID, payload)).response, "Luna");
+  assert.equal(workersCalls, 0);
+  lunaStatus = 503;
+  assert.equal((await env.AI.run(DEFAULT_MODEL_ID, payload)).response, "Cloudflare");
+  budgetAvailable = false;
+  assert.equal((await env.AI.run(DEFAULT_MODEL_ID, payload)).response, "Cloudflare");
+  assert.equal(workersCalls, 2);
+  assert.equal(openAiCalls, 2);
+});
