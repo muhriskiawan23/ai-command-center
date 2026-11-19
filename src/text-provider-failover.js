@@ -28,62 +28,75 @@ export function withTextProviderFailover(env, fetcher = fetch) {
     return env;
   }
 
+  const preferLuna = env.BOR_TEXT_LUNA_PRIMARY === "true";
   let attempted = false;
+
+  async function tryLuna(payload, signal) {
+    if (signal?.aborted || !Array.isArray(payload?.messages) ||
+      !payload.messages.length || !payload.messages.every(message =>
+        ["system", "assistant", "user"].includes(message?.role) &&
+        typeof message.content === "string") ||
+      !Number.isSafeInteger(payload.max_tokens) || payload.max_tokens < 1 ||
+      payload.max_tokens > 2200) return null;
+
+    const messages = payload.messages.map(({ role, content }) => ({ role, content }));
+    const bytes = new TextEncoder().encode(JSON.stringify(messages)).length;
+    if (bytes > 64_000) return null;
+    const reserved = Number(calculateProviderCostMicroUsd({
+      inputTokens: bytes + 8192,
+      outputTokens: payload.max_tokens,
+      inputRateMicroUsdPerMillion: 100_000n,
+      outputRateMicroUsdPerMillion: 500_000n
+    }));
+    try {
+      const total = await consumeUsage(env, usageDay(), COUNTER, reserved, limit);
+      if (total === null || signal?.aborted) return null;
+      const timeout = AbortSignal.timeout(8000);
+      const response = await fetcher(ENDPOINT, {
+        method: "POST",
+        redirect: "manual",
+        headers: {
+          Authorization: "Bearer " + env.BOR_TEXT_BACKUP_API_KEY,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model: BACKUP_MODEL, messages, store: false, reasoning_effort: "none",
+          max_completion_tokens: payload.max_tokens
+        }),
+        signal: signal ? AbortSignal.any([signal, timeout]) : timeout
+      });
+      if (!response.ok) return null;
+      const result = await response.json();
+      const answer = result.choices?.[0]?.message?.content;
+      if (typeof answer === "string" && answer.trim()) {
+        return { response: answer, borTextBackupModel: BACKUP_MODEL, borTextLunaPrimary: preferLuna };
+      }
+    } catch {
+      // Paid attempts remain reserved even if their outcome is ambiguous.
+    }
+    return null;
+  }
+
   return {
     ...env,
     AI: {
       async run(model, payload, options) {
+        const signal = options?.signal;
+        if (model !== DEFAULT_MODEL_ID) return env.AI.run(model, payload, options);
+        if (preferLuna) {
+          signal?.throwIfAborted();
+          const answer = await tryLuna(payload, signal);
+          if (answer) return answer;
+          signal?.throwIfAborted();
+          return env.AI.run(model, payload, options);
+        }
         try {
           return await env.AI.run(model, payload, options);
         } catch (primaryError) {
-          const signal = options?.signal;
-          if (attempted || signal?.aborted || model !== DEFAULT_MODEL_ID ||
-            !mayFailOver(primaryError) || !Array.isArray(payload?.messages) ||
-            !payload.messages.length || !payload.messages.every(message =>
-              ["system", "assistant", "user"].includes(message?.role) &&
-              typeof message.content === "string") ||
-            !Number.isSafeInteger(payload.max_tokens) || payload.max_tokens < 1 ||
-            payload.max_tokens > 2200) throw primaryError;
-
+          if (attempted || signal?.aborted || !mayFailOver(primaryError)) throw primaryError;
           attempted = true;
-          const messages = payload.messages.map(({ role, content }) => ({ role, content }));
-          const bytes = new TextEncoder().encode(JSON.stringify(messages)).length;
-          if (bytes > 64_000) throw primaryError;
-
-          const reserved = Number(calculateProviderCostMicroUsd({
-            inputTokens: bytes + 8192,
-            outputTokens: payload.max_tokens,
-            inputRateMicroUsdPerMillion: 100_000n,
-            outputRateMicroUsdPerMillion: 500_000n
-          }));
-          try {
-            const total = await consumeUsage(env, usageDay(), COUNTER, reserved, limit);
-            if (total !== null && !signal?.aborted) {
-              const timeout = AbortSignal.timeout(8000);
-              const response = await fetcher(ENDPOINT, {
-                method: "POST",
-                redirect: "manual",
-                headers: {
-                  Authorization: "Bearer " + env.BOR_TEXT_BACKUP_API_KEY,
-                  "Content-Type": "application/json"
-                },
-                body: JSON.stringify({
-                  model: BACKUP_MODEL, messages, store: false, reasoning_effort: "none",
-                  max_completion_tokens: payload.max_tokens
-                }),
-                signal: signal ? AbortSignal.any([signal, timeout]) : timeout
-              });
-              if (response.ok) {
-                const result = await response.json();
-                const answer = result.choices?.[0]?.message?.content;
-                if (typeof answer === "string" && answer.trim()) {
-                  return { response: answer, borTextBackupModel: BACKUP_MODEL };
-                }
-              }
-            }
-          } catch {
-            // Preserve the primary classification. Never log the backup response or key.
-          }
+          const answer = await tryLuna(payload, signal);
+          if (answer) return answer;
           throw primaryError;
         }
       }
