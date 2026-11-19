@@ -490,3 +490,5 @@ html[dir="rtl"] pre, html[dir="rtl"] code, html[dir="rtl"] .message-text pre { d
 .model-picker-divider{height:1px;margin:6px 5px;background:#3a4249}
 .model-picker-note{margin:7px 10px 8px;color:#aab4bc;font-size:11px;line-height:1.5}
 @media(max-width:560px){.composer-tools{display:flex;flex-wrap:wrap;gap:6px}.model-picker>summary{min-height:36px;padding:0 10px;font-size:12px}.model-picker-panel{width:min(340px,calc(100vw - 22px))}}
+
+.agent-help{margin:-2px 3px 8px;color:var(--muted);font-size:12px;line-height:1.45}

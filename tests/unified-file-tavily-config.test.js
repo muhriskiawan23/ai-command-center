@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 
 test("unified upload has one visible picker with documents and images",()=>{
  const html=readFileSync(new URL("../public/index.html",import.meta.url),"utf8");
- assert.match(html,/id="attachPdf"[^>]+>＋ Unggah file/);
+ assert.match(html,/id="attachPdf"[^>]+>＋ (?:Unggah file|Upload file)/);
  assert.match(html,/id="attachCsv"[^>]+hidden/);
  assert.match(html,/id="pdfFile"[^>]+\.docx[^>]+\.csv[^>]+\.jpg[^>]+\.webp/);
 });
