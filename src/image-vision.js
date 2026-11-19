@@ -80,6 +80,8 @@ export async function analyzeImageWithVision(ai, attachment, question, language 
       max_tokens: 650
     });
   } catch (error) {
+    // Preserve the existing cancellation and timeout response semantics.
+    if (error?.name === "AiTimeoutError" || error?.name === "AiCancelledError") throw error;
     throw new VisionInferenceError(error);
   }
   const answer = typeof result?.answer === "string" ? result.answer.trim() : "";
