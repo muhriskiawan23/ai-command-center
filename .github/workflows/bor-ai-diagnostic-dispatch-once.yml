@@ -1,0 +1,65 @@
+name: BOR AI one-time safe diagnostic deployment trigger
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/bor-ai-diagnostic-dispatch-once.yml'
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  trigger-reviewed-deploy:
+    # A unique merge subject and exact file-path trigger avoid general auto-deploy.
+    if: ${{ startsWith(github.event.head_commit.message, 'chore(release): one-time BOR AI binding diagnostics 2026-11-19') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    steps:
+      - name: Check out exact triggering commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+      - name: Confirm the one-time authorization and unchanged main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_SHA: ${{ github.sha }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$(git log -1 --format=%s)" = "chore(release): one-time BOR AI binding diagnostics 2026-11-19"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          HEAD_SHA="$(curl --fail --silent --show-error \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/$GH_REPO/git/ref/heads/main" | \
+            node -e 'let s="";process.stdin.on("data",x=>s+=x).on("end",()=>{const d=JSON.parse(s);if(typeof d.object?.sha!=="string")process.exit(1);process.stdout.write(d.object.sha)})')"
+          if [[ "$HEAD_SHA" != "$EXPECTED_SHA" ]]; then
+            echo "::error::Main moved after the reviewed diagnostic commit. Refusing to dispatch a different release."
+            exit 1
+          fi
+      - name: Dispatch existing reviewed BOR AI production workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Only fixed, bounded inputs; never run migrations or optional search.
+          STATUS="$(curl --silent --show-error --output "$RUNNER_TEMP/dispatch-response.json" \
+            --write-out '%{http_code}' --request POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            -H 'Content-Type: application/json' \
+            --data '{"ref":"main","inputs":{"run_chat_smoke":"true","run_tavily_smoke":"false","apply_db_migrations":"false"}}' \
+            "https://api.github.com/repos/$GH_REPO/actions/workflows/bor-ai-deploy.yml/dispatches")"
+          if [[ "$STATUS" != "204" ]]; then
+            echo "::error::Reviewed deploy workflow dispatch was rejected (HTTP $STATUS); no deploy initiated by this job."
+            exit 1
+          fi
+          echo "Queued reviewed BOR AI production deploy with live chat smoke=true, Tavily=false, D1 migrations=false."
