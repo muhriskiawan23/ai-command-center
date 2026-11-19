@@ -51,6 +51,9 @@ jobs:
             ...(rows.length?rows:['| none | none | 0 |']),'',
             'This report does NOT by itself prove a callback came from Duitku; signed HMAC and independent status check are required for accepted callbacks.'].join('\n');
           appendFileSync(process.env.GITHUB_STEP_SUMMARY,out+'\n');
+          // This string contains ONLY validated server-owned static categories
+          // and integer aggregate counters. No raw request/customer/order fields.
+          console.log(out);
           console.log('Read-only staging callback diagnostic summary written to Actions summary.');
           NODE
           rm -f report.json
