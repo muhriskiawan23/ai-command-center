@@ -10,12 +10,20 @@ export async function parseImageOcrLocally(file,{ tesseract=globalThis.Tesseract
   if(!createWorker)throw new Error("Komponen OCR belum siap. Muat ulang halaman dan coba lagi.");
   let worker;
   try {
-    onProgress("Menyiapkan OCR…");
+    onProgress("Menyiapkan OCR di perangkat (0%)…");
     worker=await createWorker("eng+ind",1,{
       workerPath:"https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.js",
       corePath:"https://cdn.jsdelivr.net/npm/tesseract.js-core@5.1.1",
       langPath:"https://tessdata.projectnaptha.com/4.0.0",
-      gzip:true
+      gzip:true,
+      logger:event=>{
+        const progress=Number(event?.progress);
+        if(!Number.isFinite(progress)||progress<0||progress>1)return;
+        const percent=Math.round(progress*100);
+        const status=String(event?.status||"");
+        // Expose only readiness/progress, never OCR text, raw pixels, or URLs.
+        onProgress((/recogniz/i.test(status)?"Mengenali teks":"Menyiapkan OCR")+" · "+percent+"%");
+      }
     });
     onProgress("Membaca teks pada gambar…");
     const result=await worker.recognize(file);

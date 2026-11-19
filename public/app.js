@@ -26,16 +26,19 @@ function markdown(input) {
     const row=document.createElement("article");row.className="message "+role;
     const avatar=document.createElement("div");avatar.className="avatar";avatar.textContent=role==="assistant"?"✳":"";
     const body=document.createElement("div");body.className="message-body";
-    const rendered=document.createElement("div");rendered.className="message-text";rendered.innerHTML=markdown(content);body.append(rendered);
+    const fileMessage=role==="user"?unpackAttachmentMessage(content):{text:content,attachment:null};
+    const visibleContent=fileMessage.text;
+    if(fileMessage.attachment){row.classList.add("message-with-file");body.append(buildSentFileCard(fileMessage.attachment,controls.previewUrl));}
+    const rendered=document.createElement("div");rendered.className="message-text";rendered.innerHTML=markdown(visibleContent);body.append(rendered);
     const actions=document.createElement("div");actions.className="message-actions";
-    const copyBtn=document.createElement("button");copyBtn.type="button";copyBtn.className="message-action";copyBtn.textContent="Salin";copyBtn.addEventListener("click",()=>copyText(content));
-    const markdownBtn=document.createElement("button");markdownBtn.type="button";markdownBtn.className="message-action";markdownBtn.textContent="Markdown";markdownBtn.addEventListener("click",()=>downloadMarkdown(content,role));
-    const plainBtn=document.createElement("button");plainBtn.type="button";plainBtn.className="message-action";plainBtn.textContent="Teks";plainBtn.addEventListener("click",()=>downloadText(content,role));const printBtn=document.createElement("button");printBtn.type="button";printBtn.className="message-action print-message";printBtn.textContent="PDF / Cetak";printBtn.addEventListener("click",()=>printMessage(content,role));actions.append(copyBtn,markdownBtn,plainBtn,printBtn);
+    const copyBtn=document.createElement("button");copyBtn.type="button";copyBtn.className="message-action";copyBtn.textContent="Salin";copyBtn.addEventListener("click",()=>copyText(visibleContent));
+    const markdownBtn=document.createElement("button");markdownBtn.type="button";markdownBtn.className="message-action";markdownBtn.textContent="Markdown";markdownBtn.addEventListener("click",()=>downloadMarkdown(visibleContent,role));
+    const plainBtn=document.createElement("button");plainBtn.type="button";plainBtn.className="message-action";plainBtn.textContent="Teks";plainBtn.addEventListener("click",()=>downloadText(visibleContent,role));const printBtn=document.createElement("button");printBtn.type="button";printBtn.className="message-action print-message";printBtn.textContent="PDF / Cetak";printBtn.addEventListener("click",()=>printMessage(visibleContent,role));actions.append(copyBtn,markdownBtn,plainBtn,printBtn);
     if(role==="assistant"){
       const checklistBtn=document.createElement("button");checklistBtn.type="button";checklistBtn.className="message-action checklist-action";checklistBtn.textContent="Checklist";
       checklistBtn.addEventListener("click",()=>showChecklistExport(content,actions));actions.append(checklistBtn);
     }
-    if(controls.edit){const editBtn=document.createElement("button");editBtn.type="button";editBtn.className="message-action edit-message";editBtn.textContent="Edit & kirim";editBtn.addEventListener("click",()=>replaceLastTurn("edit",content));actions.append(editBtn)}
+    if(controls.edit&&!fileMessage.attachment){const editBtn=document.createElement("button");editBtn.type="button";editBtn.className="message-action edit-message";editBtn.textContent="Edit & kirim";editBtn.addEventListener("click",()=>replaceLastTurn("edit",visibleContent));actions.append(editBtn)}
     if(controls.regenerate){const regenBtn=document.createElement("button");regenBtn.type="button";regenBtn.className="message-action regenerate-message";regenBtn.textContent="Buat ulang";regenBtn.addEventListener("click",()=>replaceLastTurn("regenerate",content));actions.append(regenBtn)}
     body.append(actions);
     if(role==="assistant"&&state===AppState.AUTH&&controls.responseId&&controls.conversationId){
@@ -186,11 +189,11 @@ function exportConversationFile(){
 const AppState={INIT:"initializing",UNAUTH:"unauthenticated",GUEST:"guest",AUTH:"authenticated",EXPIRED:"session-expired",ERROR:"error"};
 const promptEl=$("prompt"),messagesEl=$("messages"),welcomeEl=$("welcome"),conversation=$("conversation");
 const sidebar=$("sidebar"),backdrop=$("backdrop"),menuBtn=$("menuBtn"),workspace=$("workspace");
-let state=AppState.INIT,conversations=[],activeId=null,busy=false,currentUser=null,historyQuery="",archivedView=false,activePdf=null,activeCsv=null;
+let state=AppState.INIT,conversations=[],activeId=null,busy=false,currentUser=null,historyQuery="",archivedView=false,activePdf=null,activeCsv=null,attachmentPending=null,attachmentSequence=0,attachmentThumbnailUrl=null,sentImageUrls=[];
 let historyCursor=null,historyHasMore=false,historyLoadingMore=false,historyRequestSeq=0;
 /* navSeq: setiap navigasi chat menaikkan penghitung ini; pemuatan yang tertimpa navigasi lebih baru dibatalkan. */
 let navSeq=0,loadingChat=false;
-function lockComposer(){const lock=busy||loadingChat;const send=$("send"),stop=$("stopGeneration");send.disabled=lock;send.hidden=busy;stop.hidden=!busy;stop.disabled=!busy;promptEl.readOnly=lock;$("exportConversation").disabled=lock;$("printConversation").disabled=lock;$("attachPdf").disabled=lock;$("attachCsv").disabled=lock;}
+function lockComposer(){const lock=busy||loadingChat;const send=$("send"),stop=$("stopGeneration");send.disabled=lock||Boolean(attachmentPending);send.hidden=busy;stop.hidden=!busy;stop.disabled=!busy;promptEl.readOnly=lock;$("exportConversation").disabled=lock;$("printConversation").disabled=lock;$("attachPdf").disabled=lock;$("attachCsv").disabled=lock;}
 
 /* Yang disimpan di sessionStorage HANYA penanda "sudah memilih Guest" (agar refresh tidak kembali ke Welcome).
    Isi chat guest tidak pernah ditulis ke storage mana pun. */
@@ -210,7 +213,7 @@ function setState(next,notice=""){
   syncInert();renderAuth();
 }
 function resetChatView(){
-  navSeq++;loadingChat=false;activePdf=null;activeCsv=null;renderPdfAttachment();renderCsvAttachment();lockComposer();
+  navSeq++;loadingChat=false;attachmentSequence++;releaseUnsentThumbnail();attachmentPending=null;activePdf=null;activeCsv=null;renderPdfAttachment();renderCsvAttachment();lockComposer();
   activeId=null;$("exportConversation").hidden=true;$("printConversation").hidden=true;messagesEl.replaceChildren();messagesEl.hidden=true;welcomeEl.hidden=false;
   $("workflow").hidden=true;promptEl.value="";resizePrompt();
 }
@@ -747,8 +750,8 @@ async function showChat(cid){
     finally{if(seq===navSeq){loadingChat=false;lockComposer()}}
   }
   if(seq!==navSeq)return null;
-  activePdf=null;activeCsv=null;renderPdfAttachment();renderCsvAttachment();activeId=cid;$("exportConversation").hidden=false;$("printConversation").hidden=false;welcomeEl.hidden=true;messagesEl.hidden=false;messagesEl.replaceChildren();
-  for(let i=0;i<c.messages.length;i++){const m=c.messages[i];const last=i===c.messages.length-1;const previous=i===c.messages.length-2;appendMessage(m.role,m.content,false,{edit:m.role==="user"&&previous&&c.messages.at(-1)?.role==="assistant",regenerate:m.role==="assistant"&&last&&c.messages.at(-2)?.role==="user",responseId:m.role==="assistant"?m.id:null,conversationId:c.serverId||c.id,feedback:m.feedback||null});if(m.role==="assistant"&&m.links?.length)appendSources(m.links);if(m.role==="assistant"&&m.pdf)appendPdfSource(m.pdf);if(m.role==="assistant"&&m.spreadsheet)appendSpreadsheetSource(m.spreadsheet);if(m.role==="assistant"&&m.wordDocument)appendWordDocumentSource(m.wordDocument);}
+  attachmentSequence++;releaseUnsentThumbnail();attachmentPending=null;activePdf=null;activeCsv=null;renderPdfAttachment();renderCsvAttachment();activeId=cid;$("exportConversation").hidden=false;$("printConversation").hidden=false;welcomeEl.hidden=true;messagesEl.hidden=false;messagesEl.replaceChildren();
+  for(let i=0;i<c.messages.length;i++){const m=c.messages[i];const last=i===c.messages.length-1;const previous=i===c.messages.length-2;appendMessage(m.role,m.content,false,{edit:m.role==="user"&&previous&&c.messages.at(-1)?.role==="assistant",regenerate:m.role==="assistant"&&last&&c.messages.at(-2)?.role==="user",responseId:m.role==="assistant"?m.id:null,conversationId:c.serverId||c.id,feedback:m.feedback||null,previewUrl:m.previewUrl||null});if(m.role==="assistant"&&m.links?.length)appendSources(m.links);if(m.role==="assistant"&&m.pdf)appendPdfSource(m.pdf);if(m.role==="assistant"&&m.spreadsheet)appendSpreadsheetSource(m.spreadsheet);if(m.role==="assistant"&&m.wordDocument)appendWordDocumentSource(m.wordDocument);}
   $("workflow").hidden=true;renderHistory();conversation.scrollTop=conversation.scrollHeight;
   return true;
 }
@@ -936,11 +939,102 @@ function appendPdfSource(pdf){
   item.textContent="✓ "+String(pdf.name||"document.pdf")+(pdf.pageCount?" · "+pdf.pageCount+" halaman":" · jumlah halaman tidak terdeteksi")+(pdf.truncated?" · teks dipotong untuk batas konteks":"");
   box.append(item);body.append(box);
 }
-function renderPdfAttachment(){
-  const wrap=$("pdfAttachment"),name=$("pdfName");if(!wrap||!name)return;
-  wrap.hidden=!activePdf;name.textContent=activePdf?activePdf.name+" · PDF siap":"";
-  $("attachPdf").textContent=activePdf?"Ganti file":"＋ Unggah file";
+// Only bounded, display-only file metadata is persisted in the user's text.
+// Raw file bytes never enter chat storage. Extracted text is sent separately
+// as the pre-existing bounded document context.
+function releaseUnsentThumbnail(){
+  if(attachmentThumbnailUrl){
+    URL.revokeObjectURL(attachmentThumbnailUrl);
+    attachmentThumbnailUrl=null;
+  }
 }
+function keepSentThumbnail(url){
+  if(!url||sentImageUrls.includes(url))return;
+  sentImageUrls.push(url);
+  // Bound client memory. History after a reload always has a file-type card,
+  // not raw image pixels or a stale binary link.
+  while(sentImageUrls.length>8){
+    const removed=sentImageUrls.shift();
+    URL.revokeObjectURL(removed);
+    for(const chat of conversations)for(const m of chat.messages||[]){
+      if(m.previewUrl===removed)m.previewUrl=null;
+    }
+  }
+}
+function showImageThumbnail(img,url,show){
+  if(!img)return;
+  if(!show||!url){
+    img.hidden=true;
+    if(img.dataset.url){img.removeAttribute("src");delete img.dataset.url;delete img.dataset.failed;}
+    return;
+  }
+  if(img.dataset.url!==url){
+    img.dataset.url=url;
+    delete img.dataset.failed;
+    img.onerror=()=>{img.dataset.failed=url;img.hidden=true;};
+    img.src=url;
+  }
+  img.hidden=img.dataset.failed===url;
+}
+function safeAttachmentName(name){
+  const clean=String(name||"lampiran").replace(/[\/\\\x00-\x1f\x7f]/g,"_").trim()||"lampiran";
+  if(clean.length<=110)return clean;
+  const ext=clean.match(/\.[a-z0-9]{1,5}$/i)?.[0]||"";
+  return clean.slice(0,109-ext.length)+"…"+ext;
+}
+function attachmentFileType(name){
+  const extension=(String(name||"").match(/\.([a-z0-9]{2,5})$/i)?.[1]||"file").toUpperCase();
+  return ["PDF","DOCX","XLSX","CSV","PPTX","JPG","JPEG","PNG","WEBP"].includes(extension)?(extension==="JPEG"?"JPG":extension):"FILE";
+}
+function packAttachmentMessage(text,attached){
+  return attached?text+"\n\n[BORAI_FILE:"+encodeURIComponent(safeAttachmentName(attached.name))+"]":text;
+}
+function unpackAttachmentMessage(content){
+  const text=String(content||"");
+  const marker=text.match(/\n\n\[BORAI_FILE:([A-Za-z0-9_.!~*'()%+-]{1,450})\]$/);
+  if(!marker)return {text,attachment:null};
+  try{
+    const name=safeAttachmentName(decodeURIComponent(marker[1]));
+    return {text:text.slice(0,-marker[0].length),attachment:{name,type:attachmentFileType(name)}};
+  }catch{return {text,attachment:null};}
+}
+function buildSentFileCard(attached,previewUrl=null){
+  const tile=document.createElement("div");tile.className="sent-file-card";
+  const badge=document.createElement("span");badge.className="sent-file-type";
+  badge.textContent=attached.type||attachmentFileType(attached.name);
+  if(typeof previewUrl==="string"&&previewUrl.startsWith("blob:")){
+    const img=document.createElement("img");img.className="sent-file-image";img.alt="";
+    img.onerror=()=>{img.remove();badge.hidden=false;};
+    img.src=previewUrl;badge.hidden=true;tile.append(img);
+  }
+  const summary=document.createElement("span");summary.className="sent-file-summary";
+  const title=document.createElement("strong");title.textContent=safeAttachmentName(attached.name);
+  const note=document.createElement("small");
+  note.textContent=/\.(?:jpe?g|png|webp)$/i.test(attached.name)?"Teks gambar melalui OCR lokal":"Diproses secara lokal";
+  summary.append(title,note);tile.append(badge,summary);return tile;
+}
+function renderAttachmentPreview(){
+  const preview=$("attachmentPreview"),progress=$("attachmentProgress");
+  const pending=attachmentPending;
+  const pdf=pending||activePdf,csv=pending?null:activeCsv;
+  const pWrap=$("pdfAttachment"),cWrap=$("csvAttachment");
+  preview.hidden=!pdf&&!csv;
+  pWrap.hidden=!pdf;cWrap.hidden=!csv;
+  if(pdf){pWrap.dataset.filetype=attachmentFileType(pdf.name);$("pdfName").textContent=safeAttachmentName(pdf.name);}
+  if(csv){cWrap.dataset.filetype=attachmentFileType(csv.name);$("csvName").textContent=safeAttachmentName(csv.name);}
+  progress.hidden=!pending;
+  progress.textContent=pending?(pending.error?"Gagal membaca: ":"")+(pending.stage||"Membaca file di perangkat…"):"";
+  progress.dataset.error=pending?.error?"true":"false";
+  preview.dataset.status=pending?(pending.error?"error":"processing"):(pdf||csv?"ready":"empty");
+  $("clearPdf").setAttribute("aria-label","Lepas lampiran");
+  $("clearCsv").setAttribute("aria-label","Lepas lampiran");
+
+  const isImage=name=>/\.(?:jpe?g|png|webp)$/i.test(String(name||""));
+  showImageThumbnail($("pdfThumbnail"),attachmentThumbnailUrl,Boolean(pdf&&isImage(pdf.name)));
+  showImageThumbnail($("csvThumbnail"),attachmentThumbnailUrl,Boolean(csv&&isImage(csv.name)));
+  $("attachPdf").textContent=pdf||csv?"＋ Ganti lampiran":"＋ Unggah file";
+}
+function renderPdfAttachment(){renderAttachmentPreview();}
 function appendSpreadsheetSource(spreadsheet){
   const row=messagesEl.lastElementChild;const body=row&&row.querySelector(".message-body");if(!body||!spreadsheet)return;
   const box=document.createElement("div");box.className="sources csv-source";
@@ -966,36 +1060,18 @@ function appendImageOcrSource(item){
   detail.textContent="✓ "+item.name+" · Hanya teks dikenali, bukan analisis visual"+(item.truncated?" · teks dibatasi":"");
   box.append(label,detail);body.append(box);
 }
-function renderCsvAttachment(){
-  const wrap=$("csvAttachment"),name=$("csvName");if(!wrap||!name)return;
-  wrap.hidden=!activeCsv;const filename=activeCsv?.name||"",isDocx=/\.docx$/i.test(filename),isPptx=/\.pptx$/i.test(filename),isExcel=/\.xlsx$/i.test(filename);
-  const label=activeCsv?.kind==="image-ocr"?"Gambar OCR siap":isDocx?"Word siap":isPptx?"PowerPoint siap":isExcel?"Excel siap":"CSV siap";
-  name.textContent=activeCsv?filename+" · "+label:"";
-  $("attachCsv").textContent=activeCsv?(isDocx?"Ganti Word":isPptx?"Ganti PowerPoint":isExcel?"Ganti Excel":"Ganti CSV"):"＋ File · CSV / XLSX / PPTX / DOCX";
-}
-async function uploadPdf(file){
-  if(!file)return;
-  if(!file.name.toLowerCase().endsWith(".pdf")){toast("Pilih file PDF (.pdf).");return;}
-  if(file.size>8*1024*1024){toast("Ukuran PDF maksimal 8 MB.");return;}
-  if(file.size<8){toast("File PDF tidak valid.");return;}
-  const button=$("attachPdf");button.disabled=true;button.textContent="Membaca…";
-  try{
-    const {extractPdfLocally}=await import("/pdf-ocr.js");
-    activeCsv=null;renderCsvAttachment();
-    activePdf=await extractPdfLocally(file,{
-      pdfjs:window.pdfjsLib,
-      tesseract:window.Tesseract,
-      onProgress:({status,page,total})=>{
-        if(status==="loading-language")button.textContent="Unduh model OCR…";
-        else if(status==="recognizing")button.textContent="OCR halaman "+page+"/"+total+"…";
-        else if(status==="rendering")button.textContent="Render halaman "+page+"/"+total+"…";
-        else button.textContent="Memproses PDF…";
-      }
-    });
-    renderPdfAttachment();
-    toast(activePdf.ocr?"OCR lokal selesai. Teks PDF siap dianalisis.":"PDF berhasil dibaca secara lokal. Tanyakan isinya di kolom chat.");
-  }catch(error){toast(error.message||"PDF gagal dibaca.");}
-  finally{button.disabled=busy||loadingChat;renderPdfAttachment()}
+function renderCsvAttachment(){renderAttachmentPreview();}
+async function readPdfFile(file,onProgress){
+  const {extractPdfLocally}=await import("/pdf-ocr.js");
+  return extractPdfLocally(file,{
+    pdfjs:window.pdfjsLib,tesseract:window.Tesseract,
+    onProgress:({status,page,total})=>{
+      const message=status==="loading-language"?"Mengunduh model OCR…":
+        status==="recognizing"?"OCR halaman "+page+"/"+total+"…":
+        status==="rendering"?"Memuat halaman "+page+"/"+total+"…":"Membaca PDF…";
+      onProgress(message);
+    }
+  });
 }
 async function ensurePptxLibrary(){if(window.JSZip?.loadAsync)return window.JSZip;if(window.pptxLibraryLoading)return window.pptxLibraryLoading;window.pptxLibraryLoading=new Promise((resolve,reject)=>{const s=document.createElement("script");s.src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js";s.onload=()=>window.JSZip?.loadAsync?resolve(window.JSZip):reject(Error("Pustaka PowerPoint tidak berhasil dimuat."));s.onerror=()=>reject(Error("Pustaka PowerPoint gagal diunduh. Periksa koneksi lalu coba lagi."));document.head.append(s)});try{return await window.pptxLibraryLoading}finally{window.pptxLibraryLoading=null}}
 async function ensureXlsxLibrary(){
@@ -1010,44 +1086,73 @@ async function ensureXlsxLibrary(){
   });
   try{return await window.xlsxLibraryLoading}finally{window.xlsxLibraryLoading=null}
 }
-async function uploadCsv(file){
-  if(!file)return;
-  const filename=file.name.toLowerCase(),isDocx=filename.endsWith(".docx"),isExcel=filename.endsWith(".xlsx"),isPptx=filename.endsWith(".pptx");
-  if(!isDocx&&!isExcel&&!isPptx&&!filename.endsWith(".csv")){toast("Pilih file CSV, Excel (.xlsx), PowerPoint (.pptx), atau Word (.docx).");return;}
-  if(file.size>5*1024*1024){toast("Ukuran file maksimal 5 MB.");return;}
-  if(file.size<1){toast("File kosong.");return;}
-  const button=$("attachPdf");button.disabled=true;button.textContent="Membaca…";
-  try{
-    let parsed;
-    if(isDocx){const jszip=await ensurePptxLibrary();const {parseDocxLocally}=await import("/docx-reader.js");parsed=await parseDocxLocally(file,{jszip});parsed.kind="word-document";}
-    else if(isPptx){const jszip=await ensurePptxLibrary();const {parsePptxLocally}=await import("/pptx-reader.js");parsed=await parsePptxLocally(file,{jszip});parsed.kind="presentation";}
-    else if(isExcel){const xlsx=await ensureXlsxLibrary();const {parseXlsxLocally}=await import("/xlsx-reader.js");parsed=await parseXlsxLocally(file,{xlsx});}
-    else{const {parseCsvLocally}=await import("/csv-reader.js");parsed=await parseCsvLocally(file);}
-    activePdf=null;renderPdfAttachment();activeCsv=parsed;renderCsvAttachment();
-    toast(isDocx?"Word berhasil dibaca secara lokal. Tanyakan isi dokumen di kolom chat.":isPptx?"PowerPoint berhasil dibaca secara lokal. Tanyakan isi slide di kolom chat.":isExcel?"Excel berhasil dibaca secara lokal. Tanyakan analisisnya di kolom chat.":"CSV berhasil dibaca secara lokal. Tanyakan analisisnya di kolom chat.");
-  }catch(error){toast(error.message||"File gagal dibaca.");}
-  finally{button.disabled=busy||loadingChat;renderCsvAttachment();renderPdfAttachment()}
+async function readStructuredFile(file){
+  const filename=file.name.toLowerCase();
+  const isDocx=filename.endsWith(".docx"),isExcel=filename.endsWith(".xlsx"),isPptx=filename.endsWith(".pptx");
+  if(isDocx){
+    const jszip=await ensurePptxLibrary();
+    const {parseDocxLocally}=await import("/docx-reader.js");
+    const parsed=await parseDocxLocally(file,{jszip});
+    return {...parsed,kind:"word-document"};
+  }
+  if(isPptx){
+    const jszip=await ensurePptxLibrary();
+    const {parsePptxLocally}=await import("/pptx-reader.js");
+    const parsed=await parsePptxLocally(file,{jszip});
+    return {...parsed,kind:"presentation"};
+  }
+  if(isExcel){
+    const xlsx=await ensureXlsxLibrary();
+    const {parseXlsxLocally}=await import("/xlsx-reader.js");
+    return parseXlsxLocally(file,{xlsx});
+  }
+  const {parseCsvLocally}=await import("/csv-reader.js");
+  return parseCsvLocally(file);
 }
-async function uploadImage(file){
-  if(!file)return;
-  const button=$("attachPdf");button.disabled=true;button.textContent="Membaca gambar…";
-  try{
-    const {parseImageOcrLocally}=await import("/image-ocr.js");
-    const parsed=await parseImageOcrLocally(file,{tesseract:window.Tesseract,onProgress:message=>button.textContent=message});
-    activePdf=null;activeCsv=parsed;renderPdfAttachment();renderCsvAttachment();
-    toast("Teks gambar berhasil dibaca secara lokal. BOR AI belum memeriksa gambar secara visual.");
-  }catch(e){toast(e.message||"Gambar gagal dibaca.");}
-  finally{button.disabled=busy||loadingChat;renderPdfAttachment();}
+async function readImageFile(file,onProgress){
+  const {parseImageOcrLocally}=await import("/image-ocr.js");
+  return parseImageOcrLocally(file,{tesseract:window.Tesseract,onProgress});
 }
 async function uploadAnyFile(file){
-  if(!file)return;
-  const name=String(file.name||"").toLowerCase();
-  if(name.endsWith(".pdf"))return uploadPdf(file);
-  if(/\.(?:jpe?g|png|webp)$/i.test(name))return uploadImage(file);
-  if(/\.(?:csv|xlsx|pptx|docx)$/i.test(name))return uploadCsv(file);
-  toast("Format belum didukung. Pilih PDF, DOCX, XLSX, PPTX, CSV, JPG, PNG, atau WEBP.");
+  if(!file||busy||loadingChat)return;
+  const name=safeAttachmentName(file.name),lower=String(file.name||"").toLowerCase();
+  const pdf=lower.endsWith(".pdf"),image=/\.(?:jpe?g|png|webp)$/.test(lower);
+  const structured=/\.(?:csv|xlsx|pptx|docx)$/.test(lower);
+  if(!pdf&&!image&&!structured){toast("Format belum didukung. Pilih PDF, Word, Excel, PowerPoint, CSV, JPG, PNG, atau WEBP.");return;}
+  const limit=pdf?8*1024*1024:5*1024*1024;
+  if(file.size<1||file.size>limit){toast("Ukuran file harus 1 byte–"+(pdf?"8":"5")+" MB.");return;}
+  const request=++attachmentSequence;
+  releaseUnsentThumbnail();
+  if(image&&URL.createObjectURL)attachmentThumbnailUrl=URL.createObjectURL(file);
+  activePdf=null;activeCsv=null;
+  attachmentPending={name,stage:image?"Menyiapkan OCR di perangkat…":pdf?"Membaca halaman PDF…":"Membaca dokumen di perangkat…",error:false};
+  $("attachmentMenu").open=false;
+  renderAttachmentPreview();lockComposer();
+  const onProgress=message=>{
+    if(request!==attachmentSequence||!attachmentPending)return;
+    attachmentPending.stage=String(message||"Membaca file…").slice(0,100);
+    renderAttachmentPreview();
+  };
+  try{
+    const parsed=pdf?await readPdfFile(file,onProgress):image?await readImageFile(file,onProgress):await readStructuredFile(file);
+    // Changing chats, removing, or replacing files invalidates an in-flight OCR result.
+    if(request!==attachmentSequence)return;
+    if(pdf)activePdf=parsed;else activeCsv=parsed;
+    attachmentPending=null;
+    toast(image?"OCR selesai. Hanya teks hasil OCR yang bisa dianalisis.":"File siap dikirim bersama pesan.");
+  }catch(error){
+    if(request!==attachmentSequence)return;
+    attachmentPending={name,stage:String(error?.message||"File tidak dapat diproses.").slice(0,160),error:true};
+    toast("Lampiran gagal diproses. Lepas atau ganti file.");
+  }finally{
+    if(request===attachmentSequence){renderAttachmentPreview();lockComposer();}
+  }
 }
-function appendFailedTurn(message,text,noRetry=false,requestId=null){
+function clearSelectedAttachment(){
+  attachmentSequence++;releaseUnsentThumbnail();attachmentPending=null;activePdf=null;activeCsv=null;
+  renderAttachmentPreview();lockComposer();
+}
+function appendFailedTurn(message,text,noRetry=false,requestId=null,attachmentData=null,previewUrl=null){
   appendMessage("assistant",message);
   const row=messagesEl.lastElementChild;const body=row&&row.querySelector(".message-body");if(!body)return;
   row.classList.add("failed");
@@ -1056,29 +1161,38 @@ function appendFailedTurn(message,text,noRetry=false,requestId=null){
   btn.addEventListener("click",()=>{
     if(busy||loadingChat)return;
     const prev=row.previousElementSibling;row.remove();if(prev&&prev.classList.contains("user"))prev.remove();
-    promptEl.value=text;resizePrompt();submit({requestId});
+    promptEl.value=text;resizePrompt();submit({requestId,attachmentData,previewUrl});
   });
   body.append(btn);
 }
 async function submit(options={}){
-  if(busy||loadingChat||!inChatView())return;const text=promptEl.value.trim();if(!text)return;
+  if(busy||loadingChat||!inChatView()||attachmentPending)return;
+  const selectedPdf=options.attachmentData?.pdf||activePdf;
+  const selectedCsv=options.attachmentData?.csv||activeCsv;
+  const text=promptEl.value.trim()||((selectedPdf||selectedCsv)?"Tolong analisis isi file terlampir.":"");
+  if(!text)return;
+  const savedText=packAttachmentMessage(text,selectedPdf||selectedCsv);
+  if(savedText.length>12000){toast("Pesan terlalu panjang. Pendekkan teks sebelum mengirim lampiran.");return;}
   const replacing=options.replaceLastTurn===true;const previousTurn=options.previousTurn||null;
   const requestId=options.requestId||(pendingRetryRequest?.text===text&&pendingRetryRequest.conversationId===activeId?pendingRetryRequest.requestId:crypto.randomUUID());
   busy=true;activeChatController=new AbortController();lockComposer();const agent=$("agent").value;
   let createdNew=false;
   if(!activeId){activeId=id();createdNew=true;conversations.push({id:activeId,serverId:null,title:text.replace(/\s+/g," ").slice(0,72),messages:[],updated:Date.now(),loaded:true})}
   const chat=conversations.find(c=>c.id===activeId);$("exportConversation").hidden=false;$("printConversation").hidden=false;const startId=chat.id;
-  const history=buildHistory(chat);const userEntry={role:"user",content:text};chat.messages.push(userEntry);chat.updated=Date.now();
-  welcomeEl.hidden=true;messagesEl.hidden=false;appendMessage("user",text);promptEl.value="";resizePrompt();showTyping();renderHistory();
+  const history=buildHistory(chat);const sentPreviewUrl=options.previewUrl||attachmentThumbnailUrl;
+  if(attachmentThumbnailUrl===sentPreviewUrl)attachmentThumbnailUrl=null;
+  keepSentThumbnail(sentPreviewUrl);
+  const userEntry={role:"user",content:savedText,previewUrl:sentPreviewUrl||null};chat.messages.push(userEntry);chat.updated=Date.now();
+  welcomeEl.hidden=true;messagesEl.hidden=false;appendMessage("user",savedText,true,{previewUrl:sentPreviewUrl});promptEl.value="";resizePrompt();clearSelectedAttachment();showTyping();renderHistory();
   if(createdNew)replaceRoute({name:"chat",id:chat.id});
   const stillActive=()=>activeId===startId;const start=Date.now();
   try{
-    const payload={message:text,agent,requestId,language:window.BORLocale?.current||"en"};const customization=readCustomization();if(customization)payload.customization=customization;if(activePdf)payload.document={name:activePdf.name,content:activePdf.content,truncated:activePdf.truncated};if(activeCsv?.kind==="image-ocr")payload.imageOcr={name:activeCsv.name,content:activeCsv.content,truncated:activeCsv.truncated};else if(activeCsv?.kind==="word-document")payload.wordDocument={name:activeCsv.name,content:activeCsv.content,paragraphCount:activeCsv.paragraphCount,truncated:activeCsv.truncated};else if(activeCsv?.kind==="presentation")payload.presentation={name:activeCsv.name,content:activeCsv.content,slideCount:activeCsv.slideCount,truncated:activeCsv.truncated};else if(activeCsv)payload.spreadsheet={name:activeCsv.name,content:activeCsv.content,rowCount:activeCsv.rowCount,columnCount:activeCsv.columnCount,truncated:activeCsv.truncated};if(history.length)payload.history=history;if(state===AppState.AUTH&&chat.serverId)payload.conversationId=chat.serverId;if(replacing&&state===AppState.AUTH&&chat.serverId)payload.replaceLastTurn=true;
+    const payload={message:savedText,agent,requestId,language:window.BORLocale?.current||"en"};const customization=readCustomization();if(customization)payload.customization=customization;if(selectedPdf)payload.document={name:selectedPdf.name,content:selectedPdf.content,truncated:selectedPdf.truncated};if(selectedCsv?.kind==="image-ocr")payload.imageOcr={name:selectedCsv.name,content:selectedCsv.content,truncated:selectedCsv.truncated};else if(selectedCsv?.kind==="word-document")payload.wordDocument={name:selectedCsv.name,content:selectedCsv.content,paragraphCount:selectedCsv.paragraphCount,truncated:selectedCsv.truncated};else if(selectedCsv?.kind==="presentation")payload.presentation={name:selectedCsv.name,content:selectedCsv.content,slideCount:selectedCsv.slideCount,truncated:selectedCsv.truncated};else if(selectedCsv)payload.spreadsheet={name:selectedCsv.name,content:selectedCsv.content,rowCount:selectedCsv.rowCount,columnCount:selectedCsv.columnCount,truncated:selectedCsv.truncated};if(history.length)payload.history=history;if(state===AppState.AUTH&&chat.serverId)payload.conversationId=chat.serverId;if(replacing&&state===AppState.AUTH&&chat.serverId)payload.replaceLastTurn=true;
     const data=await postJson("/api/chat",payload,CHAT_TIMEOUT_MS,activeChatController.signal);
     if(typeof data.response!=="string"||!data.response.trim())throw new Error("AI tidak menghasilkan jawaban.");
     if(pendingRetryRequest?.requestId===requestId)pendingRetryRequest=null;
-    chat.messages.push({role:"assistant",content:data.response,id:data.responseId||null,feedback:null,links:data.links||[],pdf:data.pdf||null,spreadsheet:data.spreadsheet||null,wordDocument:activeCsv?.kind==="word-document"?{name:activeCsv.name,paragraphCount:activeCsv.paragraphCount,truncated:activeCsv.truncated}:null});chat.updated=Date.now();
-    if(stillActive()){$("typing")?.remove();appendMessage("assistant",data.response,true,{regenerate:true,responseId:data.saved?data.responseId:null,conversationId:data.saved?data.conversationId:null});addEditActionToLastUser();appendSources(data.links);appendToolActivity(data.toolActivity);appendFormDraft(data.formDraft);if(data.pdf)appendPdfSource(data.pdf);if(data.spreadsheet)appendSpreadsheetSource(data.spreadsheet);if(data.presentation)appendPresentationSource(data.presentation);if(activeCsv?.kind==="word-document")appendWordDocumentSource(activeCsv);if(activeCsv?.kind==="image-ocr")appendImageOcrSource(activeCsv);renderWorkflow(data.steps)}
+    chat.messages.push({role:"assistant",content:data.response,id:data.responseId||null,feedback:null,links:data.links||[],pdf:data.pdf||null,spreadsheet:data.spreadsheet||null,wordDocument:selectedCsv?.kind==="word-document"?{name:selectedCsv.name,paragraphCount:selectedCsv.paragraphCount,truncated:selectedCsv.truncated}:null});chat.updated=Date.now();
+    if(stillActive()){$("typing")?.remove();appendMessage("assistant",data.response,true,{regenerate:true,responseId:data.saved?data.responseId:null,conversationId:data.saved?data.conversationId:null});addEditActionToLastUser();appendSources(data.links);appendToolActivity(data.toolActivity);appendFormDraft(data.formDraft);if(data.pdf)appendPdfSource(data.pdf);if(data.spreadsheet)appendSpreadsheetSource(data.spreadsheet);if(data.presentation)appendPresentationSource(data.presentation);if(selectedCsv?.kind==="word-document")appendWordDocumentSource(selectedCsv);if(selectedCsv?.kind==="image-ocr")appendImageOcrSource(selectedCsv);renderWorkflow(data.steps)}
     if(state===AppState.AUTH&&data.saved&&data.conversationId){
       chat.serverId=data.conversationId;chat.id=data.conversationId;chat.loaded=true;
       if(stillActive()){activeId=chat.id;replaceRoute({name:"chat",id:chat.id})}
@@ -1093,6 +1207,7 @@ async function submit(options={}){
       const at=chat.messages.indexOf(userEntry);if(at>=0)chat.messages.splice(at,1);
       if(replacing&&previousTurn){chat.messages.push(previousTurn.user,previousTurn.assistant);if(stillActive()){$("typing")?.remove();messagesEl.lastElementChild?.remove();appendMessage("user",previousTurn.user.content,true,{edit:true});appendMessage("assistant",previousTurn.assistant.content,true,{regenerate:true})}}
       else if(stillActive()){$("typing")?.remove();messagesEl.lastElementChild?.remove()}
+      if(stillActive()){promptEl.value=text;resizePrompt();if(!activePdf&&!activeCsv){activePdf=selectedPdf;activeCsv=selectedCsv;if(sentPreviewUrl){attachmentThumbnailUrl=sentPreviewUrl;sentImageUrls=sentImageUrls.filter(url=>url!==sentPreviewUrl);}renderAttachmentPreview();}}
       toast("Generasi dihentikan.");
       return;
     }
@@ -1108,7 +1223,7 @@ async function submit(options={}){
       }
       promptEl.value=text;resizePrompt();toast(message);
     }else{
-      if(stillActive()){$("typing")?.remove();appendFailedTurn(message,text,e.code==="daily_limit",requestId);if(e.data?.links?.length)appendSources(e.data.links)}
+      if(stillActive()){$("typing")?.remove();appendFailedTurn(message,text,e.code==="daily_limit",requestId,{pdf:selectedPdf,csv:selectedCsv},sentPreviewUrl);if(e.data?.links?.length)appendSources(e.data.links)}
       toast("Permintaan gagal");
     }
   }finally{busy=false;activeChatController=null;lockComposer();renderHistory();if(!isDrawerMode())promptEl.focus()}
@@ -1116,6 +1231,7 @@ async function submit(options={}){
 function addEditActionToLastUser(){
   const row=messagesEl.children[messagesEl.children.length-2];if(!row?.classList.contains("user"))return;
   const actions=row.querySelector(".message-actions");if(!actions||actions.querySelector(".edit-message"))return;
+  if(row.querySelector(".sent-file-card"))return; // raw attachment bytes are never saved; cannot blindly re-edit
   const content=row.querySelector(".message-text")?.textContent||"";
   const btn=document.createElement("button");btn.type="button";btn.className="message-action edit-message";btn.textContent="Edit & kirim";
   btn.addEventListener("click",()=>replaceLastTurn("edit",content));actions.append(btn);
@@ -1125,6 +1241,7 @@ function replaceLastTurn(action,content){
   const chat=conversations.find(c=>c.id===activeId);if(!chat||chat.messages.length<2)return;
   const assistant=chat.messages.at(-1),user=chat.messages.at(-2);
   if(user.role!=="user"||assistant.role!=="assistant")return;
+  if(unpackAttachmentMessage(user.content).attachment){toast("Unggah ulang file untuk membuat ulang jawaban. Berkas asli tidak disimpan BOR AI.");return;}
   let nextText=user.content;
   if(action==="edit"){
     const edited=window.prompt("Edit pesan terakhir:",user.content);
@@ -1230,10 +1347,10 @@ $("googleRetry").addEventListener("click",()=>loadGoogle(true));
 $("chatForm").addEventListener("submit",e=>{e.preventDefault();submit()});
 $("attachPdf").addEventListener("click",()=>{if(!busy&&!loadingChat)$("pdfFile").click()});
 $("pdfFile").addEventListener("change",event=>{const file=event.target.files?.[0];event.target.value="";uploadAnyFile(file)});
-$("clearPdf").addEventListener("click",()=>{activePdf=null;renderPdfAttachment();toast("PDF dilepas dari chat.")});
+$("clearPdf").addEventListener("click",()=>{clearSelectedAttachment();toast("Lampiran dilepas dari pesan.")});
 $("attachCsv").addEventListener("click",()=>{if(!busy&&!loadingChat)$("csvFile").click()});
-$("csvFile").addEventListener("change",event=>{const file=event.target.files?.[0];event.target.value="";uploadCsv(file)});
-$("clearCsv").addEventListener("click",()=>{activeCsv=null;renderCsvAttachment();toast("CSV dilepas dari chat.")});
+$("csvFile").addEventListener("change",event=>{const file=event.target.files?.[0];event.target.value="";uploadAnyFile(file)});
+$("clearCsv").addEventListener("click",()=>{clearSelectedAttachment();toast("Lampiran dilepas dari pesan.")});
 $("stopGeneration").addEventListener("click",()=>{if(busy)activeChatController?.abort()});
 promptEl.addEventListener("input",resizePrompt);
 /* Enter sengaja TIDAK mengirim: Enter = baris baru di semua perangkat. Satu-satunya cara kirim lewat UI adalah tombol panah. */

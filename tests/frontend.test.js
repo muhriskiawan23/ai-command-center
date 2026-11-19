@@ -132,11 +132,25 @@ test("Word DOCX upload is locally extracted and sent as an untrusted word docume
   assert.match(page, /\.docx,application\/vnd\.openxmlformats-officedocument\.wordprocessingml\.document/);
   assert.match(appJs, /parseDocxLocally/);
   assert.match(appJs, /payload\.wordDocument=/);
-  assert.match(appJs, /kind="word-document"/);
+  assert.match(appJs, /kind:"word-document"/);
   assert.match(page, /Word Reader/);
   assert.match(page, /gambar, header\/footer, komentar, dan objek tertanam tidak dibaca/);
   assert.match(appJs, /function appendWordDocumentSource/);
-  assert.match(appJs, /wordDocument:activeCsv\?\.kind==="word-document"/);
+  assert.match(appJs, /wordDocument:selectedCsv\?\.kind==="word-document"/);
+});
+
+test("file card is moved from composer to the sent user message with no raw binary storage", () => {
+  assert.match(page, /id="attachmentPreview"/);
+  assert.match(page, /id="attachmentProgress"/);
+  assert.match(appJs, /function packAttachmentMessage/);
+  assert.match(appJs, /function unpackAttachmentMessage/);
+  assert.match(appJs, /appendMessage\("user",savedText,true,\{previewUrl:sentPreviewUrl\}\)/);
+  assert.match(appJs, /clearSelectedAttachment\(\);showTyping\(\)/);
+  assert.match(appJs, /const selectedCsv=options\.attachmentData\?\.csv\|\|activeCsv/);
+  assert.match(appJs, /if\(request!==attachmentSequence\)return/);
+  assert.match(appJs, /URL\.createObjectURL\(file\)/);
+  assert.match(appJs, /function keepSentThumbnail/);
+  assert.match(appJs, /buildSentFileCard\(fileMessage\.attachment,controls\.previewUrl\)/);
 });
 
 test("appendWordDocumentSource does not shadow the browser document", () => {

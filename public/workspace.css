@@ -274,3 +274,41 @@ html[dir="rtl"] .composer-bottom{flex-direction:row}
 .form-draft-actions{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
 .form-draft-actions button,.form-draft-actions a{display:inline-flex;align-items:center;min-height:38px;padding:8px 12px;border:1px solid var(--line);border-radius:9px;color:var(--text);background:var(--surface);font-size:12px;font-weight:600;text-decoration:none}
 .form-draft-actions button:hover,.form-draft-actions a:hover{border-color:var(--accent);background:var(--soft-accent)}
+
+
+/* Unified, ChatGPT-style attachment workflow. All bytes stay local; only the
+   supported bounded text context is sent to BOR AI after the user taps Send. */
+.attachment-preview{display:flex;flex-direction:column;gap:8px;padding:2px 2px 12px;max-width:100%;border-bottom:1px solid var(--line);margin-bottom:10px}
+.attachment-preview[hidden]{display:none!important}
+.attachment-preview .attachment-chips{display:flex;gap:8px;flex-wrap:wrap;max-width:100%}
+.attachment-preview .pdf-attachment{display:flex;align-items:center;gap:10px;max-width:min(100%,350px);min-width:0;min-height:60px;padding:9px 10px;border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:12px;box-shadow:none;font-size:12px}
+.attachment-preview .pdf-attachment::before,.sent-file-type{content:attr(data-filetype);display:grid;place-items:center;flex:0 0 46px;min-width:46px;height:40px;border-radius:8px;background:var(--soft-accent);color:var(--text);font-size:10px;font-weight:700;letter-spacing:.04em}
+.attachment-preview .pdf-attachment>span{display:block;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+.attachment-preview .pdf-attachment>button{display:grid;place-items:center;flex:0 0 28px;width:28px;height:28px;padding:0;border:1px solid var(--line);border-radius:50%;font-size:16px;background:var(--surface);color:var(--text)}
+.attachment-preview .pdf-attachment>button:hover{background:var(--hover)}
+.attachment-progress{display:flex;gap:8px;align-items:center;margin:0;padding:0 2px;color:var(--muted);font-size:11px;line-height:1.5;overflow-wrap:anywhere}
+.attachment-progress:not([data-error="true"])::before{content:"";display:block;flex:0 0 13px;width:13px;height:13px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:attachment-spin .9s linear infinite}
+.attachment-progress[data-error="true"]{color:var(--danger)}
+@keyframes attachment-spin{to{transform:rotate(360deg)}}
+.message.user .message-body:has(.sent-file-card){min-width:min(285px,92%);max-width:min(92%,520px)}
+.sent-file-card{display:flex;align-items:center;gap:10px;padding:9px 10px;margin:0 0 10px;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--text);min-width:0;max-width:100%}
+.sent-file-card .sent-file-type{content:none;flex:0 0 45px;min-width:45px;width:45px;height:42px}
+.sent-file-card .sent-file-summary{display:flex;flex-direction:column;min-width:0;gap:2px}
+.sent-file-card .sent-file-summary strong{display:block;max-width:100%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-size:12px;line-height:1.3}
+.sent-file-card .sent-file-summary small{font-size:10px;color:var(--muted);line-height:1.4}
+.message.user .message-text{min-width:0}
+@media(max-width:760px){
+ .attachment-preview{padding-bottom:9px;margin-bottom:7px}
+ .attachment-preview .pdf-attachment{max-width:100%;min-height:54px}
+ .message.user .message-body:has(.sent-file-card){max-width:94%;min-width:min(265px,94%)}
+ .sent-file-card{padding:8px;gap:8px}
+}
+@media(prefers-reduced-motion:reduce){.attachment-progress:not([data-error="true"])::before{animation:none}}
+
+
+/* Local thumbnail for image attachments; gracefully fall back to format badge. */
+.attachment-preview .attachment-thumbnail{display:block;flex:0 0 46px;width:46px;height:46px;border-radius:8px;object-fit:cover;background:var(--panel2)}
+.attachment-preview .pdf-attachment:has(>.attachment-thumbnail:not([hidden]))::before{display:none}
+.attachment-preview .attachment-thumbnail[hidden]{display:none!important}
+.sent-file-image{display:block;flex:0 0 48px;width:48px;height:48px;object-fit:cover;border-radius:8px;background:var(--panel2)}
+.sent-file-card .sent-file-type[hidden]{display:none!important}
