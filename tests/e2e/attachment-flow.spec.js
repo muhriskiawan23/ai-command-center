@@ -102,6 +102,7 @@ test("signed-in photo conversation never stores image pixels in D1 chat messages
  await loginAs(context,app,account);
  await page.goto(app.url);
  await setTextImage(page,"blue.jpg");
+ await expect(page.locator("#csvAttachment")).toBeVisible();
  await expect(page.locator("#attachmentProgress")).toBeHidden();
  await page.locator("#prompt").fill("Jelaskan gambar ini");
  await page.locator("#send").click();
