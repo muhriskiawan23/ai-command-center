@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { validateImageVision, analyzeImageWithVision, buildImageVisionContext, VISION_MODEL, VISION_MAX_REQUEST_BYTES, reserveVisionDailyUsage } from "../src/image-vision.js";
+import { validateImageVision, analyzeImageWithVision, buildImageVisionContext, VISION_MODEL, VISION_MAX_REQUEST_BYTES, reserveVisionDailyUsage, VisionInferenceError, classifyVisionFailure } from "../src/image-vision.js";
 import { createD1 } from "./e2e/harness.js";
 import { prepareImageForVision } from "../public/image-vision.js";
 
@@ -40,8 +40,22 @@ test("vision inference passes real JPEG data URI and user's question to Cloudfla
 });
 
 test("vision model errors never produce hallucinated fallback observations",async()=>{
- await assert.rejects(analyzeImageWithVision({run:async()=>({answer:""})},photo,"What is it?"),/no usable description/);
- await assert.rejects(analyzeImageWithVision({run:async()=>{throw Error("offline")}},photo,"What is it?"),/offline/);
+ await assert.rejects(analyzeImageWithVision({run:async()=>({answer:""})},photo,"What is it?"),
+   error=>error instanceof VisionInferenceError && error.reason==="empty_model_answer");
+ await assert.rejects(analyzeImageWithVision({run:async()=>{throw Error("offline")}},photo,"What is it?"),
+   error=>error instanceof VisionInferenceError && error.reason==="unknown");
+});
+
+test("vision errors are classified without leaking provider payload or prompts",()=>{
+ assert.deepEqual(classifyVisionFailure({status:403,code:3041,message:"secret or private image"}),{
+   reason:"access_denied",providerStatus:403,providerCode:3041
+ });
+ assert.equal(classifyVisionFailure({status:429}).reason,"quota_or_billing");
+ assert.equal(classifyVisionFailure({code:3036}).reason,"quota_or_billing");
+ assert.equal(classifyVisionFailure({status:410,code:5028}).reason,"model_unavailable");
+ assert.equal(classifyVisionFailure({status:400}).reason,"invalid_model_request");
+ assert.equal(classifyVisionFailure({status:503}).reason,"provider_unavailable");
+ assert.equal(classifyVisionFailure(new Error("some unpredictable error")).reason,"unknown");
 });
 
 test("vision observations are explicitly untrusted when passed to the text agent",()=>{
