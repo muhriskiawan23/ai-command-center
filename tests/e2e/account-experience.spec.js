@@ -87,6 +87,7 @@ test("Plugins hub opens from the sidebar and About returns to Profile without er
  await expect(page.locator("#pluginsDialog")).toContainText("GitHub");
  await page.locator("#pluginsClose").click();
  await expect(page.locator("#pluginsDialog")).toBeHidden();
+ await openSidebar(page);
  await page.locator("#userProfile").click();
  await page.locator("#about").click();
  await expect(page.locator("#aboutDialog")).toBeVisible();
