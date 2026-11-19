@@ -433,7 +433,7 @@ async function runAgent(env, agentId, userMessage, context = "", history = [], p
       traceEntry.provider = "openai";
       traceEntry.adapter = "openai-chat-completions";
       activeModelId = BACKUP_MODEL;
-      traceEntry.calls += 1;
+      if (!result.borTextLunaPrimary) traceEntry.calls += 1;
     }
   };
 
