@@ -194,12 +194,13 @@ export async function reconcileOfflineProviderReversal({
   if(!['refund_verified','chargeback_verified'].includes(eventType))
     throw new Error('invalid_reversal_type');
   const order=compatibleOrder(await getOrder(db,orderId));
-  if(order.status==='refunded'||order.status==='chargeback')return {
-    orderId,status:order.status,duplicate:true,synthetic:true,moneyRefundExecuted:false
-  };
+  const expectedStatus=eventType==='refund_verified'?'refunded':'chargeback';
+  if(order.status==='refunded'||order.status==='chargeback'){
+    if(order.status!==expectedStatus)throw new Error('conflicting_terminal_reversal');
+    return {orderId,status:order.status,duplicate:true,synthetic:true,moneyRefundExecuted:false};
+  }
   if(order.status!=='paid')throw new Error('reversal_requires_paid_order');
   const proof=await provider.checkReversal({merchantOrderId:order.id,reference:order.provider_reference,eventType});
-  const expectedStatus=eventType==='refund_verified'?'refunded':'chargeback';
   if(proof?.merchantOrderId!==order.id||proof?.reference!==order.provider_reference||
      proof?.amount!==String(order.quoted_idr)||proof?.currency!=='IDR'||
      proof?.status!==expectedStatus||typeof proof?.reversalId!=='string'||
