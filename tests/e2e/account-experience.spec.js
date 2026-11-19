@@ -24,7 +24,13 @@ test("signed-in account opens accessible profile and privacy center on every vie
  await page.locator("#userProfile").click();
  await expect(page.locator("#accountDialog")).toBeVisible();
  await expect(page.locator("#accountName")).toHaveText("Alice");
- await expect(page.locator("#accountEmail")).toHaveText("alice@example.test");
+ await expect(page.locator("#accountEmail")).toHaveCount(0);
+ await expect(page.locator("#profilePhotoButton")).toBeVisible();
+ await expect(page.locator("#profileUsername")).toHaveValue("Alice");
+ await page.locator("#profileUsername").fill("Boris");
+ await page.locator("#profileForm button[type=submit]").click();
+ await expect(page.locator("#accountTitle")).toHaveText("Boris");
+ await expect(page.locator("#userProfile")).toContainText("Boris");
  await expect(page.locator("#openMemory")).toBeVisible();
  await expect(page.locator("#openUsage")).toBeVisible();
  await page.locator("#openPrivacy").click();
