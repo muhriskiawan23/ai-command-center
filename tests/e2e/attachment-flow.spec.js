@@ -3,39 +3,46 @@ import {test,expect,loginAs} from "./fixtures.js";
 const account={id:"attachment-style-tester",email:"attachments@example.test",name:"Attachment Tester"};
 async function guest(page,app){await page.goto(app.url);await page.locator("#continueGuest").click();await expect(page.locator("#prompt")).toBeVisible();}
 async function setTextImage(page,name="invoice.jpg"){
-  await page.locator("#pdfFile").setInputFiles({name,mimeType:"image/jpeg",buffer:Buffer.from("image-pixels-test")});
+  // Construct a real JPEG using the browser itself: no paid vision model or network.
+  await page.evaluate(async filename => {
+    const canvas=document.createElement("canvas");
+    canvas.width=80;canvas.height=80;
+    const ctx=canvas.getContext("2d");
+    ctx.fillStyle="white";ctx.fillRect(0,0,80,80);
+    ctx.fillStyle="blue";ctx.fillRect(15,15,50,50);
+    const blob=await new Promise(resolve=>canvas.toBlob(resolve,"image/jpeg",0.85));
+    const image=new File([blob],filename,{type:"image/jpeg"});
+    const transfer=new DataTransfer();
+    transfer.items.add(image);
+    const input=document.getElementById("pdfFile");
+    input.files=transfer.files;
+    input.dispatchEvent(new Event("change",{bubbles:true}));
+  },name);
 }
 async function setCsv(page){
   await page.locator("#pdfFile").setInputFiles({name:"sales.csv",mimeType:"text/csv",buffer:Buffer.from("Item,Price\nCoffee,120000\nTea,80000")});
 }
 
-test("attachment shows live OCR status, disables Send while reading, moves file into user bubble and clears composer",async({page,app})=>{
+test("image attachment is resized locally, sent on submit to vision model, and shown in chat bubble",async({page,app})=>{
  await guest(page,app);
- await page.evaluate(()=>{
-   window.Tesseract={createWorker:async()=>({
-     recognize:async()=>{await new Promise(r=>setTimeout(r,350));return {data:{text:"Invoice total Rp 100.000"}};},
-     terminate:async()=>{}
-   })};
- });
  await setTextImage(page);
  await expect(page.locator("#attachmentPreview")).toBeVisible();
- await expect(page.locator("#pdfAttachment")).toBeVisible();
- await expect(page.locator("#attachmentProgress")).toContainText(/OCR|Membaca/);
- await expect(page.locator("#send")).toBeDisabled();
  await expect(page.locator("#csvAttachment")).toBeVisible();
  await expect(page.locator("#attachmentProgress")).toBeHidden();
- await page.locator("#prompt").fill("Berapakah nilai invoice?");
+ await page.locator("#prompt").fill("Apa isi foto ini?");
  await page.locator("#send").click();
  await expect(page.locator("#attachmentPreview")).toBeHidden();
  await expect(page.locator(".message.user .sent-file-card")).toContainText("invoice.jpg");
- await expect(page.locator(".message.user .message-text")).toContainText("Berapakah nilai invoice?");
+ await expect(page.locator(".message.user .message-text")).toContainText("Apa isi foto ini?");
  await expect(page.locator(".message.assistant:not(#typing)")).toHaveCount(1);
- await expect(page.locator("#attachmentPreview")).toBeHidden();
- expect(app.aiCalls.length).toBeGreaterThan(0);
- const aiUserMessage=app.aiCalls.at(-1).messages.filter(m=>m.role==="user").at(-1).content;
- expect(aiUserMessage).toContain("Invoice total Rp 100.000");
- expect(aiUserMessage).toContain("<image_ocr");
- expect(aiUserMessage).not.toContain("image-pixels-test");
+ const vision=app.aiCalls.find(call=>call.task==="query");
+ expect(vision).toBeTruthy();
+ expect(vision.image).toMatch(/^data:image\/jpeg;base64,/);
+ expect(vision.question).toContain("Apa isi foto ini?");
+ const userText=app.aiCalls.at(-1).messages.filter(m=>m.role==="user").at(-1).content;
+ expect(userText).toContain("<image_visual_observation>");
+ expect(userText).toContain("kotak biru");
+ expect(userText).not.toContain(vision.image);
 });
 
 test("file-only send persists safe filename card across signed-in account reload without uploading raw CSV",async({page,context,app})=>{
@@ -58,27 +65,18 @@ test("file-only send persists safe filename card across signed-in account reload
  await expect(page.locator("#attachmentPreview")).toBeHidden();
 });
 
-test("removing attachment during pending local OCR prevents late ghost file and unblocks chat",async({page,app})=>{
+test("removing an image before Send prevents raw image transmission and leaves chat usable",async({page,app})=>{
  await guest(page,app);
- await page.evaluate(()=>{
-   window.Tesseract={createWorker:async()=>({
-     recognize:()=>new Promise(resolve=>{window.__resolveOcr=resolve;}),
-     terminate:async()=>{}
-   })};
- });
- await setTextImage(page,"slow.jpg");
- await expect(page.locator("#pdfAttachment")).toBeVisible();
- await expect(page.locator("#send")).toBeDisabled();
- await expect.poll(()=>page.evaluate(()=>typeof window.__resolveOcr)).toBe("function");
- await page.locator("#clearPdf").click();
- await expect(page.locator("#attachmentPreview")).toBeHidden();
- await page.evaluate(()=>window.__resolveOcr({data:{text:"Late OCR result should be discarded"}}));
+ await setTextImage(page,"removed.jpg");
+ await expect(page.locator("#csvAttachment")).toBeVisible();
+ await expect(page.locator("#attachmentProgress")).toBeHidden();
+ await page.locator("#clearCsv").click();
  await expect(page.locator("#attachmentPreview")).toBeHidden();
  await page.locator("#prompt").fill("halo");
  await expect(page.locator("#send")).toBeEnabled();
  await page.locator("#send").click();
  await expect(page.locator(".message.assistant:not(#typing)")).toHaveCount(1);
- expect(app.aiCalls.at(-1).messages.filter(m=>m.role==="user").at(-1).content).not.toContain("<image_ocr");
+ expect(app.aiCalls.some(call=>call.task==="query")).toBe(false);
 });
 
 test("retry after AI provider error reuses extracted file context even after composer chip has been cleared",async({page,app})=>{
@@ -98,4 +96,22 @@ test("retry after AI provider error reuses extracted file context even after com
  expect(user).toContain("<spreadsheet_document");
  expect(user).toContain("Coffee");
  await expect(page.locator("#attachmentPreview")).toBeHidden();
+});
+
+test("signed-in photo conversation never stores image pixels in D1 chat messages",async({page,context,app})=>{
+ await loginAs(context,app,account);
+ await page.goto(app.url);
+ await setTextImage(page,"blue.jpg");
+ await expect(page.locator("#csvAttachment")).toBeVisible();
+ await expect(page.locator("#attachmentProgress")).toBeHidden();
+ await page.locator("#prompt").fill("Jelaskan gambar ini");
+ await page.locator("#send").click();
+ await expect(page.locator(".message.assistant:not(#typing)")).toHaveCount(1);
+ const saved=app.db.sqlite.prepare("SELECT role,content FROM messages ORDER BY id").all();
+ expect(saved.map(x=>x.role)).toEqual(["user","assistant"]);
+ expect(saved[0].content).toContain("[BORAI_FILE:blue.jpg]");
+ for(const row of saved){
+   expect(row.content).not.toContain("data:image/");
+   expect(row.content).not.toContain("/9j/");
+ }
 });

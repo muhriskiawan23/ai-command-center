@@ -18,6 +18,7 @@ import { planFeedbackForm, generateFormsScript } from "./form-draft.js";
 import { COMMUNICATION_NOTICE, CAPABILITY_NOTICE, AGENTS } from "./prompts.js";
 import { json, sha256Hex } from "./http.js";
 import { dailyLimit, usageDay, secondsUntilNextUtcDay, consumeUsage, refundUsage, limitResponse, enforceDailyLimits, DAILY_LIMIT_DEFAULTS, MULTI_AGENT_UNITS } from "./daily-limits.js";
+import { validateImageVision, analyzeImageWithVision, buildImageVisionContext, reserveVisionDailyUsage, VISION_MAX_REQUEST_BYTES } from "./image-vision.js";
 
 const MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 const TRUSTED_PROMPT_TEXT = [CONFIDENTIALITY_NOTICE, CAPABILITY_NOTICE, COMMUNICATION_NOTICE, ...Object.values(AGENTS).map(agent => agent.prompt)];
@@ -1448,10 +1449,12 @@ export default {
     if (url.pathname === "/api/documents/pdf") return await handlePdfConversionRoute(request, env);
     if (request.method === "POST" && url.pathname === "/api/chat") {
       if (!/^\s*application\/json(?:\s*;|\s*$)/i.test(request.headers.get("Content-Type") || "")) return json({ error: "Content-Type harus application/json." }, 415);
+      const visionRequest = request.headers.get("X-BOR-Vision") === "1";
+      const requestLimit = visionRequest ? VISION_MAX_REQUEST_BYTES : MAX_REQUEST_BYTES;
       const contentLength = Number(request.headers.get("Content-Length") || 0);
-      if (Number.isFinite(contentLength) && contentLength > MAX_REQUEST_BYTES) return json({ error: "Ukuran request terlalu besar." }, 413);
+      if (Number.isFinite(contentLength) && contentLength > requestLimit) return json({ error: "Ukuran request terlalu besar." }, 413);
       let bodyResult;
-      try { bodyResult = await readBodyWithinLimit(request, MAX_REQUEST_BYTES); }
+      try { bodyResult = await readBodyWithinLimit(request, requestLimit); }
       catch { return json({ error: "Request body tidak dapat dibaca." }, 400); }
       if (bodyResult.tooLarge) return json({ error: "Ukuran request terlalu besar." }, 413);
       if (bodyResult.invalidEncoding) return json({ error: "Request JSON tidak valid." }, 400);
@@ -1469,6 +1472,9 @@ export default {
       if (spreadsheet !== undefined && (!spreadsheet || typeof spreadsheet !== "object" || typeof spreadsheet.name !== "string" || typeof spreadsheet.content !== "string" || !spreadsheet.content.trim() || spreadsheet.content.length > SPREADSHEET_CONTEXT_MAX_CHARS)) return json({ error: "Konteks spreadsheet tidak valid atau terlalu besar. Unggah ulang file." }, 400);
       const imageOcr = body?.imageOcr;
       if (imageOcr !== undefined && (!imageOcr || typeof imageOcr !== "object" || typeof imageOcr.name !== "string" || !/\.(jpg|jpeg|png|webp)$/i.test(imageOcr.name) || typeof imageOcr.content !== "string" || !imageOcr.content.trim() || imageOcr.content.length > IMAGE_OCR_CONTEXT_MAX_CHARS || (imageOcr.truncated !== undefined && typeof imageOcr.truncated !== "boolean"))) return json({ error: "Konteks OCR gambar tidak valid." }, 400);
+      const imageVision = body?.imageVision === undefined ? null : validateImageVision(body.imageVision);
+      if ((body?.imageVision !== undefined && !imageVision) || (visionRequest && !imageVision) || (imageVision && !visionRequest) || (imageVision && imageOcr)) return json({ error: "Lampiran gambar AI vision tidak valid atau terlalu besar." }, 400);
+      if (imageVision && env.BOR_VISION_ENABLED !== "true") return json({ error: "Analisis foto belum diaktifkan pada layanan ini." }, 503);
       const wordDocument = body?.wordDocument;
       if (wordDocument !== undefined && (!wordDocument || typeof wordDocument !== "object" || typeof wordDocument.name !== "string" || typeof wordDocument.content !== "string" || !wordDocument.content.trim() || wordDocument.content.length > WORD_CONTEXT_MAX_CHARS)) return json({ error: "Konteks Word tidak valid atau terlalu besar. Unggah ulang file." }, 400);
       if (body?.agent !== undefined && (typeof body.agent !== "string" || !Object.prototype.hasOwnProperty.call(AGENTS, body.agent))) return json({ error: "Agent tidak dikenal." }, 400);
@@ -1512,14 +1518,18 @@ export default {
           return json({ error: "Status permintaan sebelumnya tidak dapat diperiksa. Coba muat ulang riwayat chat." }, 503);
         }
       }
-      const useMultiAgent = agentId === "coordinator" && shouldUseMultiAgent(message);
+      const useMultiAgent = !imageVision && agentId === "coordinator" && shouldUseMultiAgent(message);
       const found = extractUrls(message);
       const researchMode = detectResearchMode(message);
       // External link reading and live search consume extra provider/network budget.
       const researchCharge = researchMode && isSearchProviderConfigured(env) ? 1 : 0;
       const linkCharge = found.urls.length && env.URL_READER_ENABLED === "true" ? 1 : 0;
-      const usage = await enforceDailyLimits(env, request, user, (useMultiAgent ? MULTI_AGENT_UNITS : 1) + linkCharge + researchCharge);
+      const usage = await enforceDailyLimits(env, request, user, (useMultiAgent ? MULTI_AGENT_UNITS : 1) + (imageVision ? 2 : 0) + linkCharge + researchCharge);
       if (!usage.ok) return usage.response;
+      if (imageVision) {
+        const photoQuota = await reserveVisionDailyUsage(env, request, user, usage);
+        if (!photoQuota.ok) { await refundUsage(env, usage.day, usage.charges); return photoQuota.response; }
+      }
       let history = clientHistory.history;
       let replaceRows = [];
       if (user) {
@@ -1546,7 +1556,8 @@ export default {
       }
       // Single answers may retry once (2 calls); the multi-agent chain gets its own total budget.
       const perCallMs = positiveMs(env.AI_CALL_TIMEOUT_MS, AI_CALL_TIMEOUT_DEFAULT_MS);
-      const budgetMs = useMultiAgent ? positiveMs(env.AI_TOTAL_BUDGET_MS, AI_MULTI_AGENT_BUDGET_DEFAULT_MS) : perCallMs * 2;
+      const budgetMs = useMultiAgent ? positiveMs(env.AI_TOTAL_BUDGET_MS, AI_MULTI_AGENT_BUDGET_DEFAULT_MS) : imageVision ? Math.min(120_000, perCallMs * 3) : perCallMs * 2;
+      const deadline = Date.now() + budgetMs;
       // Opt-in memory: only for signed-in users who switched it on. A failure here never blocks the chat.
       let memoryNote = "";
       let memoryItems = [];
@@ -1569,7 +1580,7 @@ export default {
       const memoryContext = buildMemoryBlock(memoryItems);
       const memoryEnv = withSystemExtra(requestEnv, memoryContext);
       const localizedEnv = { ...withResponseLanguage(memoryEnv, language), BOR_CUSTOMIZATION: custom.value, BOR_AUTHENTICATED: Boolean(user), BOR_EXTRA_INPUT_BYTES: new TextEncoder().encode(memoryContext || "").length };
-      const aiEnv = withAiDeadline(localizedEnv, Date.now() + budgetMs, request.signal);
+      const aiEnv = withAiDeadline(localizedEnv, deadline, request.signal);
       let pages = "";
       let links = [];
       const toolActivity = [];
@@ -1636,6 +1647,13 @@ export default {
       }
       if (pdfContext || spreadsheetContext || presentationContext || wordDocumentContext || imageOcrContext) pages = [pages, pdfContext, spreadsheetContext, presentationContext, wordDocumentContext, imageOcrContext].filter(Boolean).join("\n\n");
       try {
+        if (imageVision) {
+          // Vision uses the bounded AI binding directly, not the text-only message wrappers.
+          // Only model-produced observations enter the text-agent context, never raw pixels.
+          const observed = await analyzeImageWithVision(withAiDeadline(requestEnv, deadline, request.signal).AI, imageVision, message, language);
+          pages = [pages, buildImageVisionContext(observed)].filter(Boolean).join("\n\n");
+          toolActivity.push({ tool: "image_vision", status: "completed" });
+        }
         let result;
         if (useMultiAgent) result = { ...await runMultiAgent(aiEnv, message, history, pages) };
         else if (agentId === "coordinator") {
