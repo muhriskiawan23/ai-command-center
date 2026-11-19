@@ -49,6 +49,7 @@
     "URL_READER_PROVIDER": "tavily",
     "TAVILY_EXTRACT_DAILY_URL_LIMIT": "8",
     "BOR_GPT_OSS_ENABLED": "false",
+    "BOR_VISION_ENABLED": "true",
     "BOR_GPT_OSS_DAILY_USD_LIMIT": "0.25"
   }
 }
