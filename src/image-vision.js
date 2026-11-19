@@ -55,6 +55,44 @@ export class VisionInferenceError extends Error {
   }
 }
 
+// Cloudflare model bindings can return direct model objects or REST-style
+// envelopes. Accept final answer text only, never reasoning traces or raw JSON.
+export function extractVisionAnswer(result) {
+  const candidates = [
+    result?.answer, result?.result?.answer, result?.data?.answer,
+    result?.response, result?.result?.response,
+    result?.output_text, result?.result?.output_text,
+    result?.caption, result?.result?.caption,
+    result?.choices?.[0]?.message?.content,
+    result?.result?.choices?.[0]?.message?.content
+  ];
+  for (const value of candidates) {
+    if (typeof value === "string" && value.trim() && value.length <= 10000) return value.trim();
+  }
+  const output = result?.output ?? result?.result?.output;
+  if (Array.isArray(output)) {
+    const visible = output.filter(item => item?.type === "message").flatMap(item =>
+      Array.isArray(item.content) ? item.content : []
+    ).filter(part => part?.type === "output_text" && typeof part.text === "string")
+      .map(part => part.text.trim()).filter(Boolean).join("\n");
+    if (visible && visible.length <= 10000) return visible;
+  }
+  return "";
+}
+
+function visionResponseKind(result) {
+  if (result == null) return "null";
+  if (typeof result === "string") return "string";
+  if (typeof result?.getReader === "function") return "unexpected_stream";
+  if (typeof result !== "object") return "non_object";
+  if (Object.hasOwn(result, "answer")) return "answer_field_empty";
+  if (Object.hasOwn(result, "response")) return "response_field_empty";
+  if (Object.hasOwn(result, "result")) return "nested_result_unrecognized";
+  if (Object.hasOwn(result, "choices")) return "choices_unrecognized";
+  if (Object.hasOwn(result, "caption")) return "caption_field_empty";
+  return "unrecognized_object";
+}
+
 export async function analyzeImageWithVision(ai, attachment, question, language = "id") {
   if (!ai || typeof ai.run !== "function") throw new Error("Vision model is not available.");
   const prompt = [
@@ -84,10 +122,11 @@ export async function analyzeImageWithVision(ai, attachment, question, language 
     if (error?.name === "AiTimeoutError" || error?.name === "AiCancelledError") throw error;
     throw new VisionInferenceError(error);
   }
-  const answer = typeof result?.answer === "string" ? result.answer.trim() : "";
-  if (!answer || answer.length > 10000) {
+  const answer = extractVisionAnswer(result);
+  if (!answer) {
     const error = new VisionInferenceError(null);
     error.reason = "empty_model_answer";
+    error.responseKind = visionResponseKind(result);
     throw error;
   }
   return answer.slice(0, 4500);
