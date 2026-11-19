@@ -471,3 +471,22 @@ html[dir="rtl"] pre, html[dir="rtl"] code, html[dir="rtl"] .message-text pre { d
 .image-result{padding:16px;margin:12px 0;border:1px solid #555;border-radius:14px;overflow-wrap:anywhere}
 .image-result img{display:block;max-width:100%;max-height:620px;object-fit:contain;border-radius:10px;margin:12px 0}
 .image-result .message-action{display:inline-block;margin:5px;padding:8px;border:1px solid #666;border-radius:8px;cursor:pointer}
+
+/* BOR AI model picker in the composer */
+.model-picker{position:relative;flex:0 0 auto}
+.model-picker>summary{display:flex;align-items:center;gap:9px;min-height:38px;padding:0 13px;border:1px solid #46515b;border-radius:999px;background:#303740;color:#f2f4f6;font-size:13px;font-weight:550;list-style:none;cursor:pointer;white-space:nowrap}
+.model-picker>summary::-webkit-details-marker{display:none}
+.model-picker>summary:hover,.model-picker[open]>summary{border-color:#66859a;background:#35424c}
+.model-chevron{color:#aab6be;font-size:15px}
+.model-picker-panel{position:absolute;bottom:calc(100% + 10px);left:0;z-index:8;width:min(360px,calc(100vw - 28px));padding:8px;border:1px solid #46515b;border-radius:16px;background:#20252b;box-shadow:0 16px 40px #0008}
+.model-option{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;padding:11px 12px;border:0;border-radius:10px;background:transparent;color:#edf0f2;text-align:left}
+.model-option:not(:disabled):hover,.model-option.is-current{background:#303942}
+.model-option:disabled{opacity:.66;cursor:default}
+.model-option-copy{display:grid;gap:4px;min-width:0}
+.model-option-copy strong{font-size:13px;font-weight:600;line-height:1.35}
+.model-option-copy small{color:#aab4bc;font-size:11px;line-height:1.35}
+.model-option-state{flex:0 0 auto;color:#aab4bc;font-size:10px}
+.model-option.is-current .model-option-state{color:#9ed6b1}
+.model-picker-divider{height:1px;margin:6px 5px;background:#3a4249}
+.model-picker-note{margin:7px 10px 8px;color:#aab4bc;font-size:11px;line-height:1.5}
+@media(max-width:560px){.composer-tools{display:flex;flex-wrap:wrap;gap:6px}.model-picker>summary{min-height:36px;padding:0 10px;font-size:12px}.model-picker-panel{width:min(340px,calc(100vw - 22px))}}
