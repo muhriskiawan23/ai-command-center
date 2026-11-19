@@ -196,6 +196,9 @@ test('staging callback diagnostics require operator auth, never reveal payment i
     assert.equal((await h.call(path,{token:null})).status,401);
     assert.equal((await h.call(path,{token:'wrong'})).status,401);
     assert.equal((await h.call(path,{token:operatorToken})).status,401);
+    h.env.BILLING_STAGING_REPORT_TOKEN=operatorToken;
+    assert.equal((await h.call(path,{token:operatorToken})).status,503);
+    h.env.BILLING_STAGING_REPORT_TOKEN=reportToken;
     assert.equal((await h.call(path+'?hours=169',{token:reportToken})).status,400);
     assert.equal((await h.call(path+'?hours=24&extra=x',{token:reportToken})).status,400);
     assert.equal((await h.call(path,{method:'POST',token:reportToken})).status,405);
