@@ -270,3 +270,35 @@ test('Worker-safe manual redirect mode prevents checkout redirects and does not 
     assert.equal(sqliteCount(h.sqlite, 'duitku_sandbox_credit_ledger'), 0);
   } finally { h.close(); }
 });
+
+test('authenticated ledger audit is read-only and live-style signed callback replays never double-credit', async () => {
+  const h = setup();
+  try {
+    const order = await (await h.create()).json();
+    const endpoint = '/api/sandbox/orders/' + order.orderId + '/audit';
+    assert.equal((await worker.fetch(h.request(endpoint, undefined, false), h.env)).status, 401);
+    assert.equal((await worker.fetch(h.request(endpoint, {}, true, 'POST'), h.env)).status, 405);
+    assert.equal((await worker.fetch(h.request('/api/sandbox/orders/BORTEST-' + randomUUID() + '/audit'), h.env)).status, 404);
+    const pendingAudit = await (await worker.fetch(h.request(endpoint), h.env)).json();
+    assert.deepEqual(pendingAudit, {
+      sandbox: true, orderId: order.orderId, status: 'pending',
+      expectedCredits: 100, ledgerEntries: 0, ledgerCredits: 0, realCreditsGranted: false
+    });
+    assert.equal(h.calls.length, 1); // Invoice only; audit never calls the provider.
+    assert.equal((await h.callback(order.orderId)).status, 200);
+    const before = await (await worker.fetch(h.request(endpoint), h.env)).json();
+    assert.equal(before.status, 'paid');
+    assert.equal(before.ledgerEntries, 1);
+    assert.equal(before.ledgerCredits, 100);
+    const providerCallsBeforeReplay = h.calls.length;
+    const replays = await Promise.all(Array.from({ length: 8 }, () => h.callback(order.orderId)));
+    assert.ok(replays.every(reply => reply.status === 200));
+    const after = await (await worker.fetch(h.request(endpoint), h.env)).json();
+    assert.deepEqual(after, before);
+    assert.equal(h.calls.length, providerCallsBeforeReplay); // Paid is terminal; zero new provider status calls.
+    assert.equal(h.grants().length, 1);
+    assert.equal((await h.callback(order.orderId, { amount: '10001' })).status, 400);
+    assert.equal((await h.callback(order.orderId, { signature: '0'.repeat(64) })).status, 403);
+    assert.deepEqual(await (await worker.fetch(h.request(endpoint), h.env)).json(), before);
+  } finally { h.close(); }
+});
