@@ -139,7 +139,7 @@ test('verified full refund after spend creates debt, blocks spend, and later gra
     assert.equal(after.netCredits,12800);
     assert.equal(after.reconciled,true);
     assert.equal(h.events().length,3);
-    assert.equal(h.ledger().length,5);
+    assert.equal(h.ledger().length,4); // grant, usage, full clawback, new grant
   }finally{h.close()}
 });
 test('chargeback makes credit reversal terminal and blocks a second refund',async()=>{
