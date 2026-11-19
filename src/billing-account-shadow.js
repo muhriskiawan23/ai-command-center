@@ -37,7 +37,13 @@ export async function handleBillingShadowAccountRequest(request,env,{getSession}
   if(url.pathname!=='/api/billing/account')return unavailable(404,'not_found');
   if(env?.BOR_BILLING_SHADOW_ENABLED!=='true')return unavailable(404,'not_found');
   if(request.method!=='GET')return unavailable(405,'method_not_allowed');
-  if(url.search||url.hash||request.headers.get('Sec-Fetch-Site')==='cross-site')
+  const site=request.headers.get('Sec-Fetch-Site');
+  const origin=request.headers.get('Origin');
+  // The endpoint is read-only, but do not allow future callers to treat a
+  // cross-origin response as an account selector, even from sibling domains.
+  if(url.search||url.hash||
+    (site && site!=='same-origin' && site!=='none')||
+    (origin && origin!==url.origin))
     return unavailable(403,'billing_shadow_forbidden');
   if(typeof getSession!=='function')return unavailable();
   let user;
