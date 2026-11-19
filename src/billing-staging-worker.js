@@ -201,6 +201,22 @@ async function operatorReconcile(env,orderId,nowMs){
   if(result.status==='provider_failed')return json({sandbox:true,orderId,status:'provider_failed',realCreditsGranted:false},200);
   return orderAudit(env,orderId);
 }
+// Only static diagnostic categories are ever logged: no callback body,
+// transaction identifiers, headers, signatures, payment URLs or provider payloads.
+const CALLBACK_REJECTION_CODES=new Set([
+  'form_required','request_too_large','request_body_required','invalid_utf8',
+  'invalid_callback_body','invalid_callback_fields','invalid_callback_parameters',
+  'invalid_provider_amount','invalid_callback_signature','merchant_mismatch',
+  'callback_order_amount_or_reference_mismatch','unbound_synthetic_invoice',
+  'authentication_required','sandbox_status_retry_later',
+  'duitku_sandbox_unavailable','duitku_sandbox_status_mismatch',
+  'provider_status_mismatch','wallet_reconciliation_failed'
+]);
+function logSafeCallbackFailure(error){
+  const code=error instanceof Error ? error.message : '';
+  const category=CALLBACK_REJECTION_CODES.has(code)?code:'other';
+  console.warn('bor_billing_staging_callback_rejected',{category});
+}
 export default {
   async fetch(request,env){
     try{
@@ -279,6 +295,7 @@ export default {
       }
       fail(404,'not_found');
     }catch(error){
+      if(new URL(request.url).pathname===PREFIX+'/callback')logSafeCallbackFailure(error);
       if(error instanceof StageError)return json({sandbox:true,error:error.code},error.status);
       const msg=String(error?.message||'');
       // Never disclose provider secret, signed payload, customer identity or raw SQL.
