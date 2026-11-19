@@ -142,7 +142,7 @@ test("HTTP image vision failure has a specific safe stage and refunds daily usag
 test("vision accepts only final answer text from Workers AI response envelopes",()=>{
   assert.equal(extractVisionAnswer({answer:"  blue square "}),"blue square");
   assert.equal(extractVisionAnswer({result:{answer:"nested"}}),"nested");
-  assert.equal(extractVisionAnswer({response:"legacy"}}),"legacy");
+  assert.equal(extractVisionAnswer({response:"legacy"}),"legacy");
   assert.equal(extractVisionAnswer({result:{response:"legacy nested"}}),"legacy nested");
   assert.equal(extractVisionAnswer({output_text:"visible answer"}),"visible answer");
   assert.equal(extractVisionAnswer({caption:"caption result"}),"caption result");
