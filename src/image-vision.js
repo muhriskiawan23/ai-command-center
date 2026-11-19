@@ -58,6 +58,7 @@ export class VisionInferenceError extends Error {
 // Cloudflare model bindings can return direct model objects or REST-style
 // envelopes. Accept final answer text only, never reasoning traces or raw JSON.
 export function extractVisionAnswer(result) {
+  if (typeof result === "string" && result.trim() && result.length <= 10000) return result.trim();
   const candidates = [
     result?.answer, result?.result?.answer, result?.data?.answer,
     result?.response, result?.result?.response,
