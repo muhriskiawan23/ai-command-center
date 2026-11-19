@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 const page = readFileSync(new URL("../public/index.html", import.meta.url), "utf8");
 const appJs = readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
 const appCss = readFileSync(new URL("../public/app.css", import.meta.url), "utf8");
+const workspaceCss = readFileSync(new URL("../public/workspace.css", import.meta.url), "utf8");
 const html = page + "\n" + appJs + "\n" + appCss;
 
 test("dashboard JavaScript parses without syntax errors", () => {
@@ -86,7 +87,7 @@ test("welcome screen keeps the four starter prompts and sidebar has no redundant
 });
 
 
-test("GitHub account connection controls are present and wired to authenticated endpoints", () => {
+test("GitHub plugin controls are present and wired to authenticated endpoints", () => {
   assert.match(page, /id="githubConnect"/);
   assert.match(page, /id="githubDisconnect"/);
   assert.match(page, /id="githubConnectionStatus"/);
@@ -95,17 +96,20 @@ test("GitHub account connection controls are present and wired to authenticated 
   assert.match(appJs, /api\("\/api\/github\/disconnect"/);
 });
 
-test("sidebar includes responsive visual polish and accessible GitHub connection status", () => {
-  assert.match(page, /aria-label="Koneksi GitHub"/);
-  assert.match(page, /role="status">Periksa koneksi akun/);
-  assert.match(appCss, /--sidebar-width:276px/);
-  assert.match(appCss, /\.github-connect-panel/);
-  assert.match(appCss, /@media\(max-width:1024px\)/);
+test("Plugins hub replaces the standalone GitHub integrations screen", () => {
+  assert.match(page, /id="openPlugins"/);
+  assert.match(page, /id="pluginsDialog"/);
+  assert.match(page, /id="pluginCatalog"/);
+  assert.match(page, /data-plugin-card/);
+  assert.match(page, /id="openGithubRepos"/);
+  assert.doesNotMatch(page, /id="openIntegrations"|id="integrationsDialog"/);
+  assert.doesNotMatch(appJs, /integrationsDialog|openIntegrations/);
+  assert.match(appJs, /pluginsDialog\.showModal\(\)/);
+  assert.match(workspaceCss, /\.plugin-card/);
+  assert.match(workspaceCss, /\.plugins-nav/);
 });
 
-
-test("GitHub repository browser is temporarily hidden from navigation while its backend integration remains intact", () => {
-  assert.doesNotMatch(page.match(/<aside class="sidebar"[\s\S]*?<\/aside>/)?.[0] || "", /id="openGithubRepos"/);
+test("GitHub repository browser stays available inside its plugin after account authorization", () => {
   assert.match(page, /id="githubReposDialog"/);
   assert.match(page, /id="githubRepoSearch"/);
   assert.match(page, /id="githubRepoVisibility"/);
@@ -114,18 +118,6 @@ test("GitHub repository browser is temporarily hidden from navigation while its 
   assert.match(appJs, /function renderGitHubRepositories\(\)/);
   assert.match(appJs, /function selectGitHubRepository\(repo\)/);
   assert.match(appJs, /openGithubRepos"\)\.disabled=!githubConnection/);
-});
-
-test("sidebar uses a compact Claude-inspired layout with GitHub moved into Integrations", () => {
-  assert.match(page, /id="historySearchForm"/);
-  assert.match(page, /id="openIntegrations"/);
-  assert.match(page, /id="integrationsDialog"/);
-  assert.match(page, /id="githubConnect"/);
-  assert.match(page, /id="githubDisconnect"/);
-  assert.match(appJs, /integrationsDialog\.showModal\(\)/);
-  assert.match(appCss, /\.integration-card/);
-  assert.match(appCss, /--sidebar-width:276px/);
-  assert.doesNotMatch(page.match(/<aside class="sidebar"[\s\S]*?<\/aside>/)?.[0] || "", /github-connect-panel/);
 });
 
 test("Word DOCX upload is locally extracted and sent as an untrusted word document context", () => {
