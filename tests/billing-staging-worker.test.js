@@ -213,6 +213,26 @@ test('signed successful callback is checked against V2 transactionStatus and cre
     assert.equal(h.requests.filter(x=>x==='transactionStatus').length,2);
   }finally{h.close()}
 });
+test('documented Duitku callback metadata is accepted but never treated as payment proof',async()=>{
+  const h=stage();try{
+    const a=await h.makeAccount(),invoice=(await h.checkout(a)).payload;
+    h.setMode('01');
+    const pending=await h.callback(invoice,{
+      productDetail:'BOR AI test',paymentCode:'BT',
+      publisherOrderId:'SYNTHETIC-PUBLISHER-ID',settlementDate:'2026-11-19'
+    });
+    assert.equal(pending.status,503);
+    assert.equal((await (await h.audit(invoice.orderId)).json()).ledgerEntries,0);
+    h.s.prepare('UPDATE billing_orders SET sandbox_status_check_after=0 WHERE id=?').run(invoice.orderId);
+    h.setMode('00');
+    const settled=await h.callback(invoice,{
+      productDetail:'BOR AI test',paymentCode:'BT',
+      publisherOrderId:'SYNTHETIC-PUBLISHER-ID',settlementDate:'2026-11-19'
+    });
+    assert.equal(settled.status,200);
+    assert.equal((await (await h.audit(invoice.orderId)).json()).ledgerEntries,1);
+  }finally{h.close()}
+});
 test('forged callbacks, mismatched provider data, and missing auth never credit a staging wallet',async()=>{
   const h=stage();try{
     const a=await h.makeAccount(),invoice=(await h.checkout(a)).payload;
