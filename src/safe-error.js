@@ -52,8 +52,13 @@ export function safeAiBindingFailure(error) {
       error?.cause?.status, error?.response?.status
     ];
     const status = statusCandidates.map(httpStatus).find((value) => value !== null) ?? null;
+    // Some Workers AI responses wrap quota exhaustion in a generic code or omit the code.
+    const quotaMessage = [error?.message, error?.cause?.message, error?.errors?.[0]?.message]
+      .some(message => typeof message === "string" &&
+        /^(?:AiError:\s*)*(?:you have used up your daily free allocation of 10,000 neurons)\b/i.test(message));
     return {
-      category: code === null ? "provider_error_unclassified" : WORKERS_AI_CODES[code],
+      category: code !== null ? WORKERS_AI_CODES[code] :
+        quotaMessage ? "daily_ai_allocation_exhausted" : "provider_error_unclassified",
       providerCode: code,
       httpStatus: status
     };
