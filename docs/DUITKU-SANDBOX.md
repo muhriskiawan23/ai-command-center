@@ -121,6 +121,33 @@ reconciliation endpoint. Reusing an ID never issues another provider invoice.
 Local inspection is read-only; reconciliation is bounded to one provider check
 per order per 30 seconds. There is no scheduled provider polling.
 
+## Live signed callback replay and credit audit (after a paid Sandbox order)
+
+The Sandbox Worker exposes an operator-authenticated read-only audit endpoint:
+`GET /api/sandbox/orders/BORTEST-<uuid>/audit`.
+It reports `status`, `expectedCredits`, `ledgerEntries` and `ledgerCredits`
+from the dedicated Sandbox D1 ledger. It never calls Duitku, modifies an order,
+or returns provider credentials. Do not confuse this with a production wallet.
+
+After receiving a real Sandbox `paid` result, an operator can run
+`scripts/verify-duitku-paid-callback-replay.ps1` locally using PowerShell 5.1.
+It requires the separate BOR AI operator token and the Duitku Sandbox API key
+through hidden prompts. **Never paste either secret into chat or a script file.**
+The script checks that the existing order is paid and its ledger is exactly
+one entry/100 credits **before** sending two signed duplicate callbacks, then
+checks the same invariants **after** the replays. It sends no new invoice,
+initiates no payment and never posts to production. It cannot exercise an
+unpaid-order settlement or a genuine gateway retry: this specifically proves
+the already-paid callback replay path.
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\verify-duitku-paid-callback-replay.ps1
+```
+
+If the live audit endpoint returns HTTP 404 on this route, first deploy the
+updated Sandbox Worker from `main`; no D1 migration is needed. Stop on any
+unexpected status or credit count instead of repeating callbacks.
+
 ## Invariants and verification
 
 - HMAC-SHA256 implements the current Duitku V2 invoice, callback and status
