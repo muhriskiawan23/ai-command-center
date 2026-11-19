@@ -11,7 +11,7 @@ import {handleBillingShadowAccountRequest,deriveShadowSubject} from '../src/bill
 // future isolated shadow D1. No production DB credentials are used.
 const PEPPER='offline-only-shadow-integration-secret-00000000000001';
 const A='123456789012345678901', B='234567890123456789012';
-const URL='https://bor-ai.example.test/api/billing/account';
+const ENDPOINT='https://bor-ai.example.test/api/billing/account';
 function d1(db){
   return {prepare(sql){
     return {
@@ -21,7 +21,7 @@ function d1(db){
   }};
 }
 async function call(env, id, headers={}){
-  return handleBillingShadowAccountRequest(new Request(URL,{headers}),env,{
+  return handleBillingShadowAccountRequest(new Request(ENDPOINT,{headers}),env,{
     // Simulates the server's verified-session return value, NEVER a browser ID.
     getSession:async()=>id?{id}:null
   });
