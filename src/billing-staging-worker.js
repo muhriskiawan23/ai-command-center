@@ -55,23 +55,36 @@ function getCookie(request){
   const val=candidate?.slice(COOKIE.length+1)||'';
   return /^[A-Za-z0-9_-]{40,128}$/.test(val)?val:null;
 }
-async function body(request,limit=2048){
-  if(!/^application\/json(?:;|$)/i.test(request.headers.get('Content-Type')||''))fail(415,'json_required');
+async function readBounded(request,limit){
   const declared=Number(request.headers.get('Content-Length')||0);
   if(declared>limit)fail(413,'request_too_large');
-  const bytes=new Uint8Array(await request.arrayBuffer());
-  if(bytes.length>limit)fail(413,'request_too_large');
-  try{const value=JSON.parse(new TextDecoder().decode(bytes));if(!value||typeof value!=='object'||Array.isArray(value))fail(400,'invalid_json');return value}
-  catch(e){if(e instanceof StageError)throw e;fail(400,'invalid_json')}
+  const reader=request.body?.getReader();
+  if(!reader)fail(400,'request_body_required');
+  let length=0;const parts=[];
+  for(;;){
+    const {done,value}=await reader.read();
+    if(done)break;
+    length+=value.byteLength;
+    if(length>limit){await reader.cancel();fail(413,'request_too_large')}
+    parts.push(value);
+  }
+  const bytes=new Uint8Array(length);let offset=0;
+  for(const part of parts){bytes.set(part,offset);offset+=part.length}
+  try{return new TextDecoder('utf-8',{fatal:true}).decode(bytes)}
+  catch{fail(400,'invalid_utf8')}
+}
+async function body(request,limit=2048){
+  if(!/^application\/json(?:;|$)/i.test(request.headers.get('Content-Type')||''))fail(415,'json_required');
+  try{
+    const value=JSON.parse(await readBounded(request,limit));
+    if(!value||typeof value!=='object'||Array.isArray(value))fail(400,'invalid_json');
+    return value;
+  }catch(e){if(e instanceof StageError)throw e;fail(400,'invalid_json')}
 }
 async function formBody(request){
   if(!/^application\/x-www-form-urlencoded(?:;|$)/i.test(request.headers.get('Content-Type')||''))
     fail(415,'form_required');
-  const declared=Number(request.headers.get('Content-Length')||0);
-  if(declared>4096)fail(413,'callback_too_large');
-  const value=await request.text();
-  if(value.length>4096)fail(413,'callback_too_large');
-  return new URLSearchParams(value);
+  return new URLSearchParams(await readBounded(request,4096));
 }
 function numberConfig(env,name,minimum=0){
   const value=env[name];
@@ -271,11 +284,12 @@ export default {
       // Never disclose provider secret, signed payload, customer identity or raw SQL.
       if(msg.includes('authentication_required'))return json({sandbox:true,error:'staging_login_required'},401);
       if(msg.includes('order_not_found'))return json({sandbox:true,error:'order_not_found'},404);
-      if(msg.includes('sandbox_status_retry_later')||msg.includes('staging_daily_checkout_limit'))
+      if(msg.includes('sandbox_status_retry_later')||msg.includes('staging_daily_checkout_limit')||msg.includes('staging_daily_session_limit'))
         return json({sandbox:true,error:msg.includes('retry_later')?'status_retry_later':'staging_daily_limit'},429,{'Retry-After':'30'});
       if(msg.includes('margin')||msg.includes('staging_policy')||msg.includes('invalid_server_pricing'))
         return json({sandbox:true,error:'staging_policy_unavailable'},503);
       if(msg.includes('duitku_sandbox_unavailable'))return json({sandbox:true,error:'provider_unavailable'},502);
+      if(msg.includes('request_too_large'))return json({sandbox:true,error:'request_too_large'},413);
       if(msg.includes('idempotency_conflict')||msg.includes('invoice_reference_conflict'))
         return json({sandbox:true,error:'order_conflict'},409);
       if(msg.includes('signature'))return json({sandbox:true,error:'invalid_signature'},403);
