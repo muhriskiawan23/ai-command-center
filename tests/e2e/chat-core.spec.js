@@ -248,19 +248,19 @@ test.describe("pembaca link", () => {
   });
 });
 
-test("mode Translator dan Text Analyst tersedia di pemilih mode dan terkirim ke server", async ({ page, app }) => {
+test("focus picker offers five clear modes and sends the chosen focus to the server", async ({ page, app }) => {
   await page.goto(app.url);
   await page.locator("#continueGuest").click();
   const options = await page.locator("#agent option").evaluateAll((els) => els.map((e) => e.value));
-  expect(options).toEqual(expect.arrayContaining(["translator", "text_analyst"]));
+  expect(options).toEqual(["coordinator", "researcher", "analyst", "writer", "planner"]);
   const posts = [];
   page.on("request", (r) => { if (r.url().endsWith("/api/chat") && r.method() === "POST") posts.push(JSON.parse(r.postData())); });
   await page.locator("#toolsMenu > summary").click();
-  await page.locator("#agent").selectOption("translator");
-  await page.locator("#prompt").fill("Translate to Indonesian: Good morning");
+  await page.locator("#agent").selectOption("analyst");
+  await page.locator("#prompt").fill("Compare these two options");
   await page.locator("#send").click();
   await expect(page.locator(".message.assistant:not(#typing)")).toHaveCount(1);
-  expect(posts[0].agent).toBe("translator");
+  expect(posts[0].agent).toBe("analyst");
 });
 
 
