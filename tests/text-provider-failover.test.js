@@ -15,7 +15,7 @@ function fixture(error = quota, settings = {}) {
     DB: { prepare: () => ({ bind: (day, key, reserved) => ({
       async first() {
         assert.equal(key, "provider:openai:backup:text:global:micro-usd");
-        assert.equal(reserved, 924);
+        assert.equal(reserved, 926);
         return { units: reserved };
       }
     }) }) },
@@ -66,6 +66,52 @@ test("cancelled and image-like calls never contact backup", async () => {
   await assert.rejects(env.AI.run(DEFAULT_MODEL_ID, payload, { signal: AbortSignal.abort() }), quota);
   await assert.rejects(env.AI.run(DEFAULT_MODEL_ID, { image: [] }), quota);
   assert.equal(sends(), 0);
+});
+
+test("Luna backup preserves function tools and tool results for the GitHub read flow", async () => {
+  let requestBody;
+  let reservedCounter;
+  const env = withTextProviderFailover({
+    BOR_TEXT_LUNA_PRIMARY: "true",
+    BOR_TEXT_BACKUP_ENABLED: "true",
+    BOR_TEXT_BACKUP_API_KEY: "fixture-key",
+    BOR_TEXT_BACKUP_DAILY_USD_LIMIT: "1.00",
+    DB: { prepare: () => ({ bind: (_day, subject, units) => ({
+      async first() { reservedCounter = subject; return { units }; }
+    }) }) },
+    AI: { async run() { throw new Error("Cloudflare should not be called"); } }
+  }, async (_url, request) => {
+    requestBody = JSON.parse(request.body);
+    return Response.json({ choices: [{ message: {
+      role: "assistant",
+      content: null,
+      tool_calls: [{ id: "call_123", type: "function", function: { name: "list_github_repositories", arguments: "{}" } }]
+    } }] });
+  });
+  const toolPayload = {
+    messages: [{ role: "system", content: "Use explicit tools." }, { role: "user", content: "List my GitHub repos." }],
+    max_tokens: 200,
+    tools: [{ name: "list_github_repositories", description: "List authorized repositories", parameters: { type: "object", properties: {} } }]
+  };
+
+  const generated = await env.AI.run(DEFAULT_MODEL_ID, toolPayload);
+  assert.equal(reservedCounter, "provider:openai:backup:text:global:micro-usd");
+  assert.equal(requestBody.tools[0].type, "function");
+  assert.equal(requestBody.tools[0].function.name, "list_github_repositories");
+  assert.equal(requestBody.tool_choice, "auto");
+  assert.equal(generated.choices[0].message.tool_calls[0].id, "call_123");
+
+  const followup = {
+    ...toolPayload,
+    messages: [
+      ...toolPayload.messages,
+      { role: "assistant", content: null, tool_calls: [{ id: "call_123", type: "function", function: { name: "list_github_repositories", arguments: "{}" } }] },
+      { role: "tool", tool_call_id: "call_123", name: "list_github_repositories", content: JSON.stringify({ untrusted_plugin_result: true, result: [] }) }
+    ]
+  };
+  await env.AI.run(DEFAULT_MODEL_ID, followup);
+  assert.equal(requestBody.messages.at(-1).tool_call_id, "call_123");
+  assert.equal(requestBody.messages.at(-1).role, "tool");
 });
 
 test("Luna-first routing uses Cloudflare when Luna fails or its budget is exhausted", async () => {

@@ -321,7 +321,7 @@ let githubConnectionRequest=0;
 function resetGitHubConnection(){
   githubConnection=null;githubConnectionLoading=false;githubConnectionRequest++;
   $("githubConnectionStatus").textContent="Sign in with Google to connect GitHub.";
-  $("githubConnectionMessage").textContent="Connect GitHub to view repositories that you are authorized to access.";
+  $("githubConnectionMessage").textContent=pluginText("Connect GitHub to browse repositories authorized for this app. GitHub actions in chat are not available yet.");
   $("githubStatusDot").className="github-status-dot";
   $("githubConnect").textContent="Connect GitHub";$("githubConnect").disabled=false;$("githubConnect").hidden=false;$("githubDisconnect").hidden=true;$("openGithubRepos").hidden=true;
 }
@@ -334,7 +334,9 @@ async function refreshGitHubConnection(){
     if(request!==githubConnectionRequest||state!==AppState.AUTH)return;
     githubConnection=Boolean(data.connected);
     $("githubConnectionStatus").textContent=githubConnection?(data.account?.login?"Connected · @"+data.account.login:"Connected"):"Not connected";
-    $("githubConnectionMessage").textContent=githubConnection?"GitHub is connected. Repository access follows the permissions granted to the GitHub App.":"Connect GitHub to view repositories that you are authorized to access.";
+    $("githubConnectionMessage").textContent=pluginText(githubConnection
+      ?githubChatToolsEnabled?"GitHub is connected. BOR AI can list repositories, review open issues, and read text files when you ask. It cannot make changes.":"GitHub is connected. You can browse repositories granted to the GitHub App. Chat actions are not available yet."
+      :"Connect GitHub to browse repositories authorized for this app. GitHub actions in chat are not available yet.");
     $("githubStatusDot").className="github-status-dot "+(githubConnection?"is-connected":"");
     $("githubConnect").textContent=githubConnection?"Connect another account":"Connect GitHub";
     $("githubDisconnect").hidden=!githubConnection;
@@ -1349,8 +1351,8 @@ async function boot(){
   setState(AppState.UNAUTH);loadGoogle();
 }
 $("openEmailDraft")?.addEventListener("click",()=>{if(busy||loadingChat)return;$("emailDraftPanel").hidden=!$("emailDraftPanel").hidden;if(!$("emailDraftPanel").hidden)$("emailPurpose").focus()});
-$("closeEmailDraft").addEventListener("click",()=>{$("emailDraftPanel").hidden=true});
-$("prepareEmailDraft").addEventListener("click",()=>{const r=window.BOREmailDraft?.buildPrompt({recipient:$("emailRecipient").value,subject:$("emailSubject").value,purpose:$("emailPurpose").value,points:$("emailPoints").value,tone:$("emailTone").value,language:$("emailLanguage").value});if(!r?.ok){toast(r?.error||"Generator email tidak tersedia.");$("emailPurpose").focus();return;}promptEl.value=r.prompt;$("agent").value="writer";$("emailDraftPanel").hidden=true;resizePrompt();promptEl.focus();toast("Instruksi draft email siap. Periksa lalu tekan tombol kirim.");});
+$("closeEmailDraft")?.addEventListener("click",()=>{$("emailDraftPanel").hidden=true});
+$("prepareEmailDraft")?.addEventListener("click",()=>{const r=window.BOREmailDraft?.buildPrompt({recipient:$("emailRecipient").value,subject:$("emailSubject").value,purpose:$("emailPurpose").value,points:$("emailPoints").value,tone:$("emailTone").value,language:$("emailLanguage").value});if(!r?.ok){toast(r?.error||"Generator email tidak tersedia.");$("emailPurpose").focus();return;}promptEl.value=r.prompt;$("agent").value="writer";$("emailDraftPanel").hidden=true;resizePrompt();promptEl.focus();toast("Instruksi draft email siap. Periksa lalu tekan tombol kirim.");});
 $("continueGuest").addEventListener("click",()=>{writeGuestFlag(true);currentUser=null;setState(AppState.GUEST);enterChat();loadGoogle()});
 $("gateRetry").addEventListener("click",boot);
 $("googleRetry").addEventListener("click",()=>loadGoogle(true));
@@ -1413,10 +1415,39 @@ function restoreAccountAfterChildDialog(){
   }
 }
 const pluginsDialog=$("pluginsDialog");
+let githubChatToolsEnabled=false;
+function pluginText(value){return window.BORLocale?.translate?.(value)||value}
+async function refreshPluginCapabilities(){
+  const searchStatus=$("pluginSearchStatus"),searchMeta=$("pluginSearchMeta");
+  const imageStatus=$("pluginImagesStatus"),imageButton=$("pluginImagesUse"),imageGalleryButton=$("pluginImagesGallery");
+  searchStatus.textContent=pluginText("Checking availability…");
+  imageStatus.textContent=pluginText("Checking availability…");
+  imageButton.disabled=true;
+  try{
+    const data=await api("/api/plugins/capabilities");
+    githubChatToolsEnabled=Boolean(data?.tools?.github?.inChatActions);
+    const searchConfigured=Boolean(data?.tools?.webSearch?.available);
+    searchStatus.textContent=pluginText(searchConfigured?"Automatic · Configured":"Not configured");
+    searchMeta.textContent=pluginText(searchConfigured?"Live search provider is configured; search runs only when current facts are needed.":"Live web search is unavailable. BOR AI will not claim it searched the web.");
+    const imagesAvailable=Boolean(data?.tools?.imageGeneration?.available);
+    imageStatus.textContent=pluginText(imagesAvailable?"Available":"Not available");
+    imageButton.disabled=!imagesAvailable;
+    imageButton.textContent=pluginText(imagesAvailable?"Open image tools":"Image generation unavailable");
+    imageGalleryButton.hidden=!imagesAvailable||state!==AppState.AUTH;
+  }catch{
+    githubChatToolsEnabled=false;
+    searchStatus.textContent=pluginText("Status unavailable");
+    searchMeta.textContent=pluginText("Could not check live search configuration.");
+    imageStatus.textContent=pluginText("Status unavailable");
+    imageButton.disabled=true;
+    imageButton.textContent=pluginText("Image generation unavailable");
+    imageGalleryButton.hidden=true;
+  }
+}
 $("openPlugins").addEventListener("click",()=>{
   if(drawerOpen)closeDrawerDom(false);
   if(!pluginsDialog.open)pluginsDialog.showModal();
-  if(state===AppState.AUTH)refreshGitHubConnection();else resetGitHubConnection();
+  refreshPluginCapabilities().then(()=>{if(state===AppState.AUTH)refreshGitHubConnection();else resetGitHubConnection()});
   $("pluginsClose").focus();
 });
 $("pluginsClose").addEventListener("click",()=>pluginsDialog.close());
@@ -1427,6 +1458,7 @@ $("pluginSearch").addEventListener("input",()=>{
 });
 $("pluginFilesUse").addEventListener("click",()=>{pluginsDialog.close();$("pdfFile").click()});
 $("pluginImagesUse").addEventListener("click",()=>{pluginsDialog.close();$("toolsMenu").open=true;$("imageTask").focus()});
+$("pluginImagesGallery").addEventListener("click",()=>{pluginsDialog.close();openImageGallery()});
 $("pluginEmailUse").addEventListener("click",()=>{pluginsDialog.close();$("emailDraftPanel").hidden=false;$("emailPurpose").focus()});
 pluginsDialog.addEventListener("close",()=>{$("pluginSearch").value="";document.querySelectorAll("#pluginCatalog [data-plugin-card]").forEach(card=>card.hidden=false)});
 const aboutDialog=$("aboutDialog");
@@ -1510,9 +1542,10 @@ $('imageConfirm').addEventListener('click',async()=>{
     welcomeEl.hidden=true;messagesEl.hidden=false;messagesEl.append(imageResultCard(job));watchImageJob(job);
   }catch(error){$('imageQuote').textContent=error.message+' Jika mengulang, gunakan tombol ini agar job tidak ditagih dua kali.';$('imageConfirm').disabled=false;}
 });
-$('openImageGallery')?.addEventListener('click',async()=>{
+async function openImageGallery(){
   if(state!==AppState.AUTH){toast('Masuk untuk membuka gambar Anda.');return;}
   $('imageConfirm').hidden=true;$('imageQuote').textContent='Memuat gambar…';$('imageGallery').replaceChildren();$('imageDialog').showModal();$('toolsMenu').open=false;
   try{const data=await api('/api/images/jobs');$('imageQuote').textContent='Saldo: '+data.balance+' kredit gambar · '+data.jobs.length+' job terbaru';for(const job of data.jobs){$('imageGallery').append(imageResultCard(job));watchImageJob(job);}}
   catch(error){$('imageQuote').textContent=error.message;}
-});
+}
+$('openImageGallery')?.addEventListener('click',openImageGallery);

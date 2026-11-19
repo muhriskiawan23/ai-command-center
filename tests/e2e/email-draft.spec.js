@@ -1,12 +1,17 @@
-import { test, expect } from "./fixtures.js";
+import { test, expect, drawerMode } from "./fixtures.js";
 
 test("email draft helper prepares a Writer prompt without sending automatically", async ({ page, app }) => {
   await page.goto(app.url);
   await page.locator("#continueGuest").click();
   await expect(page.locator("#app")).toBeVisible();
 
-  await page.locator("#toolsMenu > summary").click();
-  await page.locator("#openEmailDraft").click();
+  if (drawerMode(page)) {
+    await page.locator("#menuBtn").click();
+    await expect(page.locator("#sidebar")).toBeVisible();
+  }
+  await page.locator("#openPlugins").click();
+  await expect(page.locator("#pluginsDialog")).toBeVisible();
+  await page.locator("#pluginEmailUse").click();
   const panel = page.locator("#emailDraftPanel");
   await expect(panel).toBeVisible();
   await panel.locator("#emailPurpose").fill("Meminta jadwal ulang rapat proyek");

@@ -1,4 +1,4 @@
-import {test,expect,openSettings} from './fixtures.js';
+import {test,expect,openSettings,drawerMode} from './fixtures.js';
 async function enter(page,app){await page.goto(app.url);await page.locator('#continueGuest').click();await expect(page.locator('#prompt')).toBeVisible();}
 test('workspace uses the original logo, readable light surfaces and a bounded viewport',async({page,app})=>{
  await enter(page,app);
@@ -15,8 +15,11 @@ test('attachment and tools disclosures support Escape without dispatching AI',as
  await enter(page,app);
  await page.locator('#attachmentMenu > summary').click();await expect(page.locator('#attachPdf')).toBeVisible();await expect(page.locator('#attachCsv')).toBeHidden();
  await page.locator('#attachmentMenu > summary').press('Escape');await expect(page.locator('#attachPdf')).toBeHidden();await expect(page.locator('#attachmentMenu > summary')).toBeFocused();
- await page.locator('#toolsMenu > summary').click();await expect(page.locator('#agent')).toBeVisible();await expect(page.locator('#openEmailDraft')).toBeVisible();
+ await page.locator('#toolsMenu > summary').click();await expect(page.locator('#agent')).toBeVisible();
  await page.locator('#toolsMenu > summary').press('Escape');await expect(page.locator('#agent')).toBeHidden();
+ if(drawerMode(page)){await page.locator('#menuBtn').click();await expect(page.locator('#sidebar')).toBeVisible();}
+ await page.locator('#openPlugins').click();await expect(page.locator('#pluginsDialog')).toBeVisible();
+ await expect(page.locator('#pluginEmailUse')).toBeVisible();await page.locator('#pluginsClose').click();
  expect(app.aiCalls).toHaveLength(0);
 });
 test('appearance preference survives reload without persisting guest messages',async({page,app})=>{
