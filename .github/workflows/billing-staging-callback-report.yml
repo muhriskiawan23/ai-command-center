@@ -23,7 +23,7 @@ jobs:
             exit 1
           fi
           echo "::add-mask::${BILLING_STAGING_REPORT_TOKEN}"
-          URL="https://bor-ai-billing-staging.muhriskiawan23.workers.dev/api/billing-sandbox/operator/callback-diagnostics?hours=24"
+          URL="https://bor-ai-billing-staging.muhriskiawan23.workers.dev/api/billing-sandbox/report/callback-diagnostics?hours=24"
           STATUS="$(curl --silent --show-error --max-time 20 --output report.json --write-out '%{http_code}' \
             --header "Authorization: Bearer ${BILLING_STAGING_REPORT_TOKEN}" \
             --header 'Accept: application/json' \
