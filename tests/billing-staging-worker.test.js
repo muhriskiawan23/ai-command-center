@@ -8,6 +8,7 @@ import { duitkuSignature } from '../src/duitku-sandbox-worker.js';
 const origin='https://bor-ai-billing-staging.testacct.workers.dev';
 const merchant='DS38217',secret='sandbox-test-only-key-not-a-real-secret';
 const operatorToken='operator-test-only-credential-012345678901234567890123456789';
+const reportToken='report-test-only-credential-012345678901234567890123456789';
 const csrfSecret='staging-csrf-test-only-secret-012345678901234567890123';
 function stage(){
   const s=new DatabaseSync(':memory:');
@@ -66,7 +67,8 @@ function stage(){
     BILLING_DB:db,BILLING_STAGING_ENABLED:'true',BILLING_STAGING_ALLOW_TEST_INVOICES:'true',
     STAGING_D1_NAME:'bor-ai-billing-staging',STAGING_PUBLIC_ORIGIN:origin,
     DUITKU_SANDBOX_MERCHANT_CODE:merchant,DUITKU_SANDBOX_API_KEY:secret,
-    BILLING_STAGING_OPERATOR_TOKEN:operatorToken,BILLING_STAGING_CSRF_SECRET:csrfSecret,
+    BILLING_STAGING_OPERATOR_TOKEN:operatorToken,BILLING_STAGING_REPORT_TOKEN:reportToken,
+    BILLING_STAGING_CSRF_SECRET:csrfSecret,
     DUITKU_SANDBOX_FETCHER:mock,
     STAGING_TEST_TARIFF_VERSION:'SANDBOX-UNAPPROVED',
     STAGING_TEST_BASIC_CREDITS:'3000',STAGING_TEST_PRO_CREDITS:'15000',
@@ -190,13 +192,14 @@ test('same request id retains original quote, invoice and URL and does not call 
 });
 test('staging callback diagnostics require operator auth, never reveal payment identifiers, and count honest outcomes',async()=>{
   const h=stage();try{
-    const path='/api/billing-sandbox/operator/callback-diagnostics';
+    const path='/api/billing-sandbox/report/callback-diagnostics';
     assert.equal((await h.call(path,{token:null})).status,401);
     assert.equal((await h.call(path,{token:'wrong'})).status,401);
-    assert.equal((await h.call(path+'?hours=169')).status,400);
-    assert.equal((await h.call(path+'?hours=24&extra=x')).status,400);
-    assert.equal((await h.call(path,{method:'POST'})).status,405);
-    const before=await (await h.call(path)).json();
+    assert.equal((await h.call(path,{token:operatorToken})).status,401);
+    assert.equal((await h.call(path+'?hours=169',{token:reportToken})).status,400);
+    assert.equal((await h.call(path+'?hours=24&extra=x',{token:reportToken})).status,400);
+    assert.equal((await h.call(path,{method:'POST',token:reportToken})).status,405);
+    const before=await (await h.call(path,{token:reportToken})).json();
     assert.deepEqual(before.summary,[]);
     assert.deepEqual(before.recent,[]);
     const a=await h.makeAccount(),invoice=(await h.checkout(a)).payload;
@@ -211,7 +214,7 @@ test('staging callback diagnostics require operator auth, never reveal payment i
     h.setMode('00');
     assert.equal((await h.callback(invoice)).status,200);
     assert.equal((await h.callback(invoice)).status,200);
-    const diagnostics=await (await h.call(path+'?hours=24')).json();
+    const diagnostics=await (await h.call(path+'?hours=24',{token:reportToken})).json();
     assert.equal(diagnostics.sandbox,true);
     assert.equal(diagnostics.isolatedBilling,true);
     assert.equal(diagnostics.realCreditsGranted,false);
