@@ -12,7 +12,7 @@
 ## Limits and costs
 
 - 1 image per turn; accepted uploads: JPG/PNG/WebP, max 5 MB locally, max 560 KiB JPEG through chat JSON.
-- Visual chat costs **3 daily quota units** (one normal chat unit + two additional vision units), and uses existing per-IP/per-user rate limits and global D1 quotas.
+- Visual chat costs **3 general daily quota units** (one normal chat unit + two additional vision units), plus one photo-specific unit in each applicable D1 counter. By default the photo budget is **2/day per guest, 8/day per account, and 40/day globally**; override with `VISION_DAILY_LIMIT_GUEST`, `VISION_DAILY_LIMIT_USER`, and `VISION_DAILY_LIMIT_GLOBAL` only after reviewing costs. Existing per-IP/per-user rate limits still apply.
 - Cloudflare Moondream 3.1 rate as listed in October 2026: **$0.30 / 1M input tokens**, **$1.00 / 1M output tokens**. Actual cost per photo depends on the image and token consumption; vision output is capped at 650 tokens before the regular chat model. Do not imply this equates to a fixed per-image price.
 - Worker feature flag: `BOR_VISION_ENABLED=true` in wrangler.jsonc. Existing AI binding is reused; no additional secret key, Tavily or Midtrans dependency.
 - Input is routed to Cloudflare's model for processing, so do not claim uploaded image pixels stay exclusively on the device. Cloudflare data policies apply.
