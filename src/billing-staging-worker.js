@@ -9,6 +9,13 @@ import {
   readOfflineCustomerOrder, resolveOfflineBillingSession
 } from './billing-synthetic-gateway-bridge.js';
 import { getBillingWalletAudit } from './billing-ledger-foundation.js';
+import {
+  issueManualSyntheticSubscription,readManualSyntheticEntitlement,
+  cancelManualSyntheticRenewal
+} from './billing-manual-subscriptions-offline.js';
+import {readSyntheticSpendableCredits} from './billing-synthetic-usage-reservations.js';
+import {simulateOfflineMeteredModelCall} from './billing-provider-metering-offline.js';
+
 
 const PREFIX='/api/billing-sandbox';
 const COOKIE='__Host-bor_billing_stage';
@@ -173,6 +180,49 @@ async function createStageSession(env,nowMs){
     'Set-Cookie':COOKIE+'='+sessionToken+'; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=3600'
   });
 }
+
+// Explicitly opt-in to isolated synthetic lifecycle demonstration. This does
+// NOT enable any production endpoint or customer entitlement. The mock
+// provider response below is a fixed server fixture and cannot be presented
+// as evidence of a real OpenAI/Workers AI usage bill.
+function lifecycleReady(env){
+  return env.BILLING_STAGING_SIMULATION_ENABLED==='true';
+}
+function requireLifecycle(env){
+  if(!lifecycleReady(env))fail(404,'not_found');
+}
+function exactJsonFields(data,fields){
+  if(Object.keys(data).sort().join(',')!==fields.slice().sort().join(','))
+    fail(400,'invalid_simulation_fields');
+}
+const SIMULATION_TARIFF=Object.freeze({
+  modelId:'staging-offline-text-fixture',
+  rateVersion:'UNAPPROVED-STAGING-TEXT-FIXTURE-001',
+  maxInputTokens:1000,
+  maxOutputTokens:500,
+  maxToolCredits:0,
+  inputRateMicroUsdPerMillion:750000n,
+  outputRateMicroUsdPerMillion:4500000n,
+  // Required positive placeholder; NO tool credits are allowed by this route.
+  toolRateMicroUsdPerCredit:8000n,
+  creditValueMicroUsd:100n
+});
+async function simulatedPlan(env,userId,nowMs){
+  const [term,wallet]=await Promise.all([
+    readManualSyntheticEntitlement(env.BILLING_DB,{userId,nowMs}),
+    readSyntheticSpendableCredits(env.BILLING_DB,{userId})
+  ]);
+  return {sandbox:true,simulation:true,entitlement:term,
+    availableTestCredits:wallet.availableCredits,
+    heldTestCredits:wallet.heldCredits,
+    spendableTestCredits:wallet.spendableCredits,
+    debtTestCredits:wallet.debtCredits,
+    walletReconciled:wallet.reconciled,
+    automaticDebitEnabled:false,
+    realCreditsGranted:false,realSubscriptionEnabled:false,
+    productionCheckoutEnabled:false};
+}
+
 async function orderAudit(env,orderId){
   if(!ORDER.test(orderId))fail(400,'invalid_order_id');
   const order=await env.BILLING_DB.prepare(
@@ -330,6 +380,79 @@ export default {
           availableTestCredits:wallet.availableCredits,debtTestCredits:wallet.debtCredits,
           reconciled:wallet.reconciled,realCreditsGranted:false});
       }
+
+      if(u.pathname===PREFIX+'/simulation/plan'){
+        requireLifecycle(env);
+        if(method!=='GET')fail(405,'get_required');
+        const {userId}=await auth(request,env,nowMs);
+        return json(await simulatedPlan(env,userId,nowMs));
+      }
+      if(u.pathname===PREFIX+'/simulation/activate'){
+        requireLifecycle(env);
+        if(method!=='POST')fail(405,'post_required');
+        const {userId,token}=await auth(request,env,nowMs);
+        await requireCsrf(request,env,token);
+        const data=await body(request);
+        exactJsonFields(data,['orderId']);
+        if(!ORDER.test(data.orderId))fail(400,'invalid_order_id');
+        const term=await issueManualSyntheticSubscription(env.BILLING_DB,{
+          userId,orderId:data.orderId,nowMs
+        });
+        return json({sandbox:true,simulation:true,...term,
+          productionCheckoutEnabled:false},term.duplicate?200:201);
+      }
+      if(u.pathname===PREFIX+'/simulation/cancel'){
+        requireLifecycle(env);
+        if(method!=='POST')fail(405,'post_required');
+        const {userId,token}=await auth(request,env,nowMs);
+        await requireCsrf(request,env,token);
+        const data=await body(request);
+        exactJsonFields(data,['orderId']);
+        if(!ORDER.test(data.orderId))fail(400,'invalid_order_id');
+        const term=await cancelManualSyntheticRenewal(env.BILLING_DB,{
+          userId,orderId:data.orderId,nowMs
+        });
+        return json({sandbox:true,simulation:true,...term,
+          productionCheckoutEnabled:false});
+      }
+      if(u.pathname===PREFIX+'/simulation/text-usage'){
+        requireLifecycle(env);
+        if(method!=='POST')fail(405,'post_required');
+        const {userId,token}=await auth(request,env,nowMs);
+        await requireCsrf(request,env,token);
+        const data=await body(request);
+        exactJsonFields(data,['requestId']);
+        if(!UUID.test(data.requestId))fail(400,'invalid_simulation_request_id');
+        const term=await readManualSyntheticEntitlement(env.BILLING_DB,{userId,nowMs});
+        if(!term.active)fail(403,'synthetic_plan_required');
+        const requestId='SIMREQ-'+(await sha256Hex(userId+'|'+data.requestId)).slice(0,40);
+        const metered=await simulateOfflineMeteredModelCall({
+          db:env.BILLING_DB,userId,requestId,nowMs,
+          providerKind:'openai-chat-completions',
+          tariff:SIMULATION_TARIFF,
+          invoke:async()=>({
+            id:'chatcmpl-BOR-STAGING-FIXTURE-001',
+            object:'chat.completion',
+            model:SIMULATION_TARIFF.modelId,
+            usage:{prompt_tokens:600,completion_tokens:200,total_tokens:800}
+          })
+        });
+        const wallet=await readSyntheticSpendableCredits(env.BILLING_DB,{userId});
+        return json({
+          sandbox:true,simulation:true,
+          usageSource:'fixed_server_test_fixture_not_a_provider_bill',
+          status:metered.status,
+          duplicate:metered.duplicate,
+          providerInvoked:metered.providerInvoked,
+          billedTestCredits:metered.billedCredits??null,
+          availableTestCredits:wallet.availableCredits,
+          heldTestCredits:wallet.heldCredits,
+          spendableTestCredits:wallet.spendableCredits,
+          realCreditsGranted:false,realSubscriptionEnabled:false,
+          productionCheckoutEnabled:false
+        });
+      }
+
       if(u.pathname===PREFIX+'/checkout'){
         if(method!=='POST')fail(405,'post_required');
         const {userId,token}=await auth(request,env,nowMs);
@@ -379,6 +502,14 @@ export default {
       if(msg.includes('request_too_large'))return json({sandbox:true,error:'request_too_large'},413);
       if(msg.includes('idempotency_conflict')||msg.includes('invoice_reference_conflict'))
         return json({sandbox:true,error:'order_conflict'},409);
+      if(msg.includes('subscription_term_owner_mismatch'))
+        return json({sandbox:true,error:'order_not_found'},404);
+      if(msg.includes('subscription_term_requires_verified_paid_order')||
+         msg.includes('billing_term_unverified_payment')||
+         msg.includes('billing_term_overlapping_or_backdated')||
+         msg.includes('synthetic_reservation_final_state_conflict')||
+         msg.includes('billing_reserved_credits_insufficient'))
+        return json({sandbox:true,error:'simulation_not_ready'},409);
       if(msg.includes('signature'))return json({sandbox:true,error:'invalid_signature'},403);
       if(msg.includes('invalid_callback')||msg.includes('callback_order')||msg.includes('merchant_mismatch')||
          msg.includes('callback_too_many_fields')||msg.includes('callback_invalid_field_name')||

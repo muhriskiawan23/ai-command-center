@@ -15,6 +15,7 @@
   "vars": {
     "BILLING_STAGING_ENABLED": "false",
     "BILLING_STAGING_ALLOW_TEST_INVOICES": "false",
+    "BILLING_STAGING_SIMULATION_ENABLED": "false",
     "STAGING_D1_NAME": "bor-ai-billing-staging",
     "STAGING_PUBLIC_ORIGIN": "https://not-configured.invalid",
     "DUITKU_SANDBOX_MERCHANT_CODE": "DS38217",
