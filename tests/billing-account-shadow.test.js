@@ -67,9 +67,13 @@ test('only GET without query and without cross-site credentials is accepted',asy
     for(const options of [
       {url:ENDPOINT+'?userId='+USER_B},
       {url:ENDPOINT+'?credits=999999'},
-      {headers:{'Sec-Fetch-Site':'cross-site'}}
+      {headers:{'Sec-Fetch-Site':'cross-site'}},
+      {headers:{'Sec-Fetch-Site':'same-site'}},
+      {headers:{Origin:'https://attacker.example.test'}},
+      {headers:{Origin:'null'}}
     ])assert.equal((await handler(env,options)).status,403);
     assert.equal((await handler(env)).status,200);
+    assert.equal((await handler(env,{headers:{Origin:'https://bor-ai.example.test','Sec-Fetch-Site':'same-origin'}})).status,200);
   }finally{h.close()}
 });
 
@@ -153,6 +157,22 @@ test('read-only per-user account status never returns paid plan, credits, identi
     const changed=await body(await handler(config(h.wrapper,{BOR_BILLING_SHADOW_PEPPER:OTHER_PEPPER})));
     assert.equal(changed.accountStatus,'not_enrolled');
     assert.equal(h.db.prepare('SELECT COUNT(*) AS n FROM billing_shadow_accounts').get().n,1);
+  }finally{h.close()}
+});
+
+test('client identity headers cannot override the server-verified Google session',async()=>{
+  const h=dbHarness();try{
+    const key=await deriveShadowSubject(USER_A,PEPPER);
+    h.db.prepare('INSERT INTO billing_shadow_accounts (subject_hash,status,created_at_ms,updated_at_ms) VALUES(?,?,?,?)')
+      .run(key,'blocked',1,1);
+    const result=await handler(config(h.wrapper),{
+      user:{id:USER_B},
+      headers:{'X-User-Id':USER_A,'X-Billing-Account':USER_A,'X-Forwarded-User':USER_A}
+    });
+    assert.equal(result.status,200);
+    const data=await result.json();
+    assert.equal(data.accountStatus,'not_enrolled');
+    assert.equal(data.credits,null);
   }finally{h.close()}
 });
 
