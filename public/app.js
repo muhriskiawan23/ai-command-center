@@ -102,7 +102,7 @@ async function api(path,opts={}){
   }
   return data||{};
 }
-const postJson=(path,body,timeoutMs,signal)=>api(path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body),timeoutMs,signal});
+const postJson=(path,body,timeoutMs,signal,vision=false)=>api(path,{method:"POST",headers:{"Content-Type":"application/json",...(vision?{"X-BOR-Vision":"1"}:{})},body:JSON.stringify(body),timeoutMs,signal});
 function copyText(value){
   const text=String(value||"").trim();
   if(!text){toast("Tidak ada konten untuk disalin.");return;}
@@ -1010,7 +1010,7 @@ function buildSentFileCard(attached,previewUrl=null){
   const summary=document.createElement("span");summary.className="sent-file-summary";
   const title=document.createElement("strong");title.textContent=safeAttachmentName(attached.name);
   const note=document.createElement("small");
-  note.textContent=/\.(?:jpe?g|png|webp)$/i.test(attached.name)?"Teks gambar melalui OCR lokal":"Diproses secara lokal";
+  note.textContent=/\.(?:jpe?g|png|webp)$/i.test(attached.name)?"Dianalisis menggunakan AI vision":"Diproses secara lokal";
   summary.append(title,note);tile.append(badge,summary);return tile;
 }
 function renderAttachmentPreview(){
@@ -1110,8 +1110,8 @@ async function readStructuredFile(file){
   return parseCsvLocally(file);
 }
 async function readImageFile(file,onProgress){
-  const {parseImageOcrLocally}=await import("/image-ocr.js");
-  return parseImageOcrLocally(file,{tesseract:window.Tesseract,onProgress});
+  const {prepareImageForVision}=await import("/image-vision.js");
+  return prepareImageForVision(file,{onProgress});
 }
 async function uploadAnyFile(file){
   if(!file||busy||loadingChat)return;
@@ -1125,7 +1125,7 @@ async function uploadAnyFile(file){
   releaseUnsentThumbnail();
   if(image&&URL.createObjectURL)attachmentThumbnailUrl=URL.createObjectURL(file);
   activePdf=null;activeCsv=null;
-  attachmentPending={name,stage:image?"Menyiapkan OCR di perangkat…":pdf?"Membaca halaman PDF…":"Membaca dokumen di perangkat…",error:false};
+  attachmentPending={name,stage:image?"Menyiapkan foto untuk AI vision…":pdf?"Membaca halaman PDF…":"Membaca dokumen di perangkat…",error:false};
   $("attachmentMenu").open=false;
   renderAttachmentPreview();lockComposer();
   const onProgress=message=>{
@@ -1139,7 +1139,7 @@ async function uploadAnyFile(file){
     if(request!==attachmentSequence)return;
     if(pdf)activePdf=parsed;else activeCsv=parsed;
     attachmentPending=null;
-    toast(image?"OCR selesai. Hanya teks hasil OCR yang bisa dianalisis.":"File siap dikirim bersama pesan.");
+    toast(image?"Foto siap. AI akan melihat dan menganalisisnya saat dikirim.":"File siap dikirim bersama pesan.");
   }catch(error){
     if(request!==attachmentSequence)return;
     attachmentPending={name,stage:String(error?.message||"File tidak dapat diproses.").slice(0,160),error:true};
@@ -1187,8 +1187,8 @@ async function submit(options={}){
   if(createdNew)replaceRoute({name:"chat",id:chat.id});
   const stillActive=()=>activeId===startId;const start=Date.now();
   try{
-    const payload={message:savedText,agent,requestId,language:window.BORLocale?.current||"en"};const customization=readCustomization();if(customization)payload.customization=customization;if(selectedPdf)payload.document={name:selectedPdf.name,content:selectedPdf.content,truncated:selectedPdf.truncated};if(selectedCsv?.kind==="image-ocr")payload.imageOcr={name:selectedCsv.name,content:selectedCsv.content,truncated:selectedCsv.truncated};else if(selectedCsv?.kind==="word-document")payload.wordDocument={name:selectedCsv.name,content:selectedCsv.content,paragraphCount:selectedCsv.paragraphCount,truncated:selectedCsv.truncated};else if(selectedCsv?.kind==="presentation")payload.presentation={name:selectedCsv.name,content:selectedCsv.content,slideCount:selectedCsv.slideCount,truncated:selectedCsv.truncated};else if(selectedCsv)payload.spreadsheet={name:selectedCsv.name,content:selectedCsv.content,rowCount:selectedCsv.rowCount,columnCount:selectedCsv.columnCount,truncated:selectedCsv.truncated};if(history.length)payload.history=history;if(state===AppState.AUTH&&chat.serverId)payload.conversationId=chat.serverId;if(replacing&&state===AppState.AUTH&&chat.serverId)payload.replaceLastTurn=true;
-    const data=await postJson("/api/chat",payload,CHAT_TIMEOUT_MS,activeChatController.signal);
+    const payload={message:savedText,agent,requestId,language:window.BORLocale?.current||"en"};const customization=readCustomization();if(customization)payload.customization=customization;if(selectedPdf)payload.document={name:selectedPdf.name,content:selectedPdf.content,truncated:selectedPdf.truncated};if(selectedCsv?.kind==="image-vision")payload.imageVision={name:selectedCsv.name,dataUrl:selectedCsv.dataUrl};else if(selectedCsv?.kind==="image-ocr")payload.imageOcr={name:selectedCsv.name,content:selectedCsv.content,truncated:selectedCsv.truncated};else if(selectedCsv?.kind==="word-document")payload.wordDocument={name:selectedCsv.name,content:selectedCsv.content,paragraphCount:selectedCsv.paragraphCount,truncated:selectedCsv.truncated};else if(selectedCsv?.kind==="presentation")payload.presentation={name:selectedCsv.name,content:selectedCsv.content,slideCount:selectedCsv.slideCount,truncated:selectedCsv.truncated};else if(selectedCsv)payload.spreadsheet={name:selectedCsv.name,content:selectedCsv.content,rowCount:selectedCsv.rowCount,columnCount:selectedCsv.columnCount,truncated:selectedCsv.truncated};if(history.length)payload.history=history;if(state===AppState.AUTH&&chat.serverId)payload.conversationId=chat.serverId;if(replacing&&state===AppState.AUTH&&chat.serverId)payload.replaceLastTurn=true;
+    const data=await postJson("/api/chat",payload,CHAT_TIMEOUT_MS,activeChatController.signal,selectedCsv?.kind==="image-vision");
     if(typeof data.response!=="string"||!data.response.trim())throw new Error("AI tidak menghasilkan jawaban.");
     if(pendingRetryRequest?.requestId===requestId)pendingRetryRequest=null;
     chat.messages.push({role:"assistant",content:data.response,id:data.responseId||null,feedback:null,links:data.links||[],pdf:data.pdf||null,spreadsheet:data.spreadsheet||null,wordDocument:selectedCsv?.kind==="word-document"?{name:selectedCsv.name,paragraphCount:selectedCsv.paragraphCount,truncated:selectedCsv.truncated}:null});chat.updated=Date.now();
