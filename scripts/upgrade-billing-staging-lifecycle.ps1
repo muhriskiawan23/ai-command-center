@@ -32,7 +32,7 @@ if(-not (Get-Command gh -ErrorAction SilentlyContinue)){
 if(-not (Get-Command node -ErrorAction SilentlyContinue)){
   throw 'STOP: Node.js missing.'
 }
-& gh auth status 2>$null | Out-Null
+& gh auth status | Out-Null
 if($LASTEXITCODE -ne 0){throw 'STOP: Authenticate GitHub CLI first.'}
 
 $expectedUuid='437ad1fb-2715-40f6-a6a8-71808c2e916a'
@@ -87,7 +87,7 @@ Write-Host 'Checked exact billing staging Worker and D1 UUID; downloading pinned
 foreach($relative in $paths){
   $encoded=& gh api ('repos/muhriskiawan23/ai-command-center/contents/'+$relative+'?ref='+$Commit) --jq '.content'
   if($LASTEXITCODE -ne 0 -or -not $encoded){throw ('GitHub pinned content not found: '+$relative)}
-  try{$bytes=[Convert]::FromBase64String((($encoded -join '') -replace '\\s',''))}
+  try{$bytes=[Convert]::FromBase64String((($encoded -join '') -replace '\s',''))}
   catch{throw ('Invalid GitHub file encoding: '+$relative)}
   $destination=Join-Path $staged $relative.Replace('/','\')
   New-Item -ItemType Directory -Force -Path (Split-Path -Parent $destination) | Out-Null
