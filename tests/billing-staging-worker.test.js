@@ -65,6 +65,7 @@ function stage(){
   };
   const env={
     BILLING_DB:db,BILLING_STAGING_ENABLED:'true',BILLING_STAGING_ALLOW_TEST_INVOICES:'true',
+    BILLING_STAGING_SIMULATION_ENABLED:'false',
     STAGING_D1_NAME:'bor-ai-billing-staging',STAGING_PUBLIC_ORIGIN:origin,
     DUITKU_SANDBOX_MERCHANT_CODE:merchant,DUITKU_SANDBOX_API_KEY:secret,
     BILLING_STAGING_OPERATOR_TOKEN:operatorToken,BILLING_STAGING_REPORT_TOKEN:reportToken,
@@ -396,4 +397,156 @@ test('no staging Worker entrypoint or isolated D1 binding is referenced by produ
   const conf=readFileSync(new URL('../wrangler.jsonc',import.meta.url),'utf8');
   assert.doesNotMatch(prod,/billing-staging-worker/);
   assert.doesNotMatch(conf,/bor-ai-billing-staging|BILLING_DB/);
+});
+
+test('staging simulation is disabled by default even for an authenticated operator test account',async()=>{
+  const h=stage();try{
+    const a=await h.makeAccount();
+    assert.equal((await h.call('/api/billing-sandbox/simulation/plan',{
+      cookie:a.cookie,token:null
+    })).status,404);
+    assert.equal((await h.call('/api/billing-sandbox/simulation/text-usage',{
+      method:'POST',cookie:a.cookie,csrf:a.csrf,token:null,payload:{requestId:h.uuid()}
+    })).status,404);
+    assert.equal(h.s.prepare('SELECT COUNT(*) AS n FROM billing_credit_ledger').get().n,0);
+    assert.equal((await (await h.call('/health')).json()).productionCheckoutEnabled,false);
+  }finally{h.close()}
+});
+
+test('staging paid order activates ONLY an authenticated manual subscription and debits fixed synthetic usage once',async()=>{
+  const h=stage();try{
+    h.env.BILLING_STAGING_SIMULATION_ENABLED='true';
+    const a=await h.makeAccount(),invoice=(await h.checkout(a)).payload;
+    const base='/api/billing-sandbox/simulation';
+    const activate=payload=>h.call(base+'/activate',{
+      method:'POST',cookie:a.cookie,csrf:a.csrf,token:null,payload
+    });
+    const usage=(id=h.uuid(),extra={})=>h.call(base+'/text-usage',{
+      method:'POST',cookie:a.cookie,csrf:a.csrf,token:null,
+      payload:{requestId:id,...extra}
+    });
+    const before=await h.call(base+'/plan',{cookie:a.cookie,token:null});
+    assert.equal((await before.json()).entitlement.active,false);
+    const denied=await activate({orderId:invoice.orderId});
+    assert.equal(denied.status,409);
+    assert.equal((await usage()).status,403);
+    // Duitku status mock is read independently by the signed callback, not
+    // by the simulation route. No second payment or provider invoice.
+    assert.equal((await h.callback(invoice)).status,200);
+    const activated=await activate({orderId:invoice.orderId});
+    assert.equal(activated.status,201);
+    const term=await activated.json();
+    assert.equal(term.sku,'basic');
+    assert.equal(term.automaticDebitEnabled,false);
+    assert.equal(term.realCreditsGranted,false);
+    assert.equal((await activate({orderId:invoice.orderId})).status,200);
+    const plan=await (await h.call(base+'/plan',{cookie:a.cookie,token:null})).json();
+    assert.equal(plan.entitlement.active,true);
+    assert.equal(plan.entitlement.sku,'basic');
+    assert.equal(plan.availableTestCredits,3000);
+    assert.equal(plan.spendableTestCredits,3000);
+    assert.equal(plan.realSubscriptionEnabled,false);
+    const id=h.uuid(),first=await usage(id);
+    assert.equal(first.status,200);
+    const charged=await first.json();
+    assert.equal(charged.status,'settled');
+    assert.equal(charged.billedTestCredits,14);
+    assert.equal(charged.availableTestCredits,2986);
+    assert.equal(charged.heldTestCredits,0);
+    assert.equal(charged.spendableTestCredits,2986);
+    assert.equal(charged.usageSource,'fixed_server_test_fixture_not_a_provider_bill');
+    assert.equal(charged.productionCheckoutEnabled,false);
+    const again=await (await usage(id)).json();
+    assert.equal(again.status,'already_finalized');
+    assert.equal(again.duplicate,true);
+    assert.equal(again.providerInvoked,false);
+    assert.equal(again.availableTestCredits,2986);
+    const count=h.s.prepare("SELECT COUNT(*) AS n,SUM(delta) AS delta FROM billing_credit_ledger WHERE event_type='usage'").get();
+    assert.equal(count.n,1);
+    assert.equal(count.delta,-14);
+    assert.equal((await (await h.audit(invoice.orderId)).json()).ledgerEntries,1);
+    assert.equal(h.requests.filter(x=>x==='inquiry').length,1);
+    assert.equal(h.requests.filter(x=>x==='transactionStatus').length,1);
+  }finally{h.close()}
+});
+
+test('staging simulated usage cannot be forged using client token counts, model IDs, rates or CSRF bypass',async()=>{
+  const h=stage();try{
+    h.env.BILLING_STAGING_SIMULATION_ENABLED='true';
+    const a=await h.makeAccount(),b=await h.makeAccount();
+    const invoice=(await h.checkout(a)).payload;
+    const base='/api/billing-sandbox/simulation';
+    assert.equal((await h.call(base+'/activate',{
+      method:'POST',cookie:a.cookie,token:null,
+      payload:{orderId:invoice.orderId}
+    })).status,403);
+    assert.equal((await h.call(base+'/activate',{
+      method:'POST',cookie:b.cookie,csrf:b.csrf,token:null,
+      payload:{orderId:invoice.orderId}
+    })).status,404);
+    assert.equal((await h.call(base+'/activate',{
+      method:'POST',cookie:a.cookie,csrf:b.csrf,token:null,
+      payload:{orderId:invoice.orderId}
+    })).status,403);
+    assert.equal((await h.call(base+'/activate',{
+      method:'POST',cookie:a.cookie,csrf:a.csrf,token:null,
+      payload:{orderId:invoice.orderId}
+    })).status,409);
+    assert.equal((await h.callback(invoice)).status,200);
+    assert.equal((await h.call(base+'/activate',{
+      method:'POST',cookie:a.cookie,csrf:a.csrf,token:null,
+      payload:{orderId:invoice.orderId}
+    })).status,201);
+    assert.equal((await h.call(base+'/text-usage',{
+      method:'POST',cookie:b.cookie,csrf:b.csrf,token:null,payload:{requestId:h.uuid()}
+    })).status,403);
+    for(const payload of [
+      {requestId:h.uuid(),inputTokens:0},
+      {requestId:h.uuid(),outputTokens:9999},
+      {requestId:h.uuid(),modelId:'fake-free-model'},
+      {requestId:h.uuid(),priceUsd:'0'},
+      {requestId:h.uuid(),toolCreditsUsed:999},
+      {requestId:'not-a-uuid'}
+    ]){
+      const attempt=await h.call(base+'/text-usage',{
+        method:'POST',cookie:a.cookie,csrf:a.csrf,token:null,payload
+      });
+      assert.equal(attempt.status,400);
+    }
+    assert.equal((await h.call(base+'/text-usage',{
+      method:'POST',cookie:a.cookie,token:null,payload:{requestId:h.uuid()}
+    })).status,403);
+    assert.equal(h.s.prepare("SELECT COUNT(*) AS n FROM billing_credit_ledger WHERE event_type='usage'").get().n,0);
+  }finally{h.close()}
+});
+
+test('cancellation is user-bound and read-only; refund/chargeback cannot silently renew a plan',async()=>{
+  const h=stage();try{
+    h.env.BILLING_STAGING_SIMULATION_ENABLED='true';
+    const a=await h.makeAccount(),b=await h.makeAccount(),invoice=(await h.checkout(a)).payload;
+    const base='/api/billing-sandbox/simulation';
+    assert.equal((await h.callback(invoice)).status,200);
+    assert.equal((await h.call(base+'/activate',{
+      method:'POST',cookie:a.cookie,csrf:a.csrf,token:null,
+      payload:{orderId:invoice.orderId}
+    })).status,201);
+    assert.equal((await h.call(base+'/cancel',{
+      method:'POST',cookie:b.cookie,csrf:b.csrf,token:null,
+      payload:{orderId:invoice.orderId}
+    })).status,404);
+    const cancel=await h.call(base+'/cancel',{
+      method:'POST',cookie:a.cookie,csrf:a.csrf,token:null,
+      payload:{orderId:invoice.orderId}
+    });
+    assert.equal(cancel.status,200);
+    assert.equal((await cancel.json()).cancelAtPeriodEnd,true);
+    assert.equal((await (await h.call(base+'/plan',{
+      cookie:a.cookie,token:null
+    })).json()).entitlement.active,true);
+    assert.equal((await (await h.call(base+'/plan',{
+      cookie:a.cookie,token:null
+    })).json()).automaticDebitEnabled,false);
+    assert.equal(h.requests.filter(x=>x==='inquiry').length,1);
+    assert.equal(h.s.prepare("SELECT COUNT(*) AS n FROM billing_payment_events WHERE event_type='payment_verified'").get().n,1);
+  }finally{h.close()}
 });
