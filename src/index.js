@@ -1,3 +1,4 @@
+import { TextInferenceBudgetError, withTextInferenceBudget } from "./text-inference-budget.js";
 import { handleImageRoute, imageConfig, consumeImageQueue, cleanupImageJobs } from "./image-jobs.js";
 import { imageIntent } from "../public/image-intent.js";
 import { safeError, safeAiBindingFailure } from "./safe-error.js";
@@ -1355,6 +1356,7 @@ export default {
   async queue(batch, env) { await consumeImageQueue(batch, env); },
   async scheduled(event, env, ctx) { ctx.waitUntil(cleanupImageJobs(env)); },
   async fetch(request, env) {
+    env = withTextInferenceBudget(env);
     const url = new URL(request.url);
     if (url.pathname.startsWith("/api/images/") || url.pathname.startsWith("/api/files/")) {
       try { return await handleImageRoute(request, env, url, { getSession, sameOrigin, readJsonRequest }); }
@@ -1764,6 +1766,15 @@ export default {
         }
         console.error("AI request failed:", safeError(error));
         await refundUsage(env, usage.day, usage.charges); // a failed request does not consume the user's daily allowance
+        if (error instanceof TextInferenceBudgetError) {
+          const exhausted = error.reason === "exhausted";
+          return json({
+            error: exhausted ? "Kapasitas chat hari ini sudah penuh. Coba lagi setelah pukul 07.00 WIB."
+              : "Kapasitas chat belum bisa diperiksa. Silakan coba lagi beberapa saat.",
+            code: exhausted ? "ai_text_budget_exhausted" : "ai_text_budget_unavailable",
+            stage: "ai_generation", links
+          }, 503, exhausted ? { "Retry-After": String(secondsUntilNextUtcDay()) } : {});
+        }
         if (error instanceof AiTimeoutError) return json({ error: "AI terlalu lama merespons. Silakan coba lagi, atau pecah permintaan menjadi lebih singkat.", code: "ai_timeout", stage: "ai_generation", links }, 504);
         return json({ error: "AI gagal memproses permintaan. Silakan coba lagi beberapa saat.", code: "ai_error", stage: "ai_generation", links }, 502);
       }
