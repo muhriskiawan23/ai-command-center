@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { validateImageVision, analyzeImageWithVision, buildImageVisionContext, VISION_MODEL, VISION_MAX_REQUEST_BYTES, reserveVisionDailyUsage, VisionInferenceError, classifyVisionFailure } from "../src/image-vision.js";
+import { validateImageVision, analyzeImageWithVision, buildImageVisionContext, VISION_MODEL, VISION_MAX_REQUEST_BYTES, reserveVisionDailyUsage, VisionInferenceError, classifyVisionFailure, extractVisionAnswer } from "../src/image-vision.js";
 import { createD1, startHarness } from "./e2e/harness.js";
 import { prepareImageForVision } from "../public/image-vision.js";
 
@@ -137,4 +137,31 @@ test("HTTP image vision failure has a specific safe stage and refunds daily usag
     const usage=app.db.sqlite.prepare("SELECT units FROM daily_usage WHERE subject = 'vision-global' LIMIT 1").get();
     assert.equal(usage?.units??0,0);
   }finally{await app.close()}
+});
+
+test("vision accepts only final answer text from Workers AI response envelopes",()=>{
+  assert.equal(extractVisionAnswer({answer:"  blue square "}),"blue square");
+  assert.equal(extractVisionAnswer({result:{answer:"nested"}}),"nested");
+  assert.equal(extractVisionAnswer({response:"legacy"}}),"legacy");
+  assert.equal(extractVisionAnswer({result:{response:"legacy nested"}}),"legacy nested");
+  assert.equal(extractVisionAnswer({output_text:"visible answer"}),"visible answer");
+  assert.equal(extractVisionAnswer({caption:"caption result"}),"caption result");
+  assert.equal(extractVisionAnswer({choices:[{message:{content:"chat completion"}}]}),"chat completion");
+  assert.equal(extractVisionAnswer({output:[{type:"reasoning",content:[{text:"private chain"}]},{type:"message",content:[{type:"output_text",text:"final answer"}]}]}),"final answer");
+  assert.equal(extractVisionAnswer({reasoning:"should not leak"}),"");
+  assert.equal(extractVisionAnswer({answer:"",result:{answer:"nested fallback"}}),"nested fallback");
+});
+test("vision reports bounded response-shape diagnostics for unknown provider output",async()=>{
+  await assert.rejects(
+    analyzeImageWithVision({run:async()=>({notAnAnswer:"opaque"})},photo,"Apa ini?"),
+    error=>error instanceof VisionInferenceError && error.reason==="empty_model_answer" &&
+      error.responseKind==="unrecognized_object"
+  );
+});
+test("synthetic photo smoke fails its job when production vision fails",async()=>{
+  const {readFileSync}=await import("node:fs");
+  const source=readFileSync(new URL("../scripts/diagnose-production-vision.mjs",import.meta.url),"utf8");
+  assert.match(source,/^if \(!summary\.chat\.ok\) \{/m);
+  assert.match(source,/^  process\.exitCode = 1;$/m);
+  assert.doesNotMatch(source,/^\/\/.*if \(!summary\.chat\.ok\).*process\.exitCode/m);
 });
