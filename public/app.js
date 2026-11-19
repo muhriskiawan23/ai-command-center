@@ -292,8 +292,8 @@ $("accountBack").addEventListener("click",()=>{
 accountDialog.addEventListener("click",event=>{
   // Opening an existing account feature closes only the visible dialog; keep the
   // account history entry so Back from Memory can return to this account view.
-  if(event.target.closest("#openMemory,#openIntegrations,#about")){
-    returnToAccountOnChildClose = Boolean(event.target.closest("#openIntegrations,#about"));
+  if(event.target.closest("#openMemory,#about")){
+    returnToAccountOnChildClose = Boolean(event.target.closest("#about"));
     accountDialog.close();
   }
 },true);
@@ -320,34 +320,32 @@ let githubConnectionLoading=false;
 let githubConnectionRequest=0;
 function resetGitHubConnection(){
   githubConnection=null;githubConnectionLoading=false;githubConnectionRequest++;
-  $("githubConnectionStatus").textContent="Perlu login Google";
-  $("sidebarGithubIndicator").className="integration-indicator";
-  $("githubConnectionMessage").textContent="Masuk ke BOR AI terlebih dahulu untuk menghubungkan akun GitHub.";
+  $("githubConnectionStatus").textContent="Sign in with Google to connect GitHub.";
+  $("githubConnectionMessage").textContent="Connect GitHub to view repositories that you are authorized to access.";
   $("githubStatusDot").className="github-status-dot";
-  $("githubConnect").textContent="Masuk dengan Google";$("githubConnect").disabled=false;$("githubConnect").hidden=false;$("githubDisconnect").hidden=true;
+  $("githubConnect").textContent="Connect GitHub";$("githubConnect").disabled=false;$("githubConnect").hidden=false;$("githubDisconnect").hidden=true;$("openGithubRepos").hidden=true;
 }
 async function refreshGitHubConnection(){
   if(state!==AppState.AUTH||!currentUser)return;
   const request=++githubConnectionRequest;githubConnectionLoading=true;
-  $("githubConnectionStatus").textContent="Memeriksa koneksi…";$("githubConnect").disabled=true;
+  $("githubConnectionStatus").textContent="Checking connection…";$("githubConnect").disabled=true;
   try{
     const data=await api("/api/github/connection");
     if(request!==githubConnectionRequest||state!==AppState.AUTH)return;
     githubConnection=Boolean(data.connected);
-    $("githubConnectionStatus").textContent=githubConnection?"Terhubung"+(data.account?.login?" · @"+data.account.login:""):"Belum terhubung";
-    $("sidebarGithubIndicator").className="integration-indicator "+(githubConnection?"is-connected":"");
-    $("sidebarGithubIndicator").setAttribute("aria-label",githubConnection?"GitHub terhubung":"GitHub belum terhubung");
-    $("githubConnectionMessage").textContent=githubConnection?"Akun GitHub siap digunakan. Akses repository tetap mengikuti izin GitHub App yang kamu berikan.":"Hubungkan akun GitHub untuk membaca repository dan mengelola perubahan setelah mendapat izinmu.";
+    $("githubConnectionStatus").textContent=githubConnection?(data.account?.login?"Connected · @"+data.account.login:"Connected"):"Not connected";
+    $("githubConnectionMessage").textContent=githubConnection?"GitHub is connected. Repository access follows the permissions granted to the GitHub App.":"Connect GitHub to view repositories that you are authorized to access.";
     $("githubStatusDot").className="github-status-dot "+(githubConnection?"is-connected":"");
-    $("githubConnect").textContent=githubConnection?"Hubungkan akun lain":"Hubungkan akun GitHub";
+    $("githubConnect").textContent=githubConnection?"Connect another account":"Connect GitHub";
     $("githubDisconnect").hidden=!githubConnection;
-    if($("openGithubRepos")) $("openGithubRepos").disabled=!githubConnection;
+    $("openGithubRepos").hidden=!githubConnection;
+    $("openGithubRepos").disabled=!githubConnection;
   }catch(error){
     if(request!==githubConnectionRequest)return;
-    $("githubConnectionStatus").textContent="Status belum dapat diperiksa";
-    $("sidebarGithubIndicator").className="integration-indicator";
-    $("githubConnectionMessage").textContent=error.message||"Gagal memeriksa koneksi GitHub.";
+    $("githubConnectionStatus").textContent="Connection status unavailable";
+    $("githubConnectionMessage").textContent=error.message||"Could not check the GitHub connection.";
     $("githubStatusDot").className="github-status-dot has-error";
+    $("openGithubRepos").hidden=true;
   }finally{if(request===githubConnectionRequest){githubConnectionLoading=false;$("githubConnect").disabled=false}}
 }
 function connectGitHub(){
@@ -358,7 +356,7 @@ async function disconnectGitHub(){
   if(state!==AppState.AUTH||!currentUser||githubConnectionLoading)return;
   if(!window.confirm("Putuskan koneksi akun GitHub dari BOR AI?"))return;
   githubConnectionLoading=true;$("githubDisconnect").disabled=true;
-  try{await api("/api/github/disconnect",{method:"POST"});toast("Koneksi GitHub diputuskan.");await refreshGitHubConnection()}
+  try{await api("/api/github/disconnect",{method:"POST"});toast("GitHub disconnected.");await refreshGitHubConnection()}
   catch(error){toast(error.message||"Gagal memutuskan koneksi GitHub.")}
   finally{githubConnectionLoading=false;$("githubDisconnect").disabled=false}
 }
@@ -405,7 +403,7 @@ function selectGitHubRepository(repo){
   detail.append(heading,description,facts,link);
 }
 async function loadGitHubRepositories(){
-  if(state!==AppState.AUTH||!currentUser||!githubConnection){toast("Hubungkan akun GitHub terlebih dahulu.");return}
+  if(state!==AppState.AUTH||!currentUser||!githubConnection){toast("Connect the GitHub plugin first.");return}
   if(githubRepositoriesLoading)return;
   githubRepositoriesLoading=true;
   $("githubReposStatus").textContent="Memuat daftar repository…";
@@ -429,7 +427,7 @@ async function loadGitHubRepositories(){
 }
 function openGitHubRepositories(){
   if(state!==AppState.AUTH||!currentUser){toast("Masuk dengan akun Google terlebih dahulu.");return}
-  if(!githubConnection){toast("Hubungkan akun GitHub melalui menu Integrasi terlebih dahulu.");integrationsDialog.showModal();return}
+  if(!githubConnection){toast("Connect the GitHub plugin first.");integrationsDialog.showModal();return}
   if(!$("githubReposDialog").open)$("githubReposDialog").showModal();
   loadGitHubRepositories();
 }
@@ -1414,11 +1412,23 @@ function restoreAccountAfterChildDialog(){
     accountDialog.showModal();accountView("home");
   }
 }
-const integrationsDialog=$("integrationsDialog");
-$("openIntegrations").addEventListener("click",()=>{if(!integrationsDialog.open)integrationsDialog.showModal();if(state===AppState.AUTH)refreshGitHubConnection();$("integrationsClose").focus()});
-$("integrationsClose").addEventListener("click",()=>integrationsDialog.close());
-integrationsDialog.addEventListener("click",event=>{if(event.target!==integrationsDialog)return;const rect=integrationsDialog.getBoundingClientRect();if(event.clientX<rect.left||event.clientX>rect.right||event.clientY<rect.top||event.clientY>rect.bottom)integrationsDialog.close()});
-integrationsDialog.addEventListener("close",restoreAccountAfterChildDialog);
+const pluginsDialog=$("pluginsDialog");
+$("openPlugins").addEventListener("click",()=>{
+  if(drawerOpen)closeDrawerDom(false);
+  if(!pluginsDialog.open)pluginsDialog.showModal();
+  if(state===AppState.AUTH)refreshGitHubConnection();else resetGitHubConnection();
+  $("pluginsClose").focus();
+});
+$("pluginsClose").addEventListener("click",()=>pluginsDialog.close());
+pluginsDialog.addEventListener("click",event=>{if(event.target!==pluginsDialog)return;const rect=pluginsDialog.getBoundingClientRect();if(event.clientX<rect.left||event.clientX>rect.right||event.clientY<rect.top||event.clientY>rect.bottom)pluginsDialog.close()});
+$("pluginSearch").addEventListener("input",()=>{
+  const query=$("pluginSearch").value.trim().toLowerCase();
+  document.querySelectorAll("#pluginCatalog [data-plugin-card]").forEach(card=>{card.hidden=!card.textContent.toLowerCase().includes(query)});
+});
+$("pluginFilesUse").addEventListener("click",()=>{pluginsDialog.close();$("pdfFile").click()});
+$("pluginImagesUse").addEventListener("click",()=>{pluginsDialog.close();$("toolsMenu").open=true;$("imageTask").focus()});
+$("pluginEmailUse").addEventListener("click",()=>{pluginsDialog.close();$("emailDraftPanel").hidden=false;$("emailPurpose").focus()});
+pluginsDialog.addEventListener("close",()=>{$("pluginSearch").value="";document.querySelectorAll("#pluginCatalog [data-plugin-card]").forEach(card=>card.hidden=false)});
 const aboutDialog=$("aboutDialog");
 $("about").addEventListener("click",()=>{
   if(!aboutDialog.open)aboutDialog.showModal();
