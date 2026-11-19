@@ -464,3 +464,10 @@ html[dir="rtl"] pre, html[dir="rtl"] code, html[dir="rtl"] .message-text pre { d
 .merchant-pricing-link{color:#96d8fb;text-decoration:underline;text-underline-offset:3px}
 .merchant-pricing-link:focus-visible,.merchant-side-link:focus-visible{outline:2px solid #96d8fb;outline-offset:2px}
 .merchant-side-link{text-decoration:none}
+
+.image-dialog{padding:24px;max-width:720px;width:calc(100% - 32px);max-height:85dvh;overflow:auto;color:var(--text,#eee);background:var(--panel,#171717);border:1px solid #555;border-radius:18px}
+.image-dialog label{display:inline-flex;gap:8px;margin:8px;align-items:center}
+.image-dialog button,.image-dialog select{padding:9px;border-radius:8px}
+.image-result{padding:16px;margin:12px 0;border:1px solid #555;border-radius:14px;overflow-wrap:anywhere}
+.image-result img{display:block;max-width:100%;max-height:620px;object-fit:contain;border-radius:10px;margin:12px 0}
+.image-result .message-action{display:inline-block;margin:5px;padding:8px;border:1px solid #666;border-radius:8px;cursor:pointer}

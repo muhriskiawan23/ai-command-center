@@ -32,6 +32,11 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     environment: production
+    env:
+      BOR_IMAGES_ENABLED: ${{ vars.BOR_IMAGES_ENABLED || 'false' }}
+      IMAGE_CREDITS_GENERATE: ${{ vars.IMAGE_CREDITS_GENERATE }}
+      IMAGE_CREDITS_EDIT: ${{ vars.IMAGE_CREDITS_EDIT }}
+      IMAGE_TARIFF_VERSION: ${{ vars.IMAGE_TARIFF_VERSION }}
     steps:
       - name: Reject dispatches outside main
         shell: bash
@@ -68,6 +73,25 @@ jobs:
           npm test
           npm run check
           npm run preview
+
+      - name: Select reviewed image deployment configuration
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          if [[ "$BOR_IMAGES_ENABLED" == "true" ]]; then
+            node scripts/prepare-image-config.mjs
+            npx --yes wrangler@4 deploy --dry-run --config wrangler.images.generated.jsonc
+            npx --yes wrangler@4 secret list --config wrangler.jsonc --format json | node --input-type=module -e '
+              let s=""; for await (const c of process.stdin) s+=c;
+              if (!JSON.parse(s).some(x => x.name === "OPENAI_API_KEY")) throw Error("Configure OPENAI_API_KEY as a Worker secret before image activation.");
+            '
+            node scripts/provision-image-resources.mjs
+            echo "BOR_DEPLOY_CONFIG=wrangler.images.generated.jsonc" >> "$GITHUB_ENV"
+          else
+            echo "BOR_DEPLOY_CONFIG=wrangler.jsonc" >> "$GITHUB_ENV"
+          fi
 
       - name: Verify the pinned production D1 database (read-only)
         env:
@@ -119,11 +143,18 @@ jobs:
       # Do not run wrangler secret put here: it immediately deploys an intermediate Worker version.
       # The credential presence check above remains fail-closed; production secret rotation is a
       # separate, explicitly coordinated operation followed by a single reviewed release.
+      - name: Verify image schema when image feature is enabled
+        if: ${{ env.BOR_IMAGES_ENABLED == 'true' }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx --yes wrangler@4 d1 execute bor-ai-chat --remote --config wrangler.jsonc --command "SELECT name FROM sqlite_master WHERE type='trigger' AND name IN ('image_reserve','image_reserve_debit','image_refund','image_grant')" --json | node --input-type=module -e 'let s="";for await(const c of process.stdin)s+=c;const d=JSON.parse(s);if(d[0]?.results?.length!==4)throw Error("Apply reviewed image D1 migration 0012 before activation.")'
+
       - name: Deploy Worker and assets
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: npm run deploy -- --message "github-sha:$GITHUB_SHA"
+        run: npx --yes wrangler@4 deploy --config "$BOR_DEPLOY_CONFIG" --message "github-sha:$GITHUB_SHA"
 
       # Read-only audit: Wrangler returns secret names/types, never secret values.
       # Keep this non-blocking so an optional search provider cannot break core releases.
@@ -187,6 +218,16 @@ jobs:
           done
           test "$CONFIG_READY" = "1" || { echo "::error::Google sign-in is still disabled after 30 seconds. Check the Worker D1 binding and GOOGLE_CLIENT_ID secret."; exit 1; }
           echo "Google sign-in configuration verified."
+
+      - name: Verify image feature deployment state without paid inference
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error 'https://ai-command-center.muhriskiawan23.workers.dev/api/images/config' | node --input-type=module -e '
+            let s=""; for await (const c of process.stdin) s+=c;
+            const d=JSON.parse(s);
+            if(d.enabled !== (process.env.BOR_IMAGES_ENABLED === "true")) throw Error("Image feature deployment state does not match reviewed configuration.");
+            console.log("Image generation enabled:",d.enabled);
+          '
 
       - name: Optional live chat check
         if: ${{ inputs.run_chat_smoke }}
