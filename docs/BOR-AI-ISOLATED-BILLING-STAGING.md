@@ -108,3 +108,28 @@ token before invoicing. No real customer balance changes. To view an already
 created invoice's ledger without payment, run with
 -AuditOrderId BSTAGE-<sha256first40>; no new invoice is created.
 Do not include actual credentials in any pasted PowerShell output.
+
+## Callback parser compatibility — Sandbox only (19 Nov 2026)
+
+Duitku Sandbox resend of the paid Basic test order arrived twice at the public
+staging callback, but the earlier parser rejected both with
+`invalid_callback_fields`. That diagnostic does not prove which individual
+field was rejected; it could be an unrecognized metadata key, a missing
+mandatory key, or duplication.
+
+The parser now ignores **additional** metadata fields within a bounded
+form while requiring exactly one each of `merchantCode`, `amount`,
+`merchantOrderId`, `reference`, `resultCode` and `signature`.
+It rejects duplicate keys, missing mandatory fields, invalid field names,
+excessive form size or field count. Unknown metadata is never logged, saved,
+or used for financial decisions. HMAC-SHA256, frozen amount/reference/order
+checks and a verified Duitku server-to-server payment status remain necessary
+for granting synthetic staging credits. Any rejected callback logs only a
+fixed static diagnostic category, not headers, field names, payload or secret.
+
+**Before claiming success:** deploy this patch to the isolated staging Worker,
+then resend the existing already-paid invoice exactly once while Wrangler tail
+runs. Confirm provider receives HTTP 200 and the operator ledger still has
+exactly one 3,000 test-credit grant. If rejected again, use the new static
+category to continue diagnosis; never invent or simulate a successful provider
+callback or enable production billing.
