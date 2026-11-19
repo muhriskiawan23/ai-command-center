@@ -151,3 +151,33 @@ export function auditBillingEconomics({
     warning:'Scenario only; simulated traffic, fees/FX and tool subscription do not authorize live payments.'
   });
 }
+
+export function auditMonthlyPortfolio({
+  basicScenario,proScenario,basicSubscribers,proSubscribers,
+  fixedOperatingCostIdr
+}){
+  if(basicScenario?.sku!=='basic'||proScenario?.sku!=='pro'||
+    basicScenario?.status!=='SCENARIO_ONLY_NOT_PRODUCTION_PRICE'||
+    proScenario?.status!=='SCENARIO_ONLY_NOT_PRODUCTION_PRICE')
+    throw new TypeError('audited Basic and Pro scenario snapshots required');
+  const basic=whole(basicSubscribers,'basicSubscribers');
+  const pro=whole(proSubscribers,'proSubscribers');
+  const fixed=whole(fixedOperatingCostIdr,'fixedOperatingCostIdr');
+  const contribution=basic*BigInt(basicScenario.contributionIdr)+
+    pro*BigInt(proScenario.contributionIdr);
+  const afterFixed=contribution-fixed;
+  const minBasic=BigInt(basicScenario.contributionIdr);
+  const minPro=BigInt(proScenario.contributionIdr);
+  return Object.freeze({
+    status:'SCENARIO_ONLY_NOT_PRODUCTION_PRICE',
+    liveCheckoutEnabled:false,
+    basicSubscribers:basic.toString(),proSubscribers:pro.toString(),
+    preFixedContributionIdr:contribution.toString(),
+    fixedOperatingCostIdr:fixed.toString(),
+    beforeTaxOperatingResultIdr:afterFixed.toString(),
+    basicOnlyBreakevenCustomers:minBasic>0n?ceilDiv(fixed,minBasic).toString():null,
+    proOnlyBreakevenCustomers:minPro>0n?ceilDiv(fixed,minPro).toString():null,
+    creditsAndMarginSafe:basicScenario.scenarioSafe===true&&proScenario.scenarioSafe===true,
+    caveat:'Excludes income tax, actual refunds, financing, setup costs, unquoted API/tool costs, churn and tax filings.'
+  });
+}
