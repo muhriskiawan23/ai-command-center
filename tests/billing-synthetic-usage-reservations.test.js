@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {parseProviderTextTokenReceipt,simulateOfflineMeteredModelCall}
+  from '../src/billing-provider-metering-offline.js';
 import {DatabaseSync} from 'node:sqlite';
 import {readFileSync} from 'node:fs';
 import {
@@ -241,5 +243,153 @@ test('mock chargeback after reservation blocks further measured debit, but hold 
     assert.equal(row.status,'held');
     assert.equal((await release(h)).status,'released');
     assert.equal((await getBillingWalletAudit(h.db,h.userId)).availableCredits,0);
+  }finally{h.close()}
+});
+
+const RAW_OPENAI={
+  id:'chatcmpl-SYNTHETIC0000001',object:'chat.completion',
+  model:'offline-model-001',usage:{
+    prompt_tokens:600,completion_tokens:200,total_tokens:800,
+    prompt_tokens_details:{cached_tokens:250},
+    completion_tokens_details:{reasoning_tokens:50}
+  }
+};
+const RAW_CF={response:'offline test only',usage:{
+  prompt_tokens:600,completion_tokens:200,total_tokens:800
+}};
+const METER_TARIFF={...RATES,modelId:'offline-model-001',maxToolCredits:0};
+const invokeCase=(h,requestId,providerKind,invoke,tariff=METER_TARIFF)=>
+  simulateOfflineMeteredModelCall({
+    db:h.db,userId:h.userId,requestId,nowMs:NOW+5000,
+    providerKind,tariff,invoke
+  });
+
+test('strict OpenAI receipt needs pinned response identity and full measured token counts',()=>{
+  const parsed=parseProviderTextTokenReceipt({
+    providerKind:'openai-chat-completions',
+    expectedModelId:'offline-model-001',providerResponse:RAW_OPENAI
+  });
+  assert.equal(parsed.inputTokens,600);
+  assert.equal(parsed.outputTokens,200);
+  assert.equal(parsed.measured,true);
+  assert.equal(parsed.verifiedPricing,false);
+  assert.equal(parsed.realCustomerBillingEnabled,false);
+  const invalid=[
+    {...RAW_OPENAI,model:'other-model'},
+    {...RAW_OPENAI,id:'invalid'},
+    {...RAW_OPENAI,object:'chat.completion.chunk'},
+    {...RAW_OPENAI,usage:{prompt_tokens:600,completion_tokens:200}},
+    {...RAW_OPENAI,usage:{prompt_tokens:600,completion_tokens:200,total_tokens:801}},
+    {...RAW_OPENAI,usage:{prompt_tokens:1.5,completion_tokens:200,total_tokens:201.5}},
+    {...RAW_OPENAI,usage:{prompt_tokens:-1,completion_tokens:200,total_tokens:199}},
+    {...RAW_OPENAI,usage:{prompt_tokens:600,completion_tokens:200,total_tokens:800,
+      completion_tokens_details:{audio_tokens:5}}},
+    {...RAW_OPENAI,usage:{prompt_tokens:600,completion_tokens:200,total_tokens:800,
+      prompt_tokens_details:{audio_tokens:1}}}
+  ];
+  for(const response of invalid)assert.throws(
+    ()=>parseProviderTextTokenReceipt({
+      providerKind:'openai-chat-completions',
+      expectedModelId:'offline-model-001',providerResponse:response
+    })
+  );
+});
+
+test('Workers AI nonstream usage is parsed; unknown provider, streaming and missing usage fail',()=>{
+  const p=parseProviderTextTokenReceipt({
+    providerKind:'cloudflare-workers-ai',expectedModelId:'offline-model-001',
+    providerResponse:RAW_CF
+  });
+  assert.deepEqual([p.inputTokens,p.outputTokens],[600,200]);
+  for(const [kind,response] of [
+    ['openai-responses',RAW_OPENAI],
+    ['cloudflare-workers-ai',{response:'hello'}],
+    ['cloudflare-workers-ai',{...RAW_CF,model:'other-model'}],
+    ['cloudflare-workers-ai',{...RAW_CF,usage:{...RAW_CF.usage,total_tokens:undefined}}],
+    ['cloudflare-workers-ai',{getReader:()=>{}}],
+    ['cloudflare-workers-ai','{raw json}']
+  ])assert.throws(()=>parseProviderTextTokenReceipt({
+    providerKind:kind,expectedModelId:'offline-model-001',providerResponse:response
+  }));
+});
+
+test('offline OpenAI synthetic response uses hold before invocation and settles exactly once',async()=>{
+  const h=await harness();try{
+    let invocations=0;
+    const id='SYNTH-OPENAI-METER-00001';
+    const invoice=async()=>{invocations++;return RAW_OPENAI;};
+    const result=await invokeCase(h,id,'openai-chat-completions',invoice);
+    assert.equal(result.status,'settled');
+    assert.equal(result.billedCredits,14);
+    assert.equal(result.releasedUnusedCredits,16);
+    assert.equal(result.providerInvoked,true);
+    assert.equal(result.realCreditsGranted,false);
+    assert.equal(invocations,1);
+    const second=await invokeCase(h,id,'openai-chat-completions',invoice);
+    assert.equal(second.status,'already_finalized');
+    assert.equal(second.providerInvoked,false);
+    assert.equal(invocations,1);
+    const ledger=h.s.prepare(`SELECT COUNT(*) AS n,SUM(delta) AS delta
+      FROM billing_credit_ledger WHERE event_type='usage' AND source_key=?`).get(id);
+    assert.equal(ledger.n,1);
+    assert.equal(ledger.delta,-14);
+    assert.equal((await readSyntheticSpendableCredits(h.db,{userId:h.userId})).spendableCredits,2986);
+  }finally{h.close()}
+});
+
+test('offline Workers AI receipt settles using server-owned binding identity, without client rates',async()=>{
+  const h=await harness();try{
+    const result=await invokeCase(h,'SYNTH-CF-METER-0000001',
+      'cloudflare-workers-ai',async()=>RAW_CF);
+    assert.equal(result.status,'settled');
+    assert.equal(result.billedCredits,14);
+    assert.equal((await getBillingWalletAudit(h.db,h.userId)).availableCredits,2986);
+  }finally{h.close()}
+});
+
+test('missing provider receipt leaves hold, blocks duplicate external call and cannot silently refund',async()=>{
+  const h=await harness();try{
+    let n=0;
+    const id='SYNTH-MISSING-RECEIPT-01';
+    const first=await invokeCase(h,id,'cloudflare-workers-ai',async()=>{n++;return {response:'text'};});
+    assert.equal(first.status,'reconciliation_required');
+    assert.equal(first.reason,'missing_or_invalid_provider_metering');
+    assert.equal((await readSyntheticSpendableCredits(h.db,{userId:h.userId})).heldCredits,30);
+    const again=await invokeCase(h,id,'cloudflare-workers-ai',async()=>{n++;return RAW_CF;});
+    assert.equal(again.providerInvoked,false);
+    assert.equal(again.status,'reconciliation_required');
+    assert.equal(n,1);
+    assert.equal(h.s.prepare("SELECT COUNT(*) AS n FROM billing_credit_ledger WHERE event_type='usage'").get().n,0);
+  }finally{h.close()}
+});
+
+test('provider exception and over-cap usage are not charged or released speculatively',async()=>{
+  const h=await harness();try{
+    const a=await invokeCase(h,'SYNTH-OFFLINE-ERROR-001',
+      'openai-chat-completions',async()=>{throw new Error('unsafe provider detail');});
+    assert.equal(a.reason,'provider_failure_or_ambiguous_bill');
+    const b=await invokeCase(h,'SYNTH-OFFLINE-OVERCAP-01',
+      'openai-chat-completions',async()=>({
+        ...RAW_OPENAI,usage:{prompt_tokens:1200,completion_tokens:200,total_tokens:1400}
+      }));
+    assert.equal(b.reason,'settlement_failed_or_over_cap');
+    assert.equal((await readSyntheticSpendableCredits(h.db,{userId:h.userId})).heldCredits,60);
+    assert.equal(h.s.prepare("SELECT COUNT(*) AS n FROM billing_credit_ledger WHERE event_type='usage'").get().n,0);
+    assert.equal(JSON.stringify(b).includes('unsafe provider detail'),false);
+  }finally{h.close()}
+});
+
+test('offline model wrapper forbids mixed Tavily charges and unpriced model invocation',async()=>{
+  const h=await harness();try{
+    let invoked=0;
+    const safeInvoke=async()=>{invoked++;return RAW_OPENAI;};
+    await assert.rejects(()=>invokeCase(h,'SYNTH-MIXED-TOOLS-00001',
+      'openai-chat-completions',safeInvoke,{...RATES,modelId:'offline-model-001'}),
+      /tool credits must be separately verified/);
+    await assert.rejects(()=>invokeCase(h,'SYNTH-MISSING-RATE-00001',
+      'openai-chat-completions',safeInvoke,{...METER_TARIFF,inputRateMicroUsdPerMillion:0n}));
+    await assert.rejects(()=>invokeCase(h,'SYNTH-BAD-PROVIDER-00001',
+      'fake-provider',safeInvoke),/unapproved_metering_provider/);
+    assert.equal(invoked,0);
   }finally{h.close()}
 });
