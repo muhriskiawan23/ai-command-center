@@ -267,7 +267,7 @@ function renderAuth(){
     if(picture){const img=document.createElement("img");img.src=picture;img.alt="";wrap.append(img)}else{const avatar=document.createElement("span");avatar.className="account-initials";avatar.textContent=(displayName.trim().slice(0,1)||"A").toLocaleUpperCase();avatar.setAttribute("aria-hidden","true");wrap.append(avatar)}
     const info=document.createElement("div");info.className="auth-user-info";const name=document.createElement("strong");name.textContent=displayName;info.append(name);wrap.append(info);$("userProfile").append(wrap);
   }
-  $("accountName").textContent=logged?profileDisplayName():"Akun Google";$("accountTitle").textContent=logged?profileDisplayName():"Profil pengguna";
+  $("accountName").textContent=logged?profileDisplayName():"Akun Google";$("accountTitle").textContent=logged?profileDisplayName():"Profil pengguna";$("accountEmail").textContent=logged?String(currentUser.email||""):"";$("accountEmail").hidden=!logged||!currentUser.email;
   if(logged)renderProfileEditor();
   renderHistory();if(logged)refreshGitHubConnection();else resetGitHubConnection();
 }

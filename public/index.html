@@ -107,7 +107,7 @@
   <div class="account-scroll">
    <section id="accountHome" class="account-view">
     <div class="account-hero"><button id="profilePhotoButton" class="profile-photo-button" type="button" title="Pilih foto profil" aria-label="Pilih foto profil"><img id="profilePhotoPreview" alt="" hidden><span id="profilePhotoFallback" aria-hidden="true">A</span><span class="profile-photo-hint">Ubah foto</span></button><input id="profilePhotoInput" type="file" accept="image/jpeg,image/png,image/webp" hidden><h2 id="accountTitle">Profil pengguna</h2><p>Atur username dan foto profil.</p></div>
-    <section class="account-identity" aria-label="Informasi akun"><div><strong id="accountName">Akun Google</strong></div><span class="account-signed-in">Masuk</span></section>
+    <section class="account-identity" aria-label="Informasi akun"><div><strong id="accountName">Akun Google</strong><span id="accountEmail" hidden></span></div><span class="account-signed-in">Masuk</span></section>
     <form class="profile-editor" id="profileForm" novalidate><label for="profileUsername">Username<input id="profileUsername" name="username" type="text" maxlength="32" autocomplete="nickname" placeholder="Masukkan username" required></label><p class="profile-storage-note">Username dan foto profil disimpan di browser ini.</p><div class="profile-editor-actions"><button class="profile-save" id="saveProfile" type="submit">Simpan profil</button><button class="profile-remove-photo" id="removeProfilePhoto" type="button" hidden>Hapus foto</button></div></form>
     <h3 class="account-section-title">Akun dan layanan</h3>
     <div class="account-links">
