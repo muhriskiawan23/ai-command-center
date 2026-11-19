@@ -93,3 +93,18 @@ billing database.
 Official references:
 https://docs.duitku.com/api/id/
 https://developers.cloudflare.com/workers/wrangler/configuration/
+
+## Safe Windows PowerShell operator check
+
+A helper is available at scripts/verify-billing-staging.ps1.
+It is read-only by default:
+
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\verify-billing-staging.ps1 -BaseUrl https://bor-ai-billing-staging.YOURSUBDOMAIN.workers.dev
+
+To create an actual Sandbox invoice, deliberately append the
+-CreateSandboxInvoice switch. It requests the staging operator token through
+a hidden prompt, creates one synthetic test account, and requires a CSRF
+token before invoicing. No real customer balance changes. To view an already
+created invoice's ledger without payment, run with
+-AuditOrderId BSTAGE-<sha256first40>; no new invoice is created.
+Do not include actual credentials in any pasted PowerShell output.
