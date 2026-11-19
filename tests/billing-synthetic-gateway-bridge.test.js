@@ -274,7 +274,7 @@ test('chargeback and refund paths are mutually exclusive and preserve complete a
     h.control.reversalStatus='chargeback';
     assert.equal((await h.reverse(order,'chargeback_verified')).status,'chargeback');
     assert.equal((await h.wallet()).availableCredits,0);
-    assert.equal((await h.reverse(order,'refund_verified')).status,'chargeback');
+    await assert.rejects(()=>h.reverse(order,'refund_verified'),/conflicting_terminal_reversal/);
     assert.equal(h.count('billing_credit_ledger'),2);
     assert.equal(h.count('billing_payment_events'),2);
     assert.throws(()=>h.sqlite.prepare('DELETE FROM billing_credit_ledger').run(),/billing_ledger_append_only/);
