@@ -214,7 +214,7 @@ test('operator-only, read-only Duitku provider probe checks worker API key and B
       const payload = JSON.parse(options.body);
       assert.equal(payload.merchantcode, 'DS38217');
       assert.equal(payload.amount, 10000);
-      assert.match(payload.datetime, /^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$/);
+      assert.match(payload.datetime, /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
       assert.equal(payload.signature, sign('DS38217' + '10000' + payload.datetime));
       return Response.json({ responseCode: '00', paymentFee: [{ paymentMethod: 'BT' }] });
     };
