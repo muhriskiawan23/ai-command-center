@@ -304,3 +304,11 @@ html[dir="rtl"] .composer-bottom{flex-direction:row}
  .sent-file-card{padding:8px;gap:8px}
 }
 @media(prefers-reduced-motion:reduce){.attachment-progress:not([data-error="true"])::before{animation:none}}
+
+
+/* Local thumbnail for image attachments; gracefully fall back to format badge. */
+.attachment-preview .attachment-thumbnail{display:block;flex:0 0 46px;width:46px;height:46px;border-radius:8px;object-fit:cover;background:var(--panel2)}
+.attachment-preview .pdf-attachment:has(>.attachment-thumbnail:not([hidden]))::before{display:none}
+.attachment-preview .attachment-thumbnail[hidden]{display:none!important}
+.sent-file-image{display:block;flex:0 0 48px;width:48px;height:48px;object-fit:cover;border-radius:8px;background:var(--panel2)}
+.sent-file-card .sent-file-type[hidden]{display:none!important}
