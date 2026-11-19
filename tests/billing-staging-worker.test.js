@@ -14,13 +14,14 @@ function stage(){
   s.exec('PRAGMA foreign_keys=ON');
   for(const name of [
     '0001_staging_identity.sql','0002_billing_core.sql','0003_invoice_reference_guard.sql',
-    '0004_invoice_recovery.sql','0005_daily_invoice_quota.sql'
+    '0004_invoice_recovery.sql','0005_daily_invoice_quota.sql','0006_callback_diagnostic_buckets.sql'
   ])s.exec(readFileSync(new URL('../staging/billing/migrations/'+name,import.meta.url),'utf8'));
   function stmt(query,args=[]){
     return {
       query,args,
       bind:(...values)=>stmt(query,values),
       first:async()=>s.prepare(query).get(...args)??null,
+      all:async()=>({results:s.prepare(query).all(...args)}),
       run:async()=>({meta:{changes:Number(s.prepare(query).run(...args).changes)}})
     };
   }
@@ -186,6 +187,62 @@ test('same request id retains original quote, invoice and URL and does not call 
     assert.equal(second.payload.paymentUrl,first.payload.paymentUrl);
     assert.equal(h.requests.filter(x=>x==='inquiry').length,1);
   }finally{h.close()}
+});
+test('staging callback diagnostics require operator auth, never reveal payment identifiers, and count honest outcomes',async()=>{
+  const h=stage();try{
+    const path='/api/billing-sandbox/operator/callback-diagnostics';
+    assert.equal((await h.call(path,{token:null})).status,401);
+    assert.equal((await h.call(path,{token:'wrong'})).status,401);
+    assert.equal((await h.call(path+'?hours=169')).status,400);
+    assert.equal((await h.call(path+'?hours=24&extra=x')).status,400);
+    assert.equal((await h.call(path,{method:'POST'})).status,405);
+    const before=await (await h.call(path)).json();
+    assert.deepEqual(before.summary,[]);
+    assert.deepEqual(before.recent,[]);
+    const a=await h.makeAccount(),invoice=(await h.checkout(a)).payload;
+    const forged=await h.call('/api/billing-sandbox/callback',{
+      method:'POST',form:{probe:'UNTRUSTED_CANARY_DO_NOT_LOG'},token:null
+    });
+    assert.equal(forged.status,400);
+    h.setMode('01');
+    const pending=await h.callback(invoice);
+    assert.equal(pending.status,503);
+    h.s.prepare('UPDATE billing_orders SET sandbox_status_check_after=0 WHERE id=?').run(invoice.orderId);
+    h.setMode('00');
+    assert.equal((await h.callback(invoice)).status,200);
+    assert.equal((await h.callback(invoice)).status,200);
+    const diagnostics=await (await h.call(path+'?hours=24')).json();
+    assert.equal(diagnostics.sandbox,true);
+    assert.equal(diagnostics.isolatedBilling,true);
+    assert.equal(diagnostics.realCreditsGranted,false);
+    assert.equal(diagnostics.payloadsStored,false);
+    assert.deepEqual(diagnostics.summary.map(x=>[x.disposition,x.category,x.hits]).sort(),[
+      ['accepted','paid_duplicate',1],
+      ['accepted','paid_verified',1],
+      ['rejected','callback_missing_required_field',1],
+      ['retry','provider_pending',1]
+    ].sort());
+    assert.ok(diagnostics.recent.length>=3);
+    assert.doesNotMatch(JSON.stringify(diagnostics),/BSTAGE-|STAGE-REF-|UNTRUSTED_CANARY|DS38217|sandbox-test-only-key/);
+    const audit=await (await h.audit(invoice.orderId)).json();
+    assert.equal(audit.ledgerEntries,1);
+    assert.equal(audit.ledgerCredits,3000);
+    assert.equal(audit.realCreditsGranted,false);
+  }finally{h.close()}
+});
+test('diagnostic storage outage never changes callback signature, status or one-credit-grant behavior',async()=>{
+  const h=stage();const original=console.warn;const logs=[];
+  console.warn=(...args)=>logs.push(args);
+  try{
+    const a=await h.makeAccount(),invoice=(await h.checkout(a)).payload;
+    h.s.exec('DROP TABLE staging_callback_diagnostic_buckets');
+    assert.equal((await h.callback(invoice)).status,200);
+    assert.equal((await h.callback(invoice)).status,200);
+    const audit=await (await h.audit(invoice.orderId)).json();
+    assert.equal(audit.ledgerEntries,1);
+    assert.equal(audit.ledgerCredits,3000);
+    assert.ok(logs.some(x=>x[0]==='bor_billing_staging_diagnostic_store_unavailable'));
+  }finally{console.warn=original;h.close()}
 });
 test('signed successful callback is checked against V2 transactionStatus and creates exactly one test grant',async()=>{
   const h=stage();try{
