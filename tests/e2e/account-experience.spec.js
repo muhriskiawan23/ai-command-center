@@ -11,7 +11,7 @@ test("settings only contain language, appearance, archive and delete-history con
  await expect(page.locator("#workspaceSettings .language-picker")).toBeVisible();
  await expect(page.locator("#workspaceSettings #toggleArchived")).toBeVisible();
  await expect(page.locator("#workspaceSettings #clearHistory")).toBeVisible();
- for(const id of ["openUsage","openMemory","openIntegrations","about","signOut"]) {
+ for(const id of ["openUsage","openMemory","about","signOut"]) {
   await expect(page.locator("#workspaceSettings #"+id)).toHaveCount(0);
  }
  await expect(page.locator("#userProfile")).toBeHidden();
@@ -26,7 +26,6 @@ test("signed-in account opens accessible profile and privacy center on every vie
  await expect(page.locator("#accountName")).toHaveText("Alice");
  await expect(page.locator("#accountEmail")).toHaveText("alice@example.test");
  await expect(page.locator("#openMemory")).toBeVisible();
- await expect(page.locator("#openIntegrations")).toBeVisible();
  await expect(page.locator("#openUsage")).toBeVisible();
  await page.locator("#openPrivacy").click();
  await expect(page.locator("#privacyTitle")).toBeVisible();
@@ -78,22 +77,24 @@ test("flat list Markdown and headings render safely without staircase indentatio
  expect(widths.doc).toBeLessThanOrEqual(widths.viewport);
 });
 
-test("Integrations and About return to Profile on X without null-control errors",async({page,context,app})=>{
+test("Plugins hub opens from the sidebar and About returns to Profile without errors",async({page,context,app})=>{
  await loginAs(context,app,ALICE);
  const exceptions=[];page.on("pageerror",e=>exceptions.push(e.message));
  await page.goto(app.url);await expect(page.locator("#prompt")).toBeVisible();
- await openSidebar(page);await page.locator("#userProfile").click();
- await page.locator("#openIntegrations").click();
- await expect(page.locator("#integrationsDialog")).toBeVisible();
- await expect(page.locator("#githubConnectionMessage")).not.toContainText("Cannot set properties of null");
- await page.locator("#integrationsClose").click();
- await expect(page.locator("#accountDialog")).toBeVisible();
+ await openSidebar(page);await page.locator("#openPlugins").click();
+ await expect(page.locator("#pluginsDialog")).toBeVisible();
+ await expect(page.locator("#pluginCatalog")).toContainText("Web search");
+ await expect(page.locator("#pluginsDialog")).toContainText("GitHub");
+ await page.locator("#pluginsClose").click();
+ await expect(page.locator("#pluginsDialog")).toBeHidden();
+ await page.locator("#userProfile").click();
  await page.locator("#about").click();
  await expect(page.locator("#aboutDialog")).toBeVisible();
  await page.locator("#aboutClose").click();
  await expect(page.locator("#accountDialog")).toBeVisible();
  await expect(page.locator("#accountHome")).toBeVisible();
  expect(exceptions).toEqual([]);
+ expect(app.aiCalls).toHaveLength(0);
 });
 async function selectLanguageAndAwaitReload(page,language) {
  const load=page.waitForEvent("load",{timeout:20000});
