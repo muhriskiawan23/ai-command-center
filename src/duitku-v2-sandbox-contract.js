@@ -1,4 +1,4 @@
-// Duitku V2 SANDBOX transport adapter. NOT wired into production or any HTTP route.
+// Duitku V2 SANDBOX transport adapter. Only the opt-in isolated billing staging Worker may use it.
 // This transport can call the Duitku SANDBOX only when an explicit fetcher is
 // supplied by a trusted server context. It does not settle or grant credits.
 import { duitkuSignature } from './duitku-sandbox-worker.js';
