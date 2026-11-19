@@ -18,7 +18,7 @@ import { planFeedbackForm, generateFormsScript } from "./form-draft.js";
 import { COMMUNICATION_NOTICE, CAPABILITY_NOTICE, AGENTS } from "./prompts.js";
 import { json, sha256Hex } from "./http.js";
 import { dailyLimit, usageDay, secondsUntilNextUtcDay, consumeUsage, refundUsage, limitResponse, enforceDailyLimits, DAILY_LIMIT_DEFAULTS, MULTI_AGENT_UNITS } from "./daily-limits.js";
-import { VISION_MODEL, validateImageVision, analyzeImageWithVision, buildImageVisionContext, reserveVisionDailyUsage, VISION_MAX_REQUEST_BYTES } from "./image-vision.js";
+import { VISION_MODEL, VisionInferenceError, validateImageVision, analyzeImageWithVision, buildImageVisionContext, reserveVisionDailyUsage, VISION_MAX_REQUEST_BYTES } from "./image-vision.js";
 
 const MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 const TRUSTED_PROMPT_TEXT = [CONFIDENTIALITY_NOTICE, CAPABILITY_NOTICE, COMMUNICATION_NOTICE, ...Object.values(AGENTS).map(agent => agent.prompt)];
@@ -1732,6 +1732,17 @@ export default {
         if (error instanceof AiCancelledError || request.signal.aborted) {
           await refundUsage(env, usage.day, usage.charges);
           return json({ error: "Generasi dihentikan.", code: "generation_cancelled" }, 499);
+        }
+        if (error instanceof VisionInferenceError) {
+          console.error("BOR_AI_VISION_PROVIDER_FAILURE", {
+            reason: error.reason, providerStatus: error.providerStatus,
+            providerCode: error.providerCode, modelId: VISION_MODEL
+          });
+          await refundUsage(env, usage.day, usage.charges);
+          return json({
+            error: "Analisis foto gagal di layanan AI vision. Coba lagi nanti.",
+            code: "vision_provider_error", stage: "image_vision", reason: error.reason
+          }, 502);
         }
         console.error("AI request failed:", safeError(error));
         await refundUsage(env, usage.day, usage.charges); // a failed request does not consume the user's daily allowance

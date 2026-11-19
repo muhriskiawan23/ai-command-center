@@ -19,6 +19,42 @@ export function validateImageVision(value) {
   return { name: value.name.replace(/[\/\\\x00-\x1f\x7f]/g, "_"), dataUrl: value.dataUrl };
 }
 
+// Preserve only non-sensitive classification metadata about provider failures.
+// Never log raw provider errors, uploaded pixels, prompts, or credentials.
+function boundedNumber(value) {
+  const number = Number(value);
+  return Number.isSafeInteger(number) && number >= 0 && number <= 99999 ? number : null;
+}
+export function classifyVisionFailure(error) {
+  const status = boundedNumber(error?.status ?? error?.statusCode ?? error?.response?.status);
+  const providerCode = boundedNumber(error?.code ?? error?.error?.code ?? error?.cause?.code);
+  const detail = String(error?.message || error?.error?.message || "").slice(0, 800).toLowerCase();
+  let reason = "unknown";
+  if ([401,403].includes(status) || [10000,3041,5016].includes(providerCode) ||
+    /unauthori[sz]ed|authentication|permission denied|forbidden|model agreement|not allowed to access/.test(detail)) {
+    reason = "access_denied";
+  } else if ([402,429].includes(status) || providerCode === 3036 ||
+    /daily limit|quota exceeded|insufficient (?:credits|balance)|out of credits/.test(detail)) {
+    reason = "quota_or_billing";
+  } else if ([404,410].includes(status) || providerCode === 5028 ||
+    /model (?:not found|deprecated|unavailable)/.test(detail)) {
+    reason = "model_unavailable";
+  } else if ([400,413,415,422].includes(status) ||
+    /invalid (?:input|image|request|argument|payload)|unsupported (?:format|parameter)/.test(detail)) {
+    reason = "invalid_model_request";
+  } else if (status !== null && status >= 500 && status <= 599) {
+    reason = "provider_unavailable";
+  }
+  return { reason, providerStatus: status, providerCode };
+}
+export class VisionInferenceError extends Error {
+  constructor(error) {
+    super("Cloudflare vision inference failed");
+    this.name = "VisionInferenceError";
+    Object.assign(this, classifyVisionFailure(error));
+  }
+}
+
 export async function analyzeImageWithVision(ai, attachment, question, language = "id") {
   if (!ai || typeof ai.run !== "function") throw new Error("Vision model is not available.");
   const prompt = [
@@ -33,16 +69,27 @@ export async function analyzeImageWithVision(ai, attachment, question, language 
     language === "id" ? "Respond in Bahasa Indonesia." : "Use the language of the question.",
     "USER QUESTION: " + String(question || "What's in this picture?").slice(0, 2000)
   ].join("\n");
-  const result = await ai.run(VISION_MODEL, {
-    task: "query",
-    image: attachment.dataUrl,
-    question: prompt,
-    reasoning: false,
-    stream: false,
-    max_tokens: 650
-  });
+  let result;
+  try {
+    result = await ai.run(VISION_MODEL, {
+      task: "query",
+      image: attachment.dataUrl,
+      question: prompt,
+      reasoning: false,
+      stream: false,
+      max_tokens: 650
+    });
+  } catch (error) {
+    // Preserve the existing cancellation and timeout response semantics.
+    if (error?.name === "AiTimeoutError" || error?.name === "AiCancelledError") throw error;
+    throw new VisionInferenceError(error);
+  }
   const answer = typeof result?.answer === "string" ? result.answer.trim() : "";
-  if (!answer || answer.length > 10000) throw new Error("Vision model returned no usable description.");
+  if (!answer || answer.length > 10000) {
+    const error = new VisionInferenceError(null);
+    error.reason = "empty_model_answer";
+    throw error;
+  }
   return answer.slice(0, 4500);
 }
 
