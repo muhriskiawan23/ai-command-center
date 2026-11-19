@@ -6,11 +6,12 @@
 import http from "node:http";
 import { DatabaseSync } from "node:sqlite";
 import { readFileSync, readdirSync, existsSync } from "node:fs";
-import { extname, join } from "node:path";
+import { extname, join, relative, isAbsolute, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 import { createHash, randomBytes } from "node:crypto";
 import worker from "../../src/index.js";
 
-const ROOT = new URL("../../", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("../../", import.meta.url));
 const PUBLIC_ROOT = join(ROOT, "public");
 const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon", ".webmanifest": "application/manifest+json" };
 
@@ -64,7 +65,8 @@ export async function startHarness({ port = 0, googleClientId = "test-client.app
         let path = new URL(request.url).pathname;
         if (path === "/") path = "/index.html";
         const file = join(PUBLIC_ROOT, path.replace(/^\/+/, ""));
-        if (!file.startsWith(PUBLIC_ROOT + "/") || !existsSync(file)) {
+        const assetPath = relative(PUBLIC_ROOT, file);
+        if (assetPath === ".." || assetPath.startsWith(".." + sep) || isAbsolute(assetPath) || !existsSync(file)) {
           console.error("[E2E HARNESS] Asset not found:", path, "->", file);
           return new Response("not found", { status: 404 });
         }

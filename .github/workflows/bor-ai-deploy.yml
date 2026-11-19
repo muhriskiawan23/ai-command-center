@@ -3,11 +3,6 @@ name: BOR AI production deploy
 on:
   workflow_dispatch:
     inputs:
-      run_chat_smoke:
-        description: "Run one low-cost live AI chat check after deployment"
-        required: true
-        type: boolean
-        default: false
       run_tavily_smoke:
         description: "Run one bounded live Tavily web search and one news search after deployment (uses 2 Tavily credits and 2 AI calls)"
         required: true
@@ -37,6 +32,8 @@ jobs:
       IMAGE_CREDITS_GENERATE: ${{ vars.IMAGE_CREDITS_GENERATE }}
       IMAGE_CREDITS_EDIT: ${{ vars.IMAGE_CREDITS_EDIT }}
       IMAGE_TARIFF_VERSION: ${{ vars.IMAGE_TARIFF_VERSION }}
+      BOR_TEXT_LUNA_PRIMARY: ${{ vars.BOR_TEXT_LUNA_PRIMARY || 'false' }}
+      BOR_TEXT_LUNA_DAILY_USD_LIMIT: ${{ vars.BOR_TEXT_LUNA_DAILY_USD_LIMIT }}
     steps:
       - name: Reject dispatches outside main
         shell: bash
@@ -139,6 +136,31 @@ jobs:
         if: ${{ !inputs.apply_db_migrations }}
         run: echo "Production D1 migrations were not applied. Review the migration list and explicitly enable apply_db_migrations on a later dispatch if needed."
 
+      - name: Prepare reviewed Luna recovery settings
+        if: ${{ env.BOR_TEXT_LUNA_PRIMARY == 'true' }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          import { parseUsdMicro } from "./src/credit-metering.js";
+          const dailyLimit = process.env.BOR_TEXT_LUNA_DAILY_USD_LIMIT;
+          const microUsd = parseUsdMicro(dailyLimit);
+          if (microUsd <= 0n || microUsd > 100000n) {
+            throw Error("Set a positive Luna recovery budget of at most USD 0.10 per UTC day");
+          }
+          const config = JSON.parse(fs.readFileSync(process.env.BOR_DEPLOY_CONFIG, "utf8"));
+          if (config.name !== "ai-command-center") throw Error("Unexpected production Worker");
+          Object.assign(config.vars, {
+            BOR_TEXT_LUNA_PRIMARY: "true",
+            BOR_TEXT_BACKUP_ENABLED: "true",
+            BOR_TEXT_BACKUP_DAILY_USD_LIMIT: dailyLimit,
+            BOR_TEXT_AI_DAILY_USD_LIMIT: dailyLimit
+          });
+          const path = "wrangler.luna-recovery.generated.jsonc";
+          fs.writeFileSync(path, JSON.stringify(config, null, 2) + "\n");
+          fs.appendFileSync(process.env.GITHUB_ENV, "BOR_DEPLOY_CONFIG=" + path + "\n");
+          NODE
+
       # GOOGLE_CLIENT_ID is managed as a persistent Worker secret outside routine releases.
       # Do not run wrangler secret put here: it immediately deploys an intermediate Worker version.
       # The credential presence check above remains fail-closed; production secret rotation is a
@@ -150,11 +172,69 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: npx --yes wrangler@4 d1 execute bor-ai-chat --remote --config wrangler.jsonc --command "SELECT name FROM sqlite_master WHERE type='trigger' AND name IN ('image_reserve','image_reserve_debit','image_refund','image_grant')" --json | node --input-type=module -e 'let s="";for await(const c of process.stdin)s+=c;const d=JSON.parse(s);if(d[0]?.results?.length!==4)throw Error("Apply reviewed image D1 migration 0012 before activation.")'
 
-      - name: Deploy Worker and assets
+      - name: Verify candidate chat before switching production traffic
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: npx --yes wrangler@4 deploy --config "$BOR_DEPLOY_CONFIG" --message "github-sha:$GITHUB_SHA"
+          BOR_PRODUCTION_LUNA_API_KEY: ${{ secrets.BOR_PRODUCTION_LUNA_API_KEY }}
+        run: |
+          set -euo pipefail
+          wrangler() { npx --yes wrangler@4.165.0 "$@"; }
+          smoke_chat() {
+            curl --fail --silent --show-error --max-time 60 \
+              -H 'Content-Type: application/json' \
+              --data '{"message":"hi bor","agent":"coordinator","language":"id"}' \
+              "$1/api/chat" | node --input-type=module -e '
+                let body = "";
+                for await (const chunk of process.stdin) body += chunk;
+                const result = JSON.parse(body);
+                const generated = result.agentModels?.some(model =>
+                  model.agentId === "coordinator" && model.calls > 0 && model.outcome === "success");
+                const lunaRequired = process.env.BOR_TEXT_LUNA_PRIMARY === "true";
+                if (typeof result.response !== "string" || !result.response.trim() || !generated ||
+                    (lunaRequired && result.model !== "gpt-6-luna")) {
+                  throw Error("Chat smoke test did not receive a model-generated answer");
+                }
+              '
+          }
+
+          umask 077
+          release_dir="$(mktemp -d)"
+          trap 'rm -rf "$release_dir"' EXIT
+          upload_output="$release_dir/wrangler-output.jsonl"
+          upload_args=()
+          if [[ "$BOR_TEXT_LUNA_PRIMARY" == "true" ]]; then
+            node --input-type=module - "$release_dir/worker-secrets.json" <<'NODE'
+          import fs from "node:fs";
+          const key = process.env.BOR_PRODUCTION_LUNA_API_KEY;
+          if (!key) throw Error("Set BOR_PRODUCTION_LUNA_API_KEY in the production GitHub environment");
+          fs.writeFileSync(process.argv[2], JSON.stringify({ BOR_TEXT_BACKUP_API_KEY: key }), { mode: 0o600 });
+          NODE
+            upload_args+=(--secrets-file "$release_dir/worker-secrets.json")
+          fi
+          WRANGLER_OUTPUT_FILE_PATH="$upload_output" wrangler versions upload \
+            --config "$BOR_DEPLOY_CONFIG" --message "github-sha:$GITHUB_SHA" "${upload_args[@]}"
+          candidate="$(node --input-type=module - "$upload_output" <<'NODE'
+          import { readFileSync } from "node:fs";
+          const entry = readFileSync(process.argv[2], "utf8").trim().split("\n")
+            .filter(Boolean).map(line => JSON.parse(line)).find(row => row.type === "version-upload");
+          const id = entry?.version_id;
+          if (!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(id ?? "")) {
+            throw Error("Wrangler did not return a candidate version ID");
+          }
+          const expectedUrl = "https://" + id.slice(0, 8) + "-ai-command-center.muhriskiawan23.workers.dev";
+          if (entry.preview_url?.replace(/\/$/, "") !== expectedUrl) {
+            throw Error("Enable Version URLs for this Worker to test the candidate before promotion");
+          }
+          console.log(id, expectedUrl);
+          NODE
+          )"
+          read -r version_id candidate_url <<< "$candidate"
+          smoke_chat "$candidate_url"
+          wrangler versions deploy "$version_id@100" --yes --config "$BOR_DEPLOY_CONFIG" \
+            --message "github-sha:$GITHUB_SHA"
+          wrangler triggers deploy --config "$BOR_DEPLOY_CONFIG"
+          smoke_chat "https://ai-command-center.muhriskiawan23.workers.dev"
 
       # Read-only audit: Wrangler returns secret names/types, never secret values.
       # Keep this non-blocking so an optional search provider cannot break core releases.
@@ -228,20 +308,6 @@ jobs:
             if(d.enabled !== (process.env.BOR_IMAGES_ENABLED === "true")) throw Error("Image feature deployment state does not match reviewed configuration.");
             console.log("Image generation enabled:",d.enabled);
           '
-
-      - name: Optional live chat check
-        if: ${{ inputs.run_chat_smoke }}
-        run: |
-          set -euo pipefail
-          curl --fail --silent --show-error --max-time 60 \
-            -H 'Content-Type: application/json' \
-            --data '{"message":"hi bor","agent":"coordinator","language":"id"}' \
-            'https://ai-command-center.muhriskiawan23.workers.dev/api/chat' \
-            | node --input-type=module -e 'let s="";for await(const c of process.stdin)s+=c;const d=JSON.parse(s);if(typeof d.response!=="string"||d.response.trim().length<2)throw Error("Live chat greeting failed: missing usable AI response")'
-
-      - name: Warn when live chat smoke was skipped
-        if: ${{ !inputs.run_chat_smoke }}
-        run: echo "::warning::Production deployment succeeded but REAL AI inference was NOT tested. Set run_chat_smoke=true to verify chat."
 
       - name: Optional live Tavily web and news smoke tests
         if: ${{ inputs.run_tavily_smoke }}
