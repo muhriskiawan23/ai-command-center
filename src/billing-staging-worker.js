@@ -45,6 +45,14 @@ function authorizedOperator(request,env){
   const provided=request.headers.get('Authorization')||'';
   if(!secretEqual(provided,'Bearer '+env.BILLING_STAGING_OPERATOR_TOKEN))fail(401,'operator_auth_required');
 }
+// Read-only report credentials are independent from the privileged staging
+// operator token. Never put the operator token into GitHub Actions secrets.
+function authorizedReporter(request,env){
+  const expected=env.BILLING_STAGING_REPORT_TOKEN;
+  if(typeof expected!=='string'||expected.length<32)fail(503,'staging_reporting_disabled');
+  const provided=request.headers.get('Authorization')||'';
+  if(!secretEqual(provided,'Bearer '+expected))fail(401,'report_auth_required');
+}
 function sameOrigin(request,env){
   if(request.headers.get('Origin')!==origin(env))fail(403,'same_origin_required');
   if(request.headers.get('Sec-Fetch-Site')==='cross-site')fail(403,'cross_site_forbidden');
@@ -290,7 +298,7 @@ export default {
       }
       if(u.pathname===PREFIX+'/operator/callback-diagnostics'){
         if(method!=='GET')fail(405,'get_required');
-        authorizedOperator(request,env);
+        authorizedReporter(request,env);
         if([...u.searchParams.keys()].some(k=>k!=='hours')||u.searchParams.getAll('hours').length>1)
           fail(400,'invalid_diagnostic_query');
         const raw=u.searchParams.get('hours')||'24';
