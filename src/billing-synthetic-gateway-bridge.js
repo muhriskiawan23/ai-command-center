@@ -1,5 +1,5 @@
-// OFFLINE ONLY — authenticated billing workflow with a fake Duitku-compatible gateway.
-// Never import this from a production Worker route. No provider network calls,
+// SYNTHETIC-CREDITS ONLY — authenticated billing workflow for fake gateway or isolated Sandbox transport.
+// Never import this from the PRODUCTION Worker. Real Sandbox network calls require injected staging adapter,
 // customer payment, monetary refund or real credit entitlement is possible here.
 import { sha256Hex } from './http.js';
 import { duitkuSignature } from './duitku-sandbox-worker.js';
