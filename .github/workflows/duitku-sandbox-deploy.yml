@@ -30,8 +30,8 @@ jobs:
         with:
           node-version: 22
       - name: Verify sandbox payment invariants
-        run: node --test tests/duitku-sandbox.test.js
-      - name: Provision dedicated sandbox DB
+        run: node --test tests/duitku-sandbox.test.js tests/duitku-sandbox-config.test.js
+      - name: Verify pinned sandbox DB
         run: node scripts/provision-duitku-sandbox.mjs
       - name: Build isolated Worker
         run: npx --yes wrangler@4 deploy --dry-run --config wrangler.duitku-sandbox.generated.jsonc
