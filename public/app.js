@@ -984,6 +984,8 @@ function renderAttachmentPreview(){
   progress.textContent=pending?(pending.error?"Gagal membaca: ":"")+(pending.stage||"Membaca file di perangkat…"):"";
   progress.dataset.error=pending?.error?"true":"false";
   preview.dataset.status=pending?(pending.error?"error":"processing"):(pdf||csv?"ready":"empty");
+  $("clearPdf").setAttribute("aria-label","Lepas lampiran");
+  $("clearCsv").setAttribute("aria-label","Lepas lampiran");
   $("attachPdf").textContent=pdf||csv?"＋ Ganti lampiran":"＋ Unggah file";
 }
 function renderPdfAttachment(){renderAttachmentPreview();}
@@ -1122,6 +1124,7 @@ async function submit(options={}){
   const text=promptEl.value.trim()||((selectedPdf||selectedCsv)?"Tolong analisis isi file terlampir.":"");
   if(!text)return;
   const savedText=packAttachmentMessage(text,selectedPdf||selectedCsv);
+  if(savedText.length>12000){toast("Pesan terlalu panjang. Pendekkan teks sebelum mengirim lampiran.");return;}
   const replacing=options.replaceLastTurn===true;const previousTurn=options.previousTurn||null;
   const requestId=options.requestId||(pendingRetryRequest?.text===text&&pendingRetryRequest.conversationId===activeId?pendingRetryRequest.requestId:crypto.randomUUID());
   busy=true;activeChatController=new AbortController();lockComposer();const agent=$("agent").value;
