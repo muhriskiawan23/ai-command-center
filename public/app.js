@@ -26,16 +26,19 @@ function markdown(input) {
     const row=document.createElement("article");row.className="message "+role;
     const avatar=document.createElement("div");avatar.className="avatar";avatar.textContent=role==="assistant"?"✳":"";
     const body=document.createElement("div");body.className="message-body";
-    const rendered=document.createElement("div");rendered.className="message-text";rendered.innerHTML=markdown(content);body.append(rendered);
+    const fileMessage=role==="user"?unpackAttachmentMessage(content):{text:content,attachment:null};
+    const visibleContent=fileMessage.text;
+    if(fileMessage.attachment){row.classList.add("message-with-file");body.append(buildSentFileCard(fileMessage.attachment));}
+    const rendered=document.createElement("div");rendered.className="message-text";rendered.innerHTML=markdown(visibleContent);body.append(rendered);
     const actions=document.createElement("div");actions.className="message-actions";
-    const copyBtn=document.createElement("button");copyBtn.type="button";copyBtn.className="message-action";copyBtn.textContent="Salin";copyBtn.addEventListener("click",()=>copyText(content));
-    const markdownBtn=document.createElement("button");markdownBtn.type="button";markdownBtn.className="message-action";markdownBtn.textContent="Markdown";markdownBtn.addEventListener("click",()=>downloadMarkdown(content,role));
-    const plainBtn=document.createElement("button");plainBtn.type="button";plainBtn.className="message-action";plainBtn.textContent="Teks";plainBtn.addEventListener("click",()=>downloadText(content,role));const printBtn=document.createElement("button");printBtn.type="button";printBtn.className="message-action print-message";printBtn.textContent="PDF / Cetak";printBtn.addEventListener("click",()=>printMessage(content,role));actions.append(copyBtn,markdownBtn,plainBtn,printBtn);
+    const copyBtn=document.createElement("button");copyBtn.type="button";copyBtn.className="message-action";copyBtn.textContent="Salin";copyBtn.addEventListener("click",()=>copyText(visibleContent));
+    const markdownBtn=document.createElement("button");markdownBtn.type="button";markdownBtn.className="message-action";markdownBtn.textContent="Markdown";markdownBtn.addEventListener("click",()=>downloadMarkdown(visibleContent,role));
+    const plainBtn=document.createElement("button");plainBtn.type="button";plainBtn.className="message-action";plainBtn.textContent="Teks";plainBtn.addEventListener("click",()=>downloadText(visibleContent,role));const printBtn=document.createElement("button");printBtn.type="button";printBtn.className="message-action print-message";printBtn.textContent="PDF / Cetak";printBtn.addEventListener("click",()=>printMessage(visibleContent,role));actions.append(copyBtn,markdownBtn,plainBtn,printBtn);
     if(role==="assistant"){
       const checklistBtn=document.createElement("button");checklistBtn.type="button";checklistBtn.className="message-action checklist-action";checklistBtn.textContent="Checklist";
       checklistBtn.addEventListener("click",()=>showChecklistExport(content,actions));actions.append(checklistBtn);
     }
-    if(controls.edit){const editBtn=document.createElement("button");editBtn.type="button";editBtn.className="message-action edit-message";editBtn.textContent="Edit & kirim";editBtn.addEventListener("click",()=>replaceLastTurn("edit",content));actions.append(editBtn)}
+    if(controls.edit&&!fileMessage.attachment){const editBtn=document.createElement("button");editBtn.type="button";editBtn.className="message-action edit-message";editBtn.textContent="Edit & kirim";editBtn.addEventListener("click",()=>replaceLastTurn("edit",visibleContent));actions.append(editBtn)}
     if(controls.regenerate){const regenBtn=document.createElement("button");regenBtn.type="button";regenBtn.className="message-action regenerate-message";regenBtn.textContent="Buat ulang";regenBtn.addEventListener("click",()=>replaceLastTurn("regenerate",content));actions.append(regenBtn)}
     body.append(actions);
     if(role==="assistant"&&state===AppState.AUTH&&controls.responseId&&controls.conversationId){
@@ -1099,7 +1102,7 @@ function clearSelectedAttachment(){
   attachmentSequence++;attachmentPending=null;activePdf=null;activeCsv=null;
   renderAttachmentPreview();lockComposer();
 }
-function appendFailedTurn(message,text,noRetry=false,requestId=null){
+function appendFailedTurn(message,text,noRetry=false,requestId=null,attachmentData=null){
   appendMessage("assistant",message);
   const row=messagesEl.lastElementChild;const body=row&&row.querySelector(".message-body");if(!body)return;
   row.classList.add("failed");
@@ -1108,29 +1111,34 @@ function appendFailedTurn(message,text,noRetry=false,requestId=null){
   btn.addEventListener("click",()=>{
     if(busy||loadingChat)return;
     const prev=row.previousElementSibling;row.remove();if(prev&&prev.classList.contains("user"))prev.remove();
-    promptEl.value=text;resizePrompt();submit({requestId});
+    promptEl.value=text;resizePrompt();submit({requestId,attachmentData});
   });
   body.append(btn);
 }
 async function submit(options={}){
-  if(busy||loadingChat||!inChatView())return;const text=promptEl.value.trim();if(!text)return;
+  if(busy||loadingChat||!inChatView()||attachmentPending)return;
+  const selectedPdf=options.attachmentData?.pdf||activePdf;
+  const selectedCsv=options.attachmentData?.csv||activeCsv;
+  const text=promptEl.value.trim()||((selectedPdf||selectedCsv)?"Tolong analisis isi file terlampir.":"");
+  if(!text)return;
+  const savedText=packAttachmentMessage(text,selectedPdf||selectedCsv);
   const replacing=options.replaceLastTurn===true;const previousTurn=options.previousTurn||null;
   const requestId=options.requestId||(pendingRetryRequest?.text===text&&pendingRetryRequest.conversationId===activeId?pendingRetryRequest.requestId:crypto.randomUUID());
   busy=true;activeChatController=new AbortController();lockComposer();const agent=$("agent").value;
   let createdNew=false;
   if(!activeId){activeId=id();createdNew=true;conversations.push({id:activeId,serverId:null,title:text.replace(/\s+/g," ").slice(0,72),messages:[],updated:Date.now(),loaded:true})}
   const chat=conversations.find(c=>c.id===activeId);$("exportConversation").hidden=false;$("printConversation").hidden=false;const startId=chat.id;
-  const history=buildHistory(chat);const userEntry={role:"user",content:text};chat.messages.push(userEntry);chat.updated=Date.now();
-  welcomeEl.hidden=true;messagesEl.hidden=false;appendMessage("user",text);promptEl.value="";resizePrompt();showTyping();renderHistory();
+  const history=buildHistory(chat);const userEntry={role:"user",content:savedText};chat.messages.push(userEntry);chat.updated=Date.now();
+  welcomeEl.hidden=true;messagesEl.hidden=false;appendMessage("user",savedText);promptEl.value="";resizePrompt();clearSelectedAttachment();showTyping();renderHistory();
   if(createdNew)replaceRoute({name:"chat",id:chat.id});
   const stillActive=()=>activeId===startId;const start=Date.now();
   try{
-    const payload={message:text,agent,requestId,language:window.BORLocale?.current||"en"};const customization=readCustomization();if(customization)payload.customization=customization;if(activePdf)payload.document={name:activePdf.name,content:activePdf.content,truncated:activePdf.truncated};if(activeCsv?.kind==="image-ocr")payload.imageOcr={name:activeCsv.name,content:activeCsv.content,truncated:activeCsv.truncated};else if(activeCsv?.kind==="word-document")payload.wordDocument={name:activeCsv.name,content:activeCsv.content,paragraphCount:activeCsv.paragraphCount,truncated:activeCsv.truncated};else if(activeCsv?.kind==="presentation")payload.presentation={name:activeCsv.name,content:activeCsv.content,slideCount:activeCsv.slideCount,truncated:activeCsv.truncated};else if(activeCsv)payload.spreadsheet={name:activeCsv.name,content:activeCsv.content,rowCount:activeCsv.rowCount,columnCount:activeCsv.columnCount,truncated:activeCsv.truncated};if(history.length)payload.history=history;if(state===AppState.AUTH&&chat.serverId)payload.conversationId=chat.serverId;if(replacing&&state===AppState.AUTH&&chat.serverId)payload.replaceLastTurn=true;
+    const payload={message:savedText,agent,requestId,language:window.BORLocale?.current||"en"};const customization=readCustomization();if(customization)payload.customization=customization;if(selectedPdf)payload.document={name:selectedPdf.name,content:selectedPdf.content,truncated:selectedPdf.truncated};if(selectedCsv?.kind==="image-ocr")payload.imageOcr={name:selectedCsv.name,content:selectedCsv.content,truncated:selectedCsv.truncated};else if(selectedCsv?.kind==="word-document")payload.wordDocument={name:selectedCsv.name,content:selectedCsv.content,paragraphCount:selectedCsv.paragraphCount,truncated:selectedCsv.truncated};else if(selectedCsv?.kind==="presentation")payload.presentation={name:selectedCsv.name,content:selectedCsv.content,slideCount:selectedCsv.slideCount,truncated:selectedCsv.truncated};else if(selectedCsv)payload.spreadsheet={name:selectedCsv.name,content:selectedCsv.content,rowCount:selectedCsv.rowCount,columnCount:selectedCsv.columnCount,truncated:selectedCsv.truncated};if(history.length)payload.history=history;if(state===AppState.AUTH&&chat.serverId)payload.conversationId=chat.serverId;if(replacing&&state===AppState.AUTH&&chat.serverId)payload.replaceLastTurn=true;
     const data=await postJson("/api/chat",payload,CHAT_TIMEOUT_MS,activeChatController.signal);
     if(typeof data.response!=="string"||!data.response.trim())throw new Error("AI tidak menghasilkan jawaban.");
     if(pendingRetryRequest?.requestId===requestId)pendingRetryRequest=null;
-    chat.messages.push({role:"assistant",content:data.response,id:data.responseId||null,feedback:null,links:data.links||[],pdf:data.pdf||null,spreadsheet:data.spreadsheet||null,wordDocument:activeCsv?.kind==="word-document"?{name:activeCsv.name,paragraphCount:activeCsv.paragraphCount,truncated:activeCsv.truncated}:null});chat.updated=Date.now();
-    if(stillActive()){$("typing")?.remove();appendMessage("assistant",data.response,true,{regenerate:true,responseId:data.saved?data.responseId:null,conversationId:data.saved?data.conversationId:null});addEditActionToLastUser();appendSources(data.links);appendToolActivity(data.toolActivity);appendFormDraft(data.formDraft);if(data.pdf)appendPdfSource(data.pdf);if(data.spreadsheet)appendSpreadsheetSource(data.spreadsheet);if(data.presentation)appendPresentationSource(data.presentation);if(activeCsv?.kind==="word-document")appendWordDocumentSource(activeCsv);if(activeCsv?.kind==="image-ocr")appendImageOcrSource(activeCsv);renderWorkflow(data.steps)}
+    chat.messages.push({role:"assistant",content:data.response,id:data.responseId||null,feedback:null,links:data.links||[],pdf:data.pdf||null,spreadsheet:data.spreadsheet||null,wordDocument:selectedCsv?.kind==="word-document"?{name:selectedCsv.name,paragraphCount:selectedCsv.paragraphCount,truncated:selectedCsv.truncated}:null});chat.updated=Date.now();
+    if(stillActive()){$("typing")?.remove();appendMessage("assistant",data.response,true,{regenerate:true,responseId:data.saved?data.responseId:null,conversationId:data.saved?data.conversationId:null});addEditActionToLastUser();appendSources(data.links);appendToolActivity(data.toolActivity);appendFormDraft(data.formDraft);if(data.pdf)appendPdfSource(data.pdf);if(data.spreadsheet)appendSpreadsheetSource(data.spreadsheet);if(data.presentation)appendPresentationSource(data.presentation);if(selectedCsv?.kind==="word-document")appendWordDocumentSource(selectedCsv);if(selectedCsv?.kind==="image-ocr")appendImageOcrSource(selectedCsv);renderWorkflow(data.steps)}
     if(state===AppState.AUTH&&data.saved&&data.conversationId){
       chat.serverId=data.conversationId;chat.id=data.conversationId;chat.loaded=true;
       if(stillActive()){activeId=chat.id;replaceRoute({name:"chat",id:chat.id})}
@@ -1145,6 +1153,7 @@ async function submit(options={}){
       const at=chat.messages.indexOf(userEntry);if(at>=0)chat.messages.splice(at,1);
       if(replacing&&previousTurn){chat.messages.push(previousTurn.user,previousTurn.assistant);if(stillActive()){$("typing")?.remove();messagesEl.lastElementChild?.remove();appendMessage("user",previousTurn.user.content,true,{edit:true});appendMessage("assistant",previousTurn.assistant.content,true,{regenerate:true})}}
       else if(stillActive()){$("typing")?.remove();messagesEl.lastElementChild?.remove()}
+      if(stillActive()){promptEl.value=text;resizePrompt();if(!activePdf&&!activeCsv){activePdf=selectedPdf;activeCsv=selectedCsv;renderAttachmentPreview();}}
       toast("Generasi dihentikan.");
       return;
     }
@@ -1160,7 +1169,7 @@ async function submit(options={}){
       }
       promptEl.value=text;resizePrompt();toast(message);
     }else{
-      if(stillActive()){$("typing")?.remove();appendFailedTurn(message,text,e.code==="daily_limit",requestId);if(e.data?.links?.length)appendSources(e.data.links)}
+      if(stillActive()){$("typing")?.remove();appendFailedTurn(message,text,e.code==="daily_limit",requestId,{pdf:selectedPdf,csv:selectedCsv});if(e.data?.links?.length)appendSources(e.data.links)}
       toast("Permintaan gagal");
     }
   }finally{busy=false;activeChatController=null;lockComposer();renderHistory();if(!isDrawerMode())promptEl.focus()}
@@ -1168,6 +1177,7 @@ async function submit(options={}){
 function addEditActionToLastUser(){
   const row=messagesEl.children[messagesEl.children.length-2];if(!row?.classList.contains("user"))return;
   const actions=row.querySelector(".message-actions");if(!actions||actions.querySelector(".edit-message"))return;
+  if(row.querySelector(".sent-file-card"))return; // raw attachment bytes are never saved; cannot blindly re-edit
   const content=row.querySelector(".message-text")?.textContent||"";
   const btn=document.createElement("button");btn.type="button";btn.className="message-action edit-message";btn.textContent="Edit & kirim";
   btn.addEventListener("click",()=>replaceLastTurn("edit",content));actions.append(btn);
@@ -1177,6 +1187,7 @@ function replaceLastTurn(action,content){
   const chat=conversations.find(c=>c.id===activeId);if(!chat||chat.messages.length<2)return;
   const assistant=chat.messages.at(-1),user=chat.messages.at(-2);
   if(user.role!=="user"||assistant.role!=="assistant")return;
+  if(unpackAttachmentMessage(user.content).attachment){toast("Unggah ulang file untuk membuat ulang jawaban. Berkas asli tidak disimpan BOR AI.");return;}
   let nextText=user.content;
   if(action==="edit"){
     const edited=window.prompt("Edit pesan terakhir:",user.content);
@@ -1282,10 +1293,10 @@ $("googleRetry").addEventListener("click",()=>loadGoogle(true));
 $("chatForm").addEventListener("submit",e=>{e.preventDefault();submit()});
 $("attachPdf").addEventListener("click",()=>{if(!busy&&!loadingChat)$("pdfFile").click()});
 $("pdfFile").addEventListener("change",event=>{const file=event.target.files?.[0];event.target.value="";uploadAnyFile(file)});
-$("clearPdf").addEventListener("click",()=>{activePdf=null;renderPdfAttachment();toast("PDF dilepas dari chat.")});
+$("clearPdf").addEventListener("click",()=>{clearSelectedAttachment();toast("Lampiran dilepas dari pesan.")});
 $("attachCsv").addEventListener("click",()=>{if(!busy&&!loadingChat)$("csvFile").click()});
-$("csvFile").addEventListener("change",event=>{const file=event.target.files?.[0];event.target.value="";uploadCsv(file)});
-$("clearCsv").addEventListener("click",()=>{activeCsv=null;renderCsvAttachment();toast("CSV dilepas dari chat.")});
+$("csvFile").addEventListener("change",event=>{const file=event.target.files?.[0];event.target.value="";uploadAnyFile(file)});
+$("clearCsv").addEventListener("click",()=>{clearSelectedAttachment();toast("Lampiran dilepas dari pesan.")});
 $("stopGeneration").addEventListener("click",()=>{if(busy)activeChatController?.abort()});
 promptEl.addEventListener("input",resizePrompt);
 /* Enter sengaja TIDAK mengirim: Enter = baris baru di semua perangkat. Satu-satunya cara kirim lewat UI adalah tombol panah. */
