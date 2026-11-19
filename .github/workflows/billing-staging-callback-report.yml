@@ -15,7 +15,6 @@ jobs:
       - name: Query bearer-protected staging-only diagnostics
         env:
           BILLING_STAGING_REPORT_TOKEN: ${{ secrets.BOR_BILLING_STAGING_REPORT_TOKEN }}
-          GITHUB_STEP_SUMMARY: ${{ env.GITHUB_STEP_SUMMARY }}
         shell: bash
         run: |
           set -euo pipefail
