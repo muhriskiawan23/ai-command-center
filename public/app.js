@@ -186,11 +186,11 @@ function exportConversationFile(){
 const AppState={INIT:"initializing",UNAUTH:"unauthenticated",GUEST:"guest",AUTH:"authenticated",EXPIRED:"session-expired",ERROR:"error"};
 const promptEl=$("prompt"),messagesEl=$("messages"),welcomeEl=$("welcome"),conversation=$("conversation");
 const sidebar=$("sidebar"),backdrop=$("backdrop"),menuBtn=$("menuBtn"),workspace=$("workspace");
-let state=AppState.INIT,conversations=[],activeId=null,busy=false,currentUser=null,historyQuery="",archivedView=false,activePdf=null,activeCsv=null;
+let state=AppState.INIT,conversations=[],activeId=null,busy=false,currentUser=null,historyQuery="",archivedView=false,activePdf=null,activeCsv=null,attachmentPending=null,attachmentSequence=0;
 let historyCursor=null,historyHasMore=false,historyLoadingMore=false,historyRequestSeq=0;
 /* navSeq: setiap navigasi chat menaikkan penghitung ini; pemuatan yang tertimpa navigasi lebih baru dibatalkan. */
 let navSeq=0,loadingChat=false;
-function lockComposer(){const lock=busy||loadingChat;const send=$("send"),stop=$("stopGeneration");send.disabled=lock;send.hidden=busy;stop.hidden=!busy;stop.disabled=!busy;promptEl.readOnly=lock;$("exportConversation").disabled=lock;$("printConversation").disabled=lock;$("attachPdf").disabled=lock;$("attachCsv").disabled=lock;}
+function lockComposer(){const lock=busy||loadingChat;const send=$("send"),stop=$("stopGeneration");send.disabled=lock||Boolean(attachmentPending);send.hidden=busy;stop.hidden=!busy;stop.disabled=!busy;promptEl.readOnly=lock;$("exportConversation").disabled=lock;$("printConversation").disabled=lock;$("attachPdf").disabled=lock;$("attachCsv").disabled=lock;}
 
 /* Yang disimpan di sessionStorage HANYA penanda "sudah memilih Guest" (agar refresh tidak kembali ke Welcome).
    Isi chat guest tidak pernah ditulis ke storage mana pun. */
@@ -210,7 +210,7 @@ function setState(next,notice=""){
   syncInert();renderAuth();
 }
 function resetChatView(){
-  navSeq++;loadingChat=false;activePdf=null;activeCsv=null;renderPdfAttachment();renderCsvAttachment();lockComposer();
+  navSeq++;loadingChat=false;attachmentSequence++;attachmentPending=null;activePdf=null;activeCsv=null;renderPdfAttachment();renderCsvAttachment();lockComposer();
   activeId=null;$("exportConversation").hidden=true;$("printConversation").hidden=true;messagesEl.replaceChildren();messagesEl.hidden=true;welcomeEl.hidden=false;
   $("workflow").hidden=true;promptEl.value="";resizePrompt();
 }
@@ -747,7 +747,7 @@ async function showChat(cid){
     finally{if(seq===navSeq){loadingChat=false;lockComposer()}}
   }
   if(seq!==navSeq)return null;
-  activePdf=null;activeCsv=null;renderPdfAttachment();renderCsvAttachment();activeId=cid;$("exportConversation").hidden=false;$("printConversation").hidden=false;welcomeEl.hidden=true;messagesEl.hidden=false;messagesEl.replaceChildren();
+  attachmentSequence++;attachmentPending=null;activePdf=null;activeCsv=null;renderPdfAttachment();renderCsvAttachment();activeId=cid;$("exportConversation").hidden=false;$("printConversation").hidden=false;welcomeEl.hidden=true;messagesEl.hidden=false;messagesEl.replaceChildren();
   for(let i=0;i<c.messages.length;i++){const m=c.messages[i];const last=i===c.messages.length-1;const previous=i===c.messages.length-2;appendMessage(m.role,m.content,false,{edit:m.role==="user"&&previous&&c.messages.at(-1)?.role==="assistant",regenerate:m.role==="assistant"&&last&&c.messages.at(-2)?.role==="user",responseId:m.role==="assistant"?m.id:null,conversationId:c.serverId||c.id,feedback:m.feedback||null});if(m.role==="assistant"&&m.links?.length)appendSources(m.links);if(m.role==="assistant"&&m.pdf)appendPdfSource(m.pdf);if(m.role==="assistant"&&m.spreadsheet)appendSpreadsheetSource(m.spreadsheet);if(m.role==="assistant"&&m.wordDocument)appendWordDocumentSource(m.wordDocument);}
   $("workflow").hidden=true;renderHistory();conversation.scrollTop=conversation.scrollHeight;
   return true;
@@ -936,11 +936,54 @@ function appendPdfSource(pdf){
   item.textContent="✓ "+String(pdf.name||"document.pdf")+(pdf.pageCount?" · "+pdf.pageCount+" halaman":" · jumlah halaman tidak terdeteksi")+(pdf.truncated?" · teks dipotong untuk batas konteks":"");
   box.append(item);body.append(box);
 }
-function renderPdfAttachment(){
-  const wrap=$("pdfAttachment"),name=$("pdfName");if(!wrap||!name)return;
-  wrap.hidden=!activePdf;name.textContent=activePdf?activePdf.name+" · PDF siap":"";
-  $("attachPdf").textContent=activePdf?"Ganti file":"＋ Unggah file";
+// Only bounded, display-only file metadata is persisted in the user's text.
+// Raw file bytes never enter chat storage. Extracted text is sent separately
+// as the pre-existing bounded document context.
+function safeAttachmentName(name){
+  return String(name||"lampiran").replace(/[\/\\\x00-\x1f\x7f]/g,"_").trim().slice(0,110)||"lampiran";
 }
+function attachmentFileType(name){
+  const extension=(String(name||"").match(/\.([a-z0-9]{2,5})$/i)?.[1]||"file").toUpperCase();
+  return ["PDF","DOCX","XLSX","CSV","PPTX","JPG","JPEG","PNG","WEBP"].includes(extension)?(extension==="JPEG"?"JPG":extension):"FILE";
+}
+function packAttachmentMessage(text,attached){
+  return attached?text+"\n\n[BORAI_FILE:"+encodeURIComponent(safeAttachmentName(attached.name))+"]":text;
+}
+function unpackAttachmentMessage(content){
+  const text=String(content||"");
+  const marker=text.match(/\n\n\[BORAI_FILE:([A-Za-z0-9_.!~*'()%+-]{1,450})\]$/);
+  if(!marker)return {text,attachment:null};
+  try{
+    const name=safeAttachmentName(decodeURIComponent(marker[1]));
+    return {text:text.slice(0,-marker[0].length),attachment:{name,type:attachmentFileType(name)}};
+  }catch{return {text,attachment:null};}
+}
+function buildSentFileCard(attached){
+  const tile=document.createElement("div");tile.className="sent-file-card";
+  const badge=document.createElement("span");badge.className="sent-file-type";
+  badge.textContent=attached.type||attachmentFileType(attached.name);
+  const summary=document.createElement("span");summary.className="sent-file-summary";
+  const title=document.createElement("strong");title.textContent=safeAttachmentName(attached.name);
+  const note=document.createElement("small");
+  note.textContent=/\.(?:jpe?g|png|webp)$/i.test(attached.name)?"Teks gambar melalui OCR lokal":"Diproses secara lokal";
+  summary.append(title,note);tile.append(badge,summary);return tile;
+}
+function renderAttachmentPreview(){
+  const preview=$("attachmentPreview"),progress=$("attachmentProgress");
+  const pending=attachmentPending;
+  const pdf=pending||activePdf,csv=pending?null:activeCsv;
+  const pWrap=$("pdfAttachment"),cWrap=$("csvAttachment");
+  preview.hidden=!pdf&&!csv;
+  pWrap.hidden=!pdf;cWrap.hidden=!csv;
+  if(pdf){pWrap.dataset.filetype=attachmentFileType(pdf.name);$("pdfName").textContent=safeAttachmentName(pdf.name);}
+  if(csv){cWrap.dataset.filetype=attachmentFileType(csv.name);$("csvName").textContent=safeAttachmentName(csv.name);}
+  progress.hidden=!pending;
+  progress.textContent=pending?(pending.error?"Gagal membaca: ":"")+(pending.stage||"Membaca file di perangkat…"):"";
+  progress.dataset.error=pending?.error?"true":"false";
+  preview.dataset.status=pending?(pending.error?"error":"processing"):(pdf||csv?"ready":"empty");
+  $("attachPdf").textContent=pdf||csv?"＋ Ganti lampiran":"＋ Unggah file";
+}
+function renderPdfAttachment(){renderAttachmentPreview();}
 function appendSpreadsheetSource(spreadsheet){
   const row=messagesEl.lastElementChild;const body=row&&row.querySelector(".message-body");if(!body||!spreadsheet)return;
   const box=document.createElement("div");box.className="sources csv-source";
@@ -966,36 +1009,18 @@ function appendImageOcrSource(item){
   detail.textContent="✓ "+item.name+" · Hanya teks dikenali, bukan analisis visual"+(item.truncated?" · teks dibatasi":"");
   box.append(label,detail);body.append(box);
 }
-function renderCsvAttachment(){
-  const wrap=$("csvAttachment"),name=$("csvName");if(!wrap||!name)return;
-  wrap.hidden=!activeCsv;const filename=activeCsv?.name||"",isDocx=/\.docx$/i.test(filename),isPptx=/\.pptx$/i.test(filename),isExcel=/\.xlsx$/i.test(filename);
-  const label=activeCsv?.kind==="image-ocr"?"Gambar OCR siap":isDocx?"Word siap":isPptx?"PowerPoint siap":isExcel?"Excel siap":"CSV siap";
-  name.textContent=activeCsv?filename+" · "+label:"";
-  $("attachCsv").textContent=activeCsv?(isDocx?"Ganti Word":isPptx?"Ganti PowerPoint":isExcel?"Ganti Excel":"Ganti CSV"):"＋ File · CSV / XLSX / PPTX / DOCX";
-}
-async function uploadPdf(file){
-  if(!file)return;
-  if(!file.name.toLowerCase().endsWith(".pdf")){toast("Pilih file PDF (.pdf).");return;}
-  if(file.size>8*1024*1024){toast("Ukuran PDF maksimal 8 MB.");return;}
-  if(file.size<8){toast("File PDF tidak valid.");return;}
-  const button=$("attachPdf");button.disabled=true;button.textContent="Membaca…";
-  try{
-    const {extractPdfLocally}=await import("/pdf-ocr.js");
-    activeCsv=null;renderCsvAttachment();
-    activePdf=await extractPdfLocally(file,{
-      pdfjs:window.pdfjsLib,
-      tesseract:window.Tesseract,
-      onProgress:({status,page,total})=>{
-        if(status==="loading-language")button.textContent="Unduh model OCR…";
-        else if(status==="recognizing")button.textContent="OCR halaman "+page+"/"+total+"…";
-        else if(status==="rendering")button.textContent="Render halaman "+page+"/"+total+"…";
-        else button.textContent="Memproses PDF…";
-      }
-    });
-    renderPdfAttachment();
-    toast(activePdf.ocr?"OCR lokal selesai. Teks PDF siap dianalisis.":"PDF berhasil dibaca secara lokal. Tanyakan isinya di kolom chat.");
-  }catch(error){toast(error.message||"PDF gagal dibaca.");}
-  finally{button.disabled=busy||loadingChat;renderPdfAttachment()}
+function renderCsvAttachment(){renderAttachmentPreview();}
+async function readPdfFile(file,onProgress){
+  const {extractPdfLocally}=await import("/pdf-ocr.js");
+  return extractPdfLocally(file,{
+    pdfjs:window.pdfjsLib,tesseract:window.Tesseract,
+    onProgress:({status,page,total})=>{
+      const message=status==="loading-language"?"Mengunduh model OCR…":
+        status==="recognizing"?"OCR halaman "+page+"/"+total+"…":
+        status==="rendering"?"Memuat halaman "+page+"/"+total+"…":"Membaca PDF…";
+      onProgress(message);
+    }
+  });
 }
 async function ensurePptxLibrary(){if(window.JSZip?.loadAsync)return window.JSZip;if(window.pptxLibraryLoading)return window.pptxLibraryLoading;window.pptxLibraryLoading=new Promise((resolve,reject)=>{const s=document.createElement("script");s.src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js";s.onload=()=>window.JSZip?.loadAsync?resolve(window.JSZip):reject(Error("Pustaka PowerPoint tidak berhasil dimuat."));s.onerror=()=>reject(Error("Pustaka PowerPoint gagal diunduh. Periksa koneksi lalu coba lagi."));document.head.append(s)});try{return await window.pptxLibraryLoading}finally{window.pptxLibraryLoading=null}}
 async function ensureXlsxLibrary(){
@@ -1010,42 +1035,69 @@ async function ensureXlsxLibrary(){
   });
   try{return await window.xlsxLibraryLoading}finally{window.xlsxLibraryLoading=null}
 }
-async function uploadCsv(file){
-  if(!file)return;
-  const filename=file.name.toLowerCase(),isDocx=filename.endsWith(".docx"),isExcel=filename.endsWith(".xlsx"),isPptx=filename.endsWith(".pptx");
-  if(!isDocx&&!isExcel&&!isPptx&&!filename.endsWith(".csv")){toast("Pilih file CSV, Excel (.xlsx), PowerPoint (.pptx), atau Word (.docx).");return;}
-  if(file.size>5*1024*1024){toast("Ukuran file maksimal 5 MB.");return;}
-  if(file.size<1){toast("File kosong.");return;}
-  const button=$("attachPdf");button.disabled=true;button.textContent="Membaca…";
-  try{
-    let parsed;
-    if(isDocx){const jszip=await ensurePptxLibrary();const {parseDocxLocally}=await import("/docx-reader.js");parsed=await parseDocxLocally(file,{jszip});parsed.kind="word-document";}
-    else if(isPptx){const jszip=await ensurePptxLibrary();const {parsePptxLocally}=await import("/pptx-reader.js");parsed=await parsePptxLocally(file,{jszip});parsed.kind="presentation";}
-    else if(isExcel){const xlsx=await ensureXlsxLibrary();const {parseXlsxLocally}=await import("/xlsx-reader.js");parsed=await parseXlsxLocally(file,{xlsx});}
-    else{const {parseCsvLocally}=await import("/csv-reader.js");parsed=await parseCsvLocally(file);}
-    activePdf=null;renderPdfAttachment();activeCsv=parsed;renderCsvAttachment();
-    toast(isDocx?"Word berhasil dibaca secara lokal. Tanyakan isi dokumen di kolom chat.":isPptx?"PowerPoint berhasil dibaca secara lokal. Tanyakan isi slide di kolom chat.":isExcel?"Excel berhasil dibaca secara lokal. Tanyakan analisisnya di kolom chat.":"CSV berhasil dibaca secara lokal. Tanyakan analisisnya di kolom chat.");
-  }catch(error){toast(error.message||"File gagal dibaca.");}
-  finally{button.disabled=busy||loadingChat;renderCsvAttachment();renderPdfAttachment()}
+async function readStructuredFile(file){
+  const filename=file.name.toLowerCase();
+  const isDocx=filename.endsWith(".docx"),isExcel=filename.endsWith(".xlsx"),isPptx=filename.endsWith(".pptx");
+  if(isDocx){
+    const jszip=await ensurePptxLibrary();
+    const {parseDocxLocally}=await import("/docx-reader.js");
+    const parsed=await parseDocxLocally(file,{jszip});
+    return {...parsed,kind:"word-document"};
+  }
+  if(isPptx){
+    const jszip=await ensurePptxLibrary();
+    const {parsePptxLocally}=await import("/pptx-reader.js");
+    const parsed=await parsePptxLocally(file,{jszip});
+    return {...parsed,kind:"presentation"};
+  }
+  if(isExcel){
+    const xlsx=await ensureXlsxLibrary();
+    const {parseXlsxLocally}=await import("/xlsx-reader.js");
+    return parseXlsxLocally(file,{xlsx});
+  }
+  const {parseCsvLocally}=await import("/csv-reader.js");
+  return parseCsvLocally(file);
 }
-async function uploadImage(file){
-  if(!file)return;
-  const button=$("attachPdf");button.disabled=true;button.textContent="Membaca gambar…";
-  try{
-    const {parseImageOcrLocally}=await import("/image-ocr.js");
-    const parsed=await parseImageOcrLocally(file,{tesseract:window.Tesseract,onProgress:message=>button.textContent=message});
-    activePdf=null;activeCsv=parsed;renderPdfAttachment();renderCsvAttachment();
-    toast("Teks gambar berhasil dibaca secara lokal. BOR AI belum memeriksa gambar secara visual.");
-  }catch(e){toast(e.message||"Gambar gagal dibaca.");}
-  finally{button.disabled=busy||loadingChat;renderPdfAttachment();}
+async function readImageFile(file,onProgress){
+  const {parseImageOcrLocally}=await import("/image-ocr.js");
+  return parseImageOcrLocally(file,{tesseract:window.Tesseract,onProgress});
 }
 async function uploadAnyFile(file){
-  if(!file)return;
-  const name=String(file.name||"").toLowerCase();
-  if(name.endsWith(".pdf"))return uploadPdf(file);
-  if(/\.(?:jpe?g|png|webp)$/i.test(name))return uploadImage(file);
-  if(/\.(?:csv|xlsx|pptx|docx)$/i.test(name))return uploadCsv(file);
-  toast("Format belum didukung. Pilih PDF, DOCX, XLSX, PPTX, CSV, JPG, PNG, atau WEBP.");
+  if(!file||busy||loadingChat)return;
+  const name=safeAttachmentName(file.name),lower=name.toLowerCase();
+  const pdf=lower.endsWith(".pdf"),image=/\.(?:jpe?g|png|webp)$/.test(lower);
+  const structured=/\.(?:csv|xlsx|pptx|docx)$/.test(lower);
+  if(!pdf&&!image&&!structured){toast("Format belum didukung. Pilih PDF, Word, Excel, PowerPoint, CSV, JPG, PNG, atau WEBP.");return;}
+  const limit=pdf?8*1024*1024:5*1024*1024;
+  if(file.size<1||file.size>limit){toast("Ukuran file harus 1 byte–"+(pdf?"8":"5")+" MB.");return;}
+  const request=++attachmentSequence;
+  activePdf=null;activeCsv=null;
+  attachmentPending={name,stage:image?"Menyiapkan OCR di perangkat…":pdf?"Membaca halaman PDF…":"Membaca dokumen di perangkat…",error:false};
+  $("attachmentMenu").open=false;
+  renderAttachmentPreview();lockComposer();
+  const onProgress=message=>{
+    if(request!==attachmentSequence||!attachmentPending)return;
+    attachmentPending.stage=String(message||"Membaca file…").slice(0,100);
+    renderAttachmentPreview();
+  };
+  try{
+    const parsed=pdf?await readPdfFile(file,onProgress):image?await readImageFile(file,onProgress):await readStructuredFile(file);
+    // Changing chats, removing, or replacing files invalidates an in-flight OCR result.
+    if(request!==attachmentSequence)return;
+    if(pdf)activePdf=parsed;else activeCsv=parsed;
+    attachmentPending=null;
+    toast(image?"OCR selesai. Hanya teks hasil OCR yang bisa dianalisis.":"File siap dikirim bersama pesan.");
+  }catch(error){
+    if(request!==attachmentSequence)return;
+    attachmentPending={name,stage:String(error?.message||"File tidak dapat diproses.").slice(0,160),error:true};
+    toast("Lampiran gagal diproses. Lepas atau ganti file.");
+  }finally{
+    if(request===attachmentSequence){renderAttachmentPreview();lockComposer();}
+  }
+}
+function clearSelectedAttachment(){
+  attachmentSequence++;attachmentPending=null;activePdf=null;activeCsv=null;
+  renderAttachmentPreview();lockComposer();
 }
 function appendFailedTurn(message,text,noRetry=false,requestId=null){
   appendMessage("assistant",message);
