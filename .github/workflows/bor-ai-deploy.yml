@@ -3,11 +3,6 @@ name: BOR AI production deploy
 on:
   workflow_dispatch:
     inputs:
-      run_chat_smoke:
-        description: "Run one low-cost live AI chat check after deployment"
-        required: true
-        type: boolean
-        default: false
       run_tavily_smoke:
         description: "Run one bounded live Tavily web search and one news search after deployment (uses 2 Tavily credits and 2 AI calls)"
         required: true
@@ -150,11 +145,54 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: npx --yes wrangler@4 d1 execute bor-ai-chat --remote --config wrangler.jsonc --command "SELECT name FROM sqlite_master WHERE type='trigger' AND name IN ('image_reserve','image_reserve_debit','image_refund','image_grant')" --json | node --input-type=module -e 'let s="";for await(const c of process.stdin)s+=c;const d=JSON.parse(s);if(d[0]?.results?.length!==4)throw Error("Apply reviewed image D1 migration 0012 before activation.")'
 
-      - name: Deploy Worker and assets
+      - name: Verify candidate chat before switching production traffic
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: npx --yes wrangler@4 deploy --config "$BOR_DEPLOY_CONFIG" --message "github-sha:$GITHUB_SHA"
+        run: |
+          set -euo pipefail
+          wrangler() { npx --yes wrangler@4.165.0 "$@"; }
+          smoke_chat() {
+            curl --fail --silent --show-error --max-time 60 \
+              -H 'Content-Type: application/json' \
+              --data '{"message":"hi bor","agent":"coordinator","language":"id"}' \
+              "$1/api/chat" | node --input-type=module -e '
+                let body = "";
+                for await (const chunk of process.stdin) body += chunk;
+                const result = JSON.parse(body);
+                const generated = result.agentModels?.some(model =>
+                  model.agentId === "coordinator" && model.calls > 0 && model.outcome === "success");
+                if (typeof result.response !== "string" || !result.response.trim() || !generated) {
+                  throw Error("Chat smoke test did not receive a model-generated answer");
+                }
+              '
+          }
+
+          upload_output="$(mktemp)"
+          trap 'rm -f "$upload_output"' EXIT
+          WRANGLER_OUTPUT_FILE_PATH="$upload_output" wrangler versions upload \
+            --config "$BOR_DEPLOY_CONFIG" --message "github-sha:$GITHUB_SHA"
+          candidate="$(node --input-type=module - "$upload_output" <<'NODE'
+          import { readFileSync } from "node:fs";
+          const entry = readFileSync(process.argv[2], "utf8").trim().split("\n")
+            .filter(Boolean).map(line => JSON.parse(line)).find(row => row.type === "version-upload");
+          const id = entry?.version_id;
+          if (!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(id ?? "")) {
+            throw Error("Wrangler did not return a candidate version ID");
+          }
+          const expectedUrl = "https://" + id.slice(0, 8) + "-ai-command-center.muhriskiawan23.workers.dev";
+          if (entry.preview_url?.replace(/\/$/, "") !== expectedUrl) {
+            throw Error("Enable Version URLs for this Worker to test the candidate before promotion");
+          }
+          console.log(id, expectedUrl);
+          NODE
+          )"
+          read -r version_id candidate_url <<< "$candidate"
+          smoke_chat "$candidate_url"
+          wrangler versions deploy "$version_id@100" --yes --config "$BOR_DEPLOY_CONFIG" \
+            --message "github-sha:$GITHUB_SHA"
+          wrangler triggers deploy --config "$BOR_DEPLOY_CONFIG"
+          smoke_chat "https://ai-command-center.muhriskiawan23.workers.dev"
 
       # Read-only audit: Wrangler returns secret names/types, never secret values.
       # Keep this non-blocking so an optional search provider cannot break core releases.
@@ -228,20 +266,6 @@ jobs:
             if(d.enabled !== (process.env.BOR_IMAGES_ENABLED === "true")) throw Error("Image feature deployment state does not match reviewed configuration.");
             console.log("Image generation enabled:",d.enabled);
           '
-
-      - name: Optional live chat check
-        if: ${{ inputs.run_chat_smoke }}
-        run: |
-          set -euo pipefail
-          curl --fail --silent --show-error --max-time 60 \
-            -H 'Content-Type: application/json' \
-            --data '{"message":"hi bor","agent":"coordinator","language":"id"}' \
-            'https://ai-command-center.muhriskiawan23.workers.dev/api/chat' \
-            | node --input-type=module -e 'let s="";for await(const c of process.stdin)s+=c;const d=JSON.parse(s);if(typeof d.response!=="string"||d.response.trim().length<2)throw Error("Live chat greeting failed: missing usable AI response")'
-
-      - name: Warn when live chat smoke was skipped
-        if: ${{ !inputs.run_chat_smoke }}
-        run: echo "::warning::Production deployment succeeded but REAL AI inference was NOT tested. Set run_chat_smoke=true to verify chat."
 
       - name: Optional live Tavily web and news smoke tests
         if: ${{ inputs.run_tavily_smoke }}
