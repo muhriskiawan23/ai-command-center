@@ -72,6 +72,18 @@ export async function startOfflineDuitkuCheckout({
   requireMerchant(merchantCode);requireProvider(provider,'createInvoice');
   const userId=await resolveOfflineBillingSession(db,{sessionToken,nowMs});
   if(!['basic','pro','topup'].includes(sku))throw new Error('unsupported_sku');
+  // Existing orders always return their original locked quote, even after
+  // its expiry or a pricing-policy update; never issue a second invoice.
+  const existingOrder=await getOrder(db,orderId);
+  if(existingOrder){
+    if(existingOrder.user_id!==userId||existingOrder.quote_id!==quoteId||existingOrder.sku!==sku)
+      throw new Error('order_idempotency_conflict');
+    return Object.freeze({
+      orderId,quoteId,status:existingOrder.provider_reference?'invoice_previously_issued':'invoice_creation_unknown',
+      amountIdr:existingOrder.quoted_idr,reference:existingOrder.provider_reference,
+      duplicate:true,synthetic:true,realCreditsGranted:false
+    });
+  }
   if(typeof policyForSku!=='function')throw new Error('missing_server_pricing_policy');
   const policy=await policyForSku(sku,nowMs);
   if(!policy||policy.sku!==sku||policy.issuedAtMs!==nowMs)
