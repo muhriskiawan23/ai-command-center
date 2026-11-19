@@ -1,13 +1,15 @@
 # BOR AI billing: authenticated synthetic gateway bridge
 
-**NOT a customer checkout.** No production Worker route, no real Duitku API
+**NOT a commercial customer checkout.** No production Worker route, no production Duitku API
 request, no live payment, no refund transfer, and no actual user credit balance.
-This is a SQL-backed offline simulation/test harness. It exists solely to
+This SQL-backed staging/synthetic-credit test harness exists solely to
 validate integration invariants before real gateway activation. Its fake
 gateway and synthetic receipts must NEVER be used for live transactions.
 
 Files:
-- src/billing-synthetic-gateway-bridge.js — no HTTP registration or deployment wiring.
+- src/billing-synthetic-gateway-bridge.js — imported only by the separately gated
+  src/billing-staging-worker.js for an operator-issued test account and separate D1.
+  The staging Worker may call the actual Duitku SANDBOX, never production.
 - tests/billing-synthetic-gateway-bridge.test.js — SQLite in-memory tests with a fake gateway.
 - migrations/0014_billing_invoice_reference_guard.sql — requires a reference
   from an invoice to be bound to the exact pending order BEFORE a synthetic
@@ -98,3 +100,10 @@ and explicit owner go-live approval.
 Focused test: node --test tests/billing-synthetic-gateway-bridge.test.js
 
 Official documentation: https://docs.duitku.com/api/en/
+
+## Update — isolated staging only
+
+The new separate staging Worker can issue actual variable-IDR **SANDBOX**
+invoices after operator opt-in. It records only synthetic test credits.
+No production account, chat route, merchant settlement or monetary refund
+is involved; see docs/BOR-AI-ISOLATED-BILLING-STAGING.md.
