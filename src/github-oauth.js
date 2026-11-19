@@ -98,6 +98,7 @@ function safeGitHubDiagnosticMessage(value) {
 async function githubJson(url, token, init = {}) {
   const response = await fetch(url, {
     ...init,
+    signal: init.signal || AbortSignal.timeout(8_000),
     headers: {
       Accept: "application/vnd.github+json",
       "User-Agent": "BOR-AI",
@@ -173,6 +174,121 @@ async function loadConnection(user, env) {
 async function accessToken(connection, env) {
   const fresh = await refreshAccessToken(connection, env);
   return decryptToken(fresh.encrypted_access_token, env);
+}
+
+// Chat tools use only the current BOR AI user's GitHub authorization. They are
+// deliberately read-only and validate every repository against the user's
+// GitHub App installations before reading its content.
+async function chatGitHubToken(user, env) {
+  if (!user?.id || !env?.DB?.prepare) return { error: "Sign in to BOR AI and connect GitHub first." };
+  const connection = await loadConnection(user, env);
+  if (!connection) return { error: "Connect GitHub in BOR AI before using GitHub tools." };
+  try {
+    return { token: await accessToken(connection, env) };
+  } catch {
+    return { error: "GitHub access expired or could not be verified. Reconnect GitHub and try again." };
+  }
+}
+
+async function chatGitHubContext(user, env) {
+  const authenticated = await chatGitHubToken(user, env);
+  if (authenticated.error) return authenticated;
+  try {
+    const installations = await githubJson(GITHUB_API + "/user/installations?per_page=100", authenticated.token);
+    if (installations.error) return { error: installations.error };
+    const repositoryPages = await Promise.all((installations.data.installations || []).slice(0, 10).map((installation) =>
+      githubJson(
+        GITHUB_API + "/user/installations/" + encodeURIComponent(String(installation.id)) + "/repositories?per_page=100",
+        authenticated.token
+      )
+    ));
+    const failedPage = repositoryPages.find((result) => result.error);
+    if (failedPage) return { error: failedPage.error };
+    const repositories = repositoryPages.flatMap((result) => result.data.repositories || [])
+      .filter((repository) => typeof repository.full_name === "string").slice(0, 100);
+    return { token: authenticated.token, repositories };
+  } catch {
+    return { error: "GitHub access expired or could not be verified. Reconnect GitHub and try again." };
+  }
+}
+
+export async function hasGitHubChatConnection(user, env) {
+  if (!user?.id || !env?.DB?.prepare) return false;
+  return Boolean(await loadConnection(user, env));
+}
+
+export async function listGitHubRepositoriesForChat(user, env) {
+  const context = await chatGitHubContext(user, env);
+  if (context.error) return { error: context.error };
+  return {
+    repositories: context.repositories.map((item) => ({
+      fullName: item.full_name,
+      private: Boolean(item.private),
+      defaultBranch: String(item.default_branch || "").slice(0, 120),
+      description: String(item.description || "").slice(0, 240)
+    }))
+  };
+}
+
+async function authorizedChatRepository(user, env, fullName) {
+  if (typeof fullName !== "string" || !/^[A-Za-z0-9_.-]{1,100}\/[A-Za-z0-9_.-]{1,100}$/.test(fullName)) {
+    return { error: "Choose a repository from the connected GitHub account." };
+  }
+  const context = await chatGitHubToken(user, env);
+  if (context.error) return { error: context.error };
+  const repoPath = fullName.split("/").map(encodeURIComponent).join("/");
+  const result = await githubJson(GITHUB_API + "/repos/" + repoPath, context.token);
+  if (result.error || typeof result.data?.full_name !== "string") return { error: result.error || "That repository is not available to the connected GitHub App." };
+  return { token: context.token, repository: result.data };
+}
+
+function safeRepoPath(path) {
+  if (typeof path !== "string" || !path.trim() || path.length > 500 || path.startsWith("/")) return false;
+  const parts = path.split("/");
+  const sensitiveName = /^(?:\.env(?:\..*)?|\.npmrc|\.pypirc|\.netrc|secrets?(?:\..*)?|credentials?(?:\..*)?|id_rsa|id_ed25519|.*\.(?:pem|p12|pfx|key))$/i;
+  return parts.every((part) => part && part !== "." && part !== ".." && !/[\\\\\u0000-\u001f]/.test(part) && !sensitiveName.test(part));
+}
+
+export async function readGitHubFileForChat(user, env, fullName, path) {
+  if (!safeRepoPath(path)) return { error: "Provide a valid file path inside the repository." };
+  const context = await authorizedChatRepository(user, env, fullName);
+  if (context.error) return { error: context.error };
+  const repoPath = fullName.split("/").map(encodeURIComponent).join("/");
+  const encodedPath = path.split("/").map(encodeURIComponent).join("/");
+  const result = await githubJson(GITHUB_API + "/repos/" + repoPath + "/contents/" + encodedPath, context.token);
+  if (result.error) return { error: result.error };
+  const file = result.data;
+  if (file?.type !== "file" || typeof file.content !== "string" || file.encoding !== "base64") {
+    return { error: "The requested path is not an available regular file." };
+  }
+  if (file.content.length > 180_000) return { error: "This file is too large to analyze in chat." };
+  try {
+    const binary = atob(file.content.replace(/\s/g, ""));
+    const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+    const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    return { repository: fullName, path, content: text.slice(0, 24_000), truncated: text.length > 24_000 };
+  } catch {
+    return { error: "The requested file is binary or is not valid UTF-8 text." };
+  }
+}
+
+export async function listGitHubIssuesForChat(user, env, fullName) {
+  const context = await authorizedChatRepository(user, env, fullName);
+  if (context.error) return { error: context.error };
+  const repoPath = fullName.split("/").map(encodeURIComponent).join("/");
+  const result = await githubJson(GITHUB_API + "/repos/" + repoPath + "/issues?state=open&per_page=20", context.token);
+  if (result.error) return { error: result.error };
+  return {
+    repository: fullName,
+    issues: (Array.isArray(result.data) ? result.data : []).map((item) => ({
+      number: item.number,
+      title: String(item.title || "").slice(0, 300),
+      state: item.state,
+      url: item.html_url,
+      isPullRequest: Boolean(item.pull_request),
+      body: String(item.body || "").slice(0, 1200)
+    }))
+  };
 }
 function clearStateCookie() { return cookie(STATE_COOKIE, "", 0); }
 

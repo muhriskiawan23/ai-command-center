@@ -34,13 +34,34 @@ export function withTextProviderFailover(env, fetcher = fetch) {
   async function tryLuna(payload, signal) {
     if (signal?.aborted || !Array.isArray(payload?.messages) ||
       !payload.messages.length || !payload.messages.every(message =>
-        ["system", "assistant", "user"].includes(message?.role) &&
-        typeof message.content === "string") ||
+        ["system", "assistant", "user", "tool"].includes(message?.role) &&
+        (typeof message.content === "string" || (message.role === "assistant" && message.content === null)) &&
+        (message.role !== "tool" || (typeof message.tool_call_id === "string" && typeof message.name === "string")) &&
+        (message.role !== "assistant" || message.tool_calls === undefined ||
+          (Array.isArray(message.tool_calls) && message.tool_calls.every(call =>
+            typeof call?.id === "string" && call?.type === "function" &&
+            typeof call?.function?.name === "string" && typeof call?.function?.arguments === "string")))) ||
       !Number.isSafeInteger(payload.max_tokens) || payload.max_tokens < 1 ||
       payload.max_tokens > 2200) return null;
 
-    const messages = payload.messages.map(({ role, content }) => ({ role, content }));
-    const bytes = new TextEncoder().encode(JSON.stringify(messages)).length;
+    const messages = payload.messages.map(message => {
+      if (message.role === "assistant" && Array.isArray(message.tool_calls)) {
+        return { role: message.role, content: message.content, tool_calls: message.tool_calls };
+      }
+      if (message.role === "tool") {
+        return { role: message.role, tool_call_id: message.tool_call_id, name: message.name, content: message.content };
+      }
+      return { role: message.role, content: message.content };
+    });
+    const tools = Array.isArray(payload.tools) && payload.tools.length
+      ? payload.tools.map(tool => tool?.type === "function" ? tool : ({
+          type: "function",
+          function: { name: tool?.name, description: tool?.description, parameters: tool?.parameters }
+        }))
+      : undefined;
+    if (tools?.some(tool => !/^[a-zA-Z0-9_-]{1,64}$/.test(tool?.function?.name || "") ||
+      !tool.function.parameters || typeof tool.function.parameters !== "object")) return null;
+    const bytes = new TextEncoder().encode(JSON.stringify({ messages, tools })).length;
     if (bytes > 64_000) return null;
     const reserved = Number(calculateProviderCostMicroUsd({
       inputTokens: bytes + 8192,
@@ -61,15 +82,17 @@ export function withTextProviderFailover(env, fetcher = fetch) {
         },
         body: JSON.stringify({
           model: BACKUP_MODEL, messages, store: false, reasoning_effort: "none",
-          max_completion_tokens: payload.max_tokens
+          max_completion_tokens: payload.max_tokens,
+          ...(tools ? { tools, tool_choice: "auto" } : {})
         }),
         signal: signal ? AbortSignal.any([signal, timeout]) : timeout
       });
       if (!response.ok) return null;
       const result = await response.json();
-      const answer = result.choices?.[0]?.message?.content;
-      if (typeof answer === "string" && answer.trim()) {
-        return { response: answer, borTextBackupModel: BACKUP_MODEL, borTextLunaPrimary: preferLuna };
+      const message = result.choices?.[0]?.message;
+      const answer = message?.content;
+      if ((typeof answer === "string" && answer.trim()) || (Array.isArray(message?.tool_calls) && message.tool_calls.length)) {
+        return { choices: [{ message }], response: typeof answer === "string" ? answer : "", borTextBackupModel: BACKUP_MODEL, borTextLunaPrimary: preferLuna };
       }
     } catch {
       // Paid attempts remain reserved even if their outcome is ambiguous.

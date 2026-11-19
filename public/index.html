@@ -149,28 +149,29 @@
 <dialog class="plugins-dialog" id="pluginsDialog" aria-labelledby="pluginsTitle">
  <div class="plugins-inner">
   <header class="plugins-header">
-   <div><h2 id="pluginsTitle">Plugins</h2><p>Browse the tools connected to BOR AI.</p></div>
+   <div><h2 id="pluginsTitle">Plugins</h2><p>Browse BOR AI tools and popular service integrations. Availability is shown for each plugin.</p></div>
    <button class="plugins-close" id="pluginsClose" type="button" aria-label="Close plugins">✕</button>
   </header>
   <label class="sr-only" for="pluginSearch">Search plugins</label>
   <input class="plugin-search" id="pluginSearch" type="search" placeholder="Search plugins" autocomplete="off">
   <section class="plugin-section" aria-labelledby="builtInPluginsTitle">
-   <h3 id="builtInPluginsTitle">Built-in plugins</h3>
+   <h3 id="builtInPluginsTitle">Built-in tools</h3>
    <div class="plugin-grid" id="pluginCatalog">
     <article class="plugin-card" data-plugin-card>
-     <div class="plugin-card-heading"><span class="plugin-icon" aria-hidden="true">⌕</span><div><h4>Web search</h4><p>Search for recent information and include sources when a question needs current facts.</p></div><span class="plugin-state">Automatic</span></div>
-     <p class="plugin-card-meta">Available automatically</p>
+     <div class="plugin-card-heading"><span class="plugin-icon" aria-hidden="true">⌕</span><div><h4>Web search</h4><p>Search is automatic for supported questions about current information when a provider is configured.</p></div><span class="plugin-state" id="pluginSearchStatus">Checking availability…</span></div>
+     <p class="plugin-card-meta" id="pluginSearchMeta">Checking live search configuration.</p>
     </article>
     <article class="plugin-card" data-plugin-card>
-     <div class="plugin-card-heading"><span class="plugin-icon" aria-hidden="true">▤</span><div><h4>File analysis</h4><p>Upload documents and images to summarize, extract, or analyze their contents.</p></div></div>
+     <div class="plugin-card-heading"><span class="plugin-icon" aria-hidden="true">▤</span><div><h4>File analysis</h4><p>Upload supported files to summarize, extract, or analyze their contents.</p></div></div>
+     <p class="plugin-card-meta">PDF · DOCX · XLSX · PPTX · CSV · JPG · PNG · WEBP</p>
      <button class="plugin-action" id="pluginFilesUse" type="button">Upload files</button>
     </article>
     <article class="plugin-card" data-plugin-card>
-     <div class="plugin-card-heading"><span class="plugin-icon" aria-hidden="true">▧</span><div><h4>Image tools</h4><p>Create or edit images and open your image gallery.</p></div></div>
-     <button class="plugin-action" id="pluginImagesUse" type="button">Open image tools</button>
+     <div class="plugin-card-heading"><span class="plugin-icon" aria-hidden="true">▧</span><div><h4>Image tools</h4><p>Image understanding works through uploads. Image generation and editing require the paid image feature to be enabled.</p></div><span class="plugin-state" id="pluginImagesStatus">Checking availability…</span></div>
+     <button class="plugin-action" id="pluginImagesUse" type="button" disabled>Image generation unavailable</button>
     </article>
     <article class="plugin-card" data-plugin-card>
-     <div class="plugin-card-heading"><span class="plugin-icon" aria-hidden="true">✉</span><div><h4>Email drafts</h4><p>Prepare a draft for you to review. BOR AI never sends email automatically.</p></div></div>
+     <div class="plugin-card-heading"><span class="plugin-icon" aria-hidden="true">✉</span><div><h4>Email draft builder</h4><p>Create draft text in chat for you to review. It does not connect to an email account or send messages.</p></div></div>
      <button class="plugin-action" id="pluginEmailUse" type="button">Open draft builder</button>
     </article>
    </div>
@@ -178,12 +179,22 @@
   <section class="plugin-section" aria-labelledby="connectedPluginsTitle">
    <h3 id="connectedPluginsTitle">Connected services</h3>
    <article class="plugin-card github-plugin-card" data-plugin-card>
-    <div class="plugin-card-heading"><span class="github-mark" aria-hidden="true">GH</span><div><h4>GitHub</h4><p id="githubConnectionMessage">Connect GitHub to view repositories that you are authorized to access.</p></div><span class="github-status-dot" id="githubStatusDot" aria-hidden="true"></span></div>
+    <div class="plugin-card-heading"><span class="github-mark" aria-hidden="true">GH</span><div><h4>GitHub</h4><p id="githubConnectionMessage">Connect GitHub to browse repositories authorized for this app. GitHub actions in chat are not available yet.</p></div><span class="github-status-dot" id="githubStatusDot" aria-hidden="true"></span></div>
     <p class="plugin-card-meta" id="githubConnectionStatus" role="status">Checking connection</p>
     <div class="plugin-actions"><button class="plugin-action" id="githubConnect" type="button">Connect GitHub</button><button class="plugin-action secondary" id="githubDisconnect" type="button" hidden>Disconnect GitHub</button><button class="plugin-action secondary" id="openGithubRepos" type="button" hidden>Open repositories</button></div>
    </article>
   </section>
-  <p class="plugins-note">GitHub access follows the permissions granted to the GitHub App. BOR AI does not change repository code without your approval. Third-party plugins will be added after review.</p>
+  <section class="plugin-section" aria-labelledby="popularPluginsTitle">
+   <h3 id="popularPluginsTitle">Popular integrations</h3>
+   <div class="plugin-grid">
+    <article class="plugin-card" data-plugin-card><div class="plugin-card-heading"><span class="plugin-icon" aria-hidden="true">G</span><div><h4>Google Drive</h4><p>Search and summarize files you choose to share with BOR AI.</p></div><span class="plugin-state">Coming soon</span></div><p class="plugin-card-meta">Requires a secure Google connection and your permission.</p></article>
+    <article class="plugin-card" data-plugin-card><div class="plugin-card-heading"><span class="plugin-icon" aria-hidden="true">✉</span><div><h4>Gmail</h4><p>Find and summarize selected email. Sending will require your confirmation.</p></div><span class="plugin-state">Coming soon</span></div><p class="plugin-card-meta">Requires a secure Google connection and your permission.</p></article>
+    <article class="plugin-card" data-plugin-card><div class="plugin-card-heading"><span class="plugin-icon" aria-hidden="true">▣</span><div><h4>Google Calendar</h4><p>Review events and prepare calendar changes for your approval.</p></div><span class="plugin-state">Coming soon</span></div><p class="plugin-card-meta">Requires a secure Google connection and your permission.</p></article>
+    <article class="plugin-card" data-plugin-card><div class="plugin-card-heading"><span class="plugin-icon" aria-hidden="true">#</span><div><h4>Slack</h4><p>Search messages and prepare replies in workspaces you authorize.</p></div><span class="plugin-state">Coming soon</span></div><p class="plugin-card-meta">Requires a secure Slack connection and your permission.</p></article>
+    <article class="plugin-card" data-plugin-card><div class="plugin-card-heading"><span class="plugin-icon" aria-hidden="true">N</span><div><h4>Notion</h4><p>Find and summarize pages in workspaces you authorize.</p></div><span class="plugin-state">Coming soon</span></div><p class="plugin-card-meta">Requires a secure Notion connection and your permission.</p></article>
+   </div>
+  </section>
+  <p class="plugins-note">Popular integrations marked “Coming soon” are not available yet. Any future plugin change will require review and your confirmation.</p>
  </div>
 </dialog>
 <dialog class="github-repos-dialog" id="githubReposDialog" aria-labelledby="githubReposTitle">
@@ -274,6 +285,7 @@
 <script src="/checklist.js" defer></script>
 <script src="/email-draft.js" defer></script>
 <script src="/i18n-extended.js" defer></script>
+<script src="/i18n-plugins.js" defer></script>
 <script src="/i18n.js" defer></script>
 <script src="/markdown-renderer.js" defer></script>
 <script src="/google-forms.js" defer></script>

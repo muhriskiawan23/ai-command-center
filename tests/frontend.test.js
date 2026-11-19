@@ -109,6 +109,26 @@ test("Plugins hub replaces the standalone GitHub integrations screen", () => {
   assert.match(workspaceCss, /\.plugins-nav/);
 });
 
+test("Plugins catalog describes current capabilities truthfully and reflects live availability", () => {
+  assert.match(page, /id="builtInPluginsTitle">Built-in tools/);
+  assert.match(page, /id="pluginSearchStatus"/);
+  assert.match(page, /PDF · DOCX · XLSX · PPTX · CSV · JPG · PNG · WEBP/);
+  assert.match(page, /Email draft builder/);
+  assert.match(page, /does not connect to an email account or send messages/);
+  assert.match(page, /GitHub actions in chat are not available yet/);
+  assert.match(appJs, /api\("\/api\/plugins\/capabilities"\)/);
+  assert.match(appJs, /imageButton\.disabled=!imagesAvailable/);
+  assert.match(appJs, /BORLocale\?\.translate/);
+  assert.match(page, /i18n-plugins\.js/);
+});
+
+test("optional email draft controls do not break the workspace when unavailable", () => {
+  assert.match(appJs, /\$\("openEmailDraft"\)\?\.addEventListener/);
+  assert.match(appJs, /\$\("closeEmailDraft"\)\?\.addEventListener/);
+  assert.match(appJs, /\$\("prepareEmailDraft"\)\?\.addEventListener/);
+  assert.match(appJs, /\$\('openImageGallery'\)\?\.addEventListener/);
+});
+
 test("GitHub repository browser stays available inside its plugin after account authorization", () => {
   assert.match(page, /id="githubReposDialog"/);
   assert.match(page, /id="githubRepoSearch"/);

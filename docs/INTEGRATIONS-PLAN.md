@@ -1,6 +1,6 @@
-# Integrations plan (proposal for founder approval — nothing here is implemented yet)
+# BOR AI plugin and integrations roadmap
 
-Goal stated by the founder: BOR AI should integrate with many platforms and websites.
+The founder approved the direction to build a useful plugin catalog for common services, with per-user authorization and explicit approval before any write action. This roadmap does not mean every provider is already connected or that BOR AI has approval to use provider data before the user connects it.
 
 ## What "integrate with everything" really requires
 Code alone cannot do it. Every integration needs, outside the code:
@@ -8,7 +8,7 @@ Code alone cannot do it. Every integration needs, outside the code:
 2. **Per-user authorization** to access that user's data (OAuth consent), revocable at any time.
 3. A **security review and tests** for that connector.
 4. Sometimes **provider approval** (e.g. Google verification for sensitive scopes, Meta business verification) and **cost**.
-So integrations are delivered one connector at a time, in the order below.
+Integrations are delivered one connector at a time. The catalog now shows Google Drive, Gmail, Calendar, Slack, and Notion as coming soon until their OAuth paths and actions are implemented.
 
 ## Connector framework (built once, reused by every connector)
 - `connections` table: user, provider, granted scopes, token stored **encrypted** (AES-GCM, key in a Worker secret); tokens are never sent to the browser, never put in prompts, never logged.
@@ -20,21 +20,22 @@ So integrations are delivered one connector at a time, in the order below.
 - Model requirement: dependable tool/function calling. Whether the current model is good enough is **not verified** and may require a stronger (paid) model — a founder decision.
 
 ## Proposed order
-| # | Integration | Needs from the founder | Risk | Notes |
+| # | Integration | Needs before activation | Risk | Notes |
 |---|---|---|---|---|
-| 1 | **BOR AI inside other websites** (embeddable widget + public API) | Decide pricing/quotas | Medium (abuse, cost) | API key per site, origin allow-list, per-key daily quota, no third-party approval needed |
-| 2 | **Telegram bot** (chat with BOR AI inside Telegram) | Create bot via BotFather, store token as secret | Low | Webhook, per-chat identity mapping, same daily limits |
-| 3 | **GitHub (read-only)**: summarize issues/PRs/repos | Register a GitHub App | Low | Read scopes only |
-| 4 | **Google Calendar (read-only)** | Google OAuth app + verification for the sensitive scope | Medium | Until verified, limited to test users |
-| 5 | Slack / Discord / Notion | App registration per platform | Medium | One at a time |
-| 6 | WhatsApp Business | Meta business verification, paid conversations | Medium | Approval takes time |
-| 7 | Gmail / Drive | Google restricted scopes need an external security assessment | High | Late; costly |
-| 8 | **Browser automation** ("click buttons, fill forms") | Strong model + Cloudflare Browser Rendering | **Highest** | Credentials, CAPTCHAs/ToS, injection; always with confirmation, never store passwords |
+| 1 | **GitHub (read-only in chat)**: list authorized repos, review open issues, read text files | Enable the feature flag after a staging check; current OAuth connection already exists | Low | No writes. Model tool calling is beta; user-scoped repository checks are required. |
+| 2 | **Google Drive / Docs (read-only)**: find and summarize approved files | Google OAuth client, least-privilege scopes, user consent, verification as required | Medium | Start read-only; defer document writes. |
+| 3 | **Gmail (read-only)**: search and summarize selected messages | Google OAuth client, sensitive/restricted scope review, security assessment if required | High | Email sending is out of scope initially. Drafts remain in BOR AI until an explicit confirmed send feature exists. |
+| 4 | **Google Calendar**: read events, prepare changes | Google OAuth client, least-privilege scopes and user consent | Medium | Read first; create/update/delete actions require preview and confirmation. |
+| 5 | **Slack**: search channel messages and prepare replies | Slack app credentials, workspace installation and user/workspace consent | Medium | Start with authorized read access. No autonomous message posting. |
+| 6 | **Notion**: search and summarize shared pages | Notion integration credentials and per-workspace page grants | Medium | Start read-only. No edits or publishing. |
+| 7 | Discord / Microsoft Teams / project tools | Provider app registration and user/workspace consent | Medium | Prioritize from customer requests after the first wave. |
+| 8 | WhatsApp Business and browser automation | Business verification, usage cost review, security assessment | High | Later phase. Never store website passwords; writes always require confirmation. |
 
 A generic tool protocol (MCP) can reduce per-tool code, but every server still needs its own authorization.
 
-## Decisions requested
-1. Which one or two integrations first (recommendation: #1 and #2, they need no third-party approval).
-2. Who creates the provider accounts/keys (stored as Cloudflare secrets only).
-3. Whether to pay for a stronger model before building tool-calling.
-4. Approval of the confirmation-for-writes and audit-log rules above.
+## Current owner decisions
+- Approved: build the BOR AI catalog and connector system for commonly used services.
+- Approved: the founder may change package pricing if required to keep the product sustainable.
+- Not yet supplied: Google, Slack, and Notion OAuth app credentials. These must be created by the founder or within BOR AI-owned provider accounts and stored as Cloudflare secrets.
+- Not approved by this roadmap alone: new open-ended paid provider usage. Each connector needs an explicit cost cap before production activation.
+- Fixed v1 rule: all write actions require a preview and explicit user confirmation; reads stay scoped to each user's grants and can be revoked.

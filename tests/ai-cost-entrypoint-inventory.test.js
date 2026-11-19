@@ -11,17 +11,19 @@ const research=source("research.js");
 const extract=source("tavily-extract.js");
 
 test("direct Workers AI calls in main Worker require paid-gate inventory review on change",()=>{
-  // Reviewed: four pre-existing direct Workers AI callsites (deadline,
-  // locale, memory wrappers, generation) plus one explicit fallback to Llama
-  // when a budgeted GPT-OSS call fails. These are callsites, not guaranteed
-  // separate chargeable inferences. Multi-agent and retries remain capped.
+  // Reviewed: four existing direct Workers AI callsites (deadline, locale,
+  // memory wrappers, generation), one GPT-OSS fallback, and two bounded
+  // GitHub tool follow-up callsites. The tool follow-ups reserve a global
+  // daily USD ceiling before any connected repository data is read.
   const runCalls=[...main.matchAll(/\benv\.AI\.run\s*\(/g)];
   const markdownCalls=[...main.matchAll(/\benv\.AI\.toMarkdown\s*\(/g)];
-  assert.equal(runCalls.length,5,"AI.run callsites changed: review billing-gate wiring and all wrappers");
+  assert.equal(runCalls.length,7,"AI.run callsites changed: review billing-gate wiring and all wrappers");
   assert.equal(markdownCalls.length,1,"PDF conversion route changed: review conversion-cost treatment");
   assert.match(main,/generated=await env\.AI\.run\(modelId,payload\)/);
   assert.match(main,/fallback=await env\.AI\.run\(selection\.model\.id,\{\.\.\.payload,max_tokens:baselineMaxTokens\}\)/);
   assert.match(main,/reserveGptOssCall\(env, modelMessages, gptMaxTokens\)/);
+  assert.match(main,/reserveGitHubToolInferenceBudget\(env, toolMessages, maxTokens, calls\.length\)/);
+  assert.match(main,/pluginToolSpendReservedMicroUsd/);
   assert.match(main,/error instanceof AiCancelledError/);
   assert.match(main,/error instanceof AiTimeoutError/);
   assert.match(main,/const converted = await env\.AI\.toMarkdown\(/);
