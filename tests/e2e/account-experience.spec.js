@@ -121,7 +121,7 @@ test("English and Indonesian account labels plus known generic history titles fo
  await expect(page.locator("#toggleArchived")).toContainText("View archive");
  await expect(page.locator(".history-item")).toContainText("summarize");
  await page.locator("#userProfile").click();
- await expect(page.locator("#accountTitle")).toHaveText("User profile");
+ await expect(page.locator("#accountTitle")).toHaveText("Alice");
  await page.locator("#openPrivacy").click();await expect(page.locator("#privacyTitle")).toHaveText("Privacy center");
  await page.locator("#accountClose").click();
  await openSidebar(page);await openSettings(page);
