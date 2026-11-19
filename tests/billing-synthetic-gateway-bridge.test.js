@@ -210,7 +210,7 @@ test('signed callback still needs authoritative provider confirmation and exact 
     assert.equal(h.count('billing_payment_events'),1);
   }finally{h.close()}
 });
-test('forged callback, tampering, extra fields and parameter duplication never grant credits',async()=>{
+test('forged callback, tampering and parameter duplication never grant credits',async()=>{
   const h=await harness();try{
     const order=await h.start(),body=await h.callback(order);
     const bad=[
@@ -223,10 +223,24 @@ test('forged callback, tampering, extra fields and parameter duplication never g
     ];
     const duplicate=await h.callback(order);
     duplicate.append('amount',String(order.amountIdr));bad.push(duplicate);
-    const extras=await h.callback(order);extras.append('unexpected','x');bad.push(extras);
     for(const b of bad)await assert.rejects(()=>h.verify(b));
     assert.equal(h.calls.filter(x=>x==='checkStatus').length,0);
     assert.equal((await h.wallet()).availableCredits,0);
+  }finally{h.close()}
+});
+test('additional untrusted callback metadata never bypasses authoritative payment status',async()=>{
+  const h=await harness();try{
+    const order=await h.start(),signed=await h.callback(order);
+    signed.append('futureOptionalField','FORGED_METADATA_IGNORED');
+    h.control.statusCode='01';
+    assert.equal((await h.verify(signed)).status,'pending');
+    assert.equal((await h.wallet()).availableCredits,0);
+    h.control.statusCode='00';
+    assert.equal((await h.verify(signed)).status,'paid');
+    assert.equal((await h.wallet()).availableCredits,3000);
+    assert.equal(h.count('billing_payment_events'),1);
+    assert.equal((await h.verify(signed)).duplicate,true);
+    assert.equal(h.count('billing_credit_ledger'),1);
   }finally{h.close()}
 });
 test('multiple simultaneous and replayed signed callbacks grant exactly once',async()=>{
