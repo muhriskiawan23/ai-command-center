@@ -41,14 +41,27 @@ export function limitResponse(scope, limit) {
     ? `Batas harian tamu tercapai (${limit} pesan). Masuk dengan Google untuk batas lebih besar, atau coba lagi besok. ${reset}`
     : scope === "user"
       ? `Batas harian akun tercapai (${limit} pesan). ${reset}`
-      : "Layanan sedang mencapai batas pemakaian harian. Silakan coba lagi besok.";
+      : scope === "advanced"
+        ? "Jatah layanan untuk fitur lanjutan hari ini habis. Chat teks biasa masih bisa dicoba. " + reset
+        : "Layanan sedang mencapai batas pemakaian harian. Silakan coba lagi besok.";
   return json({ error: message, code: "daily_limit", scope }, 429, { "Retry-After": String(secondsUntilNextUtcDay()) });
 }
 
 // Returns { ok:true, day, charges } or { ok:false, response }. Without a DB binding limits are skipped (local/dev).
-export async function enforceDailyLimits(env, request, user, units) {
+export async function enforceDailyLimits(env, request, user, units, { advanced = false } = {}) {
   if (!env.DB) return { ok: true, day: null, charges: [] };
   const day = usageDay();
+  const globalLimit = dailyLimit(env, "global");
+  const configuredAdvanced = env.DAILY_LIMIT_ADVANCED_GLOBAL;
+  const advances = Number(configuredAdvanced);
+  if (configuredAdvanced !== undefined &&
+    (!/^\d+$/.test(String(configuredAdvanced)) || !Number.isSafeInteger(advances) || advances >= globalLimit)) {
+    return { ok: false, response: json({ error: "Konfigurasi batas pemakaian belum siap." }, 503) };
+  }
+  const split = configuredAdvanced !== undefined;
+  const advancedPool = split && advanced;
+  const globalSubject = advancedPool ? "global:advanced" : "global";
+  const poolLimit = advancedPool ? advances : split ? globalLimit - advances : globalLimit;
   // Keep successful partial charges visible to every error path so they can be refunded.
   const charges = [];
   try {
@@ -59,13 +72,12 @@ export async function enforceDailyLimits(env, request, user, units) {
     const subjectLimit = dailyLimit(env, scope);
     if (await consumeUsage(env, day, subject, units, subjectLimit) === null) return { ok: false, response: limitResponse(scope, subjectLimit) };
     charges.push({ subject, units });
-    const globalLimit = dailyLimit(env, "global");
-    const globalTotal = await consumeUsage(env, day, "global", units, globalLimit);
+    const globalTotal = await consumeUsage(env, day, globalSubject, units, poolLimit);
     if (globalTotal === null) {
       await refundUsage(env, day, charges);
-      return { ok: false, response: limitResponse("global", globalLimit) };
+      return { ok: false, response: limitResponse(advancedPool ? "advanced" : "global", poolLimit) };
     }
-    charges.push({ subject: "global", units });
+    charges.push({ subject: globalSubject, units });
     // First consumption of the day: drop counters older than two days so the table stays small.
     if (globalTotal === units) {
       try { await env.DB.prepare("DELETE FROM daily_usage WHERE day < ?").bind(usageDay(new Date(Date.now() - 2 * 86400000))).run(); }
