@@ -304,7 +304,7 @@ export default {
         if([...u.searchParams.keys()].some(k=>k!=='hours')||u.searchParams.getAll('hours').length>1)
           fail(400,'invalid_diagnostic_query');
         const raw=u.searchParams.get('hours')||'24';
-        if(!/^(?:[1-9]|[1-9]\\d|1[0-6]\\d|16[0-8])$/.test(raw))
+        if(!/^[1-9][0-9]{0,2}$/.test(raw))
           fail(400,'invalid_diagnostic_hours');
         const hours=Number(raw);
         if(hours<1||hours>168)fail(400,'invalid_diagnostic_hours');
