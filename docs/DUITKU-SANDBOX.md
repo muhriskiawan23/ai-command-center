@@ -54,6 +54,14 @@ The name in Cloudflare's suggested snippet is not the binding used by this code.
    Use this URL only after deployment confirms the expected Worker origin.
    GET returns 405 intentionally: Duitku delivers callbacks using POST.
 
+## Cloudflare Workers redirect compatibility
+
+Duitku calls use `redirect: 'manual'` because Cloudflare Workers does not
+implement `redirect: 'error'` (which throws before the HTTP request is sent).
+Redirect responses (3xx) are rejected by the existing non-2xx handling; the
+Worker never follows provider redirects or sends secrets to a different host.
+This applies to invoice, status and read-only payment-method requests.
+
 ## Read-only provider check (before creating any invoice)
 
 After installing the Sandbox API key and operator token, validate the same Worker
