@@ -113,6 +113,18 @@ function publicOrder(order) {
     testCredits: order.test_credits, reference: order.reference, paymentUrl: order.payment_url,
     realCreditsGranted: false };
 }
+// Operator-only, read-only audit of simulated ledger entries. Does not call Duitku.
+async function auditOrder(env, order) {
+  const ledger = await env.SANDBOX_DB.prepare(
+    'SELECT COUNT(*) AS ledger_entries, COALESCE(SUM(test_credits),0) AS ledger_credits FROM duitku_sandbox_credit_ledger WHERE order_id=?'
+  ).bind(order.id).first();
+  if (!ledger) fail(503, 'audit_unavailable');
+  return json({
+    sandbox: true, orderId: order.id, status: order.status,
+    expectedCredits: order.test_credits, ledgerEntries: Number(ledger.ledger_entries),
+    ledgerCredits: Number(ledger.ledger_credits), realCreditsGranted: false
+  });
+}
 function safePaymentUrl(value) {
   try {
     const url = new URL(value);
@@ -233,12 +245,14 @@ export default {
         return await providerCheck(env);
       }
       if (url.pathname === '/api/sandbox/checkout' && request.method === 'POST') return await checkout(request, env);
-      const match = /^\/api\/sandbox\/orders\/(BORTEST-[a-f0-9-]{36})(\/reconcile)?$/.exec(url.pathname);
+      const match = /^\/api\/sandbox\/orders\/(BORTEST-[a-f0-9-]{36})(\/reconcile|\/audit)?$/.exec(url.pathname);
       if (match) {
-        if (request.method !== (match[2] ? 'POST' : 'GET')) fail(405, 'method_not_allowed');
+        const action = match[2];
+        if (request.method !== (action === '/reconcile' ? 'POST' : 'GET')) fail(405, 'method_not_allowed');
         const order = await getOrder(env, match[1]);
         if (!order) fail(404, 'order_not_found');
-        return json(publicOrder(match[2] ? await reconcile(env, order) : order));
+        if (action === '/audit') return await auditOrder(env, order);
+        return json(publicOrder(action === '/reconcile' ? await reconcile(env, order) : order));
       }
       fail(404, 'not_found');
     } catch (error) {
