@@ -4,6 +4,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {readFileSync} from 'node:fs';
 import {sha256Hex} from '../src/http.js';
 import {duitkuSignature} from '../src/duitku-sandbox-worker.js';
+import {createDuitkuV2SandboxAdapter,validSandboxPaymentUrl} from '../src/duitku-v2-sandbox-contract.js';
 import {recordSyntheticUsageDebit,getBillingWalletAudit} from '../src/billing-ledger-foundation.js';
 import {
   SYNTHETIC_GATEWAY_BRIDGE_MODE,resolveOfflineBillingSession,
@@ -27,7 +28,8 @@ async function harness(){
   for(const p of [
     '../migrations/0001_auth_and_chat.sql',
     '../migrations/0013_billing_foundation.sql',
-    '../migrations/0014_billing_invoice_reference_guard.sql'
+    '../migrations/0014_billing_invoice_reference_guard.sql',
+    '../migrations/0015_billing_sandbox_invoice_recovery.sql'
   ])sqlite.exec(readFileSync(new URL(p,import.meta.url),'utf8'));
   for(const [user,token] of [[ownerA,tokenA],[ownerB,tokenB]]){
     sqlite.prepare('INSERT INTO users(id,email,created_at,updated_at) VALUES(?,?,?,?)')
@@ -309,4 +311,144 @@ test('synthetic billing bridge cannot accidentally be reached through production
   assert.doesNotMatch(production,/billing-synthetic-gateway-bridge/);
   assert.doesNotMatch(sandbox,/billing-synthetic-gateway-bridge/);
   assert.doesNotMatch(config,/BILLING_CHECKOUT_ENABLED.*true/);
+});
+
+function v2MockTransport(options={}){
+  const invoiceById=new Map(),requests=[];
+  const faults={reply:null,invoiceReply:null,statusReply:null,statusCode:'00',...options};
+  const fetcher=async(url, init)=>{
+    assert.equal(init.method,'POST');
+    assert.equal(init.redirect,'manual');
+    assert.equal(init.headers['Content-Type'],'application/json');
+    assert.equal(new URL(url).origin,'https://sandbox.duitku.com');
+    assert.ok(init.signal);
+    const input=JSON.parse(init.body);
+    requests.push({endpoint:url.split('/').pop(),body:input});
+    if(faults.reply)return faults.reply;
+    if(url.endsWith('/v2/inquiry')){
+      assert.equal(input.email,'bor-ai-sandbox@example.test');
+      assert.equal(input.customerVaName,'BOR AI Sandbox');
+      assert.equal(input.paymentMethod,'BT');
+      assert.equal(input.signature,await duitkuSignature(key,merchantCode+input.merchantOrderId+input.paymentAmount));
+      assert.match(input.callbackUrl,/^https:\/\/billing-sandbox\.example\.test\/api\/billing-sandbox\/callback$/);
+      assert.equal(input.itemDetails[0].price,input.paymentAmount);
+      const out={
+        merchantCode,merchantOrderId:input.merchantOrderId,amount:String(input.paymentAmount),
+        reference:'REF-'+input.merchantOrderId,statusCode:'00',
+        paymentUrl:'https://sandbox.duitku.com/topup/topupdirectv2.aspx?ref=TEST'
+      };
+      invoiceById.set(input.merchantOrderId,out);
+      return Response.json({...out,...faults.invoiceReply});
+    }
+    assert.ok(url.endsWith('/transactionStatus'));
+    assert.equal(input.signature,await duitkuSignature(key,merchantCode+input.merchantOrderId));
+    const existing=invoiceById.get(input.merchantOrderId);
+    if(!existing)return Response.json({statusCode:'02',amount:'1'});
+    return Response.json({
+      merchantOrderId:existing.merchantOrderId,reference:existing.reference,
+      amount:existing.amount,statusCode:faults.statusCode,
+      ...faults.statusReply
+    });
+  };
+  return {invoices:invoiceById,requests,faults,fetcher,
+    adapter:createDuitkuV2SandboxAdapter({
+      merchantCode,apiKey:key,publicBaseUrl:'https://billing-sandbox.example.test',
+      fetcher
+    })
+  };
+}
+test('V2 adapter uses real documented raw response shape and persists sandbox link without issuing live payment',async()=>{
+  const h=await harness();try{
+    const m=v2MockTransport();
+    const order=await h.start({provider:m.adapter});
+    assert.equal(order.amountIdr,35821);
+    assert.equal(order.paymentUrl,'https://sandbox.duitku.com/topup/topupdirectv2.aspx?ref=TEST');
+    assert.equal(order.realCreditsGranted,false);
+    assert.equal(m.requests.length,1);
+    assert.equal(m.requests[0].endpoint,'inquiry');
+    const stored=h.sqlite.prepare('SELECT sandbox_payment_url,provider_reference FROM billing_orders WHERE id=?').get(order.orderId);
+    assert.equal(stored.sandbox_payment_url,order.paymentUrl);
+    assert.equal(stored.provider_reference,order.reference);
+    const again=await h.start({
+      provider:m.adapter,quoteId:order.quoteId,orderId:order.orderId,
+      nowMs:now+700000
+    });
+    assert.equal(again.paymentUrl,order.paymentUrl);
+    assert.equal(again.amountIdr,order.amountIdr);
+    assert.equal(again.duplicate,true);
+    assert.equal(m.requests.length,1);
+    assert.throws(()=>h.sqlite.prepare('UPDATE billing_orders SET sandbox_payment_url=? WHERE id=?')
+      .run('https://sandbox.duitku.com/changed',order.orderId),/billing_sandbox_url_immutable/);
+    const cb=await h.callback(order,{resultCode:'01'});
+    assert.equal((await h.verify(cb,{provider:m.adapter})).status,'paid');
+    assert.equal(m.requests.length,2);
+    assert.equal(m.requests[1].endpoint,'transactionStatus');
+    assert.equal((await h.wallet()).availableCredits,3000);
+    assert.equal((await h.verify(cb,{provider:m.adapter})).duplicate,true);
+    assert.equal(m.requests.length,2);
+    assert.equal(h.count('billing_credit_ledger'),1);
+    // A V2 transactionStatus is NOT proof of a monetary refund.
+    await assert.rejects(()=>h.reverse(order,'refund_verified',{provider:m.adapter}),/sandbox_or_synthetic_gateway_only/);
+  }finally{h.close()}
+});
+test('V2 status checks respect a 30-second backoff while pending; no grant until authoritative 00',async()=>{
+  const h=await harness();try{
+    const m=v2MockTransport({statusCode:'01'});
+    const order=await h.start({provider:m.adapter});
+    const callback=await h.callback(order);
+    assert.equal((await h.verify(callback,{provider:m.adapter})).status,'pending');
+    await assert.rejects(()=>h.verify(callback,{provider:m.adapter,nowMs:now+16000}),/sandbox_status_retry_later/);
+    assert.equal(m.requests.length,2);
+    assert.equal((await h.wallet()).availableCredits,0);
+    m.faults.statusCode='00';
+    const result=await h.verify(callback,{provider:m.adapter,nowMs:now+45000});
+    assert.equal(result.status,'paid');
+    assert.equal(h.count('billing_credit_ledger'),1);
+    assert.equal((await h.wallet()).availableCredits,3000);
+  }finally{h.close()}
+});
+test('V2 adapter rejects mismatched invoice, wrong status, redirects and insecure payment URLs',async()=>{
+  const h=await harness();try{
+    for(const patch of [
+      {amount:'1'},{statusCode:'01'},{merchantCode:'D12345'},
+      {reference:''},{paymentUrl:'https://sandbox.duitku.com.evil.test/pay'},
+      {paymentUrl:'http://sandbox.duitku.com/pay'},
+      {paymentUrl:'https://sandbox.duitku.com:443/pay#unsafe'}
+    ]){
+      const m=v2MockTransport({invoiceReply:patch});
+      await assert.rejects(()=>h.start({provider:m.adapter}),/duitku_sandbox_invoice_mismatch/);
+    }
+    const redirect=v2MockTransport({reply:new Response(null,{status:302,headers:{Location:'https://attacker.test/'}})});
+    await assert.rejects(()=>h.start({provider:redirect.adapter}),/duitku_sandbox_unavailable/);
+    assert.equal(h.count('billing_credit_ledger'),0);
+    assert.equal((await h.wallet()).availableCredits,0);
+    assert.equal(validSandboxPaymentUrl('https://sandbox.duitku.com/pay'),true);
+    assert.equal(validSandboxPaymentUrl('https://sandbox.duitku.com.evil.test/pay'),false);
+    assert.throws(()=>createDuitkuV2SandboxAdapter({
+      merchantCode:'D1234',apiKey:key,publicBaseUrl:'https://billing-sandbox.example.test',
+      fetcher:()=>{}
+    }),/invalid_merchant/);
+    assert.throws(()=>createDuitkuV2SandboxAdapter({
+      merchantCode,apiKey:key,publicBaseUrl:'http://billing-sandbox.example.test',
+      fetcher:()=>{}
+    }),/invalid_public_origin/);
+    assert.throws(()=>createDuitkuV2SandboxAdapter({
+      merchantCode,apiKey:key,publicBaseUrl:'https://billing-sandbox.example.test'
+    }),/explicit_sandbox_fetcher_required/);
+  }finally{h.close()}
+});
+test('V2 adapter returns no settlement if provider status has wrong order, reference or amount',async()=>{
+  for(const tamper of [
+    {amount:'999'}, {reference:'REF-WRONG'}, {merchantOrderId:'BORDER-wrong-11111'},
+    {statusCode:'77'}
+  ]){
+    const h=await harness();try{
+      const m=v2MockTransport({statusReply:tamper});
+      const order=await h.start({provider:m.adapter});
+      const callback=await h.callback(order);
+      await assert.rejects(()=>h.verify(callback,{provider:m.adapter}));
+      assert.equal(h.count('billing_payment_events'),0);
+      assert.equal((await h.wallet()).availableCredits,0);
+    }finally{h.close()}
+  }
 });

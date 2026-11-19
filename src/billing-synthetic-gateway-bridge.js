@@ -22,8 +22,10 @@ function requireTimestamp(value){
   return value;
 }
 function requireProvider(provider,operation){
-  if(provider?.syntheticGatewayForTestsOnly!==true||typeof provider[operation]!=='function')
-    throw new Error('synthetic_gateway_only');
+  const allowed = provider?.syntheticGatewayForTestsOnly===true ||
+    (operation!=='checkReversal' && provider?.sandboxV2TransportOnly===true);
+  if(!allowed||typeof provider[operation]!=='function')
+    throw new Error('sandbox_or_synthetic_gateway_only');
   return provider;
 }
 function requireMerchant(merchantCode){
@@ -81,6 +83,7 @@ export async function startOfflineDuitkuCheckout({
     return Object.freeze({
       orderId,quoteId,status:existingOrder.provider_reference?'invoice_previously_issued':'invoice_creation_unknown',
       amountIdr:existingOrder.quoted_idr,reference:existingOrder.provider_reference,
+      paymentUrl:existingOrder.sandbox_payment_url??null,
       duplicate:true,synthetic:true,realCreditsGranted:false
     });
   }
@@ -101,14 +104,26 @@ export async function startOfflineDuitkuCheckout({
     });
   }
   const amountIdr=String(quote.lockedIdr);
-  const invoice=await provider.createInvoice({merchantCode,merchantOrderId:orderId,amount:amountIdr,paymentMethod:'BT'});
+  const invoice=await provider.createInvoice({
+    merchantCode,merchantOrderId:orderId,amount:amountIdr,paymentMethod:'BT',
+    // Explicit SANDBOX-only customer identity avoids sending Google profile PII
+    // to a test merchant. No invoice is ever created on the production gateway.
+    customerEmail:'bor-ai-sandbox@example.test',customerName:'BOR AI Sandbox'
+  });
   if(invoice?.merchantCode!==merchantCode||invoice?.merchantOrderId!==orderId||
      invoice?.amount!==amountIdr||invoice?.statusCode!=='00'||
      !refPattern.test(invoice?.reference??''))
     throw new Error('synthetic_invoice_mismatch');
   await bindSyntheticInvoiceReference(db,{orderId,userId,providerReference:invoice.reference});
+  if(provider.sandboxV2TransportOnly===true){
+    if(typeof invoice.paymentUrl!=='string'||!invoice.paymentUrl.startsWith('https://sandbox.duitku.com/'))
+      throw new Error('invalid_sandbox_payment_url');
+    await db.prepare("UPDATE billing_orders SET sandbox_payment_url=? WHERE id=? AND user_id=? AND status='pending' AND sandbox_payment_url IS NULL")
+      .bind(invoice.paymentUrl,orderId,userId).run();
+  }
   return Object.freeze({
     orderId,quoteId,sku,amountIdr:Number(amountIdr),reference:invoice.reference,
+    paymentUrl:provider.sandboxV2TransportOnly===true?invoice.paymentUrl:null,
     fxQuoteExpiresAtMs:quote.expiresAtMs,status:'pending',duplicate:false,
     synthetic:true,checkoutEnabled:false,realCreditsGranted:false
   });
@@ -145,6 +160,12 @@ export async function verifyOfflineDuitkuCallback({
     return Object.freeze({
       orderId:order.id,status:order.status,duplicate:true,synthetic:true,realCreditsGranted:false
     });
+  }
+  if(provider.sandboxV2TransportOnly===true){
+    // Bound external checks: provider explicitly warns against rapid polling.
+    const claim=await db.prepare("UPDATE billing_orders SET sandbox_status_check_after=? WHERE id=? AND status='pending' AND sandbox_status_check_after<=?")
+      .bind(nowMs+30000,order.id,nowMs).run();
+    if(!claim.meta?.changes)throw new Error('sandbox_status_retry_later');
   }
   const status=await provider.checkStatus({merchantCode,merchantOrderId:order.id,reference:order.provider_reference});
   if(status?.merchantOrderId!==order.id||status?.reference!==order.provider_reference||
