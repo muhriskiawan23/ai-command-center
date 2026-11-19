@@ -6,18 +6,39 @@ or image credits. No production chat files, configuration or migrations change.
 
 ## Deployment and credentials
 
+The owner created the APAC database `bor-ai-duitku-sandbox` on 19 November 2026:
+`0744f4c0-7980-4de1-977d-d8bbd51fe395`. Its Worker binding is `SANDBOX_DB`.
+The name in Cloudflare's suggested snippet is not the binding used by this code.
+
 1. Run GitHub Actions **BOR AI Duitku sandbox deploy** from `main`.
-   It reuses existing Cloudflare deployment credentials, provisions only
-   `bor-ai-duitku-sandbox`, applies only `sandbox/duitku/migrations`, and deploys
+   It reuses existing Cloudflare deployment credentials, verifies only the pinned
+   `bor-ai-duitku-sandbox` database by ID, applies only `sandbox/duitku/migrations`, and deploys
    the separate Worker `bor-ai-duitku-sandbox`. The `production` GitHub environment
    provides existing Cloudflare credentials; the target resources are sandbox only.
-2. In a local checkout containing these files, install the **Sandbox** API key
+   If GitHub's Cloudflare credentials are rejected, deploy from the owner's
+   local Wrangler OAuth session instead. Download **Code > Download ZIP** from
+   the repository's `main` branch and extract it to a new folder. Do not deploy
+   from an old Midtrans source archive. In Windows PowerShell 5.1, enter the new
+   extracted folder containing `wrangler.duitku-sandbox.jsonc` and run:
+
+   ```powershell
+   npx.cmd --yes wrangler@4 d1 migrations apply bor-ai-duitku-sandbox --remote --config wrangler.duitku-sandbox.jsonc
+   npx.cmd --yes wrangler@4 deploy --config wrangler.duitku-sandbox.jsonc
+   ```
+
+   Stop if either command fails. This uses the existing OAuth login, the pinned
+   dedicated Sandbox database and the isolated Worker; it does not resolve or
+   change the rejected GitHub credential. No Git installation or PowerShell
+   execution-policy change is required. A local successful deployment is still
+   needed before claiming the callback is available.
+
+2. In the new extracted source folder, install the **Sandbox** API key
    using the concealed interactive Wrangler prompt. Never put the value in code,
    GitHub issues, screenshots, chat, command arguments, or logs:
 
    ```powershell
-   npx --yes wrangler@4 secret put DUITKU_SANDBOX_API_KEY --config wrangler.duitku-sandbox.jsonc
-   npx --yes wrangler@4 secret put DUITKU_SANDBOX_OPERATOR_TOKEN --config wrangler.duitku-sandbox.jsonc
+   npx.cmd --yes wrangler@4 secret put DUITKU_SANDBOX_API_KEY --config wrangler.duitku-sandbox.jsonc
+   npx.cmd --yes wrangler@4 secret put DUITKU_SANDBOX_OPERATOR_TOKEN --config wrangler.duitku-sandbox.jsonc
    ```
 
    For the second prompt use a separate random secret of at least 32 characters
