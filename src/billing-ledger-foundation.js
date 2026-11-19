@@ -83,6 +83,25 @@ export async function createSyntheticBillingOrder(db,{orderId,quoteId,userId,now
     .bind(orderId,quoteId,userId,nowMs,nowMs).run();
   return {orderId,quoteId,userId,status:'pending',duplicate:false,checkoutEnabled:false};
 }
+// Bind the invoice reference returned by a trusted *synthetic* gateway fixture.
+// No real Duitku checkout occurs; the reference is immutable once set.
+export async function bindSyntheticInvoiceReference(db,{orderId,userId,providerReference}){
+  identifier(orderId,'orderId');owner(userId);
+  if(typeof providerReference!=='string'||!/^[A-Za-z0-9_-]{1,255}$/.test(providerReference))
+    throw new TypeError('invalid provider reference');
+  const order=await db.prepare('SELECT * FROM billing_orders WHERE id=?').bind(orderId).first();
+  if(!order||order.user_id!==userId)throw new Error('order_owner_mismatch');
+  if(order.provider_reference!==null){
+    if(order.provider_reference!==providerReference)throw new Error('invoice_reference_conflict');
+    return {orderId,providerReference,duplicate:true,synthetic:true};
+  }
+  if(order.status!=='pending')throw new Error('not_pending_invoice');
+  await db.prepare("UPDATE billing_orders SET provider_reference=? WHERE id=? AND user_id=? AND provider_reference IS NULL AND status='pending'")
+    .bind(providerReference,orderId,userId).run();
+  const saved=await db.prepare('SELECT provider_reference FROM billing_orders WHERE id=?').bind(orderId).first();
+  if(saved?.provider_reference!==providerReference)throw new Error('invoice_reference_conflict');
+  return {orderId,providerReference,duplicate:false,synthetic:true};
+}
 export async function getBillingWalletAudit(db,userId){
   owner(userId);
   const row=await db.prepare('SELECT available_credits,debt_credits FROM billing_wallets WHERE user_id=?')
@@ -115,7 +134,7 @@ export async function recordSyntheticBillingEvent(db,{
   const prior=await db.prepare('SELECT * FROM billing_payment_events WHERE event_key=?').bind(eventKey).first();
   if(prior){
     if(prior.order_id!==orderId||prior.event_type!==eventType||prior.provider_reference!==providerReference||
-      prior.amount_idr!==amountIdr||prior.checked_at!==checkedAtMs)throw new Error('event_idempotency_conflict');
+      prior.amount_idr!==amountIdr)throw new Error('event_idempotency_conflict');
     return {orderId,eventType,duplicate:true,synthetic:true};
   }
   // Another event key for an already verified order is a retry, not a second grant.
