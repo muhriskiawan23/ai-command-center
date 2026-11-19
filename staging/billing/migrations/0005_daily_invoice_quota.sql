@@ -7,3 +7,10 @@ BEGIN
   OR (SELECT COUNT(*) FROM billing_orders WHERE created_at>=NEW.created_at-86400000)>=20
  THEN RAISE(ABORT,'staging_daily_checkout_limit') END;
 END;
+-- Operator-created session cap, even if the operator token is repeatedly used.
+CREATE TRIGGER staging_session_quota BEFORE INSERT ON staging_session_issue_log
+BEGIN
+ SELECT CASE WHEN (SELECT COUNT(*) FROM staging_session_issue_log
+  WHERE created_at>=NEW.created_at-86400000)>=10
+ THEN RAISE(ABORT,'staging_daily_session_limit') END;
+END;
