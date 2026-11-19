@@ -24,7 +24,13 @@ test("signed-in account opens accessible profile and privacy center on every vie
  await page.locator("#userProfile").click();
  await expect(page.locator("#accountDialog")).toBeVisible();
  await expect(page.locator("#accountName")).toHaveText("Alice");
- await expect(page.locator("#accountEmail")).toHaveText("alice@example.test");
+ await expect(page.locator("#accountEmail")).toHaveCount(0);
+ await expect(page.locator("#profilePhotoButton")).toBeVisible();
+ await expect(page.locator("#profileUsername")).toHaveValue("Alice");
+ await page.locator("#profileUsername").fill("Boris");
+ await page.locator("#profileForm button[type=submit]").click();
+ await expect(page.locator("#accountTitle")).toHaveText("Boris");
+ await expect(page.locator("#userProfile")).toContainText("Boris");
  await expect(page.locator("#openMemory")).toBeVisible();
  await expect(page.locator("#openUsage")).toBeVisible();
  await page.locator("#openPrivacy").click();
@@ -115,7 +121,7 @@ test("English and Indonesian account labels plus known generic history titles fo
  await expect(page.locator("#toggleArchived")).toContainText("View archive");
  await expect(page.locator(".history-item")).toContainText("summarize");
  await page.locator("#userProfile").click();
- await expect(page.locator("#accountTitle")).toHaveText("User profile");
+ await expect(page.locator("#accountTitle")).toHaveText("Alice");
  await page.locator("#openPrivacy").click();await expect(page.locator("#privacyTitle")).toHaveText("Privacy center");
  await page.locator("#accountClose").click();
  await openSidebar(page);await openSettings(page);

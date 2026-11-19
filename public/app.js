@@ -227,25 +227,49 @@ function expireSession(){
 }
 async function verifySession(){try{const d=await api("/api/auth/me");if(!d.authenticated)expireSession()}catch{}}
 
+function profileSettingsKey(){return "borai-profile:v1:" + String(currentUser?.id||currentUser?.email||"unknown");}
+function readProfileSettings(){
+  if(!currentUser)return {username:"",photo:""};
+  try{
+    const data=JSON.parse(localStorage.getItem(profileSettingsKey())||"null");
+    if(!data||typeof data!=="object"||Array.isArray(data))return {username:"",photo:""};
+    const photo=typeof data.photo==="string"&&data.photo.startsWith("data:image/jpeg;base64,")&&data.photo.length<350000?data.photo:"";
+    return {username:typeof data.username==="string"?data.username.trim().slice(0,32):"",photo};
+  }catch{return {username:"",photo:""};}
+}
+function writeProfileSettings(patch){
+  const previous=readProfileSettings();
+  const next={username:patch.username??previous.username,photo:patch.photo??previous.photo};
+  localStorage.setItem(profileSettingsKey(),JSON.stringify(next));return next;
+}
+function profileDisplayName(){
+  const settings=readProfileSettings();
+  return settings.username||String(currentUser?.name||"Akun Google").trim()||"Akun Google";
+}
+function renderProfileEditor(){
+  const settings=readProfileSettings(),displayName=profileDisplayName();
+  $("accountTitle").textContent=displayName;$("accountName").textContent=displayName;
+  $("profileUsername").value=settings.username||String(currentUser?.name||displayName);
+  const image=settings.photo||currentUser?.picture||"",preview=$("profilePhotoPreview"),fallback=$("profilePhotoFallback");
+  preview.hidden=!image;preview.removeAttribute("src");if(image)preview.src=image;
+  fallback.hidden=Boolean(image);fallback.textContent=(displayName.trim().slice(0,1)||"A").toLocaleUpperCase();
+  $("removeProfilePhoto").hidden=!settings.photo;
+}
 function renderAuth(){
   const logged=state===AppState.AUTH&&Boolean(currentUser);
   $("authTitle").textContent=logged?"Masuk sebagai":"Guest Mode";
-  $("authDescription").textContent=logged?(currentUser.email||"Riwayat chat tersimpan di akun Google."):"Chat guest hanya ada di halaman ini dan hilang saat dimuat ulang. Masuk dengan Google untuk menyimpan riwayat permanen.";
+  $("authDescription").textContent=logged?"Riwayat chat tersimpan di akun Google.":"Chat guest hanya ada di halaman ini dan hilang saat dimuat ulang. Masuk dengan Google untuk menyimpan riwayat permanen.";
   $("googleButton").hidden=logged;$("userProfile").hidden=!logged;$("signOut").hidden=!logged;
-  $("googleSideStatus").hidden=logged||!$("googleSideStatus").textContent;
-  $("userProfile").replaceChildren();
+  $("googleSideStatus").hidden=logged||!$("googleSideStatus").textContent;$("userProfile").replaceChildren();
   if(logged){
+    const settings=readProfileSettings(),displayName=settings.username||String(currentUser.name||"Akun Google").trim()||"Akun Google",picture=settings.photo||currentUser.picture||"";
     const wrap=document.createElement("div");wrap.className="auth-user";
-    if(currentUser.picture){const img=document.createElement("img");img.src=currentUser.picture;img.alt="";wrap.append(img)}else{const avatar=document.createElement("span");avatar.className="account-initials";avatar.textContent=String(currentUser.name||"Akun").trim().slice(0,2).toUpperCase();avatar.setAttribute("aria-hidden","true");wrap.append(avatar)}
-    const info=document.createElement("div");info.className="auth-user-info";
-    const name=document.createElement("strong");name.textContent=currentUser.name||"Akun Google";
-    const email=document.createElement("small");email.textContent=currentUser.email||"";
-    info.append(name,email);wrap.append(info);$("userProfile").append(wrap);
+    if(picture){const img=document.createElement("img");img.src=picture;img.alt="";wrap.append(img)}else{const avatar=document.createElement("span");avatar.className="account-initials";avatar.textContent=(displayName.trim().slice(0,1)||"A").toLocaleUpperCase();avatar.setAttribute("aria-hidden","true");wrap.append(avatar)}
+    const info=document.createElement("div");info.className="auth-user-info";const name=document.createElement("strong");name.textContent=displayName;info.append(name);wrap.append(info);$("userProfile").append(wrap);
   }
-  $("accountName").textContent=logged?(currentUser.name||"Akun Google"):"Akun Google";
-  $("accountEmail").textContent=logged?(currentUser.email||"Email tidak tersedia"):"—";
-  renderHistory();
-  if(logged) refreshGitHubConnection(); else resetGitHubConnection();
+  $("accountName").textContent=logged?profileDisplayName():"Akun Google";$("accountTitle").textContent=logged?profileDisplayName():"Profil pengguna";
+  if(logged)renderProfileEditor();
+  renderHistory();if(logged)refreshGitHubConnection();else resetGitHubConnection();
 }
 
 /* Account panel: a dedicated accessible page-like dialog, not extra sidebar settings. */
@@ -266,6 +290,7 @@ function readCustomization(){
 }
 function accountView(page="home"){
   for(const [name,id] of [["home","accountHome"],["customize","accountCustomization"],["privacy","accountPrivacy"]])$(id).hidden=name!==page;
+  if(page==="home")renderProfileEditor();
   $("accountBack").dataset.page=page;
   $("accountBack").setAttribute("aria-label",page==="home"?"Kembali ke chat":"Kembali ke profil");
   $("accountBack").focus();
@@ -274,6 +299,37 @@ function closeAccount(){
   if(!accountDialog.open)return;
   if(history.state?.overlay==="account")history.back();else accountDialog.close();
 }
+function profilePhotoDataUrl(file){
+  return new Promise((resolve,reject)=>{
+    if(!file||!["image/jpeg","image/png","image/webp"].includes(file.type)){reject(new Error("Foto harus JPG, PNG, atau WebP."));return;}
+    if(file.size>10*1024*1024){reject(new Error("Ukuran foto maksimal 10 MB."));return;}
+    createImageBitmap(file).then(bitmap=>{
+      if(bitmap.width*bitmap.height>40000000){bitmap.close?.();reject(new Error("Foto profil gagal diproses."));return;}
+      const side=Math.min(bitmap.width,bitmap.height),sx=(bitmap.width-side)/2,sy=(bitmap.height-side)/2;
+      const canvas=document.createElement("canvas");canvas.width=256;canvas.height=256;
+      const context=canvas.getContext("2d");
+      if(!context){bitmap.close?.();reject(new Error("Foto profil gagal diproses."));return;}
+      context.drawImage(bitmap,sx,sy,side,side,0,0,256,256);bitmap.close?.();
+      try{resolve(canvas.toDataURL("image/jpeg",0.82));}catch{reject(new Error("Foto profil gagal diproses."));}
+    }).catch(()=>reject(new Error("Foto profil gagal diproses.")));
+  });
+}
+$("profilePhotoButton").addEventListener("click",()=>$("profilePhotoInput").click());
+$("profilePhotoInput").addEventListener("change",async event=>{
+  const file=event.target.files?.[0];event.target.value="";if(!file)return;
+  try{const photo=await profilePhotoDataUrl(file);writeProfileSettings({photo});renderAuth();renderProfileEditor();toast("Foto profil berhasil diperbarui.");}
+  catch(error){toast(error.message||"Foto profil gagal diproses.");}
+});
+$("profileForm").addEventListener("submit",event=>{
+  event.preventDefault();const username=$("profileUsername").value.trim().replace(/\s+/g," ");
+  if(!username||Array.from(username).length>32){toast("Username harus diisi (maksimal 32 karakter).");$("profileUsername").focus();return;}
+  try{writeProfileSettings({username});renderAuth();renderProfileEditor();toast("Profil berhasil disimpan.");}
+  catch{toast("Profil tidak dapat disimpan karena penyimpanan browser penuh.");}
+});
+$("removeProfilePhoto").addEventListener("click",()=>{
+  try{writeProfileSettings({photo:""});renderAuth();renderProfileEditor();toast("Foto profil dihapus.");}
+  catch{toast("Profil tidak dapat disimpan karena penyimpanan browser penuh.");}
+});
 $("userProfile").addEventListener("click",()=>{
   if(state!==AppState.AUTH||!currentUser)return;
   if(drawerOpen){
