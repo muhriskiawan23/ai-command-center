@@ -95,7 +95,7 @@ try {
        throw 'Remote staging health validation failed.'
   }
   Write-Host 'PASS: Isolated billing staging callback diagnostic upgrade deployed. No payments made.'
-  Write-Host 'Endpoint: GET /api/billing-sandbox/operator/callback-diagnostics?hours=24'
+  Write-Host 'Endpoint: GET /api/billing-sandbox/report/callback-diagnostics?hours=24'
   Write-Host 'Token must stay private. GitHub Actions reporting requires a separate GH repository secret.'
 } finally {
   Pop-Location
