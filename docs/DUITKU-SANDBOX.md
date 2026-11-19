@@ -54,6 +54,27 @@ The name in Cloudflare's suggested snippet is not the binding used by this code.
    Use this URL only after deployment confirms the expected Worker origin.
    GET returns 405 intentionally: Duitku delivers callbacks using POST.
 
+## Read-only provider check (before creating any invoice)
+
+After installing the Sandbox API key and operator token, validate the same Worker
+credentials against Duitku's Get Payment Method API without creating an invoice:
+
+```powershell
+$base = 'https://bor-ai-duitku-sandbox.muhriskiawan23.workers.dev'
+$operatorSecret = Read-Host 'Sandbox operator token' -AsSecureString
+$operatorToken = [System.Net.NetworkCredential]::new('', $operatorSecret).Password
+$headers = @{ Authorization = 'Bearer ' + $operatorToken }
+Invoke-RestMethod -Uri "$base/api/sandbox/provider-check" -Headers $headers
+```
+
+The expected response has `credentialsAccepted: true`, `btAvailable: true`
+and `providerHttpStatus: 200`. This is a signed, operator-only, read-only
+provider check, not proof that V2 checkout works. The endpoint returns only a
+restricted HTTP status and response code, never provider response bodies,
+secret values, invoices, personal details or signature data. A 502 includes
+a sanitized provider HTTP status or network-error category. Avoid repeated
+or automated probing.
+
 ## First transaction proof (PowerShell)
 
 This test uses Permata VA (`BT`), Rp10,000 and 100 **test-only** credits. It is

@@ -66,6 +66,45 @@ async function provider(env, endpoint, payload) {
     fail(502, 'duitku_unavailable');
   }
 }
+// Operator-only, read-only probe. Never creates an invoice, returns secrets, or forwards provider bodies.
+async function providerCheck(env) {
+  // Duitku's yyyy-MM-dd HH:mm:ss merchant time in Asia/Jakarta.
+  const datetime = new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' ');
+  const merchantCode = env.DUITKU_SANDBOX_MERCHANT_CODE;
+  const payload = {
+    merchantcode: merchantCode, amount: 10000, datetime,
+    signature: await duitkuSignature(env.DUITKU_SANDBOX_API_KEY, merchantCode + '10000' + datetime)
+  };
+  let response;
+  try {
+    response = await (env.DUITKU_FETCHER || fetch)(API + 'paymentmethod/getpaymentmethod', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload), redirect: 'error', signal: AbortSignal.timeout(15000)
+    });
+  } catch {
+    return json({ sandbox: true, probe: 'payment_methods', error: 'provider_network_error' }, 502);
+  }
+  if (!response.ok) return json({
+    sandbox: true, probe: 'payment_methods', error: 'provider_http_error',
+    providerHttpStatus: response.status
+  }, 502);
+  let data;
+  try {
+    data = JSON.parse(await readBody(response));
+  } catch {
+    return json({ sandbox: true, probe: 'payment_methods', error: 'invalid_provider_response' }, 502);
+  }
+  const responseCode = typeof data?.responseCode === 'string' && /^[A-Za-z0-9]{1,8}$/.test(data.responseCode)
+    ? data.responseCode : null;
+  const accepted = responseCode === '00';
+  const btAvailable = accepted && Array.isArray(data?.paymentFee)
+    && data.paymentFee.some(method => method?.paymentMethod === 'BT');
+  return json({
+    sandbox: true, probe: 'payment_methods', providerHttpStatus: response.status,
+    responseCode, credentialsAccepted: accepted, btAvailable
+  }, accepted ? 200 : 502);
+}
+
 async function getOrder(env, id) {
   return env.SANDBOX_DB.prepare('SELECT * FROM duitku_sandbox_orders WHERE id=?').bind(id).first();
 }
@@ -189,6 +228,10 @@ export default {
       if (url.pathname === CALLBACK) return await callback(request, env);
       const authorization = request.headers.get('Authorization') || '';
       if (!equal(authorization, 'Bearer ' + env.DUITKU_SANDBOX_OPERATOR_TOKEN)) fail(401, 'unauthorized');
+      if (url.pathname === '/api/sandbox/provider-check') {
+        if (request.method !== 'GET') fail(405, 'method_not_allowed');
+        return await providerCheck(env);
+      }
       if (url.pathname === '/api/sandbox/checkout' && request.method === 'POST') return await checkout(request, env);
       const match = /^\/api\/sandbox\/orders\/(BORTEST-[a-f0-9-]{36})(\/reconcile)?$/.exec(url.pathname);
       if (match) {

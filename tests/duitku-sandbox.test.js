@@ -201,3 +201,45 @@ test('untrusted payment URLs, oversized bodies and duplicate callback parameters
     assert.equal(h.grants().length, 0);
   } finally { h.close(); }
 });
+
+test('operator-only, read-only Duitku provider probe checks worker API key and BT without invoices', async () => {
+  const h = setup();
+  try {
+    const path = '/api/sandbox/provider-check';
+    assert.equal((await worker.fetch(h.request(path, undefined, false), h.env)).status, 401);
+    assert.equal(h.calls.length, 0);
+    h.env.DUITKU_FETCHER = async (url, options) => {
+      assert.equal(url, 'https://sandbox.duitku.com/webapi/api/merchant/paymentmethod/getpaymentmethod');
+      assert.equal(options.method, 'POST');
+      const payload = JSON.parse(options.body);
+      assert.equal(payload.merchantcode, 'DS38217');
+      assert.equal(payload.amount, 10000);
+      assert.match(payload.datetime, /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
+      assert.equal(payload.signature, sign('DS38217' + '10000' + payload.datetime));
+      return Response.json({ responseCode: '00', paymentFee: [{ paymentMethod: 'BT' }] });
+    };
+    const success = await worker.fetch(h.request(path), h.env);
+    assert.equal(success.status, 200);
+    assert.deepEqual(await success.json(), {
+      sandbox: true, probe: 'payment_methods', providerHttpStatus: 200,
+      responseCode: '00', credentialsAccepted: true, btAvailable: true
+    });
+    h.env.DUITKU_FETCHER = async () => new Response('provider-private-secret', { status: 401 });
+    const denied = await worker.fetch(h.request(path), h.env);
+    assert.equal(denied.status, 502);
+    const deniedText = await denied.text();
+    assert.match(deniedText, /"providerHttpStatus":401/);
+    assert.doesNotMatch(deniedText, /provider-private-secret|synthetic-API/);
+    h.env.DUITKU_FETCHER = async () => { throw Error('provider-private-secret'); };
+    const offline = await worker.fetch(h.request(path), h.env);
+    assert.equal(offline.status, 502);
+    assert.deepEqual(await offline.json(), {
+      sandbox: true, probe: 'payment_methods', error: 'provider_network_error'
+    });
+    assert.equal(sqliteCount(h.sqlite, 'duitku_sandbox_orders'), 0);
+    assert.equal(sqliteCount(h.sqlite, 'duitku_sandbox_credit_ledger'), 0);
+  } finally { h.close(); }
+});
+function sqliteCount(sqlite, name) {
+  return sqlite.prepare('SELECT COUNT(*) AS count FROM ' + name).get().count;
+}
