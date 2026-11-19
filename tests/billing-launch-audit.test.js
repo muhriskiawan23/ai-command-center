@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {BILLING_RELEASE_GATES,assessBillingRelease,auditBillingEconomics} from '../src/billing-launch-audit.js';
+import {BILLING_RELEASE_GATES,assessBillingRelease,auditBillingEconomics,auditMonthlyPortfolio} from '../src/billing-launch-audit.js';
 
 const assumptions=Object.freeze({
   sku:'basic',credits:3000,fxIdrPerUsd:'18000.25',
@@ -101,4 +101,23 @@ test('source snapshots never treat modeled cost as authorization for real paymen
   }
   assert.equal(safe.status,'SCENARIO_ONLY_NOT_PRODUCTION_PRICE');
   assert.equal(safe.realCreditsGranted,false);
+});
+
+test('portfolio analysis reports monthly fixed-cost break-even as scenario, not projected revenue guarantee',()=>{
+  const basic=auditBillingEconomics(assumptions);
+  const pro=auditBillingEconomics({...assumptions,sku:'pro',credits:15000,
+    requests:100,tavilyBasicSearches:20});
+  const portfolio=auditMonthlyPortfolio({
+    basicScenario:basic,proScenario:pro,basicSubscribers:70,proSubscribers:30,
+    fixedOperatingCostIdr:2000000
+  });
+  assert.equal(portfolio.basicOnlyBreakevenCustomers,'87');
+  assert.equal(portfolio.proOnlyBreakevenCustomers,'22');
+  assert.equal(portfolio.preFixedContributionIdr,
+    (70n*BigInt(basic.contributionIdr)+30n*BigInt(pro.contributionIdr)).toString());
+  assert.equal(portfolio.creditsAndMarginSafe,true);
+  assert.equal(portfolio.liveCheckoutEnabled,false);
+  assert.throws(()=>auditMonthlyPortfolio({
+    basicScenario:pro,proScenario:basic,basicSubscribers:1,proSubscribers:1,fixedOperatingCostIdr:1
+  }));
 });
