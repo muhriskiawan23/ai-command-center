@@ -36,7 +36,7 @@ try{
  const events=[];
  for(let i=0;i<raw.length;i++){
   const c=raw[i];
-  if(quoted){if(escaped)escaped=false;else if(c==='\\\\')escaped=true;else if(c==='"')quoted=false;continue;}
+  if(quoted){if(escaped)escaped=false;else if(c.charCodeAt(0)===92)escaped=true;else if(c==='"')quoted=false;continue;}
   if(c==='"'){quoted=true;continue;}
   if(c==='{'){if(depth===0)start=i;depth++;}
   if(c==='}'){depth--;if(depth===0&&start>=0){try{events.push(JSON.parse(raw.slice(start,i+1)));}catch{}start=-1;}}

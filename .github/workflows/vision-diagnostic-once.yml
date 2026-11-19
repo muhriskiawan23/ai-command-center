@@ -12,6 +12,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: '22'
+      - run: npx --yes wrangler@4 --version
       - name: Synthetic chat and sanitized runtime metadata only
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
