@@ -153,7 +153,16 @@ test('invoice replay never calls mock provider twice and ambiguous creation fail
     assert.equal(replay.duplicate,true);
     assert.equal(replay.reference,first.reference);
     assert.equal(h.calls.filter(x=>x==='createInvoice').length,1);
-    await assert.rejects(()=>h.start({quoteId,orderId,sessionToken:tokenB}),/quote_idempotency_conflict/);
+    // Recovery after rate expiry must never recompute the amount or re-issue.
+    const afterExpiry=await h.start({
+      quoteId,orderId,nowMs:now+700000,
+      policyForSku:async()=>{throw new Error('server pricing was unexpectedly consulted');}
+    });
+    assert.equal(afterExpiry.amountIdr,first.amountIdr);
+    assert.equal(afterExpiry.reference,first.reference);
+    assert.equal(afterExpiry.duplicate,true);
+    assert.equal(h.calls.filter(x=>x==='createInvoice').length,1);
+    await assert.rejects(()=>h.start({quoteId,orderId,sessionToken:tokenB}),/order_idempotency_conflict/);
     h.control.failCreate=true;
     const unknownQuoteId=uid('BQUOTE'),unknownOrderId=uid('BORDER');
     await assert.rejects(()=>h.start({quoteId:unknownQuoteId,orderId:unknownOrderId}),/ambiguous timeout/);
