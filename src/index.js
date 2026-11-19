@@ -1764,6 +1764,12 @@ export default {
         }
         console.error("AI request failed:", safeError(error));
         await refundUsage(env, usage.day, usage.charges); // a failed request does not consume the user's daily allowance
+        if (safeAiBindingFailure(error).category === "daily_ai_allocation_exhausted") {
+          return json({
+            error: "Kuota harian AI BOR habis. Chat bisa dicoba lagi setelah pukul 07.00 WIB.",
+            code: "ai_daily_allocation_exhausted", stage: "ai_generation", links
+          }, 503, { "Retry-After": String(secondsUntilNextUtcDay()) });
+        }
         if (error instanceof AiTimeoutError) return json({ error: "AI terlalu lama merespons. Silakan coba lagi, atau pecah permintaan menjadi lebih singkat.", code: "ai_timeout", stage: "ai_generation", links }, 504);
         return json({ error: "AI gagal memproses permintaan. Silakan coba lagi beberapa saat.", code: "ai_error", stage: "ai_generation", links }, 502);
       }

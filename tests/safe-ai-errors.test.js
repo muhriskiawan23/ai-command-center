@@ -34,3 +34,13 @@ test("untrusted error objects cannot inject output into safe AI binding diagnost
   });
   assert.deepEqual(safeError({ name: "ProprietaryProviderError", message: "secret" }), { name: "UnknownError" });
 });
+
+test("recognizes the Workers AI quota message without relying on the wrapper code", () => {
+  const message = "AiError: AiError: you have used up your daily free allocation of 10,000 neurons, please upgrade";
+  for (const error of [new Error(message), { errors: [{ code: 4006, message }] }]) {
+    assert.deepEqual(safeAiBindingFailure(error), {
+      category: "daily_ai_allocation_exhausted", providerCode: null, httpStatus: null
+    });
+  }
+  assert.equal(safeAiBindingFailure({ code: 4006, status: 429 }).category, "provider_error_unclassified");
+});
