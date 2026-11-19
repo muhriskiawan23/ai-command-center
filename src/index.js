@@ -18,7 +18,7 @@ import { planFeedbackForm, generateFormsScript } from "./form-draft.js";
 import { COMMUNICATION_NOTICE, CAPABILITY_NOTICE, AGENTS } from "./prompts.js";
 import { json, sha256Hex } from "./http.js";
 import { dailyLimit, usageDay, secondsUntilNextUtcDay, consumeUsage, refundUsage, limitResponse, enforceDailyLimits, DAILY_LIMIT_DEFAULTS, MULTI_AGENT_UNITS } from "./daily-limits.js";
-import { validateImageVision, analyzeImageWithVision, buildImageVisionContext, reserveVisionDailyUsage, VISION_MAX_REQUEST_BYTES } from "./image-vision.js";
+import { VISION_MODEL, validateImageVision, analyzeImageWithVision, buildImageVisionContext, reserveVisionDailyUsage, VISION_MAX_REQUEST_BYTES } from "./image-vision.js";
 
 const MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 const TRUSTED_PROMPT_TEXT = [CONFIDENTIALITY_NOTICE, CAPABILITY_NOTICE, COMMUNICATION_NOTICE, ...Object.values(AGENTS).map(agent => agent.prompt)];
@@ -1650,7 +1650,13 @@ export default {
         if (imageVision) {
           // Vision uses the bounded AI binding directly, not the text-only message wrappers.
           // Only model-produced observations enter the text-agent context, never raw pixels.
+          const visionStarted = Date.now();
           const observed = await analyzeImageWithVision(withAiDeadline(requestEnv, deadline, request.signal).AI, imageVision, message, language);
+          modelTrace.push({
+            agentId: "vision", taskProfile: "multimodal_vision", provider: "cloudflare-workers-ai",
+            modelId: VISION_MODEL, adapter: "workers-ai", policyVersion: "vision-v1",
+            calls: 1, durationMs: Date.now() - visionStarted, retryCount: 0, outcome: "success"
+          });
           pages = [pages, buildImageVisionContext(observed)].filter(Boolean).join("\n\n");
           toolActivity.push({ tool: "image_vision", status: "completed" });
         }
