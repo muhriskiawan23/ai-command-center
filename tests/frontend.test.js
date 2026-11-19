@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 const page = readFileSync(new URL("../public/index.html", import.meta.url), "utf8");
 const appJs = readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
 const appCss = readFileSync(new URL("../public/app.css", import.meta.url), "utf8");
+const workspaceCss = readFileSync(new URL("../public/workspace.css", import.meta.url), "utf8");
 const html = page + "\n" + appJs + "\n" + appCss;
 
 test("dashboard JavaScript parses without syntax errors", () => {
