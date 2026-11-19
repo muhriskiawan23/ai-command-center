@@ -1,0 +1,93 @@
+name: BOR AI one-time sanitized Workers AI log diagnostic
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/bor-ai-ai-binding-tail-once.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bor-ai-one-shot-ai-binding-tail
+  cancel-in-progress: false
+
+jobs:
+  capture-synthetic-ai-binding-error:
+    if: "${{ startsWith(github.event.head_commit.message, 'diagnostic(logs): one-time BOR AI provider error capture 2026-11-19') }}"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    environment: production
+    steps:
+      - name: Set up Node 22
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '22'
+      - name: Open read-only Worker tail and send one synthetic chat
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_API_TOKEN"
+          test -n "$CLOUDFLARE_ACCOUNT_ID"
+          TAIL_OUT="$RUNNER_TEMP/bor-ai-binding-tail.jsonl"
+          TAIL_STDERR="$RUNNER_TEMP/bor-ai-binding-tail-stderr.log"
+          npx --yes wrangler@4 tail ai-command-center --format json > "$TAIL_OUT" 2> "$TAIL_STDERR" &
+          TAIL_PID=$!
+          trap 'kill "$TAIL_PID" 2>/dev/null || true' EXIT
+          sleep 10
+          if ! kill -0 "$TAIL_PID" 2>/dev/null; then
+            echo "::error::Could not establish Workers tail with repository token. No production changes were made."
+            exit 1
+          fi
+          RESPONSE="$RUNNER_TEMP/bor-ai-binding-synthetic-response.json"
+          STATUS="$(curl --silent --show-error --max-time 60 \
+            --output "$RESPONSE" --write-out '%{http_code}' \
+            -H 'Content-Type: application/json' \
+            --data '{"message":"hi bor","agent":"coordinator","language":"id"}' \
+            "https://ai-command-center.muhriskiawan23.workers.dev/api/chat")"
+          echo "Synthetic chat HTTP status: $STATUS"
+          sleep 8
+          kill "$TAIL_PID" 2>/dev/null || true
+          wait "$TAIL_PID" 2>/dev/null || true
+          # Parse only sanitized event metadata. Never print raw logs, prompts, or errors.
+          TAIL_OUT="$TAIL_OUT" node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          const input=fs.readFileSync(process.env.TAIL_OUT,"utf8");
+          const categories=new Set([
+            "model_not_found","invalid_input","incomplete_request","model_access_denied",
+            "model_agreement_required","account_blocked","paid_plan_required","outdated_sdk",
+            "unsupported_lora","invalid_model_id","model_deprecated","request_too_large",
+            "upstream_timeout","upstream_aborted","daily_ai_allocation_exhausted",
+            "provider_capacity_exceeded","provider_error_unclassified"
+          ]);
+          const codes=new Set([5007,5004,3003,5018,5016,3023,3041,5035,5019,5005,3042,5028,3006,3007,3008,3036,3040]);
+          const found=[];
+          function scan(value,depth=0) {
+            if(depth>8 || !value || typeof value!=="object") return;
+            if(typeof value.category==="string" && categories.has(value.category)) {
+              const n=Number(value.providerCode);
+              const h=Number(value.httpStatus);
+              found.push({
+                category:value.category,
+                providerCode:codes.has(n)?n:null,
+                httpStatus:Number.isInteger(h)&&h>=400&&h<=599?h:null
+              });
+            }
+            for(const child of Object.values(value)) scan(child,depth+1);
+          }
+          for(const line of input.split(/\r?\n/)) {
+            if(!line.includes("BOR_AI_AI_BINDING_FAILURE")) continue;
+            try { scan(JSON.parse(line)); } catch {}
+          }
+          const unique=[...new Map(found.map(v=>[JSON.stringify(v),v])).values()];
+          if(!unique.length) {
+            console.log("No structured BOR_AI_AI_BINDING_FAILURE captured; check token tail permission, event timing, or output structure.");
+            process.exitCode=1;
+          } else {
+            for(const e of unique) console.log("Sanitized Workers AI binding failure:",JSON.stringify(e));
+          }
+          NODE
