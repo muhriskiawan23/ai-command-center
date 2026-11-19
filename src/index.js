@@ -1,3 +1,4 @@
+import { BACKUP_MODEL, withTextProviderFailover } from "./text-provider-failover.js";
 import { TextInferenceBudgetError, withTextInferenceBudget } from "./text-inference-budget.js";
 import { handleImageRoute, imageConfig, consumeImageQueue, cleanupImageJobs } from "./image-jobs.js";
 import { imageIntent } from "../public/image-intent.js";
@@ -58,10 +59,19 @@ function withAiDeadline(env, deadline, signal) {
         const remaining = deadline - Date.now();
         if (remaining < Math.min(250, perCall / 2)) throw new AiTimeoutError("budget"); // too little time left to be worth a call
         let timer;
+        const callTime = Math.min(perCall, remaining);
+        const timeout = new AbortController();
+        const callSignal = signal ? AbortSignal.any([signal, timeout.signal]) : timeout.signal;
         try {
           return await Promise.race([
-            env.AI.run(model, payload, { ...options, ...(signal ? { signal } : {}) }),
-            new Promise((_, reject) => { timer = setTimeout(() => reject(new AiTimeoutError("timeout")), Math.min(perCall, remaining)); }),
+            env.AI.run(model, payload, { ...options, signal: callSignal }),
+            new Promise((_, reject) => {
+              timer = setTimeout(() => {
+                const error = new AiTimeoutError("timeout");
+                reject(error);
+                timeout.abort(error);
+              }, callTime);
+            }),
             ...(signal ? [new Promise((_, reject) => signal.addEventListener("abort", () => reject(new AiCancelledError()), { once: true }))] : [])
           ]);
         } finally { clearTimeout(timer); }
@@ -417,6 +427,16 @@ async function runAgent(env, agentId, userMessage, context = "", history = [], p
     }
   };
 
+  const trackBackup = (result) => {
+    if (result?.borTextBackupModel === BACKUP_MODEL) {
+      traceEntry.modelId = BACKUP_MODEL;
+      traceEntry.provider = "openai";
+      traceEntry.adapter = "openai-chat-completions";
+      activeModelId = BACKUP_MODEL;
+      traceEntry.calls += 1;
+    }
+  };
+
   const generate = async (extraInstruction = "") => {
     if (selection.model.adapter !== "workers-ai") {
       throw new Error(`Unsupported model adapter: ${selection.model.adapter}`);
@@ -439,6 +459,8 @@ async function runAgent(env, agentId, userMessage, context = "", history = [], p
     }
     activeModelId = modelId;
     traceEntry.modelId = modelId;
+    traceEntry.provider = selection.model.provider;
+    traceEntry.adapter = selection.model.adapter;
     traceEntry.policyVersion = modelId === GPT_OSS_MODEL_ID ? "gpt-oss-budgeted-canary-v1" : selection.policyVersion;
     traceEntry.calls += 1;
     const startedAt = Date.now();
@@ -459,6 +481,7 @@ async function runAgent(env, agentId, userMessage, context = "", history = [], p
       primaryError=error;
       console.error("BOR_AI_AI_BINDING_FAILURE", { requestId, modelId, fallback: false, ...safeAiBindingFailure(error) });
     }
+    trackBackup(generated);
     if(primaryError===null){
       const finalText=extractModelAnswer(generated);
       if(modelId!==GPT_OSS_MODEL_ID||finalText.trim()){
@@ -483,6 +506,7 @@ async function runAgent(env, agentId, userMessage, context = "", history = [], p
     const fallbackStart=Date.now();
     try{
       const fallback=await env.AI.run(selection.model.id,{...payload,max_tokens:baselineMaxTokens});
+      trackBackup(fallback);
       traceEntry.attempts.push({outcome:"success",durationMs:Math.max(0,Date.now()-fallbackStart)});
       return fallback;
     }catch(error){
@@ -1356,7 +1380,7 @@ export default {
   async queue(batch, env) { await consumeImageQueue(batch, env); },
   async scheduled(event, env, ctx) { ctx.waitUntil(cleanupImageJobs(env)); },
   async fetch(request, env) {
-    env = withTextInferenceBudget(env);
+    env = withTextProviderFailover(withTextInferenceBudget(env));
     const url = new URL(request.url);
     if (url.pathname.startsWith("/api/images/") || url.pathname.startsWith("/api/files/")) {
       try { return await handleImageRoute(request, env, url, { getSession, sameOrigin, readJsonRequest }); }
