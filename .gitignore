@@ -21,3 +21,5 @@ playwright-report/
 .egress-token
 .bor-ai-keys/
 tools/egress-proxy/runtime/wrangler*.generated.json
+
+/tools/midtrans-sandbox/wrangler.local.json

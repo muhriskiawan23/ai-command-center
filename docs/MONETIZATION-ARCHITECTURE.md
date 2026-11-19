@@ -71,3 +71,25 @@ For each tier, run conservative/base/stress scenarios from **verified** provider
 - Paid API usage caps enforceable and tested, with customer-facing transparent balances.
 - Security, privacy, webhook and fraud controls independently reviewed.
 - Explicit owner sign-off for production checkout and subscription activation.
+
+### Baseline model cost scenarios — 15 November 2026
+
+Cloudflare's public rate for the configured Llama 3.3 70B baseline is $0.293
+per million input tokens and $2.253 per million output tokens. These scenarios
+use assumed monthly usage mixes, with no free-tier subsidy. One row models
+one model call. Multi-agent requests and retries require summing every call.
+
+| Scenario | Input / output tokens per call | Model cost per call | Basic model calls | Pro model calls |
+| --- | --- | --- | --- | --- |
+| Light | 800 / 250 | $0.00079765 | 748 | 2,628 |
+| Typical | 2,500 / 600 | $0.00208430 | 286 | 1,006 |
+| Heavy | 8,000 / 1,600 | $0.00594880 | 100 | 352 |
+
+The illustrative ceilings divide an assumed 30% model-only budget by the
+scenario cost and round down. Basic has $0.597 and Pro has $2.097 under this
+assumption. These are internal spending envelopes pending measurement, not
+customer entitlements. Determine credit allowances from real token
+distributions and revise the spending envelopes after confirming payment fees,
+Tavily billing, FX, taxes, and refunds. No margin or rollover is approved.
+
+[Cloudflare Workers AI model pricing](https://developers.cloudflare.com/workers-ai/platform/pricing/).

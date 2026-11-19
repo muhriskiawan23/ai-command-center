@@ -1,0 +1,17 @@
+{
+  "name": "bor-ai-midtrans-sandbox",
+  "main": "../../src/midtrans-sandbox-worker.js",
+  "compatibility_date": "2026-10-28",
+  "workers_dev": true,
+  "preview_urls": false,
+  "vars": {
+    "PAYMENT_SANDBOX_ENABLED": "true"
+  },
+  "d1_databases": [
+    {
+      "binding": "SANDBOX_DB",
+      "database_name": "bor-ai-midtrans-sandbox",
+      "database_id": "00000000-0000-4000-8000-000000000001"
+    }
+  ]
+}
