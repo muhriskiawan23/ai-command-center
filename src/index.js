@@ -23,6 +23,7 @@ import { GPT_OSS_MODEL_ID, mayUseGptOss, reserveGptOssCall, extractModelAnswer }
 import { planFeedbackForm, generateFormsScript } from "./form-draft.js";
 import { COMMUNICATION_NOTICE, CAPABILITY_NOTICE, AGENTS } from "./prompts.js";
 import { json, sha256Hex } from "./http.js";
+import { handleBillingShadowAccountRequest } from "./billing-account-shadow.js";
 import { dailyLimit, usageDay, secondsUntilNextUtcDay, consumeUsage, refundUsage, limitResponse, enforceDailyLimits, DAILY_LIMIT_DEFAULTS, MULTI_AGENT_UNITS } from "./daily-limits.js";
 import { VISION_MODEL, VisionInferenceError, validateImageVision, analyzeImageWithVision, buildImageVisionContext, reserveVisionDailyUsage, VISION_MAX_REQUEST_BYTES } from "./image-vision.js";
 
@@ -1463,6 +1464,12 @@ export default {
   async fetch(request, env) {
     env = withTextProviderFailover(withTextInferenceBudget(env));
     const url = new URL(request.url);
+    if (url.pathname === "/api/billing/account") {
+      // Read-only readiness shadow. OFF unless separately enabled and a
+      // dedicated HMAC-attested D1 is explicitly bound by an operator.
+      // Existing getSession is the sole trusted owner identity source.
+      return handleBillingShadowAccountRequest(request, env, { getSession });
+    }
     if (url.pathname.startsWith("/api/images/") || url.pathname.startsWith("/api/files/")) {
       try { return await handleImageRoute(request, env, url, { getSession, sameOrigin, readJsonRequest }); }
       catch { return json({ error: "Layanan gambar belum siap. Coba lagi nanti.", code: "image_service_error" }, 503); }
