@@ -1566,7 +1566,10 @@ export default {
       // External link reading and live search consume extra provider/network budget.
       const researchCharge = researchMode && isSearchProviderConfigured(env) ? 1 : 0;
       const linkCharge = found.urls.length && env.URL_READER_ENABLED === "true" ? 1 : 0;
-      const usage = await enforceDailyLimits(env, request, user, (useMultiAgent ? MULTI_AGENT_UNITS : 1) + (imageVision ? 2 : 0) + linkCharge + researchCharge);
+      const advanced = Boolean(useMultiAgent || imageVision || imageOcr || document ||
+        presentation || spreadsheet || wordDocument || linkCharge || researchCharge);
+      const units = (useMultiAgent ? MULTI_AGENT_UNITS : 1) + (imageVision ? 2 : 0) + linkCharge + researchCharge;
+      const usage = await enforceDailyLimits(env, request, user, units, { advanced });
       if (!usage.ok) return usage.response;
       if (imageVision) {
         const photoQuota = await reserveVisionDailyUsage(env, request, user, usage);

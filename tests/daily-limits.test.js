@@ -181,3 +181,20 @@ test("error database lain: gagal tertutup (503 tanpa detail internal) dan AI tid
 });
 
 function usageDayUtc(offsetDays = 0) { return new Date(Date.now() + offsetDays * 86400000).toISOString().slice(0, 10); }
+
+test("exhausted advanced traffic leaves text capacity for a new Free account", async (t) => {
+  const { app, post, usage } = await setup({
+    DAILY_LIMIT_GLOBAL: "4", DAILY_LIMIT_ADVANCED_GLOBAL: "3"
+  });
+  t.after(() => app.close());
+  assert.equal((await post(MULTI)).status, 200);
+  const limited = await post(MULTI);
+  assert.equal(limited.status, 429);
+  assert.equal((await limited.json()).scope, "advanced");
+
+  const cookie = seedSession(app.db, ALICE);
+  const firstChat = await post("hi bor", { cookie });
+  assert.equal(firstChat.status, 200);
+  assert.equal(usage()["global:advanced"], 3);
+  assert.equal(usage().global, 1);
+});
