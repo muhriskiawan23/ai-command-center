@@ -26,3 +26,6 @@ tools/egress-proxy/runtime/wrangler*.generated.json
 wrangler.images.generated.jsonc
 image-credit-grant.sql
 wrangler.duitku-sandbox.generated.jsonc
+
+# Dedicated billing staging binding and test origin (operator-generated; never commit).
+wrangler.billing-staging.generated.jsonc
