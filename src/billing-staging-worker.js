@@ -214,10 +214,47 @@ const CALLBACK_REJECTION_CODES=new Set([
   'duitku_sandbox_unavailable','duitku_sandbox_status_mismatch',
   'provider_status_mismatch','wallet_reconciliation_failed'
 ]);
-function logSafeCallbackFailure(error){
+function safeCallbackCategory(error){
   const code=error instanceof Error ? error.message : '';
-  const category=CALLBACK_REJECTION_CODES.has(code)?code:'other';
-  console.warn('bor_billing_staging_callback_rejected',{category});
+  return CALLBACK_REJECTION_CODES.has(code)?code:'other';
+}
+function logSafeCallbackFailure(error){
+  console.warn('bor_billing_staging_callback_rejected',{category:safeCallbackCategory(error)});
+}
+// Only server-selected, static strings and aggregate counts go into this
+// STAGING-ONLY diagnostic table. Never persist request headers, callback
+// field names/values, order IDs, IPs, refs, signatures or provider responses.
+// Failing to write telemetry never changes the payment security decision.
+async function recordCallbackDiagnostic(env,disposition,category,nowMs){
+  if(!['accepted','retry','rejected'].includes(disposition)||
+    !/^[a-z_]{1,64}$/.test(category))return;
+  const bucket=Math.floor(nowMs/300000)*300000;
+  try{
+    await env.BILLING_DB.prepare(
+      `INSERT INTO staging_callback_diagnostic_buckets
+       (window_start_ms,disposition,category,hits,last_seen_ms)
+       VALUES(?,?,?,1,?)
+       ON CONFLICT(window_start_ms,disposition,category)
+       DO UPDATE SET hits=MIN(hits+1,1000000),last_seen_ms=excluded.last_seen_ms`
+    ).bind(bucket,disposition,category,nowMs).run();
+  }catch{
+    console.warn('bor_billing_staging_diagnostic_store_unavailable');
+  }
+}
+async function readCallbackDiagnostics(env,nowMs,hours){
+  const after=nowMs-hours*3600000;
+  const base='FROM staging_callback_diagnostic_buckets WHERE window_start_ms>=?';
+  const summary=await env.BILLING_DB.prepare(
+    `SELECT disposition,category,SUM(hits) AS hits,MAX(last_seen_ms) AS lastSeenMs
+      ${base} GROUP BY disposition,category ORDER BY lastSeenMs DESC LIMIT 96`
+  ).bind(after).all();
+  const recent=await env.BILLING_DB.prepare(
+    `SELECT window_start_ms AS bucketStartMs,disposition,category,hits,last_seen_ms AS lastSeenMs
+      ${base} ORDER BY window_start_ms DESC,last_seen_ms DESC LIMIT 50`
+  ).bind(after).all();
+  return json({sandbox:true,isolatedBilling:true,windowHours:hours,
+    asOfMs:nowMs,summary:summary.results||[],recent:recent.results||[],
+    payloadsStored:false,realCreditsGranted:false});
 }
 export default {
   async fetch(request,env){
@@ -238,13 +275,30 @@ export default {
           merchantCode:env.DUITKU_SANDBOX_MERCHANT_CODE,
           apiKey:env.DUITKU_SANDBOX_API_KEY,nowMs
         });
-        if(result.status==='pending')return json({sandbox:true,received:false,retry:true},503,{'Retry-After':'30'});
+        if(result.status==='pending'){
+          await recordCallbackDiagnostic(env,'retry','provider_pending',nowMs);
+          return json({sandbox:true,received:false,retry:true},503,{'Retry-After':'30'});
+        }
+        await recordCallbackDiagnostic(env,'accepted',
+          result.status==='paid'?(result.duplicate?'paid_duplicate':'paid_verified'):'provider_failed',nowMs);
         return json({sandbox:true,received:true,realCreditsGranted:false});
       }
       if(u.pathname===PREFIX+'/operator/session'){
         if(method!=='POST')fail(405,'post_required');
         authorizedOperator(request,env);
         return createStageSession(env,nowMs);
+      }
+      if(u.pathname===PREFIX+'/operator/callback-diagnostics'){
+        if(method!=='GET')fail(405,'get_required');
+        authorizedOperator(request,env);
+        if([...u.searchParams.keys()].some(k=>k!=='hours')||u.searchParams.getAll('hours').length>1)
+          fail(400,'invalid_diagnostic_query');
+        const raw=u.searchParams.get('hours')||'24';
+        if(!/^(?:[1-9]|[1-9]\\d|1[0-6]\\d|16[0-8])$/.test(raw))
+          fail(400,'invalid_diagnostic_hours');
+        const hours=Number(raw);
+        if(hours<1||hours>168)fail(400,'invalid_diagnostic_hours');
+        return readCallbackDiagnostics(env,nowMs,hours);
       }
       if(u.pathname===PREFIX+'/operator/audit'){
         if(method!=='GET')fail(405,'get_required');
@@ -297,7 +351,11 @@ export default {
       }
       fail(404,'not_found');
     }catch(error){
-      if(new URL(request.url).pathname===PREFIX+'/callback')logSafeCallbackFailure(error);
+      if(new URL(request.url).pathname===PREFIX+'/callback'){
+        logSafeCallbackFailure(error);
+        if(request.method==='POST')
+          await recordCallbackDiagnostic(env,'rejected',safeCallbackCategory(error),Date.now());
+      }
       if(error instanceof StageError)return json({sandbox:true,error:error.code},error.status);
       const msg=String(error?.message||'');
       // Never disclose provider secret, signed payload, customer identity or raw SQL.
