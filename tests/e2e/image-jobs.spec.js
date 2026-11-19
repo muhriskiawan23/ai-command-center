@@ -1,4 +1,4 @@
-import {test,expect,loginAs} from './fixtures.js';
+import {test,expect,loginAs,drawerMode} from './fixtures.js';
 import {processImageJob} from '../../src/image-jobs.js';
 const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAAFUlEQVR4nGMUaTrxnwEJMDGgAcICAJqcAmUgQSjSAAAAAElFTkSuQmCC','base64');
 async function setupImages(app){
@@ -13,7 +13,7 @@ test('generate, preview, download, reload gallery and edit previous image',async
  await expect(page.locator('#imageDialog')).toBeVisible();await expect(page.locator('#imageQuote')).toContainText('10 kredit');
  await page.locator('#imageConfirm').click();await expect(page.locator('.image-result img')).toBeVisible({timeout:10000});await expect.poll(()=>page.locator('.image-result img').evaluate(img=>img.naturalWidth)).toBe(4);
  const downloadPromise=page.waitForEvent('download');await page.getByRole('link',{name:'Download',exact:true}).click();const download=await downloadPromise;expect(download.suggestedFilename()).toMatch(/\.png$/);
- await page.reload();await openTools(page);await page.locator('#openImageGallery').click();await expect(page.locator('#imageGallery img')).toBeVisible();
+ await page.reload();if(drawerMode(page))await page.locator('#menuBtn').click();await page.locator('#openPlugins').click();await expect(page.locator('#pluginImagesGallery')).toBeVisible();await page.locator('#pluginImagesGallery').click();await expect(page.locator('#imageGallery img')).toBeVisible();
  await page.getByRole('button',{name:'Edit lagi',exact:true}).click();await page.locator('#prompt').fill('Ganti background jadi biru');await page.locator('#send').click();await expect(page.locator('#imageQuote')).toContainText('12 kredit');await page.locator('#imageConfirm').click();await expect(page.locator('#messages .image-result img')).toBeVisible({timeout:10000});
  expect(app.db.sqlite.prepare('SELECT balance FROM image_wallets').get().balance).toBe(78);
  const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth);expect(overflow).toBe(false);

@@ -1419,7 +1419,7 @@ let githubChatToolsEnabled=false;
 function pluginText(value){return window.BORLocale?.translate?.(value)||value}
 async function refreshPluginCapabilities(){
   const searchStatus=$("pluginSearchStatus"),searchMeta=$("pluginSearchMeta");
-  const imageStatus=$("pluginImagesStatus"),imageButton=$("pluginImagesUse");
+  const imageStatus=$("pluginImagesStatus"),imageButton=$("pluginImagesUse"),imageGalleryButton=$("pluginImagesGallery");
   searchStatus.textContent=pluginText("Checking availability…");
   imageStatus.textContent=pluginText("Checking availability…");
   imageButton.disabled=true;
@@ -1433,6 +1433,7 @@ async function refreshPluginCapabilities(){
     imageStatus.textContent=pluginText(imagesAvailable?"Available":"Not available");
     imageButton.disabled=!imagesAvailable;
     imageButton.textContent=pluginText(imagesAvailable?"Open image tools":"Image generation unavailable");
+    imageGalleryButton.hidden=!imagesAvailable||state!==AppState.AUTH;
   }catch{
     githubChatToolsEnabled=false;
     searchStatus.textContent=pluginText("Status unavailable");
@@ -1440,6 +1441,7 @@ async function refreshPluginCapabilities(){
     imageStatus.textContent=pluginText("Status unavailable");
     imageButton.disabled=true;
     imageButton.textContent=pluginText("Image generation unavailable");
+    imageGalleryButton.hidden=true;
   }
 }
 $("openPlugins").addEventListener("click",()=>{
@@ -1456,6 +1458,7 @@ $("pluginSearch").addEventListener("input",()=>{
 });
 $("pluginFilesUse").addEventListener("click",()=>{pluginsDialog.close();$("pdfFile").click()});
 $("pluginImagesUse").addEventListener("click",()=>{pluginsDialog.close();$("toolsMenu").open=true;$("imageTask").focus()});
+$("pluginImagesGallery").addEventListener("click",()=>{pluginsDialog.close();openImageGallery()});
 $("pluginEmailUse").addEventListener("click",()=>{pluginsDialog.close();$("emailDraftPanel").hidden=false;$("emailPurpose").focus()});
 pluginsDialog.addEventListener("close",()=>{$("pluginSearch").value="";document.querySelectorAll("#pluginCatalog [data-plugin-card]").forEach(card=>card.hidden=false)});
 const aboutDialog=$("aboutDialog");
@@ -1539,9 +1542,10 @@ $('imageConfirm').addEventListener('click',async()=>{
     welcomeEl.hidden=true;messagesEl.hidden=false;messagesEl.append(imageResultCard(job));watchImageJob(job);
   }catch(error){$('imageQuote').textContent=error.message+' Jika mengulang, gunakan tombol ini agar job tidak ditagih dua kali.';$('imageConfirm').disabled=false;}
 });
-$('openImageGallery')?.addEventListener('click',async()=>{
+async function openImageGallery(){
   if(state!==AppState.AUTH){toast('Masuk untuk membuka gambar Anda.');return;}
   $('imageConfirm').hidden=true;$('imageQuote').textContent='Memuat gambar…';$('imageGallery').replaceChildren();$('imageDialog').showModal();$('toolsMenu').open=false;
   try{const data=await api('/api/images/jobs');$('imageQuote').textContent='Saldo: '+data.balance+' kredit gambar · '+data.jobs.length+' job terbaru';for(const job of data.jobs){$('imageGallery').append(imageResultCard(job));watchImageJob(job);}}
   catch(error){$('imageQuote').textContent=error.message;}
-});
+}
+$('openImageGallery')?.addEventListener('click',openImageGallery);
