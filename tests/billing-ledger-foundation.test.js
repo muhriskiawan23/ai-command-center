@@ -175,7 +175,7 @@ test('events reject amount/reference replay, missing signed+status proof and una
     const q2=await h.q();const o2=await h.order(q2);
     await assert.rejects(()=>h.pay(o1.orderId,q1,{amountIdr:1,providerReference:'SYNTH-UNIQUE-REF-1'}),/billing_event_order_amount_or_state_mismatch/);
     assert.throws(()=>h.sqlite.prepare("UPDATE billing_orders SET status='paid' WHERE id=?").run(o1.orderId),/billing_unverified_or_invalid_transition/);
-    assert.throws(()=>h.sqlite.prepare("INSERT INTO billing_payment_events(event_key,order_id,event_type,provider_reference,amount_idr,signature_checked,status_checked,verification_mode,checked_at) VALUES(?,?,'payment_verified','REF-FAKE',?,0,1,'synthetic_test',?)").run(next('FORGED'),o1.orderId,Number(q1.lockedIdr),now+20000),/CHECK constraint failed/);
+    assert.throws(()=>h.sqlite.prepare("INSERT INTO billing_payment_events(event_key,order_id,event_type,provider_reference,amount_idr,signature_checked,status_checked,verification_mode,checked_at) VALUES(?,?,'payment_verified','SYNTH-UNIQUE-REF-1',?,0,1,'synthetic_test',?)").run(next('FORGED'),o1.orderId,Number(q1.lockedIdr),now+20000),/CHECK constraint failed/);
     await h.pay(o1.orderId,q1,{providerReference:'SYNTH-UNIQUE-REF-1'});
     await assert.rejects(()=>h.pay(o2.orderId,q2,{providerReference:'SYNTH-UNIQUE-REF-1'}),/UNIQUE constraint failed/);
     await assert.rejects(()=>recordSyntheticBillingEvent(h.db,{
