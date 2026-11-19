@@ -1,24 +1,13 @@
 import { test, expect } from "./fixtures.js";
 
-test("email draft helper prepares a Writer prompt without sending automatically", async ({ page, app }) => {
+test("removed Email and My images shortcuts are not shown in Tools", async ({ page, app }) => {
   await page.goto(app.url);
   await page.locator("#continueGuest").click();
   await expect(page.locator("#app")).toBeVisible();
-
   await page.locator("#toolsMenu > summary").click();
-  await page.locator("#openEmailDraft").click();
-  const panel = page.locator("#emailDraftPanel");
-  await expect(panel).toBeVisible();
-  await panel.locator("#emailPurpose").fill("Meminta jadwal ulang rapat proyek");
-  await panel.locator("#emailRecipient").fill("Tim proyek");
-  await panel.locator("#emailSubject").fill("Penjadwalan ulang rapat");
-  await panel.locator("#emailPoints").fill("Usulkan Kamis pagi; minta konfirmasi");
-  await panel.locator("#emailTone").selectOption("profesional");
-  await panel.locator("#prepareEmailDraft").click();
 
-  await expect(panel).toBeHidden();
-  await expect(page.locator("#agent")).toHaveValue("writer");
-  await expect(page.locator("#prompt")).toHaveValue(/Meminta jadwal ulang rapat proyek/);
-  await expect(page.locator("#prompt")).toHaveValue(/Jangan mengirim email/);
-  await expect(page.locator("#send")).toBeEnabled();
+  await expect(page.locator("#openEmailDraft")).toHaveCount(0);
+  await expect(page.locator("#openImageGallery")).toHaveCount(0);
+  await expect(page.locator("#toolsMenu")).not.toContainText("My images");
+  await expect(page.locator("#toolsMenu")).not.toContainText("Email");
 });
