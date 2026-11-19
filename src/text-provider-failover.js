@@ -3,7 +3,7 @@ import { consumeUsage, usageDay } from "./daily-limits.js";
 import { DEFAULT_MODEL_ID } from "./model-gateway.js";
 import { safeAiBindingFailure } from "./safe-error.js";
 
-export const BACKUP_MODEL = "gpt-5-mini";
+export const BACKUP_MODEL = "gpt-6-luna";
 const ENDPOINT = "https://api.openai.com/v1/chat/completions";
 const COUNTER = "provider:openai:backup:text:global:micro-usd";
 
@@ -53,8 +53,8 @@ export function withTextProviderFailover(env, fetcher = fetch) {
           const reserved = Number(calculateProviderCostMicroUsd({
             inputTokens: bytes + 8192,
             outputTokens: payload.max_tokens,
-            inputRateMicroUsdPerMillion: 250_000n,
-            outputRateMicroUsdPerMillion: 2_000_000n
+            inputRateMicroUsdPerMillion: 100_000n,
+            outputRateMicroUsdPerMillion: 500_000n
           }));
           try {
             const total = await consumeUsage(env, usageDay(), COUNTER, reserved, limit);
@@ -68,7 +68,7 @@ export function withTextProviderFailover(env, fetcher = fetch) {
                   "Content-Type": "application/json"
                 },
                 body: JSON.stringify({
-                  model: BACKUP_MODEL, messages, store: false,
+                  model: BACKUP_MODEL, messages, store: false, reasoning_effort: "none",
                   max_completion_tokens: payload.max_tokens
                 }),
                 signal: signal ? AbortSignal.any([signal, timeout]) : timeout
