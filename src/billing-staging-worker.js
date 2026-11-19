@@ -296,7 +296,7 @@ export default {
         authorizedOperator(request,env);
         return createStageSession(env,nowMs);
       }
-      if(u.pathname===PREFIX+'/operator/callback-diagnostics'){
+      if(u.pathname===PREFIX+'/report/callback-diagnostics'){
         if(method!=='GET')fail(405,'get_required');
         authorizedReporter(request,env);
         if([...u.searchParams.keys()].some(k=>k!=='hours')||u.searchParams.getAll('hours').length>1)
