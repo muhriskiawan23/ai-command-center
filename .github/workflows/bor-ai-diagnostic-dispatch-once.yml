@@ -28,7 +28,6 @@ jobs:
         run: |
           set -euo pipefail
           test "$GITHUB_REF" = "refs/heads/main"
-          test "${{ github.event.head_commit.message }}" != ""
       - name: Check out ONLY reviewed diagnostic code, excluding newer billing changes
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -99,6 +98,16 @@ jobs:
           const currentVersion=await api(base+"/workers/scripts/ai-command-center/versions/"+encodeURIComponent(active[0].version_id));
           const bindings=currentVersion?.resources?.bindings;
           if(!Array.isArray(bindings)) throw Error("Cannot audit live Worker bindings");
+          // Do not silently drop production resources that the pinned config does not know about.
+          const knownResources=new Set([
+            config.ai?.binding, config.assets?.binding,
+            ...config.d1_databases.map(b=>b.binding),
+            ...(config.ratelimits||[]).map(b=>b.name)
+          ]);
+          for(const b of bindings) {
+            if(b.type==="plain_text" || b.type==="secret_text" || b.type==="secret_key") continue;
+            if(!knownResources.has(b.name)) throw Error("Unreviewed active resource binding: refusing deploy");
+          }
           const livePlain=bindings.filter(b=>b.type==="plain_text" && typeof b.name==="string");
           for(const b of livePlain) {
             if(!Object.hasOwn(config.vars,b.name)) throw Error("Unreviewed live plaintext binding: refusing deploy");
