@@ -84,6 +84,7 @@ async function health(){try{const r=await fetch(API+"/api/health");if(!r.ok)thro
 const CHAT_TIMEOUT_MS=150000; /* alur multi-agent bisa beberapa panggilan model berurutan; lewat ini dianggap macet */
 let activeChatController=null;
 let pendingRetryRequest=null;
+let routingImageRequest=false;
 async function api(path,opts={}){
   const {timeoutMs,...fetchOpts}=opts;let res,timer,timedOut=false;
   const externalSignal=fetchOpts.signal;
@@ -1169,15 +1170,18 @@ function appendFailedTurn(message,text,noRetry=false,requestId=null,attachmentDa
   body.append(btn);
 }
 async function submit(options={}){
-  if(busy||loadingChat||!inChatView()||attachmentPending)return;
+  if(busy||routingImageRequest||loadingChat||!inChatView()||attachmentPending)return;
   const selectedPdf=options.attachmentData?.pdf||activePdf;
   const selectedCsv=options.attachmentData?.csv||activeCsv;
   const text=promptEl.value.trim()||((selectedPdf||selectedCsv)?"Tolong analisis isi file terlampir.":"");
   if(!text)return;
   if(!options.imageApproved){
-    const {imageIntent}=await import("/image-intent.js");
-    const mode=imageIntent(text,selectedCsv?.kind==="image-vision",$("imageTask").value);
-    if(mode){await prepareImageRequest(text,mode,selectedCsv);return;}
+    routingImageRequest=true;
+    try{
+      const {imageIntent}=await import("/image-intent.js");
+      const mode=imageIntent(text,selectedCsv?.kind==="image-vision",$("imageTask").value);
+      if(mode){await prepareImageRequest(text,mode,selectedCsv);return;}
+    }finally{routingImageRequest=false;}
   }
   const savedText=packAttachmentMessage(text,selectedPdf||selectedCsv);
   if(savedText.length>12000){toast("Pesan terlalu panjang. Pendekkan teks sebelum mengirim lampiran.");return;}
