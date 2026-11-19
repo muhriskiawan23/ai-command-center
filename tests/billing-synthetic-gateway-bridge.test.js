@@ -445,7 +445,8 @@ test('V2 adapter returns no settlement if provider status has wrong order, refer
     const h=await harness();try{
       const m=v2MockTransport({statusReply:tamper});
       const order=await h.start({provider:m.adapter});
-      await assert.rejects(()=>h.verify(await h.callback(order),{provider:m.adapter}));
+      const callback=await h.callback(order);
+      await assert.rejects(()=>h.verify(callback,{provider:m.adapter}));
       assert.equal(h.count('billing_payment_events'),0);
       assert.equal((await h.wallet()).availableCredits,0);
     }finally{h.close()}
