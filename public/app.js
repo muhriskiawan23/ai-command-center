@@ -427,7 +427,7 @@ async function loadGitHubRepositories(){
 }
 function openGitHubRepositories(){
   if(state!==AppState.AUTH||!currentUser){toast("Masuk dengan akun Google terlebih dahulu.");return}
-  if(!githubConnection){toast("Connect the GitHub plugin first.");integrationsDialog.showModal();return}
+  if(!githubConnection){toast("Connect the GitHub plugin first.");pluginsDialog.showModal();return}
   if(!$("githubReposDialog").open)$("githubReposDialog").showModal();
   loadGitHubRepositories();
 }
