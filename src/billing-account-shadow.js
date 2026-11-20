@@ -11,12 +11,12 @@ const HEADERS={
   'X-Content-Type-Options':'nosniff',
   'Content-Type':'application/json;charset=utf-8'
 };
-function respond(status,body){
-  return new Response(JSON.stringify(body),{status,headers:HEADERS});
+function respond(status,body,extraHeaders={}){
+  return new Response(JSON.stringify(body),{status,headers:{...HEADERS,...extraHeaders}});
 }
-function unavailable(status=503,code='billing_shadow_unavailable'){
+function unavailable(status=503,code='billing_shadow_unavailable',extraHeaders={}){
   return respond(status,{error:code,productionCheckoutEnabled:false,
-    realCreditsGranted:false,realSubscriptionEnabled:false});
+    realCreditsGranted:false,realSubscriptionEnabled:false},extraHeaders);
 }
 export async function deriveShadowSubject(userId,pepper){
   if(typeof userId!=='string'||!/^\d{6,255}$/.test(userId))
@@ -57,9 +57,18 @@ export async function handleBillingShadowAccountRequest(request,env,{getSession}
   if(env.BOR_BILLING_SHADOW_D1_NAME!==EXPECTED_DB||
     !env.BILLING_SHADOW_DB?.prepare||
     env.BILLING_SHADOW_DB===env.DB||
-    typeof env.BOR_BILLING_SHADOW_PEPPER!=='string')
+    typeof env.BOR_BILLING_SHADOW_PEPPER!=='string'||
+    typeof env.CHAT_LIMITER?.limit!=='function')
     return unavailable();
   try{
+    const subject=await deriveShadowSubject(user.id,env.BOR_BILLING_SHADOW_PEPPER);
+    // This is a *separate namespace key*, scoped to the authenticated user.
+    // No IP/user-controlled header or raw Google subject is a limiter key.
+    // A broken/missing limiter must never turn into an unbounded D1 lookup.
+    const quota=await env.CHAT_LIMITER.limit({key:'billing-shadow:'+subject});
+    if(quota?.success===false)
+      return unavailable(429,'billing_shadow_rate_limited',{'Retry-After':'60'});
+    if(quota?.success!==true)return unavailable();
     // Attestation prevents accidental use of the real chat D1 or the existing
     // Duitku sandbox D1 even if an operator misconfigures a binding name.
     const attestation=await env.BILLING_SHADOW_DB.prepare(
@@ -69,7 +78,6 @@ export async function handleBillingShadowAccountRequest(request,env,{getSession}
       attestation.database_name!==EXPECTED_DB||
       attestation.schema_version!==1)
       return unavailable();
-    const subject=await deriveShadowSubject(user.id,env.BOR_BILLING_SHADOW_PEPPER);
     const row=await env.BILLING_SHADOW_DB.prepare(
       'SELECT status FROM billing_shadow_accounts WHERE subject_hash=?'
     ).bind(subject).first();
