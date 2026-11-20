@@ -401,9 +401,10 @@ test('zero measured provider usage is ambiguous and cannot silently release held
     const invoke=async()=>{calls++;return {
       ...RAW_OPENAI,usage:{prompt_tokens:0,completion_tokens:0,total_tokens:0}
     }};
+    const zeroReceipt=await invoke();
     assert.throws(()=>parseProviderTextTokenReceipt({
       providerKind:'openai-chat-completions',expectedModelId:'offline-model-001',
-      providerResponse:await invoke()
+      providerResponse:zeroReceipt
     }),/provider_zero_usage_requires_reconciliation/);
     const result=await invokeCase(h,id,'openai-chat-completions',invoke);
     assert.equal(result.status,'reconciliation_required');
