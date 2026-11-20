@@ -19,7 +19,7 @@ BOR_BILLING_STAGING_D1_ID="<verified-staging-d1-uuid>" \
   node scripts/check-billing-shadow-d1-binding.mjs /path/to/local-uncommitted-wrangler-candidate.jsonc
 ```
 
-The script reads only local JSON: the committed production, staging-template, proof Wrangler files and the supplied candidate. It never contacts Cloudflare, never prints D1 IDs or credentials, and never writes a file. It **fails closed** if the staging UUID is absent, an ID is invalid/duplicate, expected bindings or migration directories change, the production baseline has shadow enabled, a plaintext pepper appears, or the candidate enables the feature.
+The script reads only local JSON: the committed production, staging-template, proof Wrangler files and the supplied candidate. It never contacts Cloudflare, never prints D1 IDs or credentials, and never writes a file. It **fails closed** if the staging UUID is absent, an ID is invalid/duplicate, expected bindings or migration directories change, the production baseline has shadow enabled, a plaintext pepper appears, or the candidate enables the feature. The candidate must also match the complete production configuration **exactly** aside from the new disabled shadow binding and the two approved shadow metadata vars; changed rate limits, AI bindings, old vars or unrelated resources are rejected.
 
 ## CI proof
 
