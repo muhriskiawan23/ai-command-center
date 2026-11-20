@@ -28,19 +28,24 @@ function normalTokenPair(usage){
   const total=tokens(usage.total_tokens,'total_tokens');
   if(prompt+completion!==total)
     throw new TypeError('provider_total_tokens_mismatch');
+  // An all-zero receipt is NOT evidence of zero provider charge. Keep the
+  // reserved hold for authoritative reconciliation instead of releasing it.
+  if(total===0)throw new TypeError('provider_zero_usage_requires_reconciliation');
   return {inputTokens:prompt,outputTokens:completion};
 }
 function noUnpricedModality(usage){
-  // Cached tokens are deliberately billed at full input rate, rather than
-  // assuming an unverified discount. Non-text/audio token pricing differs.
-  for(const [nested,field] of [
-    ['prompt_tokens_details','audio_tokens'],
-    ['completion_tokens_details','audio_tokens']
-  ]){
-    if(usage[nested]!==undefined&&usage[nested]!==null){
-      const o=usageObject(usage[nested]);
-      if(o[field]!==undefined&&tokens(o[field],nested+'.'+field)>0)
-        throw new Error('unpriced_modality_must_reconcile');
+  // Cached tokens are conservatively charged at the full input rate.
+  // Explicit audio/image/video/speech modalities cannot be billed using
+  // text-only tariffs, even when the model also reports token totals.
+  const restricted=/(?:audio|image|video|speech)[_-](?:tokens|units)$/i;
+  for(const part of [usage,usage.prompt_tokens_details,usage.completion_tokens_details]){
+    if(part===undefined||part===null)continue;
+    const details=usageObject(part);
+    for(const [field,value] of Object.entries(details)){
+      if(restricted.test(field) && value!==undefined && value!==null){
+        if(tokens(value,field)>0)
+          throw new Error('unpriced_modality_must_reconcile');
+      }
     }
   }
 }
