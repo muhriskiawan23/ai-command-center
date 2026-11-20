@@ -45,6 +45,7 @@ test('three durable databases stay distinct and only shadow status is readable',
       BOR_BILLING_SHADOW_ENABLED:'true',
       BOR_BILLING_SHADOW_D1_NAME:'bor-ai-billing-shadow',
       BOR_BILLING_SHADOW_PEPPER:PEPPER,
+      CHAT_LIMITER:{async limit(){return {success:true}}},
       DB:d1(chat),
       BILLING_SHADOW_DB:d1(shadow)
     };
