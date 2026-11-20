@@ -4,6 +4,7 @@
 // dedicated D1 provisioning/activation. Do not commit customer config or IDs.
 import {readFileSync} from 'node:fs';
 import {pathToFileURL} from 'node:url';
+import {isDeepStrictEqual} from 'node:util';
 
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const ZERO='00000000-0000-0000-0000-000000000000';
@@ -69,6 +70,22 @@ export function auditBillingShadowBinding({production,stagingTemplate,proof,cand
     x?.database_name===expected.stage||x?.database_name===expected.proof||
     x?.binding==='BILLING_DB'||x?.binding==='SANDBOX_DB'))
     fail('synthetic_database_attached_to_customer_worker');
+
+  // The candidate must be an exact copy of the current production config
+  // except for the dedicated shadow binding and two explicitly approved OFF
+  // metadata vars. This rejects covert changes to AI, auth limits, routes,
+  // other D1 entries, env settings, secrets or unrelated Worker bindings.
+  if(candidate && production){
+    const normalized=structuredClone(candidate);
+    if(Array.isArray(normalized.d1_databases))
+      normalized.d1_databases=normalized.d1_databases.filter(x=>x?.binding!=='BILLING_SHADOW_DB');
+    if(normalized.vars&&typeof normalized.vars==='object'){
+      delete normalized.vars.BOR_BILLING_SHADOW_D1_NAME;
+      delete normalized.vars.BOR_BILLING_SHADOW_ENABLED;
+    }
+    if(!isDeepStrictEqual(normalized,production))
+      fail('candidate_unrelated_production_config_changed');
+  }
 
   // Preflight is a *disabled preparation state*, never an activation permit.
   if(!['false',undefined].includes(candidate?.vars?.BOR_BILLING_SHADOW_ENABLED))
