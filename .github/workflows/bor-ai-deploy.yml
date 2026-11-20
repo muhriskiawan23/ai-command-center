@@ -131,13 +131,7 @@ jobs:
       # Wrangler would otherwise apply all pending migrations as one set.
       - name: Reject synthetic billing migrations in production D1 directory
         if: ${{ inputs.apply_db_migrations }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          if find migrations -maxdepth 1 -type f -name '*billing*.sql' -print -quit | grep -q .; then
-            echo "::error::Synthetic billing SQL is present in production migrations/. Refusing remote D1 migration. Review and isolate billing SQL before any migration dispatch."
-            exit 1
-          fi
+        run: node scripts/check-production-migration-isolation.mjs migrations
 
       - name: Apply D1 migrations
         if: ${{ inputs.apply_db_migrations }}
