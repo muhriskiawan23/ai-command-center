@@ -18,6 +18,11 @@ on:
         required: true
         type: boolean
         default: false
+      billing_shadow_d1_id:
+        description: "UUID of bor-ai-billing-shadow created in the production Cloudflare account; never use the sandbox account ID"
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -40,7 +45,7 @@ jobs:
       BOR_TEXT_LUNA_PRIMARY: ${{ vars.BOR_TEXT_LUNA_PRIMARY || 'false' }}
       BOR_TEXT_LUNA_DAILY_USD_LIMIT: ${{ vars.BOR_TEXT_LUNA_DAILY_USD_LIMIT }}
       BOR_BILLING_SHADOW_ENABLED: ${{ inputs.enable_billing_shadow && 'true' || 'false' }}
-      BOR_BILLING_SHADOW_D1_ID: e3b29627-f3e9-4b7e-90b0-dcd6d1aebaba
+      BOR_BILLING_SHADOW_D1_ID: ${{ inputs.billing_shadow_d1_id }}
     steps:
       - name: Reject dispatches outside main
         shell: bash
@@ -71,6 +76,11 @@ jobs:
           test -n "$CLOUDFLARE_API_TOKEN" || { echo "::error::Missing CLOUDFLARE_API_TOKEN repository secret"; exit 1; }
           test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo "::error::Missing CLOUDFLARE_ACCOUNT_ID repository secret"; exit 1; }
           test -n "$GOOGLE_CLIENT_ID" || { echo "::error::Missing GOOGLE_CLIENT_ID repository secret"; exit 1; }
+          if [[ "$BOR_BILLING_SHADOW_ENABLED" == "true" ]] &&
+            [[ ! "$BOR_BILLING_SHADOW_D1_ID" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]]; then
+            echo "::error::Provide the billing shadow D1 UUID from the production Cloudflare account."
+            exit 1
+          fi
 
       - name: Test and validate Worker
         run: |
