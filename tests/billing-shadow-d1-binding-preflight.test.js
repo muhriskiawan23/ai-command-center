@@ -53,3 +53,9 @@ rejects('reject including HMAC pepper plaintext in candidate variables',o=>{o.ca
 rejects('reject missing expected shadow name variable',o=>{delete o.candidate.vars.BOR_BILLING_SHADOW_D1_NAME},'shadow_db_name_attestation_config_missing');
 rejects('reject attaching other binding to production Worker',o=>{o.candidate.d1_databases.push({binding:'BILLING_DB',database_name:'bor-ai-billing-staging',database_id:STAGING})},'candidate_worker_binding_layout_invalid');
 rejects('reject production baseline modified to include shadow activation',o=>{o.production.vars.BOR_BILLING_SHADOW_ENABLED='true'},'production_shadow_must_remain_off');
+
+rejects('reject changed model budget from live production config',o=>{o.candidate.vars.BOR_PLUGIN_TOOL_DAILY_USD_LIMIT='999'},'candidate_unrelated_production_config_changed');
+rejects('reject unexpected extra plaintext env var',o=>{o.candidate.vars.UNREVIEWED_FEATURE_ENABLED='true'},'candidate_unrelated_production_config_changed');
+rejects('reject modification of production rate limiter settings',o=>{o.candidate.ratelimits[0].simple.limit=999},'candidate_unrelated_production_config_changed');
+rejects('reject changed AI binding for production Worker',o=>{o.candidate.ai.binding='ANOTHER_AI'},'candidate_unrelated_production_config_changed');
+rejects('reject injected unrelated Worker binding',o=>{o.candidate.kv_namespaces=[{binding:'UNAPPROVED'}]},'candidate_unrelated_production_config_changed');
