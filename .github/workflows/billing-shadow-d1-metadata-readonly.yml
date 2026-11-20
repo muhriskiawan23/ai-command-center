@@ -1,0 +1,36 @@
+name: BOR AI D1 identity metadata audit (MANUAL READ ONLY)
+
+# This workflow never provisions D1, queries rows, deploys Workers or takes payments.
+# Requires four distinct known D1 UUIDs and a dedicated Cloudflare D1 Read token.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bor-ai-d1-read-only-metadata-audit
+  cancel-in-progress: false
+
+jobs:
+  inspect-identity-only:
+    name: Verify four Cloudflare D1 metadata identities without mutation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 22
+      - name: Read-only metadata identity preflight (GET only)
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          BOR_CLOUDFLARE_D1_READ_TOKEN: ${{ secrets.BOR_CLOUDFLARE_D1_READ_TOKEN }}
+          BOR_BILLING_STAGING_D1_ID: ${{ secrets.BOR_BILLING_STAGING_D1_ID }}
+          BOR_BILLING_SHADOW_D1_ID: ${{ secrets.BOR_BILLING_SHADOW_D1_ID }}
+        run: node scripts/audit-cloudflare-d1-metadata-readonly.mjs
+      - name: Record restricted-scope result
+        if: success()
+        run: |
+          echo 'D1 names/UUIDs verified via read-only Cloudflare API metadata.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'NOT a migration, runtime binding check, schema attestation, billing activation, or commercial GO.' >> "$GITHUB_STEP_SUMMARY"
