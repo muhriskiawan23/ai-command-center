@@ -218,6 +218,12 @@ jobs:
             }
             console.log("Verified billing shadow secret presence by name only.");
           '
+          # Initialize only the D1 whose account, UUID, name, and Worker secret were checked above.
+          # Statements are idempotent, so a safe retry after a failed rollout is supported.
+          npx --yes wrangler@4.165.0 d1 execute bor-ai-billing-shadow --remote \
+            --config "$BOR_DEPLOY_CONFIG" \
+            --file staging/billing-shadow/0001_readonly_schema.sql
+
           npx --yes wrangler@4.165.0 d1 execute bor-ai-billing-shadow --remote \
             --config "$BOR_DEPLOY_CONFIG" \
             --command "SELECT service,database_name,schema_version,EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='billing_shadow_accounts') AS accounts_table FROM billing_shadow_attestation WHERE id=1" \
