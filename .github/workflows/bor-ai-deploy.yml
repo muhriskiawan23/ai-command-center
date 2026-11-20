@@ -125,6 +125,14 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: npx --yes wrangler@4 d1 migrations list bor-ai-chat --remote --config wrangler.jsonc
 
+      # The checked-in 0013..0015 billing SQL is synthetic-only and was
+      # never approved for the production chat D1. Stop the ENTIRE migration
+      # dispatch while those files are in the production migration directory:
+      # Wrangler would otherwise apply all pending migrations as one set.
+      - name: Reject synthetic billing migrations in production D1 directory
+        if: ${{ inputs.apply_db_migrations }}
+        run: node scripts/check-production-migration-isolation.mjs migrations
+
       - name: Apply D1 migrations
         if: ${{ inputs.apply_db_migrations }}
         env:
