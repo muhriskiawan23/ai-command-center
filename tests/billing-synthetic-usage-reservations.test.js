@@ -393,3 +393,48 @@ test('offline model wrapper forbids mixed Tavily charges and unpriced model invo
     assert.equal(invoked,0);
   }finally{h.close()}
 });
+
+test('zero measured provider usage is ambiguous and cannot silently release held credits',async()=>{
+  const h=await harness();try{
+    const id='SYNTH-AMBIGUOUS-ZERO-USAGE-01';
+    let calls=0;
+    const invoke=async()=>{calls++;return {
+      ...RAW_OPENAI,usage:{prompt_tokens:0,completion_tokens:0,total_tokens:0}
+    }};
+    assert.throws(()=>parseProviderTextTokenReceipt({
+      providerKind:'openai-chat-completions',expectedModelId:'offline-model-001',
+      providerResponse:await invoke()
+    }),/provider_zero_usage_requires_reconciliation/);
+    const result=await invokeCase(h,id,'openai-chat-completions',invoke);
+    assert.equal(result.status,'reconciliation_required');
+    assert.equal(result.reason,'missing_or_invalid_provider_metering');
+    assert.equal((await readSyntheticSpendableCredits(h.db,{userId:h.userId})).heldCredits,30);
+    assert.equal(h.s.prepare("SELECT COUNT(*) AS n FROM billing_credit_ledger WHERE event_type='usage'").get().n,0);
+    const repeat=await invokeCase(h,id,'openai-chat-completions',invoke);
+    assert.equal(repeat.providerInvoked,false);
+    assert.equal(calls,2);
+  }finally{h.close()}
+});
+
+test('non-text audio, image, video and speech usage cannot settle against text-only rates',()=>{
+  const fields=['audio_tokens','image_tokens','video_tokens','speech_tokens'];
+  for(const field of fields){
+    for(const usage of [
+      {...RAW_OPENAI.usage,[field]:1},
+      {...RAW_OPENAI.usage,prompt_tokens_details:{[field]:2}},
+      {...RAW_OPENAI.usage,completion_tokens_details:{[field]:1}}
+    ]){
+      assert.throws(()=>parseProviderTextTokenReceipt({
+        providerKind:'openai-chat-completions',expectedModelId:'offline-model-001',
+        providerResponse:{...RAW_OPENAI,usage}
+      }),/unpriced_modality_must_reconcile/);
+    }
+  }
+  const safe=parseProviderTextTokenReceipt({
+    providerKind:'openai-chat-completions',expectedModelId:'offline-model-001',
+    providerResponse:{...RAW_OPENAI,usage:{...RAW_OPENAI.usage,
+      prompt_tokens_details:{audio_tokens:0,cached_tokens:200}
+    }}
+  });
+  assert.equal(safe.inputTokens,600);
+});
