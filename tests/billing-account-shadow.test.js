@@ -31,6 +31,7 @@ function config(shadow,overrides={}){
     BOR_BILLING_SHADOW_ENABLED:'true',
     BOR_BILLING_SHADOW_D1_NAME:'bor-ai-billing-shadow',
     BOR_BILLING_SHADOW_PEPPER:PEPPER,
+    CHAT_LIMITER:{async limit(){return {success:true}}},
     DB:{prepare(){throw Error('Production chat DB must NEVER be accessed by shadow lookup')}},
     BILLING_SHADOW_DB:shadow,
     ...overrides
@@ -115,6 +116,41 @@ test('separate dedicated binding and secret are mandatory, never silently reuse 
       }
     };
     assert.equal((await handler(config(wrong))).status,503);
+  }finally{h.close()}
+});
+
+test('shadow requires per-account pseudonymous rate limit and never queries D1 when denied',async()=>{
+  const h=dbHarness();try{
+    const keys=[];
+    const env=config(h.wrapper,{CHAT_LIMITER:{
+      async limit({key}){keys.push(key);return {success:true}}
+    }});
+    const a=await handler(env,{user:{id:USER_A}});
+    const b=await handler(env,{user:{id:USER_B}});
+    assert.equal(a.status,200);
+    assert.equal(b.status,200);
+    assert.equal(keys.length,2);
+    assert.equal(keys[0],'billing-shadow:'+await deriveShadowSubject(USER_A,PEPPER));
+    assert.equal(keys[1],'billing-shadow:'+await deriveShadowSubject(USER_B,PEPPER));
+    assert.notEqual(keys[0],keys[1]);
+    assert.doesNotMatch(keys.join(','),/123456789012345678901|234567890123456789012|@/);
+    let calls=0;
+    const noRead={
+      prepare(){calls++;throw Error('shadow D1 must not be queried when rate limited')}
+    };
+    for(const [limiter,status] of [
+      [undefined,503],
+      [{async limit(){throw Error('sensitive quota error')}},503],
+      [{async limit(){return null}},503],
+      [{async limit(){return {success:false}}},429]
+    ]){
+      const res=await handler(config(noRead,{CHAT_LIMITER:limiter}));
+      assert.equal(res.status,status);
+      assert.equal(res.headers.get('Cache-Control').includes('no-store'),true);
+      assert.equal((await res.json()).realCreditsGranted,false);
+      if(status===429)assert.equal(res.headers.get('Retry-After'),'60');
+      assert.equal(calls,0);
+    }
   }finally{h.close()}
 });
 

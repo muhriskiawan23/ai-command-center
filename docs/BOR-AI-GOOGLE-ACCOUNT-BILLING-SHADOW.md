@@ -41,6 +41,16 @@ has been configured in `wrangler.jsonc`.
   `realCreditsGranted:false`,
   `realSubscriptionEnabled:false`.
   It cannot show a paid plan or issue any real credit.
+- The informational read endpoint also requires the existing server
+  `CHAT_LIMITER` binding when explicitly enabled. The limiter key is
+  `billing-shadow:` plus the server-derived HMAC subject (never raw Google
+  ID, email, request header or caller-supplied account). This reuses the
+  production Wrangler limiter budget of **20 calls per key per 60 seconds**;
+  separate key prefixes isolate this route from auth/chat counters.
+  Rejected requests return HTTP **429**, `Retry-After: 60`, and no-store;
+  missing/failed/invalid limiter responses return **503**. It must not
+  query the shadow D1 after any such denial. The **chat auth session
+  lookup itself** still occurs before per-account limiting.
 - No writes, payment callbacks, checkout URLs, provider calls, or
   automatic subscriptions. Cross-site fetches and querystrings are
   rejected; all responses use `Cache-Control: private, no-store`.
@@ -74,7 +84,7 @@ scope, auth and rate limits must precede any controlled rollout.
 
 `node --test tests/billing-account-shadow.test.js` tests default
 404, expired/untrusted sessions, wrong owner, query/POST/cross-site
-denials, wrong D1/secret binding, mismatched sentinel, HMAC
+denials, wrong D1/secret binding, mandatory per-account rate limiter and denial, mismatched sentinel, HMAC
 determinism and separation, no PII leakage, noncommercial shadow
 lookup by account, and confirms the production Wrangler file has
 **no shadow binding or enabling flag**.

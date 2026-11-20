@@ -70,7 +70,8 @@ test('actual Worker session JOIN isolates billing shadow users and rejects expir
       BILLING_SHADOW_DB:localD1(shadow,shadowQueries),
       BOR_BILLING_SHADOW_ENABLED:'true',
       BOR_BILLING_SHADOW_D1_NAME:'bor-ai-billing-shadow',
-      BOR_BILLING_SHADOW_PEPPER:PEPPER
+      BOR_BILLING_SHADOW_PEPPER:PEPPER,
+      CHAT_LIMITER:{async limit(){return {success:true}}}
     };
 
     const a=await fetchAccount(env,TOKEN_A);
