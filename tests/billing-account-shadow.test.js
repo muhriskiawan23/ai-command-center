@@ -220,6 +220,7 @@ test('repository production wiring invokes existing getSession but has no bindin
   assert.doesNotMatch(configText,/BILLING_SHADOW_DB|BOR_BILLING_SHADOW_PEPPER|BOR_BILLING_SHADOW_ENABLED/);
   assert.doesNotMatch(configText,/bor-ai-billing-staging/);
   const schema=readFileSync(new URL('../staging/billing-shadow/0001_readonly_schema.sql',import.meta.url),'utf8');
-  assert.match(schema,/CREATE TABLE billing_shadow_attestation/);
+  assert.match(schema,/CREATE TABLE IF NOT EXISTS billing_shadow_attestation/);
+  assert.match(schema,/INSERT OR IGNORE INTO billing_shadow_attestation/);
   assert.doesNotMatch(schema,/billing_credit_ledger|DUITKU_SANDBOX_API_KEY|CREATE TABLE users/);
 });
