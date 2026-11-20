@@ -7,7 +7,7 @@ import {join} from 'node:path';
 import {pathToFileURL} from 'node:url';
 
 const sensitiveFilename=/(?:billing|duitku|payment|wallet|subscription|credit[-_]?ledger)/i;
-const sensitiveSql=/\b(?:billing_|duitku|synthetic_test|sandbox_payment_url|payment_verified|chargeback_verified)\b/i;
+const sensitiveSql=/\b(?:billing_[a-z0-9_]*|duitku|synthetic_test|sandbox_payment_url|payment_verified|chargeback_verified)\b/i;
 export function inspectProductionMigrations(directory){
   if(typeof directory!=='string'||!directory.trim())
     throw new Error('production_migration_directory_required');
