@@ -3,10 +3,10 @@ import { readLink } from "./links.js";
 // Read strictly public application assets without a vendor request, arbitrary URL
 // fetching, cookies, or calls into the application's authenticated API routes.
 const PUBLIC_ASSET_PATHS = new Map([
-  ["/", "/"],
-  ["/index.html", "/"],
-  ["/paket", "/paket"],
-  ["/paket.html", "/paket"]
+  ["/", "/index.html"],
+  ["/index.html", "/index.html"],
+  ["/paket", "/paket.html"],
+  ["/paket.html", "/paket.html"]
 ]);
 
 const fail = (url, reason) => ({ ok: false, url, requested: url, reason });
