@@ -11,6 +11,7 @@ function setup(){
  db.sqlite.prepare('INSERT INTO image_wallets VALUES (?,?,?)').run(user.id,100,1);
  const files=new Map(),sent=[],calls=[];
  const env={DB:db,BOR_IMAGES_ENABLED:'true',OPENAI_API_KEY:'secret-never-leak',IMAGE_CREDITS_GENERATE:'10',IMAGE_CREDITS_EDIT:'12',IMAGE_TARIFF_VERSION:'test-v1',CHAT_LIMITER:{limit:async()=>({success:true})},
+ OPENAI_IMAGE_MODEL:'gpt-image-2',IMAGE_PILOT_QUALITY:'low',IMAGE_PROVIDER_TOTAL_ATTEMPT_LIMIT:'10',
  IMAGE_FILES:{async put(key,bytes){files.set(key,Buffer.from(bytes));},async get(key){const value=files.get(key);return value?{body:value,arrayBuffer:async()=>value.buffer.slice(value.byteOffset,value.byteOffset+value.byteLength)}:null;},async delete(keys){for(const key of Array.isArray(keys)?keys:[keys])files.delete(key);}},
  IMAGE_QUEUE:{send:async body=>sent.push(body)},IMAGE_FETCHER:async(url,options)=>{calls.push({url,options});return Response.json({data:[{b64_json:png.toString('base64')}],usage:{input_tokens:20,output_tokens:30,total_tokens:50}});}};
  const request=(path,body,headers={})=>new Request('https://bor.test'+path,{method:body?'POST':'GET',headers:{Cookie:'__Host-borai_session='+token,...(body?{'Content-Type':'application/json',Origin:'https://bor.test'}:{}),...headers},...(body?{body:JSON.stringify(body)}:{})});
@@ -89,4 +90,37 @@ test('lost database acknowledgement after completion cannot delete a successful 
 });
 test('oversized or invalid provider output cannot become a successful downloadable file',async()=>{
  const h=setup();try{h.env.IMAGE_FETCHER=async()=>Response.json({data:[{b64_json:Buffer.from('<svg onload="evil"/>').toString('base64')}]});const job=await (await h.create()).json();await processImageJob(h.env,job.id);const row=h.db.sqlite.prepare('SELECT * FROM image_jobs').get();assert.equal(row.status,'failed');assert.equal(row.error_code,'invalid_provider_output');assert.equal(h.files.size,0);}finally{h.close();}
+});
+
+test('OpenAI pilot rejects unapproved model, quality and missing attempt ceiling before any provider call',async()=>{
+ const h=setup();try{
+ for(const [key,value] of [['IMAGE_PROVIDER_TOTAL_ATTEMPT_LIMIT',undefined],['IMAGE_PROVIDER_TOTAL_ATTEMPT_LIMIT','11'],['OPENAI_IMAGE_MODEL','gpt-image-2.5-sunburst'],['IMAGE_PILOT_QUALITY','medium']]){
+  const original=h.env[key];if(value===undefined)delete h.env[key];else h.env[key]=value;
+  const result=await h.create();assert.equal(result.status,503,`${key}=${value}`);
+  h.env[key]=original;
+ }
+ assert.equal(h.sent.length,0);
+ }finally{h.close();}
+});
+test('pilot lifetime cap counts admitted attempts across days including failed jobs',async()=>{
+ const h=setup();try{
+ h.env.IMAGE_PROVIDER_TOTAL_ATTEMPT_LIMIT='2';
+ const first=await h.create();const second=await h.create();
+ assert.equal(first.status,202);assert.equal(second.status,202);
+ const refused=await h.create();assert.equal(refused.status,429);
+ assert.equal(h.sent.length,2);
+ // A failed request still counts: upstream may have charged even if no image was delivered.
+ await h.db.sqlite.prepare("UPDATE image_jobs SET status='failed' WHERE id=?").run((await first.json()).id);
+ const refusedAgain=await h.create();assert.equal(refusedAgain.status,429);
+ assert.equal(h.calls.length,0);
+ }finally{h.close();}
+});
+test('pilot provider request is a single low-quality square image',async()=>{
+ const h=setup();try{
+ const job=await (await h.create()).json();await processImageJob(h.env,job.id);
+ assert.equal(h.calls.length,1);
+ const body=JSON.parse(h.calls[0].options.body);
+ assert.equal(body.model,'gpt-image-2');assert.equal(body.quality,'low');
+ assert.equal(body.size,'1024x1024');assert.equal(body.n,1);
+ }finally{h.close();}
 });

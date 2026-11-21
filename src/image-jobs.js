@@ -12,8 +12,12 @@ export function imageConfig(env) {
   const generate = positive(env.IMAGE_CREDITS_GENERATE);
   const edit = positive(env.IMAGE_CREDITS_EDIT);
   const version = typeof env.IMAGE_TARIFF_VERSION === 'string' ? env.IMAGE_TARIFF_VERSION.trim().slice(0,80) : '';
-  const enabled = env.BOR_IMAGES_ENABLED === 'true' && Boolean(env.OPENAI_API_KEY && env.DB && env.IMAGE_FILES && env.IMAGE_QUEUE && generate && edit && version);
-  return { enabled, credits: { generate, edit }, tariffVersion: version || null, formats: Object.keys(MIME), sizes: ['1024x1024','1024x1536','1536x1024'], retentionDays: 7, provider: 'OpenAI', enhancement: 'generative' };
+  // Pilot requires a lifetime provider-attempt cap, not merely a per-day quota.
+  // Failed/ambiguous upstream requests still consume the cap because they may be billed.
+  const totalAttemptLimit = positive(env.IMAGE_PROVIDER_TOTAL_ATTEMPT_LIMIT);
+  const safePilot = totalAttemptLimit && totalAttemptLimit <= 10 && env.OPENAI_IMAGE_MODEL === 'gpt-image-2' && env.IMAGE_PILOT_QUALITY === 'low';
+  const enabled = env.BOR_IMAGES_ENABLED === 'true' && Boolean(env.OPENAI_API_KEY && env.DB && env.IMAGE_FILES && env.IMAGE_QUEUE && generate && edit && version && safePilot);
+  return { enabled, pilotMaxAttempts: safePilot ? totalAttemptLimit : null, credits: { generate, edit }, tariffVersion: version || null, formats: Object.keys(MIME), sizes: ['1024x1024'], retentionDays: 7, provider: 'OpenAI', enhancement: 'generative' };
 }
 
 export function imageSignature(bytes, mime) {
@@ -118,9 +122,10 @@ export async function handleImageRoute(request, env, url, deps) {
       (id,user_id,request_id,request_hash,mode,prompt,model,output_format,size,status,source_key,source_mime,credits,tariff_version,created_at,updated_at,expires_at)
       SELECT ?,?,?,?,?,?,?,?,?,'queued',?,?,?,?,?,?,?
       WHERE (SELECT COUNT(*) FROM image_jobs WHERE created_at>=? AND user_id=?) < ?
-        AND (SELECT COUNT(*) FROM image_jobs WHERE created_at>=?) < ?`)
+        AND (SELECT COUNT(*) FROM image_jobs WHERE created_at>=?) < ?
+        AND (SELECT COUNT(*) FROM image_jobs) < ?`)
       .bind(id,user.id,requestId,fingerprint,mode,prompt,env.OPENAI_IMAGE_MODEL || 'gpt-image-2.5-sunburst',format,size,key,source?.mime || null,config.credits[mode],config.tariffVersion,now,now,now+RETENTION,
-        now-now%86400,user.id,positive(env.IMAGE_DAILY_LIMIT_USER)||3,now-now%86400,positive(env.IMAGE_DAILY_LIMIT_GLOBAL)||20).run();
+        now-now%86400,user.id,positive(env.IMAGE_DAILY_LIMIT_USER)||3,now-now%86400,positive(env.IMAGE_DAILY_LIMIT_GLOBAL)||20,config.pilotMaxAttempts).run();
   } catch (error) {
     const replay = await env.DB.prepare('SELECT * FROM image_jobs WHERE user_id=? AND request_id=?').bind(user.id,requestId).first();
     if (key && replay?.id !== id) await env.IMAGE_FILES.delete(key);
@@ -162,8 +167,8 @@ export async function processImageJob(env,id) {
   if (!row) return;
   let outputKey = null;
   try {
-    if (!imageConfig(env).enabled) throw new Error('images_unavailable');
-    const options = {model:row.model,prompt:row.prompt,n:1,quality:'medium',size:row.size,output_format:row.output_format,safety_identifier:await sha256Hex('bor-image:'+row.user_id)};
+    if (!imageConfig(env).enabled || row.model !== 'gpt-image-2' || row.size !== '1024x1024') throw new Error('images_unavailable');
+    const options = {model:row.model,prompt:row.prompt,n:1,quality:'low',size:row.size,output_format:row.output_format,safety_identifier:await sha256Hex('bor-image:'+row.user_id)};
     let body, headers = {Authorization:'Bearer '+env.OPENAI_API_KEY};
     if (row.mode === 'edit') {
       const source = await env.IMAGE_FILES.get(row.source_key);
