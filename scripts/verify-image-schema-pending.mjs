@@ -6,12 +6,12 @@ import {fileURLToPath} from 'node:url';
 
 const EXPECTED=Object.freeze(['0012_image_jobs.sql','0016_image_chat_history.sql']);
 const ANSI=/\x1b\[[0-9;]*m/g;
-const TABLE_ROW=/^\s*│\s*([0-9]{4}_[A-Za-z0-9_-]+\.sql)\s*│\s*$/;
+const TABLE_ROW=/^\s*│\s*([^│]+?)\s*│\s*$/;
 export function verifyImageSchemaPending(output,{expectNone=false}={}){
   if(typeof output!=='string'||!output.trim()||output.length>32768)
     throw Error('D1 migration inventory is absent or exceeds the safe output limit');
   const clean=output.replace(ANSI,'');
-  const listed=clean.split(/\r?\n/).map(line=>line.match(TABLE_ROW)?.[1]).filter(Boolean);
+  const listed=clean.split(/\r?\n/).map(line=>line.match(TABLE_ROW)?.[1]?.trim()).filter(name=>name&&name!=='Name');
   if(new Set(listed).size!==listed.length)throw Error('D1 migration inventory contains duplicate names');
   if(expectNone){
     if(listed.length || !/No migrations (?:to apply|to be applied|found)/i.test(clean))
