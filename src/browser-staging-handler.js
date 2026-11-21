@@ -63,7 +63,7 @@ export function createBrowserStagingHandler({ launch, clock = () => Date.now(), 
   return async function fetchBrowserStaging(request, env) {
     const url = new URL(request.url);
     if (url.pathname === "/health" && request.method === "GET") {
-      return reply({ ok: true, service: "bor-ai-browser-staging", browserEnabled: false });
+      return reply({ ok: true, service: "bor-ai-browser-staging", browserAttempted: false });
     }
     if (url.pathname !== "/api/browser/read") return reply({ error: "not_found" }, 404);
     if (request.method !== "POST") return reply({ error: "method_not_allowed" }, 405, { Allow: "POST" });
