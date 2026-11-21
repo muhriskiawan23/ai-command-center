@@ -5,12 +5,19 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {inspectProductionMigrations} from '../scripts/check-production-migration-isolation.mjs';
 
-test('checked-in chat D1 migrations are blocked while synthetic billing SQL remains',()=>{
+test('production D1 migration folder has only account/chat/image SQL, never synthetic billing',()=>{
   const directory=new URL('../migrations/',import.meta.url).pathname;
   const report=inspectProductionMigrations(directory);
-  assert.equal(report.safe,false);
-  assert.ok(report.blockedFiles>=3);
+  assert.equal(report.safe,true);
+  assert.equal(report.blockedFiles,0);
   assert.equal(report.productionD1,'bor-ai-chat');
+  const filenames=['0013_billing_foundation.sql','0014_billing_invoice_reference_guard.sql',
+    '0015_billing_sandbox_invoice_recovery.sql'];
+  for(const file of filenames) {
+    assert.throws(()=>readFileSync(new URL('../migrations/'+file,import.meta.url),'utf8'),/ENOENT/);
+    const preserved=readFileSync(new URL('../staging/billing/synthetic-reference/'+file,import.meta.url),'utf8');
+    assert.ok(preserved.length>500,'Synthetic billing fixture must remain available offline');
+  }
 });
 test('only nonfinancial chat D1 SQL is accepted for production migration dispatch',()=>{
   const root=mkdtempSync(join(tmpdir(),'bor-prod-mig-'));try{
