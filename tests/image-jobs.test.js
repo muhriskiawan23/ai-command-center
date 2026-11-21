@@ -53,6 +53,36 @@ test('credit and daily admission fail closed, no queue call or negative balance'
  h.db.sqlite.prepare('UPDATE image_wallets SET balance=100').run();h.env.IMAGE_DAILY_LIMIT_USER='1';assert.equal((await h.create()).status,429);assert.equal(h.sent.length,1);
  }finally{h.close();}
 });
+test('an unmigrated image database gives authenticated gallery/file users a safe 503',async()=>{
+ const h=setup();try{
+  h.env.BOR_IMAGES_ENABLED='false';
+  const original=h.env.DB.prepare.bind(h.env.DB);
+  h.env.DB.prepare=sql=>{
+    if (/\bFROM image_jobs\b/.test(sql)) throw Error('D1_ERROR: no such table: image_jobs');
+    return original(sql);
+  };
+  for(const path of ['/api/images/jobs','/api/images/jobs/'+crypto.randomUUID(),'/api/files/'+crypto.randomUUID()+'/preview']){
+    const res=await worker.fetch(h.request(path),h.env);
+    assert.equal(res.status,503,path);
+    const body=await res.json();
+    assert.equal(body.code,'image_schema_unavailable');
+    assert.doesNotMatch(JSON.stringify(body),/no such table|D1_ERROR|image-user/i);
+  }
+ }finally{h.close();}
+});
+test('existing private image gallery remains accessible if new paid generation is disabled',async()=>{
+ const h=setup();try{
+  const job=(await (await h.create()).json());
+  h.env.BOR_IMAGES_ENABLED='false';
+  const list=await worker.fetch(h.request('/api/images/jobs'),h.env);
+  assert.equal(list.status,200);
+  assert.equal((await list.json()).jobs[0].id,job.id);
+  const detail=await worker.fetch(h.request('/api/images/jobs/'+job.id),h.env);
+  assert.equal(detail.status,200);
+  assert.equal((await detail.json()).id,job.id);
+  assert.equal((await h.create()).status,503);
+ }finally{h.close();}
+});
 test('authorization, CSRF, disabled feature and malformed inputs cannot spend credits',async()=>{
  const h=setup();try{
  assert.equal((await worker.fetch(h.request('/api/images/jobs',{},{Cookie:''}),h.env)).status,401);

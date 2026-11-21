@@ -52,6 +52,10 @@ export async function listChatImageJobs(env,userId,conversationId) {
   return (result.results || []).reverse().map(publicJob);
 }
 const findJob = (env,id,userId) => env.DB.prepare('SELECT * FROM image_jobs WHERE id = ? AND user_id = ?').bind(id,userId).first();
+// Reading existing images is allowed when generation is disabled, but an
+// unmigrated D1 must give a stable response rather than leaking a SQL error.
+const imageSchemaMissing = error => /\bno such table:\s*(?:main\.)?(?:image_jobs|image_wallets|image_credit_ledger)\b/i.test(String(error?.message || ''));
+const imageSchemaUnavailable = () => json({error:'Riwayat gambar belum tersedia. Infrastruktur sedang disiapkan.',code:'image_schema_unavailable'},503);
 async function failJob(env,id,code) {
   await env.DB.prepare("UPDATE image_jobs SET status='failed', error_code=?, updated_at=? WHERE id=? AND status IN ('queued','processing')").bind(code,nowSeconds(),id).run();
 }
@@ -69,6 +73,7 @@ export async function handleImageRoute(request, env, url, deps) {
   if (!user) return json({error:'Masuk dengan akun Google untuk membuat dan membuka gambar.'},401);
   if (!env.DB) return json({error:'Penyimpanan gambar belum siap.'},503);
   if (isJobs && request.method === 'GET') {
+    try {
     const conversationId = url.searchParams.get('conversationId');
     if (conversationId !== null && !/^[a-zA-Z0-9-]{8,80}$/.test(conversationId))
       return json({error:'Percakapan tidak valid.'},400);
@@ -81,10 +86,19 @@ export async function handleImageRoute(request, env, url, deps) {
       : await env.DB.prepare("SELECT * FROM image_jobs WHERE user_id=? AND conversation_id=? AND status!='expired' ORDER BY created_at DESC LIMIT 50").bind(user.id,conversationId).all();
     const wallet = await env.DB.prepare('SELECT balance FROM image_wallets WHERE user_id=?').bind(user.id).first();
     return json({ jobs: (rows.results || []).map(publicJob), balance: wallet?.balance || 0 });
+    } catch (error) {
+      if (imageSchemaMissing(error)) return imageSchemaUnavailable();
+      throw error;
+    }
   }
   if (jobMatch || fileMatch) {
     const id = (jobMatch || fileMatch)[1];
-    const row = await findJob(env,id,user.id);
+    let row;
+    try { row = await findJob(env,id,user.id); }
+    catch (error) {
+      if (imageSchemaMissing(error)) return imageSchemaUnavailable();
+      throw error;
+    }
     if (!row) return json({error:'Gambar tidak ditemukan.'},404);
     if (request.method === 'DELETE') {
       // Do not delete in-flight work or refund an ambiguous provider call.
