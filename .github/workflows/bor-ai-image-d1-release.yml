@@ -117,4 +117,5 @@ jobs:
 
       - name: Explain safety status
         if: ${{ inputs.phase == 'plan' }}
-        run: echo "PLAN complete: D1 remains unchanged. This is not permission to apply migrations, deploy Media Lab, enable paid images or spend OpenAI credits."
+        run: |
+          echo "PLAN complete: D1 remains unchanged. This is not permission to apply migrations, deploy Media Lab, enable paid images or spend OpenAI credits."

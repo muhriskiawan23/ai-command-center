@@ -45,6 +45,10 @@ test('manual workflow defaults to PLAN and cannot deploy Worker or activate paid
   const w=readFileSync(new URL('../.github/workflows/bor-ai-image-d1-release.yml',import.meta.url),'utf8');
   assert.match(w,/workflow_dispatch:/);
   assert.match(w,/default: plan/);
+  // Colons inside inline YAML run commands are parsed as mapping values.
+  // Require a block scalar for the final plan status and reject risky inline echo.
+  assert.match(w,/\- name: Explain safety status[\s\S]*?\n\s+run: \|\n\s+echo "PLAN complete: D1/);
+  assert.doesNotMatch(w,/^\s*run: echo "[^"\n]*:\s/m);
   assert.match(w,/environment: production/);
   assert.match(w,/group: bor-ai-production-deploy/);
   assert.match(w,/git ls-remote origin refs\/heads\/main/);
