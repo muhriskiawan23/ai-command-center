@@ -198,3 +198,36 @@ test("Directory metadata pages are all traversed before an inventory is marked c
   assert.equal(result.requests.filter(r => r.url.includes("/directory/services")).length, 3);
   assert.match(result.summary, /pages=3/);
 });
+
+test("Gateway inventory traverses pages without totals and never exposes policy details",async()=>{
+  const result=await audit(url=>{
+    if(!url.includes("/gateway/rules"))return success(url);
+    const page=Number(new URL(url).searchParams.get("page"));
+    return response({success:true,result:page===1
+      ?[{id:"secret-policy-id",enabled:true,filters:["http"]}]:[]});
+  });
+  assert.equal(result.exitCode,undefined);
+  assert.equal(result.requests.filter(x=>x.url.includes("/gateway/rules")).length,2);
+  assert.match(result.summary,/Gateway policies:\*\* AUTHORIZED/);
+  assert.match(result.summary,/returned=1; pages=2; completion=empty terminal page/);
+  assert.match(result.summary,/enabled=1; filter_types=http:1/);
+  assert.ok(!result.summary.includes("secret-policy-id"));
+});
+test("Gateway follows declared pagination and refuses an incomplete account policy inventory",async()=>{
+  const known=await audit(url=>{
+    if(!url.includes("/gateway/rules"))return success(url);
+    const page=Number(new URL(url).searchParams.get("page"));
+    return response({success:true,result:page<=2?[{enabled:page===1}]:[],
+      result_info:{page,total_pages:3,total_count:2}});
+  });
+  assert.equal(known.exitCode,undefined);
+  assert.equal(known.requests.filter(x=>x.url.includes("/gateway/rules")).length,3);
+  assert.match(known.summary,/returned=2; pages=3; completion=reported total_pages/);
+  const incomplete=await audit(url=>{
+    if(!url.includes("/gateway/rules"))return success(url);
+    return response({success:true,result:[{enabled:true}]});
+  });
+  assert.equal(incomplete.exitCode,1);
+  assert.equal(incomplete.requests.filter(x=>x.url.includes("/gateway/rules")).length,10);
+  assert.match(incomplete.summary,/Gateway policies:\*\* PAGINATION INCOMPLETE/);
+});
