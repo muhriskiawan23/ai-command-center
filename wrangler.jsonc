@@ -43,11 +43,11 @@
   ],
   "vars": {
     "SEARCH_SHARED_BUDGET_ENABLED": "true",
-    "URL_READER_ENABLED": "true",
+    "URL_READER_ENABLED": "false",
     "SEARCH_PROVIDER": "tavily",
     "SEARCH_DAILY_ATTEMPT_LIMIT_TAVILY": "12",
     "URL_READER_PROVIDER": "tavily",
-    "TAVILY_EXTRACT_DAILY_URL_LIMIT": "8",
+    "TAVILY_EXTRACT_DAILY_URL_LIMIT": "0",
     "BOR_GPT_OSS_ENABLED": "false",
     "BOR_VISION_ENABLED": "true",
     "VISION_DAILY_LIMIT_GUEST": "2",
