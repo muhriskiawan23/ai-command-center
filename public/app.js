@@ -194,7 +194,7 @@ let state=AppState.INIT,conversations=[],activeId=null,busy=false,currentUser=nu
 let historyCursor=null,historyHasMore=false,historyLoadingMore=false,historyRequestSeq=0;
 /* navSeq: setiap navigasi chat menaikkan penghitung ini; pemuatan yang tertimpa navigasi lebih baru dibatalkan. */
 let navSeq=0,loadingChat=false;
-function lockComposer(){const lock=busy||loadingChat;const send=$("send"),stop=$("stopGeneration");send.disabled=lock||Boolean(attachmentPending);send.hidden=busy;stop.hidden=!busy;stop.disabled=!busy;promptEl.readOnly=lock;$("exportConversation").disabled=lock;$("printConversation").disabled=lock;$("attachPdf").disabled=lock;$("attachCsv").disabled=lock;}
+function lockComposer(){const lock=busy||loadingChat;const send=$("send"),stop=$("stopGeneration");send.disabled=lock||Boolean(attachmentPending);send.hidden=busy;stop.hidden=!busy;stop.disabled=!busy;promptEl.readOnly=lock;$("exportConversation").disabled=lock;$("printConversation").disabled=lock;$("attachPdf").setAttribute("aria-disabled",String(lock));$("pdfFile").disabled=lock;$("attachCsv").disabled=lock;}
 
 /* Yang disimpan di sessionStorage HANYA penanda "sudah memilih Guest" (agar refresh tidak kembali ke Welcome).
    Isi chat guest tidak pernah ditulis ke storage mana pun. */
@@ -1074,6 +1074,7 @@ function renderAttachmentPreview(){
   const preview=$("attachmentPreview"),progress=$("attachmentProgress");
   const pending=attachmentPending;
   const pdf=pending||activePdf,csv=pending?null:activeCsv;
+  $("editLocalPhoto").hidden=Boolean(pending)||!(csv?.kind==="image-vision"&&csv.originalFile);
   const pWrap=$("pdfAttachment"),cWrap=$("csvAttachment");
   preview.hidden=!pdf&&!csv;
   pWrap.hidden=!pdf;cWrap.hidden=!csv;
@@ -1413,7 +1414,36 @@ $("continueGuest").addEventListener("click",()=>{writeGuestFlag(true);currentUse
 $("gateRetry").addEventListener("click",boot);
 $("googleRetry").addEventListener("click",()=>loadGoogle(true));
 $("chatForm").addEventListener("submit",e=>{e.preventDefault();submit()});
-$("attachPdf").addEventListener("click",()=>{if(!busy&&!loadingChat)$("pdfFile").click()});
+$("editLocalPhoto").addEventListener("click",()=>{
+  const file=activeCsv?.kind==="image-vision"?activeCsv.originalFile:null;
+  if(!file||busy||loadingChat){toast("Pilih foto yang sudah siap sebelum mengedit.");return;}
+  // A user gesture opens the same-origin studio. The File is posted only to
+  // this exact child Window after a validated ready handshake; never stored
+  // in sessionStorage/localStorage, sent to a server, or passed to another host.
+  const child=window.open("/media-lab.html","_blank");
+  if(!child){toast("Izinkan pembukaan tab Studio gambar pada browser ini.");return;}
+  let complete=false;
+  const onReady=event=>{
+    if(complete||event.origin!==location.origin||event.source!==child||
+       event.data?.type!=="bor-media-lab-ready")return;
+    complete=true;window.removeEventListener("message",onReady);
+    try{child.postMessage({type:"bor-media-lab-photo",file},location.origin);}
+    catch{toast("Transfer foto gagal. Pilih ulang foto di Studio gambar.");}
+  };
+  window.addEventListener("message",onReady);
+  setTimeout(()=>window.removeEventListener("message",onReady),15_000);
+});
+
+// A native <label for="pdfFile"> opens the browser's file picker directly.
+// Programmatic .click() on a hidden input can be blocked on mobile WebViews.
+$("attachPdf").addEventListener("click",event=>{
+  if(busy||loadingChat||attachmentPending)event.preventDefault();
+});
+$("attachPdf").addEventListener("keydown",event=>{
+  if(event.key!=="Enter"&&event.key!==" ")return;
+  event.preventDefault();
+  if(!busy&&!loadingChat&&!attachmentPending)$("pdfFile").click();
+});
 $("pdfFile").addEventListener("change",event=>{const file=event.target.files?.[0];event.target.value="";uploadAnyFile(file)});
 $("clearPdf").addEventListener("click",()=>{clearSelectedAttachment();toast("Lampiran dilepas dari pesan.")});
 $("attachCsv").addEventListener("click",()=>{if(!busy&&!loadingChat)$("csvFile").click()});

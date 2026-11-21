@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#111a30">
+  <meta name="description" content="BOR AI Media Lab: edit efek foto dan ekstrak storyboard video secara lokal di browser. Fitur AI gambar dan video masih dalam pengembangan.">
+  <title>BOR AI — Media Lab (pratinjau lokal)</title>
+  <link rel="icon" type="image/svg+xml" href="/icon.svg">
+  <link rel="stylesheet" href="/media-lab.css">
+</head>
+<body>
+  <header class="topbar"><a href="/" class="brand"><img src="/logo-mark.svg" width="32" height="32" alt=""> BOR <span>AI</span></a><a class="back" href="/">Kembali ke chat</a></header>
+  <main>
+    <section class="hero">
+      <span class="eyebrow">MEDIA LAB · PRATINJAU LOKAL</span>
+      <h1>Studio foto & storyboard video</h1>
+      <p>Ubah warna foto, buat efek visual, simpan hasilnya, atau ambil beberapa frame dari video. Semua proses di halaman ini berjalan <strong>di perangkatmu</strong>; foto dan video tidak dikirim ke server.</p>
+      <p class="notice"><strong>Catatan:</strong> Studio ini mengedit gambar langsung di perangkat. Untuk menanyakan isi foto kepada AI vision, unggah JPG/PNG/WEBP melalui chat BOR AI. Pembuatan dan edit gambar <em>generatif</em> masih memerlukan integrasi API berbayar, kuota dan billing yang diuji.</p>
+    </section>
+    <div class="tabs" role="tablist" aria-label="Alat Media Lab">
+      <button id="photoTab" type="button" role="tab" aria-selected="true" aria-controls="photoWorkspace">Efek foto</button>
+      <button id="videoTab" type="button" role="tab" aria-selected="false" aria-controls="videoWorkspace" tabindex="-1">Cuplikan video</button>
+    </div>
+    <section id="photoWorkspace" class="workspace" role="tabpanel" aria-labelledby="photoTab">
+      <div class="panel">
+        <h2>Editor foto &amp; desain poster</h2>
+        <label for="photoFile" class="field">Pilih JPG, PNG, atau WebP (maks. 8 MB)</label>
+        <input id="photoFile" type="file" accept="image/png,image/jpeg,image/webp">
+        <div class="controls">
+          <label for="photoEffect">Efek</label>
+          <select id="photoEffect">
+            <option value="natural">Natural</option>
+            <option value="mono">Hitam putih</option>
+            <option value="vintage">Vintage</option>
+            <option value="cinematic">Sinematik</option>
+            <option value="vivid">Warna cerah</option>
+            <option value="soft">Soft portrait</option>
+          </select>
+          <label for="brightness">Kecerahan <output id="brightnessValue">100%</output></label>
+          <input id="brightness" type="range" min="50" max="150" step="5" value="100">
+          <label for="contrast">Kontras <output id="contrastValue">100%</output></label>
+          <input id="contrast" type="range" min="50" max="150" step="5" value="100">
+        </div>
+        
+        <fieldset class="caption-controls"><legend>Desain teks pada foto</legend>
+          <label for="captionText">Teks poster (opsional, maksimal 90 karakter)</label>
+          <input id="captionText" type="text" maxlength="90" placeholder="Contoh: Promo spesial hari ini">
+          <label for="captionPlacement">Posisi teks</label>
+          <select id="captionPlacement"><option value="bottom">Bawah</option><option value="top">Atas</option><option value="center">Tengah</option></select>
+          <label for="captionColor">Warna teks</label>
+          <input id="captionColor" type="color" value="#ffffff">
+        </fieldset>
+        <div class="actions">
+          <button id="resetPhoto" type="button" disabled>Reset efek</button>
+          <button id="downloadPhoto" type="button" disabled>Unduh PNG</button>
+        </div>
+        <p id="photoStatus" role="status">Pilih foto untuk mulai.</p>
+        <p class="hint">Filter dan teks poster dibuat lokal, bukan AI generatif. Foto asli tidak dimodifikasi.</p>
+      </div>
+      <div class="preview"><h2>Pratinjau hasil</h2><canvas id="photoCanvas" aria-label="Pratinjau foto setelah efek" width="640" height="360"></canvas></div>
+    </section>
+    <section id="videoWorkspace" class="workspace" role="tabpanel" aria-labelledby="videoTab" hidden>
+      <div class="panel">
+        <h2>Storyboard dari video</h2>
+        <label for="videoFile" class="field">Pilih MP4 atau WebM (maks. 40 MB dan 2 menit)</label>
+        <input id="videoFile" type="file" accept="video/mp4,video/webm">
+        <button id="extractFrames" type="button" disabled>Ambil 5 frame</button>
+        <p id="videoStatus" role="status">Pilih video untuk menampilkan frame.</p>
+        <p class="hint">Cuplikan gambar tidak sama dengan pemahaman penuh gerakan atau audio. Tidak ada video yang diunggah.</p>
+      </div>
+      <div class="preview"><h2>Cuplikan frame</h2><div id="frameList" class="frame-grid"></div></div>
+    </section>
+    <section class="future">
+      <h2>Fitur AI yang sedang dirancang</h2>
+      <div class="future-grid">
+        <article><strong>Basic — Vision</strong><p>Tanya isi gambar, bantu baca infografik dan tangkapan layar.</p></article>
+        <article><strong>Basic — Image Studio</strong><p>Buat gambar atau wallpaper AI dan edit foto dengan prompt.</p></article>
+        <article><strong>Pro — Video Insight</strong><p>Ringkasan video dari rangkaian frame, storyboard bertimestamp dan analisis visual lebih dalam.</p></article>
+        <article><strong>Pro — Creative Workspace</strong><p>Multi-reference image edits, resolusi dan kredit lebih besar setelah biaya diverifikasi.</p></article>
+      </div>
+    </section>
+  </main>
+  <footer><a href="/">BOR AI</a> · Pratinjau lokal, bukan fitur AI berbayar yang aktif.</footer>
+  <script type="module" src="/media-lab.js"></script>
+</body>
+</html>
