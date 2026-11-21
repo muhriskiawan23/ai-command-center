@@ -22,7 +22,7 @@ test("public BOR AI pages are read through fixed static assets without cookies o
   const pricing = await readFirstPartyPublicLink("https://example.test/paket.html", ownHost, assets);
   assert.equal(home.ok, true);
   assert.equal(pricing.ok, true);
-  assert.deepEqual(seen.map(req => new URL(req.url).pathname), ["/", "/paket"]);
+  assert.deepEqual(seen.map(req => new URL(req.url).pathname), ["/index.html", "/paket.html"]);
   assert.ok(seen.every(req => req.method === "GET"));
   assert.ok(seen.every(req => req.headers.get("cookie") === null && req.headers.get("authorization") === null));
   assert.ok(seen.every(req => req.redirect === "manual"));
@@ -69,4 +69,26 @@ test("unavailable ASSETS binding fails closed", async () => {
   const result = await readFirstPartyPublicLink("https://example.test/", ownHost, null);
   assert.equal(result.ok, false);
   assert.match(result.reason, /belum tersedia/);
+});
+
+
+test("first-party reader opens the repository's actual public HTML assets, not a nonexistent clean URL", async () => {
+  const { readFileSync, existsSync } = await import("node:fs");
+  const observed = [];
+  const assets = { async fetch(req) {
+    const pathname = new URL(req.url).pathname;
+    observed.push(pathname);
+    const fileUrl = new URL("../public" + pathname, import.meta.url);
+    assert.equal(existsSync(fileUrl), true, "static asset must exist: " + pathname);
+    return new Response(readFileSync(fileUrl), {
+      headers: { "Content-Type": "text/html; charset=utf-8" }
+    });
+  } };
+  const home = await readFirstPartyPublicLink("https://example.test/", ownHost, assets);
+  const pricing = await readFirstPartyPublicLink("https://example.test/paket", ownHost, assets);
+  assert.deepEqual(observed, ["/index.html", "/paket.html"]);
+  assert.equal(home.ok, true, home.reason);
+  assert.equal(pricing.ok, true, pricing.reason);
+  assert.ok(home.chars > 40);
+  assert.ok(pricing.chars > 40);
 });
