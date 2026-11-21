@@ -10,12 +10,39 @@ export function pluginCapabilities(env = {}) {
   const githubConfigured = Boolean(env.DB && env.GITHUB_APP_CLIENT_ID && env.GITHUB_APP_CLIENT_SECRET &&
     env.GITHUB_APP_REDIRECT_URI && env.GITHUB_TOKEN_ENCRYPTION_KEY);
   const githubChatEnabled = githubConfigured && env.BOR_GITHUB_CHAT_TOOLS_ENABLED === "true";
+  // Configuration only: an enabled path is not proof that a real third-party URL is readable.
+  // Do not expose credentials, URLs, billing account details or network bindings in this endpoint.
+  const readerEnabled = env.URL_READER_ENABLED === "true";
+  const extractLimit = env.TAVILY_EXTRACT_DAILY_URL_LIMIT;
+  const validExtractLimit = (typeof extractLimit === "string" && /^[0-9]+$/.test(extractLimit.trim())) || Number.isSafeInteger(extractLimit);
+  const extractBudgetReady = validExtractLimit && Number(extractLimit) >= 1 && Number(extractLimit) <= 10000;
+  const managedReaderReady = readerEnabled && env.URL_READER_PROVIDER === "tavily" &&
+    typeof env.TAVILY_API_KEY === "string" && Boolean(env.TAVILY_API_KEY.trim()) &&
+    Boolean(env.DB?.prepare) && extractBudgetReady;
+  const pinnedProxyReady = readerEnabled && env.URL_READER_PROVIDER !== "tavily" &&
+    typeof env.EGRESS_PROXY?.fetch === "function" &&
+    typeof env.EGRESS_PROXY_TOKEN === "string" && env.EGRESS_PROXY_TOKEN.length >= 32;
   return {
     version: 1,
     tools: {
       webSearch: {
         available: isSearchProviderConfigured(env),
-        invocation: "automatic"
+        invocation: "automatic",
+        scope: "search_result_snippets"
+      },
+      webReading: {
+        // Config readiness, not an attestation of upstream SSRF/redirect safety or live uptime.
+        available: Boolean(managedReaderReady || pinnedProxyReady),
+        enabled: readerEnabled,
+        scope: "public_http_links",
+        maxLinksPerMessage: 3,
+        invocation: "user_url_or_search_result",
+        externallyVerified: false
+      },
+      webActions: {
+        available: false,
+        scope: "general_browser_interaction",
+        requiresUserApproval: true
       },
       fileAnalysis: {
         available: true,
