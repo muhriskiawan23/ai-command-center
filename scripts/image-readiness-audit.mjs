@@ -50,6 +50,8 @@ export function summarizeImageReadiness({bindings,activeTraffic,publicHealth,med
     queueProbe:inventory?.queueProbe||'not_checked',
     pinnedProductionD1:inventory?.d1||'unverifiable',
     d1MetadataProbe:inventory?.d1Probe||'not_checked',
+    d1TimeTravelBookmark:inventory?.bookmark||'unverifiable',
+    d1TimeTravelProbe:inventory?.bookmarkProbe||'not_checked',
     databaseMigration:'not_checked_requires_reviewed_schema_and_time_travel_bookmark',
     urlReaderProviderSecurity:'pending_independent_review_issues_156_351'
   };
@@ -60,6 +62,7 @@ export function summarizeImageReadiness({bindings,activeTraffic,publicHealth,med
   if(features.imageFilesBound!=='present'||features.imageQueueBound!=='present')blockers.push('active_worker_missing_image_bindings');
   if(features.dedicatedR2Bucket!=='present'||features.privateR2Domains!=='verified_private'||features.dedicatedImageQueue!=='present')blockers.push('image_storage_queue_not_proven_private_ready');
   if(features.pinnedProductionD1!=='verified') blockers.push('production_d1_identity_not_verified');
+  if(features.d1TimeTravelBookmark!=='available') blockers.push('d1_recovery_bookmark_not_verified');
   blockers.push('migration_and_openai_billing_review_pending');
   if(features.readerState==='on')blockers.push('reader_provider_security_review_pending_before_preserving_release');
   if(features.activeWorkerTraffic!=='verified_100_percent')blockers.push('active_worker_version_unverified');
@@ -107,8 +110,8 @@ export async function runAudit({fetcher=fetch,env=process.env}={}){
     if(Number.isInteger(status)&&status>=400&&status<600)return 'http_error';
     return 'unverifiable';
   };
-  let bucket='unverifiable',privacy='unverifiable',queue='unverifiable',d1='unverifiable';
-  let bucketProbe='not_checked',privacyProbe='not_checked',queueProbe='not_checked',d1Probe='not_checked';
+  let bucket='unverifiable',privacy='unverifiable',queue='unverifiable',d1='unverifiable',bookmark='unverifiable';
+  let bucketProbe='not_checked',privacyProbe='not_checked',queueProbe='not_checked',d1Probe='not_checked',bookmarkProbe='not_checked';
   try {
     const found=await request('/r2/buckets/'+imageBucket,{allow404:true});
     bucket=found?'present':'absent';bucketProbe='ok';
@@ -144,11 +147,18 @@ export async function runAudit({fetcher=fetch,env=process.env}={}){
     const db=await request('/d1/database/'+encodeURIComponent(dbs[0].database_id),{allow404:true});
     d1=db?.name===dbs[0].database_name && db?.uuid===dbs[0].database_id?'verified':db?'mismatch':'absent';
     d1Probe='ok';
+    if(d1==='verified'){
+      try{
+        const value=await request('/d1/database/'+encodeURIComponent(dbs[0].database_id)+'/time_travel/bookmark');
+        bookmark=typeof value?.bookmark==='string'&&value.bookmark.length>=8&&value.bookmark.length<=128?'available':'unverifiable';
+        bookmarkProbe=bookmark==='available'?'ok':'unexpected_shape';
+      }catch(error){bookmarkProbe=probeError(error);}
+    }
   }catch(error){d1Probe=probeError(error);}
   return summarizeImageReadiness({
     bindings,activeTraffic:versions[0].percentage,
     publicHealth:health.status===200&&health.data?.ok===true&&health.data?.checks?.database===true,
-    mediaLabStatus,imageConfig:img.data,inventory:{bucket,privacy,queue,d1,bucketProbe,privacyProbe,queueProbe,d1Probe}
+    mediaLabStatus,imageConfig:img.data,inventory:{bucket,privacy,queue,d1,bookmark,bucketProbe,privacyProbe,queueProbe,d1Probe,bookmarkProbe}
   });
 }
 
