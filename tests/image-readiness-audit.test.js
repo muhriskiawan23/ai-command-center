@@ -61,6 +61,7 @@ test('read-only audit uses GET endpoints only and cannot invoke an image provide
     if(url.endsWith('/deployments?per_page=1'))return ok({deployments:[{versions:[{percentage:100,version_id:'v1'}]}]});
     if(url.endsWith('/versions/v1'))return ok({resources:{bindings}});
     if(url.endsWith('/r2/buckets/bor-ai-images'))return ok({name:'bor-ai-images'});
+    if(/\/d1\/database\/[0-9a-f-]{36}\/time_travel\/bookmark$/i.test(url))return ok({bookmark:'bookmark-synthetic-123456'});
     if(/\/d1\/database\/[0-9a-f-]{36}$/i.test(url)){
       const id=url.split('/').at(-1);
       return ok({name:'bor-ai-chat',uuid:id});
@@ -80,12 +81,14 @@ test('read-only audit uses GET endpoints only and cannot invoke an image provide
   assert.equal(report.features.mediaLabDeployed,'no');
   assert.equal(report.features.pinnedProductionD1,'verified');
   assert.equal(report.features.d1MetadataProbe,'ok');
+  assert.equal(report.features.d1Bookmark,'available');
+  assert.equal(report.features.d1BookmarkProbe,'ok');
   assert.equal(report.features.r2BucketProbe,'ok');
   assert.equal(report.features.queueProbe,'ok');
   assert.ok(calls.length>=9);
   assert.ok(calls.every(c=>c.method==='GET'));
   assert.ok(calls.every(c=>/^https:\/\/(?:api\.cloudflare\.com|ai-command-center\.muhriskiawan23\.workers\.dev)\//.test(c.url)));
-  assert.doesNotMatch(JSON.stringify(report),/synthetic-secret|not-a-real/);
+  assert.doesNotMatch(JSON.stringify(report),/synthetic-secret|not-a-real|bookmark-synthetic-123456/);
 });
 
 test('audit refuses unknown active traffic allocation and missing operator credentials',async()=>{
@@ -115,6 +118,8 @@ test('R2 permission errors remain unverifiable rather than claiming bucket missi
   assert.equal(report.features.privateR2Domains,'unverifiable');
   assert.equal(report.features.pinnedProductionD1,'unverifiable');
   assert.equal(report.features.d1MetadataProbe,'denied');
+  assert.equal(report.features.d1Bookmark,'unverifiable');
+  assert.equal(report.features.d1BookmarkProbe,'not_checked');
   assert.equal(report.features.dedicatedImageQueue,'absent');
   assert.ok(report.blockers.includes('production_d1_identity_not_verified'));
   assert.doesNotMatch(JSON.stringify(report),/synthetic-private-token/);
@@ -128,6 +133,7 @@ test('an R2 bucket found via GET stays present if private domain inventory is fo
     if(url.endsWith('/r2/buckets/bor-ai-images'))return ok({name:'bor-ai-images'});
     if(url.includes('/r2/buckets/bor-ai-images/domains/'))return new Response('',{status:403});
     if(url.includes('/queues?per_page=100&page=1'))return ok([]);
+    if(/\/d1\/database\/[0-9a-f-]{36}\/time_travel\/bookmark$/i.test(url))return ok({bookmark:'bookmark-synthetic-123456'});
     if(/\/d1\/database\/[0-9a-f-]{36}$/i.test(url)){
       const id=url.split('/').at(-1);
       return ok({name:'bor-ai-chat',uuid:id});
@@ -143,6 +149,7 @@ test('an R2 bucket found via GET stays present if private domain inventory is fo
   assert.equal(report.features.privateR2Domains,'unverifiable');
   assert.equal(report.features.r2PrivacyProbe,'denied');
   assert.equal(report.features.pinnedProductionD1,'verified');
+  assert.equal(report.features.d1Bookmark,'available');
 });
 
 test('production diagnostics workflow lists but can never apply image or billing migrations',()=>{
@@ -151,4 +158,11 @@ test('production diagnostics workflow lists but can never apply image or billing
   assert.doesNotMatch(workflow,/^\s*(?:npx|wrangler)\b[^\n]*d1 migrations apply\b/m);
   assert.doesNotMatch(workflow,/^\s*(?:npx|wrangler)\b[^\n]*deploy\b/m);
   assert.doesNotMatch(workflow,/^\s*(?:npx|wrangler)\b[^\n]*d1 execute\b/m);
+});
+
+test('bookmarks without verified metadata never produce a false restoration assurance',()=>{
+ const report=summarizeImageReadiness({...defaultParams,inventory:{d1:'unverifiable',bookmark:'unverifiable',bookmarkProbe:'denied'}});
+ assert.equal(report.features.d1Bookmark,'unverifiable');
+ assert.equal(report.features.d1BookmarkProbe,'denied');
+ assert.ok(report.blockers.includes('production_d1_bookmark_not_verified'));
 });
