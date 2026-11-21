@@ -482,3 +482,42 @@ test("Tavily Extract times out a hung D1 quota admission without contacting prov
  assert.equal(calls,0);
  assert.equal(result[0].ok,false);
 });
+
+
+test("Tavily blocks credential-bearing action URLs in paths before provider or quota usage", async () => {
+  const denied = [
+    "https://example.com/reset-password/one-time-code",
+    "https://example.com/password_reset/one-time-code",
+    "https://example.com/verify-email/one-time-code",
+    "https://example.com/magic-link/one-time-code",
+    "https://example.com/invite/abc123",
+    "https://example.com/oauth/callback/authorization-code",
+    "https://example.com/auth/callback",
+    "https://example.com/invite%2Fabc123",
+    "https://example.com/invite%252Fabc123",
+    "https://example.com/eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1In0.abc123"
+  ];
+  let calls = 0;
+  for (const url of denied) {
+    const res = await extractWithTavily([url], testEnv(), {
+      fetcher: async () => { calls++; throw Error("private link must not reach provider"); }
+    });
+    assert.equal(res[0].ok, false, url);
+    assert.match(res[0].reason, /akses pribadi/, url);
+  }
+  assert.equal(calls, 0);
+});
+
+test("public articles with ordinary paths stay eligible after private action path gate", async () => {
+  let calls = 0;
+  const url = "https://example.com/blog/how-to-protect-an-account";
+  const result = await extractWithTavily([url], testEnv(), {
+    fetcher: async (_endpoint, options) => {
+      calls++;
+      assert.deepEqual(JSON.parse(options.body).urls, [url]);
+      return Response.json({ results: [{ url, raw_content: "This ordinary public guide contains information about general account protection and safe website usage." }] });
+    }
+  });
+  assert.equal(calls, 1);
+  assert.equal(result[0].ok, true);
+});
