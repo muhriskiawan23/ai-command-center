@@ -128,7 +128,8 @@ test('ambiguous upstream timeout suspends new and queued image calls without ext
   const old=await worker.fetch(h.request('/api/images/jobs'),h.env);
   assert.equal(old.status,200);
   assert.equal((await old.json()).jobs.length,2);
-  assert.doesNotMatch(JSON.stringify((await worker.fetch(h.request('/api/images/jobs/'+first.id),h.env)).status),/synthetic network timeout/);
+  const detail=await (await worker.fetch(h.request('/api/images/jobs/'+first.id),h.env)).json();
+  assert.doesNotMatch(JSON.stringify(detail),/synthetic network timeout|private provider secret/);
  }finally{h.close();}
 });
 test('definitively rejected HTTP 400 does not suspend the entire pilot',async()=>{
