@@ -122,6 +122,9 @@ test('ambiguous upstream timeout suspends new and queued image calls without ext
   const rejected=await h.create();
   assert.equal(rejected.status,503);
   assert.equal((await rejected.json()).code,'image_pilot_suspended');
+  const config=await (await worker.fetch(h.request('/api/images/config'),h.env)).json();
+  assert.equal(config.enabled,false);
+  assert.equal(config.unavailableReason,'billing_reconciliation_pending');
   assert.equal(h.sent.length,2);
   assert.equal(h.db.sqlite.prepare('SELECT balance FROM image_wallets').get().balance,100);
   assert.equal(h.db.sqlite.prepare("SELECT COUNT(*) AS n FROM image_credit_ledger WHERE event='refund'").get().n,2);
