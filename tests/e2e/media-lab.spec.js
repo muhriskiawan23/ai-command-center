@@ -107,3 +107,16 @@ test("photo design caption renders to the local canvas and exports without uploa
   expect((await promise).suggestedFilename()).toBe("bor-ai-photo-effect.png");
   expect(posted).toEqual([]);
 });
+
+test("selected chat photo transfers directly to local studio on same origin without upload",async({page,app})=>{
+  await page.goto(app.url);
+  await page.locator("#continueGuest").click();
+  await page.locator("#pdfFile").setInputFiles({name:"poster.png",mimeType:"image/png",buffer:localIcon});
+  await expect(page.locator("#editLocalPhoto")).toBeVisible();
+  const opened=page.waitForEvent("popup");
+  await page.locator("#editLocalPhoto").click();
+  const studio=await opened;
+  await expect(studio.locator("#photoStatus")).toContainText("Foto siap");
+  await expect(studio.locator("#downloadPhoto")).toBeEnabled();
+  await expect(page.locator("#csvAttachment")).toBeVisible();
+});

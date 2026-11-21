@@ -254,6 +254,19 @@ $("extractFrames").addEventListener("click",async()=>{
     }
   }
 });
+// Import the current chat attachment without a network upload. This
+// handshake only accepts this exact same-origin opener Window and a real File.
+window.addEventListener("message",event=>{
+  if(event.origin!==location.origin||event.source!==window.opener||
+     event.data?.type!=="bor-media-lab-photo")return;
+  const file=event.data?.file;
+  if(!(file instanceof File))return;
+  tab("photo");
+  void loadPhoto(file);
+});
+if(window.opener&&window.opener!==window){
+  try{window.opener.postMessage({type:"bor-media-lab-ready"},location.origin);}catch{}
+}
 window.addEventListener("pagehide",()=>{
   cancelVideoJob();job++;
   if(imageUrl){URL.revokeObjectURL(imageUrl);imageUrl=null}

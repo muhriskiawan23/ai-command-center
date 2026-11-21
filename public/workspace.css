@@ -369,3 +369,8 @@ html[dir="rtl"] .composer-bottom{flex-direction:row}
 .profile-save,.profile-remove-photo{min-height:38px;padding:8px 13px;border:1px solid var(--line);border-radius:10px;background:var(--accent);color:var(--accentText);font:inherit;font-size:12px;font-weight:650}
 .profile-remove-photo{background:transparent;color:var(--text)}
 .profile-save:hover,.profile-remove-photo:hover{filter:brightness(.97)}
+
+/* Client-side editing entry appears only for the currently selected image. */
+.attachment-edit-local{display:inline-flex;align-items:center;justify-content:center;max-width:100%;margin:5px 0 2px;padding:7px 11px;border:1px solid var(--line);border-radius:9px;background:var(--surface);color:var(--text);font:inherit;font-size:12px;cursor:pointer}
+.attachment-edit-local:hover,.attachment-edit-local:focus-visible{background:var(--hover)}
+.attachment-edit-local[hidden]{display:none}

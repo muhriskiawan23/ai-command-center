@@ -1074,6 +1074,7 @@ function renderAttachmentPreview(){
   const preview=$("attachmentPreview"),progress=$("attachmentProgress");
   const pending=attachmentPending;
   const pdf=pending||activePdf,csv=pending?null:activeCsv;
+  $("editLocalPhoto").hidden=Boolean(pending)||!(csv?.kind==="image-vision"&&csv.originalFile);
   const pWrap=$("pdfAttachment"),cWrap=$("csvAttachment");
   preview.hidden=!pdf&&!csv;
   pWrap.hidden=!pdf;cWrap.hidden=!csv;
@@ -1413,6 +1414,26 @@ $("continueGuest").addEventListener("click",()=>{writeGuestFlag(true);currentUse
 $("gateRetry").addEventListener("click",boot);
 $("googleRetry").addEventListener("click",()=>loadGoogle(true));
 $("chatForm").addEventListener("submit",e=>{e.preventDefault();submit()});
+$("editLocalPhoto").addEventListener("click",()=>{
+  const file=activeCsv?.kind==="image-vision"?activeCsv.originalFile:null;
+  if(!file||busy||loadingChat){toast("Pilih foto yang sudah siap sebelum mengedit.");return;}
+  // A user gesture opens the same-origin studio. The File is posted only to
+  // this exact child Window after a validated ready handshake; never stored
+  // in sessionStorage/localStorage, sent to a server, or passed to another host.
+  const child=window.open("/media-lab.html","_blank");
+  if(!child){toast("Izinkan pembukaan tab Studio gambar pada browser ini.");return;}
+  let complete=false;
+  const onReady=event=>{
+    if(complete||event.origin!==location.origin||event.source!==child||
+       event.data?.type!=="bor-media-lab-ready")return;
+    complete=true;window.removeEventListener("message",onReady);
+    try{child.postMessage({type:"bor-media-lab-photo",file},location.origin);}
+    catch{toast("Transfer foto gagal. Pilih ulang foto di Studio gambar.");}
+  };
+  window.addEventListener("message",onReady);
+  setTimeout(()=>window.removeEventListener("message",onReady),15_000);
+});
+
 $("attachPdf").addEventListener("click",()=>{if(!busy&&!loadingChat)$("pdfFile").click()});
 $("pdfFile").addEventListener("change",event=>{const file=event.target.files?.[0];event.target.value="";uploadAnyFile(file)});
 $("clearPdf").addEventListener("click",()=>{clearSelectedAttachment();toast("Lampiran dilepas dari pesan.")});
