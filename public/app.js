@@ -604,7 +604,7 @@ async function applyRoute(){
 async function openRemoteChat(cid){
   try{
     const d=await api("/api/conversations/"+encodeURIComponent(cid));
-    if(!conversations.some(c=>c.id===cid))conversations.push({id:cid,serverId:cid,title:d.conversation?.title||"Percakapan",pinned:Boolean(d.conversation?.pinned),messages:d.messages||[],truncated:Boolean(d.truncated),updated:(d.conversation?.updated_at||0)*1000,loaded:true});
+    if(!conversations.some(c=>c.id===cid))conversations.push({id:cid,serverId:cid,title:d.conversation?.title||"Percakapan",pinned:Boolean(d.conversation?.pinned),messages:hydrateChatImageTurns(d.messages,d.imageJobs),truncated:Boolean(d.truncated),updated:(d.conversation?.updated_at||0)*1000,loaded:true});
     return showChat(cid);
   }catch{return false}
 }
@@ -794,6 +794,23 @@ function renderHistory(){
 }
 /* Menampilkan chat tanpa menyentuh history; pemanggil yang menentukan rute.
    Mengembalikan true (tampil), false (gagal/tidak ada), atau null (dibatalkan oleh navigasi yang lebih baru). */
+// The Worker returns account-owned image jobs only after the optional history
+// schema is enabled. Rebuild view turns from metadata, never from image bytes.
+function hydrateChatImageTurns(messages,imageJobs){
+  const items=Array.isArray(messages)?messages.slice():[];
+  if(!Array.isArray(imageJobs))return items;
+  for(const job of imageJobs){
+    if(!job || !/^[a-f0-9-]{36}$/i.test(String(job.id||'')) ||
+       !['generate','edit'].includes(job.mode) || typeof job.prompt!=='string')continue;
+    const timestamp=Number.isSafeInteger(job.createdAt)?job.createdAt:0;
+    items.push({role:'user',content:job.prompt,created_at:timestamp,imagePromptFor:job.id});
+    items.push({role:'assistant',content:'Hasil gambar BOR AI',created_at:timestamp,imageJob:job});
+  }
+  return items.map((item,index)=>({item,index})).sort((a,b)=>{
+    const dateA=Number(a.item.created_at)||0,dateB=Number(b.item.created_at)||0;
+    return dateA-dateB||a.index-b.index;
+  }).map(({item})=>item);
+}
 async function showChat(cid){
   const c=conversations.find(x=>x.id===cid);if(!c)return false;
   const seq=++navSeq;
@@ -802,7 +819,7 @@ async function showChat(cid){
     try{
       const d=await api("/api/conversations/"+encodeURIComponent(c.serverId));
       if(seq!==navSeq)return null;
-      c.messages=d.messages||[];c.loaded=true;c.truncated=Boolean(d.truncated);c.title=d.conversation?.title||c.title;c.pinned=Boolean(d.conversation?.pinned);if(d.truncated)toast("Percakapan panjang: hanya 500 pesan terakhir yang ditampilkan.");
+      c.messages=hydrateChatImageTurns(d.messages,d.imageJobs);c.loaded=true;c.truncated=Boolean(d.truncated);c.title=d.conversation?.title||c.title;c.pinned=Boolean(d.conversation?.pinned);if(d.truncated)toast("Percakapan panjang: hanya 500 pesan terakhir yang ditampilkan.");
     }catch(e){if(seq!==navSeq)return null;toast(e.message||"Gagal memuat chat");return false}
     finally{if(seq===navSeq){loadingChat=false;lockComposer()}}
   }
@@ -1661,12 +1678,19 @@ $('imageConfirm').addEventListener('click',async()=>{
   $('imageQuote').textContent='Mengunggah dan mengantrekan gambar…';
   try{
     const sourceImage=pending.file?await originalImageData(pending.file):undefined;
-    const job=await postJson('/api/images/jobs',{requestId:pending.requestId,prompt:pending.text,mode:pending.mode,tariffVersion:pending.tariffVersion,maxCredits:pending.maxCredits,sourceImage,sourceJobId:pending.sourceJobId||undefined,size:$('imageSize').value,outputFormat:$('imageFormat').value},30000);
+    const localChat=conversations.find(c=>c.id===pending.chatId);
+    const conversationId=localChat?.serverId||undefined;
+    const job=await postJson('/api/images/jobs',{requestId:pending.requestId,prompt:pending.text,mode:pending.mode,tariffVersion:pending.tariffVersion,maxCredits:pending.maxCredits,sourceImage,sourceJobId:pending.sourceJobId||undefined,conversationId,size:$('imageSize').value,outputFormat:$('imageFormat').value},30000);
     $('imageDialog').close();
     if(pending.chatId===activeId){
       if(!activeId){
-        activeId=id();
-        conversations.push({id:activeId,serverId:null,title:pending.text.replace(/\s+/g,' ').slice(0,72),messages:[],updated:Date.now(),loaded:true});
+        activeId=job.conversationId||id();
+        conversations.push({id:activeId,serverId:job.conversationId||null,title:pending.text.replace(/\s+/g,' ').slice(0,72),messages:[],updated:Date.now(),loaded:true});
+        replaceRoute({name:'chat',id:activeId});
+      }else if(job.conversationId&&localChat&&!localChat.serverId){
+        localChat.serverId=job.conversationId;
+        localChat.id=job.conversationId;
+        activeId=job.conversationId;
         replaceRoute({name:'chat',id:activeId});
       }
       const chat=conversations.find(c=>c.id===activeId);
