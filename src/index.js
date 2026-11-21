@@ -5,7 +5,7 @@ import { imageIntent } from "../public/image-intent.js";
 import { safeError, safeAiBindingFailure } from "./safe-error.js";
 import { validateCustomization, customizationNotice } from "./customization.js";
 import { CONFIDENTIALITY_NOTICE, isConfidentialityRequest, confidentialityReply, containsProtectedOutput } from "./confidentiality.js";
-import { extractUrls, readLinks, buildPageContext, summarizeLinks } from "./links.js";
+import { extractUrls, validateUrl, readLinks, buildPageContext, summarizeLinks } from "./links.js";
 import { isFirstPartyHost, readFirstPartyPublicLink } from "./first-party-public-pages.js";
 import { createVerifiedLinkFetcher } from "./verified-egress.js";
 import { extractWithTavily } from "./tavily-extract.js";
@@ -290,10 +290,16 @@ async function readChatLinks(urls, env, ownHost) {
         ownHost
       });
   }
-  const byIndex = new Map(externalIndexes.map((index, position) => [
-    index,
-    externalResults[position] || { ok: false, url: urls[index], requested: urls[index], reason: "Pembacaan tautan eksternal belum tersedia." }
-  ]));
+  const byIndex = new Map(externalIndexes.map((index, position) => {
+    const validated = validateUrl(urls[index], ownHost);
+    return [
+      index,
+      externalResults[position] || {
+        ok: false, url: urls[index], requested: urls[index],
+        reason: validated.ok ? "Pembacaan tautan eksternal belum tersedia." : validated.reason
+      }
+    ];
+  }));
   return urls.map((_, index) => firstParty[index] ?? byIndex.get(index));
 }
 
