@@ -60,11 +60,11 @@ test("Tavily Extract rejects oversized responses", async () => {
   assert.equal(result[0].ok, false);
 });
 
-test("Tavily adapter is feature-flagged in both chat URL and research paths", async () => {
+test("Tavily external URL paths remain behind the explicit reader gate", async () => {
   const { readFileSync } = await import("node:fs");
   const source = readFileSync(new URL("../src/index.js", import.meta.url), "utf8");
-  const occurrences = source.match(/env\.URL_READER_ENABLED === "true" && env\.URL_READER_PROVIDER === "tavily"/g) || [];
-  assert.equal(occurrences.length, 2);
+  assert.match(source, /if \(externalUrls\.length && env\.URL_READER_ENABLED === "true"\)/);
+  assert.match(source, /if \(pageCandidates\.length && env\.URL_READER_ENABLED === "true"\)/);
   const config = readFileSync(new URL("../wrangler.jsonc", import.meta.url), "utf8");
   assert.match(config, /"URL_READER_ENABLED": "false"/);
   assert.match(config, /"URL_READER_PROVIDER": "tavily"/);
