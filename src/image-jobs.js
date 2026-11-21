@@ -56,13 +56,33 @@ const findJob = (env,id,userId) => env.DB.prepare('SELECT * FROM image_jobs WHER
 // unmigrated D1 must give a stable response rather than leaking a SQL error.
 const imageSchemaMissing = error => /\bno such table:\s*(?:main\.)?(?:image_jobs|image_wallets|image_credit_ledger)\b/i.test(String(error?.message || ''));
 const imageSchemaUnavailable = () => json({error:'Riwayat gambar belum tersedia. Infrastruktur sedang disiapkan.',code:'image_schema_unavailable'},503);
-// An upstream timeout/invalid response can still incur provider charges. Once
-// observed, stop the pilot globally until the owner reconciles provider usage.
-// Keep the marker in D1 across expired jobs; never auto-clear on cleanup.
+// Operator-owned aggregate: no user IDs, no user/job foreign key and never
+// decremented by account deletion, expiry or retry. Missing/corrupt state halts
+// all paid calls rather than falling back to the deletable image_jobs table.
 const BILLING_UNVERIFIED = 'image_provider_billing_unverified';
-const pilotBillingUnverified = async env => Boolean(await env.DB.prepare(
-  "SELECT id FROM image_jobs WHERE error_code='image_provider_billing_unverified' LIMIT 1"
-).first());
+async function pilotState(env) {
+  const row = await env.DB.prepare(
+    'SELECT admitted_count,unsettled_calls,provider_hold FROM image_pilot_meter WHERE singleton=1'
+  ).first();
+  if (!row || !Number.isSafeInteger(row.admitted_count) || row.admitted_count < 0 ||
+      ![0,1].includes(row.unsettled_calls) || ![0,1].includes(row.provider_hold))
+    throw new Error('image_pilot_meter_unavailable');
+  return row.provider_hold ? 'billing_reconciliation_pending'
+    : row.unsettled_calls ? 'image_pilot_in_flight' : null;
+}
+const pilotBillingUnverified = async env => Boolean(await pilotState(env));
+async function settlePilotCall(env) {
+  const result = await env.DB.prepare(
+    'UPDATE image_pilot_meter SET unsettled_calls=0,updated_at=? WHERE singleton=1 AND unsettled_calls=1 AND provider_hold=0'
+  ).bind(nowSeconds()).run();
+  if (result.meta?.changes!==1) throw new Error('image_pilot_meter_unavailable');
+}
+async function holdPilotBilling(env) {
+  const result = await env.DB.prepare(
+    'UPDATE image_pilot_meter SET provider_hold=1,updated_at=? WHERE singleton=1'
+  ).bind(nowSeconds()).run();
+  if (result.meta?.changes!==1) throw new Error('image_pilot_meter_unavailable');
+}
 async function failJob(env,id,code) {
   await env.DB.prepare("UPDATE image_jobs SET status='failed', error_code=?, updated_at=? WHERE id=? AND status IN ('queued','processing')").bind(code,nowSeconds(),id).run();
 }
@@ -73,7 +93,8 @@ export async function handleImageRoute(request, env, url, deps) {
     const config = imageConfig(env);
     if (!config.enabled) return json(config);
     try {
-      if (await pilotBillingUnverified(env)) return json({...config,enabled:false,unavailableReason:'billing_reconciliation_pending'});
+      const unavailableReason = await pilotState(env);
+      if (unavailableReason) return json({...config,enabled:false,unavailableReason});
     } catch {
       // Availability must fail closed rather than advertise a paid service that
       // cannot prove its D1 billing marker state. No raw SQL/provider errors.
@@ -197,7 +218,7 @@ export async function handleImageRoute(request, env, url, deps) {
       SELECT ?,?,?,?,?,?,?,?,?,'queued',?,?,?,?,?,?,?,?
       WHERE (SELECT COUNT(*) FROM image_jobs WHERE created_at>=? AND user_id=?) < ?
         AND (SELECT COUNT(*) FROM image_jobs WHERE created_at>=?) < ?
-        AND (SELECT COUNT(*) FROM image_jobs) < ?`)
+        AND (SELECT admitted_count FROM image_pilot_meter WHERE singleton=1) < ?`)
       .bind(id,user.id,requestId,fingerprint,mode,prompt,env.OPENAI_IMAGE_MODEL || 'gpt-image-2.5-sunburst',format,size,key,source?.mime || null,config.credits[mode],config.tariffVersion,now,now,now+RETENTION,conversationId,
         now-now%86400,user.id,positive(env.IMAGE_DAILY_LIMIT_USER)||3,now-now%86400,positive(env.IMAGE_DAILY_LIMIT_GLOBAL)||20,config.pilotMaxAttempts).run();
   } catch (error) {
@@ -261,7 +282,13 @@ export async function processImageJob(env,id) {
       body.set('image',new Blob([await source.arrayBuffer()],{type:row.source_mime}),'source.'+(row.source_mime.split('/')[1]));
     } else { body = JSON.stringify(options); headers['Content-Type']='application/json'; }
     const signal = AbortSignal.timeout(150_000);
-    // From this point an outcome may be billed even if no usable response arrives.
+    // Persist a global pending-provider-call marker BEFORE any network dispatch.
+    // It survives Worker termination and account deletion. Only one call may be
+    // unsettled at once; extra queue consumers cannot bypass this D1 guard.
+    const admitted = await env.DB.prepare(
+      'UPDATE image_pilot_meter SET unsettled_calls=1,updated_at=? WHERE singleton=1 AND provider_hold=0 AND unsettled_calls=0'
+    ).bind(nowSeconds()).run();
+    if (admitted.meta?.changes!==1) throw new Error('image_pilot_suspended');
     providerAttempted = true;
     const response = await (env.IMAGE_FETCHER || fetch)('https://api.openai.com/v1/images/'+(row.mode === 'edit' ? 'edits' : 'generations'),{method:'POST',headers,body,signal,redirect:'error'});
     if (!response.ok) throw new Error(response.status === 400 ? 'image_request_rejected' : response.status === 429 ? 'image_provider_limit' : 'image_provider_error');
@@ -277,17 +304,28 @@ export async function processImageJob(env,id) {
     for (const key of ['input_tokens','output_tokens','total_tokens']) if (Number.isSafeInteger(result.usage?.[key]) && result.usage[key]>=0) usage[key]=result.usage[key];
     const updated = await env.DB.prepare("UPDATE image_jobs SET status='completed', output_key=?, output_bytes=?, usage_json=?, updated_at=? WHERE id=? AND status='processing'")
       .bind(outputKey,bytes.length,JSON.stringify(usage),nowSeconds(),id).run();
-    if (!updated.meta?.changes) await env.IMAGE_FILES.delete(outputKey);
+    if (!updated.meta?.changes) {
+      await env.IMAGE_FILES.delete(outputKey);
+      throw new Error('image_completion_unverifiable');
+    }
+    await settlePilotCall(env);
   } catch (error) {
     const persisted = await env.DB.prepare('SELECT status FROM image_jobs WHERE id=?').bind(id).first();
-    if (persisted?.status === 'completed') return; // completion may commit even if its acknowledgement was lost
+    if (persisted?.status === 'completed') return; // successful output exists; leftover unsettled marker safely pauses further calls
     const allowed = ['images_unavailable','image_pilot_suspended','source_unavailable','image_request_rejected','image_provider_limit','image_provider_error','invalid_provider_output','provider_output_too_large'];
     // Confirmed 400/429 rejections are not completed image generations; every
     // other post-dispatch failure is conservatively treated as billing-unknown.
     // Customer credit refund policy is unchanged; no automatic paid retry.
-    const code = providerAttempted && !['image_request_rejected','image_provider_limit'].includes(error?.message)
+    const definitelyRejected = ['image_request_rejected','image_provider_limit'].includes(error?.message);
+    const code = providerAttempted && !definitelyRejected
       ? BILLING_UNVERIFIED
       : allowed.includes(error?.message) ? error.message : 'image_processing_failed';
+    if (providerAttempted) {
+      // Independent of image_jobs: if the user deleted their account during
+      // provider execution, an uncertain charge still freezes the whole pilot.
+      if (definitelyRejected) await settlePilotCall(env);
+      else await holdPilotBilling(env);
+    }
     await failJob(env,id,code);
     if (outputKey) await env.IMAGE_FILES.delete(outputKey);
   } finally {

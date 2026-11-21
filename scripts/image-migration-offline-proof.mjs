@@ -27,7 +27,7 @@ export function proveIsolatedImageSchema(){
     }
     const names=sqlite.prepare("SELECT name FROM sqlite_master WHERE type IN ('table','index','trigger')").all().map(r=>r.name);
     const exists=name=>names.includes(name);
-    for(const required of ['image_jobs','image_wallets','image_credit_ledger','image_reserve','image_reserve_debit','image_refund','image_grant','image_jobs_by_conversation'])
+    for(const required of ['image_jobs','image_wallets','image_credit_ledger','image_pilot_meter','image_pilot_admit','image_pilot_hold','image_reserve','image_reserve_debit','image_refund','image_grant','image_jobs_by_conversation'])
       if(!exists(required))throw Error('Image-only schema is incomplete');
     const cols=sqlite.prepare('PRAGMA table_info(image_jobs)').all().map(r=>r.name);
     if(!cols.includes('conversation_id'))throw Error('Chat association column is missing');
