@@ -1599,7 +1599,7 @@ async function prepareImageRequest(text,mode,attachment,sourceJobId=null){
   try{
     const config=await api('/api/images/config');
     if(!config.enabled){toast('Fitur buat/edit gambar belum aktif di BOR AI saat ini.');return;}
-    pendingImageRequest={text,mode,tariffVersion:config.tariffVersion,maxCredits:config.credits[mode],file:attachment?.originalFile||null,sourceJobId:attachment?.originalFile?null:sourceJobId,chatId:activeId,requestId:crypto.randomUUID()};
+    pendingImageRequest={text,mode,tariffVersion:config.tariffVersion,maxCredits:config.credits[mode],file:mode==='edit'?(attachment?.originalFile||null):null,sourceJobId:mode==='edit'?(attachment?.originalFile?null:sourceJobId):null,chatId:activeId,requestId:crypto.randomUUID()};
     $('imageQuote').textContent='Biaya: '+config.credits[mode]+' kredit gambar · tarif '+config.tariffVersion+'. Kredit dikembalikan jika job gagal.';
     $('imageSourceNotice').textContent=mode==='edit'?'Sumber: '+(attachment?.name||'hasil gambar sebelumnya'):'';
     $('imageGallery').replaceChildren();$('imageConfirm').hidden=false;$('imageConfirm').disabled=false;
