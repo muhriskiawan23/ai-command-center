@@ -127,3 +127,36 @@ test("HTTP chat keeps first-party APIs and URLs with queries out of both readers
   assert.ok(result.body.links?.length === 2);
   assert.ok(result.body.links.every(link => !link.ok));
 });
+
+test("HTTP chat reads a public share link without forwarding tracking or fragment values", async () => {
+  const { env, calls } = setup();
+  const result = await chat(env, "Ringkas https://example.com/article?utm_source=private#section");
+  assert.equal(result.status, 200);
+  assert.deepEqual(calls, [["https://example.com/article"]]);
+  assert.equal(result.body.links[0].ok, true);
+});
+
+test("HTTP chat uses verified egress when Tavily fails for an eligible public link", async () => {
+  const { env, calls } = setup();
+  delete env.TAVILY_API_KEY;
+  const forwarded = [];
+  env.EGRESS_PROXY_TOKEN = "x".repeat(32);
+  env.EGRESS_PROXY = { async fetch(_url, options) {
+    forwarded.push(JSON.parse(options.body).url);
+    return Response.json({
+      status: 200,
+      headers: { "content-type": "text/plain" },
+      bodyBase64: btoa("This is the public article recovered through the verified transport."),
+      peerIp: "93.184.215.14",
+      transport: {
+        peerIpVerified: true, selectedPeerIp: "93.184.215.14", observedPeerIp: "93.184.215.14",
+        tlsAuthorized: true, tlsIdentityVerified: true, tlsServername: "example.com"
+      }
+    });
+  } };
+  const result = await chat(env, "Ringkas https://example.com/article dan https://example.com/private?token=private");
+  assert.equal(result.status, 200);
+  assert.deepEqual(forwarded, ["https://example.com/article"]);
+  assert.deepEqual(calls, []);
+  assert.deepEqual(result.body.links.map(link => link.ok), [true, false]);
+});

@@ -7,7 +7,7 @@ import { validateCustomization, customizationNotice } from "./customization.js";
 import { CONFIDENTIALITY_NOTICE, isConfidentialityRequest, confidentialityReply, containsProtectedOutput } from "./confidentiality.js";
 import { extractUrls, validateUrl, readLink, readLinks, buildPageContext, summarizeLinks } from "./links.js";
 import { createVerifiedLinkFetcher } from "./verified-egress.js";
-import { extractWithTavily } from "./tavily-extract.js";
+import { checkPublicUrl, extractWithTavily } from "./tavily-extract.js";
 import { PDF_MAX_BYTES, PDF_CONTEXT_MAX_CHARS, safePdfName, normalizePdfConversion, buildPdfContext, validatePdfPageCitations, SPREADSHEET_CONTEXT_MAX_CHARS, safeSpreadsheetName, buildSpreadsheetContext, PRESENTATION_CONTEXT_MAX_CHARS, safePresentationName, buildPresentationContext, WORD_CONTEXT_MAX_CHARS, buildWordDocumentContext, IMAGE_OCR_CONTEXT_MAX_CHARS, buildImageOcrContext } from "./documents.js";
 import { validateCitationReferences } from "./citations.js";
 import { detectResearchMode, isSearchProviderConfigured, searchExternal, buildResearchContext, retrieveCuratedKnowledge } from "./research.js";
@@ -282,6 +282,30 @@ const PUBLIC_LINK_ASSETS = new Map([
   ["/paket.html", "/paket"]
 ]);
 
+async function readExternalChatLinks(urls, env, ownHost) {
+  const verifiedFetcher = createVerifiedLinkFetcher(env);
+  if (env.URL_READER_PROVIDER !== "tavily") {
+    return readLinks(urls, { ownHost, fetcher: verifiedFetcher || env.LINK_FETCHER || null });
+  }
+  const results = await extractWithTavily(urls, env, { ownHost, fetcher: env.TAVILY_EXTRACT_FETCHER || fetch });
+  if (!verifiedFetcher) return results;
+
+  return Promise.all(results.map(async result => {
+    if (result.ok) return result;
+    const target = checkPublicUrl(result.requested, ownHost);
+    if (!target.ok) return result;
+    const fallback = await readLink(target.url.toString(), {
+      ownHost,
+      fetcher: (raw, options) => {
+        const check = checkPublicUrl(raw, ownHost);
+        if (!check.ok) throw new Error("external_link_blocked");
+        return verifiedFetcher(check.url.toString(), options);
+      }
+    });
+    return { ...fallback, requested: result.requested };
+  }));
+}
+
 async function readChatLinks(urls, env, requestUrl) {
   const host = value => value.toLowerCase().replace(/\.$/, "");
   const firstParty = new Map();
@@ -299,9 +323,7 @@ async function readChatLinks(urls, env, requestUrl) {
 
   const ownHost = requestUrl.hostname;
   const [remoteResults, localResults] = await Promise.all([
-    external.length === 0 ? [] : env.URL_READER_PROVIDER === "tavily"
-      ? extractWithTavily(external, env, { ownHost, fetcher: env.TAVILY_EXTRACT_FETCHER || fetch })
-      : readLinks(external, { ownHost, fetcher: createVerifiedLinkFetcher(env) || env.LINK_FETCHER || null }),
+    external.length ? readExternalChatLinks(external, env, ownHost) : [],
     Promise.all(Array.from(firstParty, async ([raw, asset]) => {
       const check = validateUrl(raw);
       if (!check.ok) return [raw, { ok: false, url: raw, reason: check.reason }];
