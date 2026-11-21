@@ -1236,8 +1236,14 @@ async function handleConversationRoute(request, env, url) {
       links: row.links_json ? safeParseLinks(row.links_json) : [],
       feedback: row.feedback_rating ? { rating: row.feedback_rating, reason: row.feedback_reason || "" } : null
     }));
-    const imageJobs = await listChatImageJobs(env,user.id,conversationId);
-    return json({ conversation, messages, truncated, imageJobs });
+    // The original text history stays readable even if an optional image
+    // migration is missing or an image query encounters transient D1 errors.
+    let imageJobs = [], imageHistoryUnavailable = false;
+    if (env.BOR_IMAGE_CHAT_HISTORY_ENABLED === "true") {
+      try { imageJobs = await listChatImageJobs(env,user.id,conversationId); }
+      catch { imageHistoryUnavailable = true; }
+    }
+    return json({ conversation, messages, truncated, imageJobs, imageHistoryUnavailable });
   }
   if (request.method === "PATCH") {
     const parsed = await readJsonRequest(request, 4096);
