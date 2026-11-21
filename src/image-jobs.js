@@ -42,6 +42,15 @@ function publicJob(row) {
     files: completed ? [{ id: row.id, name: `bor-ai-${row.id}.${row.output_format}`, mimeType: MIME[row.output_format], size: row.output_bytes,
       previewUrl: `/api/files/${row.id}/preview`, downloadUrl: `/api/files/${row.id}/download` }] : [] };
 }
+// Optional read-only per-chat media view. Do not query an unmigrated production
+// database unless an operator explicitly enables the separately reviewed schema.
+export async function listChatImageJobs(env,userId,conversationId) {
+  if (env.BOR_IMAGE_CHAT_HISTORY_ENABLED !== 'true' || !env.DB) return [];
+  const result=await env.DB.prepare(
+    "SELECT * FROM image_jobs WHERE user_id=? AND conversation_id=? AND status!='expired' ORDER BY created_at DESC,id DESC LIMIT 50"
+  ).bind(userId,conversationId).all();
+  return (result.results || []).reverse().map(publicJob);
+}
 const findJob = (env,id,userId) => env.DB.prepare('SELECT * FROM image_jobs WHERE id = ? AND user_id = ?').bind(id,userId).first();
 async function failJob(env,id,code) {
   await env.DB.prepare("UPDATE image_jobs SET status='failed', error_code=?, updated_at=? WHERE id=? AND status IN ('queued','processing')").bind(code,nowSeconds(),id).run();
