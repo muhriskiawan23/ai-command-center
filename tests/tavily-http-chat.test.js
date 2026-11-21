@@ -93,3 +93,56 @@ test("HTTP chat refuses Tavily extraction when the explicit budget is absent", a
   assert.ok([200, 502].includes(result.status));
   assert.equal(calls.length, 0);
 });
+
+
+test("HTTP chat reads BOR AI public assets with Tavily disabled, without any provider call", async () => {
+  const { env, calls, prompts } = setup("false");
+  const paths = [];
+  env.ASSETS = { async fetch(req) {
+    paths.push(new URL(req.url).pathname);
+    assert.equal(req.headers.get("cookie"), null);
+    assert.equal(req.headers.get("authorization"), null);
+    return new Response("<title>BOR AI</title><p>BOR AI offers a helpful public assistant and a clear view of available features.</p>", { headers: { "Content-Type": "text/html" } });
+  } };
+  const result = await chat(env, "Ringkas https://example.test/ dan https://example.test/paket.html");
+  assert.equal(result.status, 200);
+  assert.deepEqual(paths, ["/index.html", "/paket.html"]);
+  assert.deepEqual(calls, []);
+  assert.deepEqual(result.body.links.map(x => x.ok), [true, true]);
+  assert.ok(prompts.some(p => p.includes("helpful public assistant")));
+});
+
+test("HTTP chat blocks account pages and query URLs even when external reading is enabled", async () => {
+  const { env, calls } = setup("true");
+  let assetCalls = 0;
+  env.ASSETS = { async fetch() { assetCalls++; throw Error("private route should not be fetched"); } };
+  const result = await chat(env, "Baca https://example.test/api/auth/me dan https://example.test/paket?token=secret");
+  assert.equal(assetCalls, 0);
+  assert.deepEqual(calls, []);
+  assert.ok([200, 502].includes(result.status));
+  if (result.body.links) assert.ok(result.body.links.every(link => !link.ok));
+});
+
+test("HTTP chat preserves citation order for local public and unavailable external pages", async () => {
+  const { env, calls } = setup("false");
+  env.ASSETS = { async fetch() {
+    return new Response("<title>BOR AI</title><p>Public BOR AI homepage explains useful AI features and general information.</p>", { headers: { "Content-Type": "text/html" } });
+  } };
+  const result = await chat(env, "Ringkas https://example.test/ dan https://other.example/article");
+  assert.equal(result.status, 200);
+  assert.deepEqual(calls, []);
+  assert.deepEqual(result.body.links.map(link => [link.host, link.ok]), [
+    ["example.test", true], ["other.example", false]
+  ]);
+});
+
+test("HTTP chat sends only external URLs to Tavily when explicitly enabled", async () => {
+  const { env, calls } = setup("true");
+  env.ASSETS = { async fetch() {
+    return new Response("<title>BOR AI</title><p>This is the public homepage for the BOR AI assistant and its features.</p>", { headers: { "Content-Type": "text/html" } });
+  } };
+  const result = await chat(env, "Ringkas https://example.test/ dan https://example.com/guide");
+  assert.equal(result.status, 200);
+  assert.deepEqual(calls, [["https://example.com/guide"]]);
+  assert.deepEqual(result.body.links.map(link => link.ok), [true, true]);
+});

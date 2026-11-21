@@ -5,7 +5,8 @@ import { imageIntent } from "../public/image-intent.js";
 import { safeError, safeAiBindingFailure } from "./safe-error.js";
 import { validateCustomization, customizationNotice } from "./customization.js";
 import { CONFIDENTIALITY_NOTICE, isConfidentialityRequest, confidentialityReply, containsProtectedOutput } from "./confidentiality.js";
-import { extractUrls, readLinks, buildPageContext, summarizeLinks } from "./links.js";
+import { extractUrls, validateUrl, readLinks, buildPageContext, summarizeLinks } from "./links.js";
+import { isFirstPartyHost, readFirstPartyPublicLink } from "./first-party-public-pages.js";
 import { createVerifiedLinkFetcher } from "./verified-egress.js";
 import { extractWithTavily } from "./tavily-extract.js";
 import { PDF_MAX_BYTES, PDF_CONTEXT_MAX_CHARS, safePdfName, normalizePdfConversion, buildPdfContext, validatePdfPageCitations, SPREADSHEET_CONTEXT_MAX_CHARS, safeSpreadsheetName, buildSpreadsheetContext, PRESENTATION_CONTEXT_MAX_CHARS, safePresentationName, buildPresentationContext, WORD_CONTEXT_MAX_CHARS, buildWordDocumentContext, IMAGE_OCR_CONTEXT_MAX_CHARS, buildImageOcrContext } from "./documents.js";
@@ -272,6 +273,34 @@ async function serveAsset(request, env) {
     statusText: response.statusText,
     headers
   });
+}
+
+// Same-host public assets never use the external reader or Tavily.
+// External URLs retain the existing disabled-by-default safety switch.
+async function readChatLinks(urls, env, ownHost) {
+  const firstParty = await Promise.all(urls.map(raw => readFirstPartyPublicLink(raw, ownHost, env.ASSETS)));
+  const externalIndexes = urls.flatMap((_raw, index) => firstParty[index] === null ? [index] : []);
+  const externalUrls = externalIndexes.map(index => urls[index]);
+  let externalResults = [];
+  if (externalUrls.length && env.URL_READER_ENABLED === "true") {
+    externalResults = env.URL_READER_PROVIDER === "tavily"
+      ? await extractWithTavily(externalUrls, env, { ownHost, fetcher: env.TAVILY_EXTRACT_FETCHER || fetch })
+      : await readLinks(externalUrls, {
+        fetcher: createVerifiedLinkFetcher(env) || env.LINK_FETCHER || null,
+        ownHost
+      });
+  }
+  const byIndex = new Map(externalIndexes.map((index, position) => {
+    const validated = validateUrl(urls[index], ownHost);
+    return [
+      index,
+      externalResults[position] || {
+        ok: false, url: urls[index], requested: urls[index],
+        reason: validated.ok ? "Pembacaan tautan belum tersedia pada layanan ini." : validated.reason
+      }
+    ];
+  }));
+  return urls.map((_, index) => firstParty[index] ?? byIndex.get(index));
 }
 
 async function readRequestBytesWithinLimit(request, maxBytes) {
@@ -1658,7 +1687,7 @@ export default {
       const researchMode = detectResearchMode(message);
       // External link reading and live search consume extra provider/network budget.
       const researchCharge = researchMode && isSearchProviderConfigured(env) ? 1 : 0;
-      const linkCharge = found.urls.length && env.URL_READER_ENABLED === "true" ? 1 : 0;
+      const linkCharge = env.URL_READER_ENABLED === "true" && found.urls.some(raw => !isFirstPartyHost(raw, url.hostname)) ? 1 : 0;
       const usage = await enforceDailyLimits(env, request, user, (useMultiAgent ? MULTI_AGENT_UNITS : 1) + (imageVision ? 2 : 0) + linkCharge + researchCharge);
       if (!usage.ok) return usage.response;
       if (imageVision) {
@@ -1719,23 +1748,19 @@ export default {
       let pages = "";
       let links = [];
       const toolActivity = [];
-      if (found.urls.length && env.URL_READER_ENABLED !== "true") {
-        // A disabled reader must neither charge for link retrieval nor imply that URLs were read.
-        pages = "USER LINKS NOT READ: The user supplied web links but safe link extraction is not enabled. No linked page was opened. Do not claim to have read them; request pasted page content if it is needed.";
-        links = found.urls.map(raw => { let host = ""; try { host = new URL(raw).hostname; } catch {} return { ok: false, host, reason: "Pembacaan tautan belum tersedia pada layanan ini." }; });
-      }
       const pdfContext = document ? buildPdfContext(document) : "";
       const spreadsheetContext = spreadsheet ? buildSpreadsheetContext(spreadsheet) : "";
       const presentationContext = presentation ? buildPresentationContext(presentation) : "";
       const wordDocumentContext = wordDocument ? buildWordDocumentContext(wordDocument) : "";
       const imageOcrContext = imageOcr ? buildImageOcrContext(imageOcr) : "";
-      if (found.urls.length && env.URL_READER_ENABLED === "true") {
-        const results = env.URL_READER_ENABLED === "true" && env.URL_READER_PROVIDER === "tavily"
-          ? await extractWithTavily(found.urls, env, { ownHost: url.hostname, fetcher: env.TAVILY_EXTRACT_FETCHER || fetch })
-          : await readLinks(found.urls, { fetcher: createVerifiedLinkFetcher(env) || env.LINK_FETCHER || null, ownHost: url.hostname }); // LINK_FETCHER: test hook, unset in production
+      if (found.urls.length) {
+        const results = await readChatLinks(found.urls, env, url.hostname);
         pages = buildPageContext(results);
+        if (!results.some(item => item.ok)) {
+          pages = "USER LINKS NOT READ: No linked page was opened. Do not claim to have read the content; ask for pasted text if needed.\n" + pages;
+        }
         links = summarizeLinks(results);
-        toolActivity.push({ tool: "read_links", status: results.some(x => x.ok) ? "completed" : "unavailable", count: results.filter(x => x.ok).length });
+        toolActivity.push({ tool: "read_links", status: results.some(item => item.ok) ? "completed" : "unavailable", count: results.filter(item => item.ok).length });
         if (found.ignored) links.push({ ok: false, host: "", reason: `hanya ${found.urls.length} link pertama yang dibaca; ${found.ignored} lainnya diabaikan` });
       }
       // Curated first-party knowledge is retrieved locally; it never makes an external request.
