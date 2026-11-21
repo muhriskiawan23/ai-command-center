@@ -8,6 +8,13 @@ const VISUAL = /\b(?:gambar|foto|poster|banner|flyer|logo|ilustrasi|thumbnail|un
 const CREATE = /\b(?:buat(?:kan)?|bikin(?:kan)?|desain(?:kan)?|design|generate|create|draw|draw me|paint|sketch|illustrate|render|lukis(?:kan)?|gambarkan)\b/i;
 const CREATE_AT_START = /^(?:gambar(?:kan)?|lukis(?:kan)?|draw|paint|sketch|illustrate|render)\s+\S+/i;
 
+// Contextual follow-ups can refer to the result of the preceding image job.
+export function referencesEarlierImage(prompt) {
+  const text = String(prompt || '').trim().toLowerCase();
+  if (/^(?:apa|siapa|jelaskan|jelasin|deskripsikan|what|how|why|di mana|dimana)\b/.test(text)) return false;
+  return /\b(?:gambar|foto|poster|hasil|image|picture)\s+(?:yang\s+)?(?:tadi|sebelumnya|terakhir)\b|\b(?:versi lain|versi berikutnya|buat ulang|edit lagi|ubah lagi|ganti lagi|lebih terang|lebih gelap|lebih cerah|make another version|same image)\b/.test(text);
+}
+
 export function imageIntent(prompt, hasSource = false, mode = 'auto') {
   if (mode === 'chat' || mode === 'analyze') return null;
   if (mode === 'generate' || mode === 'edit') return mode;
@@ -18,7 +25,7 @@ export function imageIntent(prompt, hasSource = false, mode = 'auto') {
   if (TEXT_ONLY.test(text) && !/\b(?:jadikan|ubah|ganti|hapus|remove|replace|edit)\b/.test(text)) return null;
   if (hasSource) {
     // Examples: "jadikan anime", "ganti langit", "buat poster dari foto ini".
-    if (EDIT.test(text) || (CREATE.test(text) && VISUAL.test(text))) return 'edit';
+    if (EDIT.test(text) || (CREATE.test(text) && VISUAL.test(text)) || referencesEarlierImage(text)) return 'edit';
     return null; // image question without edit instruction -> existing Vision.
   }
   if (CREATE.test(text) && VISUAL.test(text)) return 'generate';
