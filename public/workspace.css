@@ -314,44 +314,75 @@ html[dir="rtl"] .composer-bottom{flex-direction:row}
 .sent-file-card .sent-file-type[hidden]{display:none!important}
 
 
-/* Plugin catalog: built-in tools and connected GitHub access share one clear home. */
-.plugins-dialog{width:min(680px,calc(100% - 32px));max-width:680px;max-height:min(84dvh,760px);padding:0;overflow:auto;border:1px solid var(--line);border-radius:20px;background:var(--surface);color:var(--text);box-shadow:var(--shadow)}
-.plugins-dialog::backdrop{background:rgba(14,23,40,.48);backdrop-filter:blur(3px)}
-.plugins-inner{padding:22px}
-.plugins-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding-bottom:16px;border-bottom:1px solid var(--line)}
-.plugins-header h2{margin:0;color:var(--text);font-size:20px;line-height:1.3}
-.plugins-header p{margin:5px 0 0;color:var(--muted);font-size:12px;line-height:1.55}
-.plugins-close{display:grid;place-items:center;flex:0 0 38px;width:38px;height:38px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--muted);font-size:18px}
-.plugin-search{display:block;width:100%;min-height:40px;margin:15px 0;padding:9px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--text);font-size:12px}
-.plugin-section{margin-top:20px}
-.plugin-section h3{margin:0 0 10px;color:var(--text);font-size:13px;font-weight:650}
-.plugin-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
-.plugin-card{display:flex;flex-direction:column;gap:12px;min-width:0;padding:14px;border:1px solid var(--line);border-radius:14px;background:var(--panel)}
+/* Compact plugin catalog with recognizable service marks. */
+.plugins-dialog{width:min(760px,calc(100% - 32px));max-width:760px;max-height:min(80dvh,680px);padding:0;overflow:auto;border:1px solid var(--line);border-radius:18px;background:var(--surface);color:var(--text);box-shadow:var(--shadow)}
+.plugins-dialog::backdrop{background:rgba(14,23,40,.54);backdrop-filter:blur(4px)}
+.plugins-inner{padding:18px}
+.plugins-header{display:flex;align-items:center;justify-content:space-between;gap:14px;padding-bottom:12px;border-bottom:1px solid var(--line)}
+.plugins-header h2{margin:0;color:var(--text);font-size:18px;line-height:1.25}
+.plugins-header p{margin:4px 0 0;color:var(--muted);font-size:11px;line-height:1.45}
+.plugins-close{display:grid;place-items:center;flex:0 0 32px;width:32px;height:32px;border:1px solid var(--line);border-radius:9px;background:var(--surface);color:var(--muted);font-size:16px}
+.plugin-search-wrap{position:relative;margin:12px 0 16px}
+.plugin-search{display:block;width:100%;height:38px;margin:0;padding:8px 12px 8px 34px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--text);font-size:12px}
+.plugin-search-icon{position:absolute;left:12px;top:11px;width:16px;height:16px;fill:none;stroke:var(--muted);stroke-width:1.8;stroke-linecap:round;pointer-events:none}
+.plugin-section{margin-top:15px}
+.plugin-section-heading{display:flex;align-items:center;justify-content:space-between;margin:0 0 8px}
+.plugin-section-heading h3{margin:0;color:var(--text);font-size:12px;font-weight:650}
+.plugin-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.plugin-grid-tools{grid-template-columns:repeat(2,minmax(0,1fr))}
+.plugin-grid-services{grid-template-columns:repeat(3,minmax(0,1fr))}
+.plugin-card{display:flex;flex-direction:column;gap:8px;min-width:0;padding:11px;border:1px solid var(--line);border-radius:12px;background:var(--panel);transition:border-color .16s ease,background .16s ease}
+.plugin-card:hover{border-color:#4c5665;background:var(--panel-raised,var(--panel))}
 .plugin-card[hidden]{display:none!important}
-.plugin-card-heading{display:flex;align-items:flex-start;gap:10px;min-width:0}
-.plugin-card-heading>div{min-width:0;flex:1}
-.plugin-card h4{margin:1px 0 4px;color:var(--text);font-size:13px;font-weight:650}
-.plugin-card p{margin:0;color:var(--muted);font-size:11px;line-height:1.6;overflow-wrap:anywhere}
-.plugin-card .plugin-card-meta{margin-top:auto;font-size:10px}
-.plugin-icon,.github-mark{display:grid;place-items:center;flex:0 0 34px;width:34px;height:34px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--text);font-size:15px;font-weight:650}
-.github-mark{background:#20232b;color:#fff;font-size:10px}
-.plugin-state{flex:0 0 auto;color:#157347;font-size:10px;font-weight:600}
-.github-status-dot{width:9px;height:9px;flex:0 0 9px;margin:7px 2px 0;border-radius:50%;background:var(--muted)}
-.github-status-dot.is-connected{background:#12a76a}
+.plugin-card-heading{display:flex;align-items:flex-start;gap:9px;min-width:0}
+.plugin-card-main{min-width:0;flex:1}
+.plugin-card-title-row{display:flex;align-items:center;justify-content:space-between;gap:6px;min-width:0;margin:1px 0 4px}
+.plugin-card h4{min-width:0;margin:0;color:var(--text);font-size:12px;font-weight:650;line-height:1.35}
+.plugin-card p{margin:0;color:var(--muted);font-size:12px;line-height:1.5;overflow-wrap:anywhere}
+.plugin-card .plugin-card-meta{margin-top:auto;font-size:9px;line-height:1.4}
+.plugin-logo{display:grid;place-items:center;flex:0 0 28px;width:28px;height:28px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:#d9e4f7}
+.plugin-logo svg{display:block;width:16px;height:16px;fill:currentColor}
+.plugin-logo--search svg,.plugin-logo--files svg,.plugin-logo--images svg,.plugin-logo--email svg{fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.plugin-logo--search,.plugin-logo--files,.plugin-logo--images,.plugin-logo--email{background:#202735;color:#a9c7ff}
+.plugin-logo--github{background:#f6f8fa;color:#24292f}
+.plugin-logo--drive{background:#f3f7ff;color:#4285f4}
+.plugin-logo--gmail{background:#fff5f4;color:#ea4335}
+.plugin-logo--calendar{background:#f0f6ff;color:#4285f4}
+.plugin-logo--slack{background:#fff}
+.plugin-logo--slack svg{width:18px;height:18px}
+.plugin-logo--notion{background:#fff;color:#111}
+.plugin-state{display:inline-flex;align-items:center;flex:0 0 auto;color:#28c88a;font-size:9px;font-weight:650;white-space:nowrap}
+.plugin-state--soon{color:#c6a56b}
+.github-status-dot{width:8px;height:8px;flex:0 0 8px;border-radius:50%;background:var(--muted)}
+.github-status-dot.is-connected{background:#12a76a;box-shadow:0 0 0 3px #12a76a22}
 .github-status-dot.has-error{background:var(--danger)}
-.plugin-actions{display:flex;flex-wrap:wrap;gap:7px;margin-top:auto}
-.plugin-action{min-height:35px;padding:7px 10px;border:1px solid var(--accent);border-radius:9px;background:var(--accent);color:var(--accentText);font-size:11px;font-weight:600}
+.plugin-actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:auto}
+.plugin-action{min-height:30px;align-self:flex-start;padding:6px 9px;border:1px solid var(--accent);border-radius:8px;background:var(--accent);color:var(--accentText);font-size:10px;font-weight:600}
 .plugin-action:hover{filter:brightness(.97)}
+.plugin-action:disabled{opacity:.68;cursor:not-allowed}
 .plugin-action.secondary{border-color:var(--line);background:var(--surface);color:var(--text)}
-.plugins-note{margin:17px 0 0;padding-top:13px;border-top:1px solid var(--line);color:var(--muted);font-size:11px;line-height:1.65}
+.github-plugin-card{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;column-gap:14px;row-gap:7px;padding:11px 13px}
+.github-plugin-card .plugin-card-heading{grid-column:1;grid-row:1}
+.github-plugin-card .plugin-card-meta{grid-column:1;grid-row:2}
+.github-plugin-card .plugin-actions{grid-column:2;grid-row:1 / span 2;justify-content:flex-end}
+.github-plugin-card .plugin-action{min-height:30px}
+.plugins-note{margin:14px 0 0;padding-top:11px;border-top:1px solid var(--line);color:var(--muted);font-size:10px;line-height:1.5}
 .plugins-nav{display:flex;align-items:center;gap:11px;width:100%;min-height:42px;padding:9px 12px;border:1px solid transparent;border-radius:10px;background:transparent;color:var(--muted);text-align:start;font-size:13px;font-weight:550}
 .plugins-nav:hover,.plugins-nav:focus-visible{background:var(--hover);color:var(--text)}
 .plugins-nav-icon{display:grid;place-items:center;width:18px;height:18px;color:var(--muted);font-size:17px}
+@media(max-width:760px){
+ .plugins-dialog{width:min(640px,calc(100% - 24px));max-width:640px;max-height:86dvh}
+ .plugins-inner{padding:16px}
+ .plugin-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
 @media(max-width:560px){
- .plugins-dialog{position:fixed;inset:auto 0 0;width:100%;max-width:100%;max-height:90dvh;margin:0;border-radius:18px 18px 0 0}
- .plugins-inner{padding:18px 15px max(20px,env(safe-area-inset-bottom))}
+ .plugins-dialog{position:fixed;inset:auto 0 0;width:100%;max-width:100%;max-height:88dvh;margin:0;border-radius:17px 17px 0 0}
+ .plugins-inner{padding:15px 13px max(18px,env(safe-area-inset-bottom))}
  .plugin-grid{grid-template-columns:1fr}
- .plugin-card{padding:12px}
+ .plugin-card{padding:10px}
+ .github-plugin-card{grid-template-columns:minmax(0,1fr);row-gap:7px}
+ .github-plugin-card .plugin-card-heading,.github-plugin-card .plugin-card-meta,.github-plugin-card .plugin-actions{grid-column:1;grid-row:auto}
+ .github-plugin-card .plugin-actions{justify-content:flex-start}
 }
 
 /* User-editable profile identity. */
