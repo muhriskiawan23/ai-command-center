@@ -4,13 +4,21 @@ import {mkdtempSync,mkdirSync,writeFileSync,rmSync,readFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {inspectProductionMigrations} from '../scripts/check-production-migration-isolation.mjs';
+import {createD1} from './e2e/harness.js';
 
-test('checked-in chat D1 migrations are blocked while synthetic billing SQL remains',()=>{
+test('production D1 migration folder has only account/chat/image SQL, never synthetic billing',()=>{
   const directory=new URL('../migrations/',import.meta.url).pathname;
   const report=inspectProductionMigrations(directory);
-  assert.equal(report.safe,false);
-  assert.ok(report.blockedFiles>=3);
+  assert.equal(report.safe,true);
+  assert.equal(report.blockedFiles,0);
   assert.equal(report.productionD1,'bor-ai-chat');
+  const filenames=['0013_billing_foundation.sql','0014_billing_invoice_reference_guard.sql',
+    '0015_billing_sandbox_invoice_recovery.sql'];
+  for(const file of filenames) {
+    assert.throws(()=>readFileSync(new URL('../migrations/'+file,import.meta.url),'utf8'),/ENOENT/);
+    const preserved=readFileSync(new URL('../staging/billing/synthetic-reference/'+file,import.meta.url),'utf8');
+    assert.ok(preserved.length>500,'Synthetic billing fixture must remain available offline');
+  }
 });
 test('only nonfinancial chat D1 SQL is accepted for production migration dispatch',()=>{
   const root=mkdtempSync(join(tmpdir(),'bor-prod-mig-'));try{
@@ -42,4 +50,30 @@ test('production workflow cannot run remote D1 apply without preceding financial
   assert.match(workflow,/name: Reject synthetic billing migrations in production D1 directory[\s\S]*?if: \$\{\{ inputs\.apply_db_migrations \}\}/);
   assert.match(workflow,/name: Apply D1 migrations[\s\S]*?if: \$\{\{ inputs\.apply_db_migrations \}\}/);
   assert.match(workflow,/apply_db_migrations:[\s\S]*?default: false/);
+});
+
+test('image migrations can initialize a primary chat D1 with no synthetic billing tables',()=>{
+  const db=createD1();
+  try{
+    const names=new Set(db.sqlite.prepare("SELECT name FROM sqlite_master WHERE type='table'").all().map(row=>row.name));
+    for(const name of ['users','conversations','image_wallets','image_jobs','image_credit_ledger'])
+      assert.equal(names.has(name),true,name+' missing');
+    for(const name of ['billing_quotes','billing_orders','billing_credit_ledger','billing_payment_events'])
+      assert.equal(names.has(name),false,name+' must remain isolated');
+    const fields=db.sqlite.prepare('PRAGMA table_info(image_jobs)').all().map(row=>row.name);
+    assert.ok(fields.includes('conversation_id'),'image chat history migration 0016 must apply after 0012');
+    const triggers=new Set(db.sqlite.prepare("SELECT name FROM sqlite_master WHERE type='trigger'").all().map(row=>row.name));
+    for(const name of ['image_reserve','image_reserve_debit','image_refund','image_grant'])
+      assert.ok(triggers.has(name),'missing image credit guard '+name);
+  }finally{db.sqlite.close()}
+});
+
+test('merging isolated migrations triggers read-only inventory and never applies SQL',()=>{
+ const wf=readFileSync(new URL('../.github/workflows/bor-ai-image-readiness.yml',import.meta.url),'utf8');
+ assert.match(wf,/migrations\/\*\.sql/);
+ assert.match(wf,/staging\/billing\/synthetic-reference\/\*\.sql/);
+ assert.match(wf,/name: List pending production D1 migrations only \(NO APPLY\)/);
+ assert.match(wf,/d1 migrations list bor-ai-chat --remote --config wrangler\.jsonc/);
+ assert.doesNotMatch(wf,/^\s*(?:npx|wrangler)\b[^\n]*d1 migrations apply\b/m);
+ assert.doesNotMatch(wf,/^\s*(?:npx|wrangler)\b[^\n]*deploy\b/m);
 });

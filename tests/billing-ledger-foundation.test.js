@@ -15,8 +15,8 @@ function setup(){
   const sqlite=new DatabaseSync(':memory:');
   sqlite.exec('PRAGMA foreign_keys=ON');
   sqlite.exec(readFileSync(new URL('../migrations/0001_auth_and_chat.sql',import.meta.url),'utf8'));
-  sqlite.exec(readFileSync(new URL('../migrations/0013_billing_foundation.sql',import.meta.url),'utf8'));
-  sqlite.exec(readFileSync(new URL('../migrations/0014_billing_invoice_reference_guard.sql',import.meta.url),'utf8'));
+  sqlite.exec(readFileSync(new URL('../staging/billing/synthetic-reference/0013_billing_foundation.sql',import.meta.url),'utf8'));
+  sqlite.exec(readFileSync(new URL('../staging/billing/synthetic-reference/0014_billing_invoice_reference_guard.sql',import.meta.url),'utf8'));
   for(const id of [ownerA,ownerB]){
     sqlite.prepare('INSERT INTO users(id,email,name,created_at,updated_at) VALUES(?,?,?,?,?)')
       .run(id,id+'@example.test','',now,now);
