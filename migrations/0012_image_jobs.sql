@@ -71,10 +71,10 @@ CREATE TABLE image_pilot_meter (
   singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
   admitted_count INTEGER NOT NULL DEFAULT 0 CHECK (admitted_count >= 0 AND admitted_count <= 9007199254740991),
   unsettled_calls INTEGER NOT NULL DEFAULT 0 CHECK (unsettled_calls IN (0,1)),
-  billing_hold INTEGER NOT NULL DEFAULT 0 CHECK (billing_hold IN (0,1)),
+  provider_hold INTEGER NOT NULL DEFAULT 0 CHECK (provider_hold IN (0,1)),
   updated_at INTEGER NOT NULL DEFAULT 0
 );
-INSERT INTO image_pilot_meter(singleton,admitted_count,unsettled_calls,billing_hold,updated_at)
+INSERT INTO image_pilot_meter(singleton,admitted_count,unsettled_calls,provider_hold,updated_at)
   VALUES(1,0,0,0,0);
 -- Image job creation and lifetime count increment are one atomic D1 write.
 -- Deleting a user/job does not decrement this operator-owned counter.
@@ -86,6 +86,6 @@ END;
 -- the originating user subsequently requests deletion of their account.
 CREATE TRIGGER image_pilot_hold AFTER UPDATE OF error_code ON image_jobs
 WHEN NEW.error_code='image_provider_billing_unverified' BEGIN
-  UPDATE image_pilot_meter SET billing_hold=1,updated_at=NEW.updated_at WHERE singleton=1;
+  UPDATE image_pilot_meter SET provider_hold=1,updated_at=NEW.updated_at WHERE singleton=1;
   SELECT CASE WHEN changes()!=1 THEN RAISE(ABORT,'image_pilot_meter_unavailable') END;
 END;
