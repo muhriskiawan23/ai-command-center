@@ -296,7 +296,7 @@ async function readChatLinks(urls, env, ownHost) {
       index,
       externalResults[position] || {
         ok: false, url: urls[index], requested: urls[index],
-        reason: validated.ok ? "Pembacaan tautan eksternal belum tersedia." : validated.reason
+        reason: validated.ok ? "Pembacaan tautan belum tersedia pada layanan ini." : validated.reason
       }
     ];
   }));
