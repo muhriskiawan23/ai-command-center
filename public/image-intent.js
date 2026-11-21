@@ -2,7 +2,7 @@
 // Treat an attached photo as vision by default unless the user actually requests a
 // visual transformation. Explicit user modes always take precedence.
 const ASK = /^(?:apa(?:kah)?|siapa|berapa|kenapa|mengapa|bagaimana|gimana|cara|tutorial|jelaskan|jelasin|deskripsikan|analisis|analisa|baca|bacakan|ringkas|terjemahkan|what|why|how|who|describe|analy[sz]e|read|summarize|translate|bantu saya (?:mempelajari|belajar|memahami|menjelaskan))\b/i;
-const TEXT_ONLY = /\b(?:caption|deskripsi|penjelasan|cerita|ide|contoh prompt|prompt untuk|copywriting|saran|terjemahan|teks dalam|tulisan dalam|apa isi|what is|what does|meaning of)\b/i;
+const TEXT_ONLY = /\b(?:caption|deskripsi|penjelasan|ide|contoh prompt|prompt untuk|copywriting|saran|terjemahan|teks dalam|tulisan dalam|apa isi|what is|what does|meaning of)\b/i;
 const EDIT = /\b(?:edit|ubah|ubah(?:kan)?|ganti|gantikan|jadikan|jadikanlah|perbaiki|perjelas|jernihkan|pertajam|tingkatkan kualitas|retouch|enhance|upscale|sharpen|recolor|recolour|replace|remove|hapus|hilangkan|buang|tambahkan|tambahin|pindahkan|potong|crop|rotate|putar|ubah warna|ganti warna)\b/i;
 const VISUAL = /\b(?:gambar|foto|poster|banner|flyer|logo|ilustrasi|thumbnail|undangan|mockup|wallpaper|background|latar|stiker|avatar|ikon|icon|cover|komik|kartun|anime|render|image|picture|photo|illustration|sketch|drawing|artwork|graphic|art|visual|design)\b/i;
 const CREATE = /\b(?:buat(?:kan)?|bikin(?:kan)?|desain(?:kan)?|design|generate|create|draw|draw me|paint|sketch|illustrate|render|lukis(?:kan)?|gambarkan)\b/i;
@@ -25,7 +25,9 @@ export function imageIntent(prompt, hasSource = false, mode = 'auto') {
   if (TEXT_ONLY.test(text) && !/\b(?:jadikan|ubah|ganti|hapus|remove|replace|edit)\b/.test(text)) return null;
   if (hasSource) {
     // Examples: "jadikan anime", "ganti langit", "buat poster dari foto ini".
-    if (EDIT.test(text) || (CREATE.test(text) && VISUAL.test(text)) || referencesEarlierImage(text)) return 'edit';
+    if (EDIT.test(text) || (CREATE.test(text) && VISUAL.test(text)) ||
+        /\b(?:buat|bikin|jadikan|jadi|lebih)\s+(?:hd|4k|8k|tajam|jernih)\b/.test(text) ||
+        referencesEarlierImage(text)) return 'edit';
     return null; // image question without edit instruction -> existing Vision.
   }
   if (CREATE.test(text) && VISUAL.test(text)) return 'generate';
