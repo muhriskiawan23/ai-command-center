@@ -22,6 +22,8 @@ test('billing or other SQL pending blocks; missing or reordered images block',()
     ['0016_image_chat_history.sql','0012_image_jobs.sql'],
     ['0012_image_jobs.sql'],
     ['0012_image_jobs.sql','0016_image_chat_history.sql','0017_unknown.sql'],
+    ['0012_image_jobs.sql','an_unexpected_file.sql','0016_image_chat_history.sql'],
+    ['0012_image_jobs.sql','unrecognized migration row','0016_image_chat_history.sql'],
     ['0012_image_jobs.sql','0012_image_jobs.sql','0016_image_chat_history.sql']
   ];
   for(const names of inputs)assert.throws(()=>verifyImageSchemaPending(table(names)),/drifted|duplicate/);
