@@ -30,6 +30,9 @@ test("SSRF: alamat internal, metadata cloud, IPv6, bentuk IP terselubung, kreden
   const allowed = ["https://example.com/", "http://example.com/path?x=1", "https://sub.contoh.co.id/a", "https://8.8.8.8/", "https://[2606:4700:4700::1111]/", "https://[2a00::1]/", "https://example.com:443/"];
   for (const url of allowed) assert.equal(validateUrl(url).ok, true, `harus diizinkan: ${url}`);
   assert.equal(validateUrl("https://app.example.workers.dev/", "app.example.workers.dev").ok, false);   // host aplikasi sendiri
+  assert.equal(validateUrl("https://app.example.workers.dev./", "app.example.workers.dev").ok, false);
+  assert.equal(validateUrl("https://APP.EXAMPLE.WORKERS.DEV./", "app.example.workers.dev.").ok, false);
+  assert.equal(validateUrl("https://unrelated.workers.dev/", "app.example.workers.dev").ok, true);
   assert.equal(blockedHostReason("example.com"), null);
 });
 
