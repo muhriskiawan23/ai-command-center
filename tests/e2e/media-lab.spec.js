@@ -5,7 +5,7 @@ const localIcon=readFileSync(new URL("../../public/icon-192.png",import.meta.url
 test("Media Lab loads as local offline tool with an honest pending-AI disclaimer",async({page,app})=>{
   await page.goto(app.url+"/media-lab.html");
   await expect(page.getByRole("heading",{name:/Studio foto/})).toBeVisible();
-  await expect(page.getByText(/Belum aktif:/)).toBeVisible();
+  await expect(page.getByText(/Pembuatan dan edit gambar.*generatif/)).toBeVisible();
   await expect(page.locator("#downloadPhoto")).toBeDisabled();
   await expect(page.locator("#extractFrames")).toBeDisabled();
   await expect(page.getByText(/tidak dikirim ke server/)).toBeVisible();
