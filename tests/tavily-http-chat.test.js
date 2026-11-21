@@ -106,7 +106,7 @@ test("HTTP chat reads BOR AI public assets with Tavily disabled, without any pro
   } };
   const result = await chat(env, "Ringkas https://example.test/ dan https://example.test/paket.html");
   assert.equal(result.status, 200);
-  assert.deepEqual(paths, ["/", "/paket"]);
+  assert.deepEqual(paths, ["/index.html", "/paket.html"]);
   assert.deepEqual(calls, []);
   assert.deepEqual(result.body.links.map(x => x.ok), [true, true]);
   assert.ok(prompts.some(p => p.includes("helpful public assistant")));
