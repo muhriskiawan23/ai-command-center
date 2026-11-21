@@ -103,6 +103,8 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           ALLOW_READER_SHUTDOWN: ${{ inputs.allow_reader_shutdown && 'true' || 'false' }}
           PRESERVE_ACTIVE_READER: ${{ inputs.preserve_active_tavily_reader && 'true' || 'false' }}
+          RUN_TAVILY_SMOKE: ${{ inputs.run_tavily_smoke && 'true' || 'false' }}
+          APPLY_DB_MIGRATIONS: ${{ inputs.apply_db_migrations && 'true' || 'false' }}
         run: |
           node --input-type=module <<'NODE'
           import fs from "node:fs";
@@ -135,8 +137,10 @@ jobs:
           if (process.env.PRESERVE_ACTIVE_READER==="true") {
             if(current!=="true" || desired!=="false") throw Error("Preservation requires an already-active Reader and reviewed OFF baseline");
             if(process.env.ALLOW_READER_SHUTDOWN==="true")throw Error("Reader preservation and shutdown approvals are mutually exclusive");
-            if(process.env.BOR_IMAGES_ENABLED!=="false" || process.env.BOR_BILLING_SHADOW_ENABLED==="true")
-              throw Error("Reader-preserving release cannot activate paid images or billing shadow");
+            if(process.env.BOR_IMAGES_ENABLED!=="false" || process.env.BOR_BILLING_SHADOW_ENABLED==="true" ||
+               process.env.BOR_TEXT_LUNA_PRIMARY==="true" ||
+               process.env.RUN_TAVILY_SMOKE==="true" || process.env.APPLY_DB_MIGRATIONS==="true")
+              throw Error("Reader-preserving release must disable paid images, Luna, billing, migrations and Tavily smoke");
             const {config: preserved, urlBudget}=buildPreservedTavilyReaderConfig(config,bindings);
             const path="wrangler.reader-preserve.generated.jsonc";
             fs.writeFileSync(path,JSON.stringify(preserved,null,2)+"\n");
