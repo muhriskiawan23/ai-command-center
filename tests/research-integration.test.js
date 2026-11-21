@@ -104,3 +104,48 @@ test("chat keeps search citations but clearly labels results when destination pa
     await app.close();
   }
 });
+
+test("Tavily live search can return citable snippets when URL Reader is OFF, without Extract", async () => {
+  let searchCalls = 0, extractCalls = 0;
+  const app = await startHarness({ extraEnv: {
+    SEARCH_PROVIDER: "tavily",
+    TAVILY_API_KEY: "mock-search-secret",
+    URL_READER_ENABLED: "false",
+    URL_READER_PROVIDER: "tavily",
+    TAVILY_EXTRACT_DAILY_URL_LIMIT: "0",
+    SEARCH_FETCHER: async (endpoint, options) => {
+      searchCalls++;
+      assert.equal(endpoint, "https://api.tavily.com/search");
+      assert.equal(options.headers.Authorization, "Bearer mock-search-secret");
+      return new Response(JSON.stringify({ results: [{
+        title: "Berita penelitian AI",
+        url: "https://journal.example/public-article",
+        content: "Cuplikan hasil penelusuran yang dapat dikutip secara terbatas.",
+        published_date: new Date().toISOString()
+      }] }), { headers: { "content-type": "application/json" } });
+    },
+    TAVILY_EXTRACT_FETCHER: async () => {
+      extractCalls++;
+      throw Error("Extractor must stay disabled");
+    }
+  } });
+  try {
+    const response = await fetch(app.url + "/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: app.url },
+      body: JSON.stringify({ message: "Cari berita terbaru tentang penelitian AI" })
+    });
+    assert.equal(response.status, 200);
+    assert.equal(searchCalls, 1);
+    assert.equal(extractCalls, 0);
+    const result = await response.json();
+    const source = result.links.find(item => item.sourceType === "news" && item.ok);
+    assert.ok(source);
+    assert.equal(source.pageRead, false);
+    const prompt = app.aiCalls.at(-1).messages.filter(item => item.role === "user").map(item => item.content).join("\n");
+    assert.match(prompt, /page_status="snippet_only"/);
+    assert.doesNotMatch(prompt, /Fetched page text excerpt/);
+  } finally {
+    await app.close();
+  }
+});

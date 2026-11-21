@@ -878,7 +878,7 @@ function buildHistory(chat){
 function appendSources(links){
   const row=messagesEl.lastElementChild;const body=row&&row.querySelector(".message-body");if(!body||!links||!links.length)return;
   const box=document.createElement("div");box.className="sources";
-  const head=document.createElement("strong");head.textContent="Sumber yang dibaca:";box.append(head);
+  const head=document.createElement("strong");head.textContent="Sumber dan status pembacaan:";box.append(head);
   for(const l of links){
     const item=document.createElement("div");item.className="source "+(l.ok?"ok":"fail");
     if(l.ok){
@@ -1475,8 +1475,10 @@ let githubChatToolsEnabled=false;
 function pluginText(value){return window.BORLocale?.translate?.(value)||value}
 async function refreshPluginCapabilities(){
   const searchStatus=$("pluginSearchStatus"),searchMeta=$("pluginSearchMeta");
+  const readerStatus=$("pluginReaderStatus"),readerMeta=$("pluginReaderMeta");
   const imageStatus=$("pluginImagesStatus"),imageButton=$("pluginImagesUse"),imageGalleryButton=$("pluginImagesGallery");
   searchStatus.textContent=pluginText("Checking availability…");
+  readerStatus.textContent=pluginText("Memeriksa status…");
   imageStatus.textContent=pluginText("Checking availability…");
   imageButton.disabled=true;
   try{
@@ -1485,6 +1487,11 @@ async function refreshPluginCapabilities(){
     const searchConfigured=Boolean(data?.tools?.webSearch?.available);
     searchStatus.textContent=pluginText(searchConfigured?"Automatic · Configured":"Not configured");
     searchMeta.textContent=pluginText(searchConfigured?"Live search provider is configured; search runs only when current facts are needed.":"Live web search is unavailable. BOR AI will not claim it searched the web.");
+    const readerAvailable=Boolean(data?.tools?.webReading?.available);
+    readerStatus.textContent=pluginText(readerAvailable?"Dikonfigurasi":"Belum tersedia");
+    readerMeta.textContent=pluginText(readerAvailable
+      ?"Pembacaan tautan publik dikonfigurasi di server. Tidak semua URL bisa diakses; hasil tiap halaman diverifikasi saat diminta."
+      :"Pembacaan URL belum siap atau dinonaktifkan. Pencarian web dapat tetap berfungsi tanpa membaca halaman lengkap.");
     const imagesAvailable=Boolean(data?.tools?.imageGeneration?.available);
     imageStatus.textContent=pluginText(imagesAvailable?"Available":"Not available");
     imageButton.disabled=!imagesAvailable;
@@ -1494,6 +1501,8 @@ async function refreshPluginCapabilities(){
     githubChatToolsEnabled=false;
     searchStatus.textContent=pluginText("Status unavailable");
     searchMeta.textContent=pluginText("Could not check live search configuration.");
+    readerStatus.textContent=pluginText("Status tidak tersedia");
+    readerMeta.textContent=pluginText("Tidak dapat memverifikasi konfigurasi pembacaan URL.");
     imageStatus.textContent=pluginText("Status unavailable");
     imageButton.disabled=true;
     imageButton.textContent=pluginText("Image generation unavailable");
