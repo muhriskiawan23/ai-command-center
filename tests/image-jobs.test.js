@@ -178,3 +178,23 @@ test('rejected image quota does not leave an empty conversation behind',async()=
   assert.equal(h.db.sqlite.prepare('SELECT COUNT(*) AS n FROM conversations').get().n,1);
  }finally{h.close();}
 });
+
+test('chat fetch includes authorized image results only after the schema feature is enabled',async()=>{
+ const h=setup();try{
+  const first=await (await h.create({prompt:'Buat cover buku'})).json();
+  const off=await worker.fetch(h.request('/api/conversations/'+first.conversationId),h.env);
+  assert.equal(off.status,200);
+  assert.deepEqual((await off.json()).imageJobs,[]);
+  h.env.BOR_IMAGE_CHAT_HISTORY_ENABLED='true';
+  const on=await worker.fetch(h.request('/api/conversations/'+first.conversationId),h.env);
+  assert.equal(on.status,200);
+  const data=await on.json();assert.equal(data.imageJobs.length,1);
+  assert.equal(data.imageJobs[0].id,first.id);
+  assert.equal(data.imageJobs[0].conversationId,first.conversationId);
+  assert.equal(data.imageJobs[0].status,'queued');
+  assert.ok(!JSON.stringify(data.imageJobs).includes('secret-never-leak'));
+  const token=seedSession(h.db,{id:'foreign-image-user',email:'foreign-image@example.test'});
+  const foreign=await worker.fetch(h.request('/api/conversations/'+first.conversationId,null,{Cookie:'__Host-borai_session='+token}),h.env);
+  assert.equal(foreign.status,404);
+ }finally{h.close();}
+});
