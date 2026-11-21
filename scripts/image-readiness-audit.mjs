@@ -59,7 +59,7 @@ export function summarizeImageReadiness({bindings,activeTraffic,publicHealth,med
   return {readOnlyAudit:true,productionLaunchReady:false,features,blockers};
 }
 
-async function runAudit({fetcher=fetch,env=process.env}={}){
+export async function runAudit({fetcher=fetch,env=process.env}={}){
   const account=env.CLOUDFLARE_ACCOUNT_ID,token=env.CLOUDFLARE_API_TOKEN;
   if(!/^[a-f0-9]{32}$/i.test(account||'')||!token)throw Error('Missing production Cloudflare audit credentials');
   const base='https://api.cloudflare.com/client/v4/accounts/'+account;
