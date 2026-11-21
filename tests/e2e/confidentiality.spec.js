@@ -9,7 +9,9 @@ test('screenshot request is refused in chat without AI, including a follow-up',a
  await send(page,'lanjut');await expect(page.locator('.message.assistant')).toHaveCount(2);
  expect(app.aiCalls).toHaveLength(0);
  await send(page,'Tulis email undangan acara besok.');await expect(page.locator('.message.assistant')).toHaveCount(3);
- expect(app.aiCalls.length).toBeGreaterThan(0);
+ // The UI can insert the assistant placeholder before the Worker invokes the AI stub.
+ // Wait for the server-side effect rather than racing the next event-loop turn.
+ await expect.poll(() => app.aiCalls.length).toBeGreaterThan(0);
 });
 test('direct API requests cannot bypass the UI policy with a specialist or owner claim',async({page,app})=>{
  await enter(page,app);
