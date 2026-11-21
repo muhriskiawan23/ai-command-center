@@ -1,0 +1,25 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {spawnSync} from 'node:child_process';
+import {readFileSync,mkdtempSync,rmSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+
+test('image pilot config serializes Queue consumer and keeps original Worker defaults unchanged',()=>{
+ const folder=mkdtempSync(join(tmpdir(),'bor-image-pilot-'));
+ try {
+  const output=join(folder,'images.jsonc');
+  const env={...process.env,IMAGE_CREDITS_GENERATE:'10',IMAGE_CREDITS_EDIT:'12',IMAGE_TARIFF_VERSION:'synthetic-test-v1',IMAGE_PROVIDER_TOTAL_ATTEMPT_LIMIT:'2'};
+  const result=spawnSync(process.execPath,['scripts/prepare-image-config.mjs',output],{cwd:process.cwd(),env,encoding:'utf8',timeout:20000});
+  assert.equal(result.status,0,result.stderr);
+  const config=JSON.parse(readFileSync(output,'utf8'));
+  assert.equal(config.queues.producers[0].binding,'IMAGE_QUEUE');
+  assert.equal(config.queues.consumers[0].max_batch_size,1);
+  assert.equal(config.queues.consumers[0].max_concurrency,1);
+  assert.equal(config.vars.BOR_IMAGES_ENABLED,'true');
+  assert.equal(config.vars.IMAGE_PROVIDER_TOTAL_ATTEMPT_LIMIT,'2');
+  const original=JSON.parse(readFileSync('wrangler.jsonc','utf8'));
+  assert.equal(original.vars.BOR_IMAGES_ENABLED,'false');
+  assert.equal(original.queues?.consumers?.length||0,0);
+ } finally {rmSync(folder,{recursive:true,force:true});}
+});

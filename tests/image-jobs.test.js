@@ -99,9 +99,64 @@ test('other users cannot read job, download, reuse output or delete result',asyn
  const remove=new Request('https://bor.test/api/images/jobs/'+job.id,{method:'DELETE',headers:{Cookie,Origin:'https://bor.test'}});assert.equal((await worker.fetch(remove,h.env)).status,404);assert.equal(h.files.size,1);
  }finally{h.close();}
 });
-test('stale processing is refunded with no provider retry; expired files are removed',async()=>{
- const h=setup();try{const job=await (await h.create()).json();h.db.sqlite.prepare("UPDATE image_jobs SET status='processing',updated_at=1 WHERE id=?").run(job.id);await cleanupImageJobs(h.env);await processImageJob(h.env,job.id);assert.equal(h.calls.length,0);assert.equal(h.db.sqlite.prepare('SELECT balance FROM image_wallets').get().balance,100);
+test('stale never-started queued jobs are refunded and expired files are removed',async()=>{
+ const h=setup();try{const job=await (await h.create()).json();h.db.sqlite.prepare("UPDATE image_jobs SET updated_at=1 WHERE id=?").run(job.id);await cleanupImageJobs(h.env);await processImageJob(h.env,job.id);assert.equal(h.calls.length,0);assert.equal(h.db.sqlite.prepare('SELECT balance FROM image_wallets').get().balance,100);
  const other=await (await h.create()).json();await processImageJob(h.env,other.id);h.db.sqlite.prepare('UPDATE image_jobs SET expires_at=1 WHERE id=?').run(other.id);assert.equal((await worker.fetch(h.request('/api/files/'+other.id+'/download'),h.env)).status,410);await cleanupImageJobs(h.env);assert.equal(h.files.size,0);
+ }finally{h.close();}
+});
+test('ambiguous upstream timeout suspends new and queued image calls without extra provider charges',async()=>{
+ const h=setup();try{
+  let attempts=0; h.env.IMAGE_FETCHER=async()=>{attempts++;throw Error('synthetic network timeout private provider secret');};
+  const first=(await (await h.create()).json());
+  const queued=(await (await h.create()).json());
+  assert.equal(h.sent.length,2);
+  await processImageJob(h.env,first.id);
+  assert.equal(attempts,1);
+  let row=h.db.sqlite.prepare('SELECT status,error_code FROM image_jobs WHERE id=?').get(first.id);
+  assert.equal(row.status,'failed');
+  assert.equal(row.error_code,'image_provider_billing_unverified');
+  await processImageJob(h.env,queued.id);
+  assert.equal(attempts,1);
+  row=h.db.sqlite.prepare('SELECT status,error_code FROM image_jobs WHERE id=?').get(queued.id);
+  assert.equal(row.error_code,'image_pilot_suspended');
+  const rejected=await h.create();
+  assert.equal(rejected.status,503);
+  assert.equal((await rejected.json()).code,'image_pilot_suspended');
+  const config=await (await worker.fetch(h.request('/api/images/config'),h.env)).json();
+  assert.equal(config.enabled,false);
+  assert.equal(config.unavailableReason,'billing_reconciliation_pending');
+  assert.equal(h.sent.length,2);
+  assert.equal(h.db.sqlite.prepare('SELECT balance FROM image_wallets').get().balance,100);
+  assert.equal(h.db.sqlite.prepare("SELECT COUNT(*) AS n FROM image_credit_ledger WHERE event='refund'").get().n,2);
+  const old=await worker.fetch(h.request('/api/images/jobs'),h.env);
+  assert.equal(old.status,200);
+  assert.equal((await old.json()).jobs.length,2);
+  const detail=await (await worker.fetch(h.request('/api/images/jobs/'+first.id),h.env)).json();
+  assert.doesNotMatch(JSON.stringify(detail),/synthetic network timeout|private provider secret/);
+ }finally{h.close();}
+});
+test('definitively rejected HTTP 400 does not suspend the entire pilot',async()=>{
+ const h=setup();try{
+  h.env.IMAGE_FETCHER=async()=>new Response('',{status:400});
+  const first=(await (await h.create()).json());
+  await processImageJob(h.env,first.id);
+  assert.equal(h.db.sqlite.prepare('SELECT error_code FROM image_jobs WHERE id=?').get(first.id).error_code,'image_request_rejected');
+  assert.equal((await h.create()).status,202);
+ }finally{h.close();}
+});
+test('stale processing may have been billed; hold persists even after expiration',async()=>{
+ const h=setup();try{
+  const job=(await (await h.create()).json());
+  h.db.sqlite.prepare("UPDATE image_jobs SET status='processing',updated_at=1 WHERE id=?").run(job.id);
+  await cleanupImageJobs(h.env);
+  await processImageJob(h.env,job.id);
+  assert.equal(h.calls.length,0);
+  assert.equal(h.db.sqlite.prepare('SELECT balance FROM image_wallets').get().balance,100);
+  assert.equal(h.db.sqlite.prepare('SELECT error_code FROM image_jobs WHERE id=?').get(job.id).error_code,'image_provider_billing_unverified');
+  assert.equal((await h.create()).status,503);
+  h.db.sqlite.prepare("UPDATE image_jobs SET expires_at=1 WHERE id=?").run(job.id);
+  await cleanupImageJobs(h.env);
+  assert.equal((await h.create()).status,503);
  }finally{h.close();}
 });
 test('queue outage refunds an unclaimed job and duplicate deliveries stay failed',async()=>{
@@ -119,7 +174,7 @@ test('lost database acknowledgement after completion cannot delete a successful 
  const h=setup();try{const job=await (await h.create()).json();const original=h.env.DB.prepare;h.env.DB.prepare=sql=>{const statement=original(sql);if(!sql.startsWith("UPDATE image_jobs SET status='completed'"))return statement;return {bind(...args){const bound=statement.bind(...args);return {async run(){await bound.run();throw Error('lost acknowledgement');}};}};};await processImageJob(h.env,job.id);assert.equal(h.db.sqlite.prepare('SELECT status FROM image_jobs').get().status,'completed');assert.equal(h.files.size,1);assert.equal(h.db.sqlite.prepare('SELECT balance FROM image_wallets').get().balance,90);}finally{h.close();}
 });
 test('oversized or invalid provider output cannot become a successful downloadable file',async()=>{
- const h=setup();try{h.env.IMAGE_FETCHER=async()=>Response.json({data:[{b64_json:Buffer.from('<svg onload="evil"/>').toString('base64')}]});const job=await (await h.create()).json();await processImageJob(h.env,job.id);const row=h.db.sqlite.prepare('SELECT * FROM image_jobs').get();assert.equal(row.status,'failed');assert.equal(row.error_code,'invalid_provider_output');assert.equal(h.files.size,0);}finally{h.close();}
+ const h=setup();try{h.env.IMAGE_FETCHER=async()=>Response.json({data:[{b64_json:Buffer.from('<svg onload="evil"/>').toString('base64')}]});const job=await (await h.create()).json();await processImageJob(h.env,job.id);const row=h.db.sqlite.prepare('SELECT * FROM image_jobs').get();assert.equal(row.status,'failed');assert.equal(row.error_code,'image_provider_billing_unverified');assert.equal(h.files.size,0);assert.equal((await h.create()).status,503);assert.equal(h.db.sqlite.prepare('SELECT balance FROM image_wallets').get().balance,100);}finally{h.close();}
 });
 
 test('OpenAI pilot rejects unapproved model, quality and missing attempt ceiling before any provider call',async()=>{

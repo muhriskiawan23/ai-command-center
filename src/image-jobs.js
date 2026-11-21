@@ -56,13 +56,31 @@ const findJob = (env,id,userId) => env.DB.prepare('SELECT * FROM image_jobs WHER
 // unmigrated D1 must give a stable response rather than leaking a SQL error.
 const imageSchemaMissing = error => /\bno such table:\s*(?:main\.)?(?:image_jobs|image_wallets|image_credit_ledger)\b/i.test(String(error?.message || ''));
 const imageSchemaUnavailable = () => json({error:'Riwayat gambar belum tersedia. Infrastruktur sedang disiapkan.',code:'image_schema_unavailable'},503);
+// An upstream timeout/invalid response can still incur provider charges. Once
+// observed, stop the pilot globally until the owner reconciles provider usage.
+// Keep the marker in D1 across expired jobs; never auto-clear on cleanup.
+const BILLING_UNVERIFIED = 'image_provider_billing_unverified';
+const pilotBillingUnverified = async env => Boolean(await env.DB.prepare(
+  "SELECT id FROM image_jobs WHERE error_code='image_provider_billing_unverified' LIMIT 1"
+).first());
 async function failJob(env,id,code) {
   await env.DB.prepare("UPDATE image_jobs SET status='failed', error_code=?, updated_at=? WHERE id=? AND status IN ('queued','processing')").bind(code,nowSeconds(),id).run();
 }
 
 // All state-changing routes require a real session and a same-origin request.
 export async function handleImageRoute(request, env, url, deps) {
-  if (url.pathname === '/api/images/config' && request.method === 'GET') return json(imageConfig(env));
+  if (url.pathname === '/api/images/config' && request.method === 'GET') {
+    const config = imageConfig(env);
+    if (!config.enabled) return json(config);
+    try {
+      if (await pilotBillingUnverified(env)) return json({...config,enabled:false,unavailableReason:'billing_reconciliation_pending'});
+    } catch {
+      // Availability must fail closed rather than advertise a paid service that
+      // cannot prove its D1 billing marker state. No raw SQL/provider errors.
+      return json({...config,enabled:false,unavailableReason:'image_billing_preflight_unavailable'});
+    }
+    return json(config);
+  }
   const isJobs = url.pathname === '/api/images/jobs';
   const jobMatch = /^\/api\/images\/jobs\/([a-f0-9-]{36})$/i.exec(url.pathname);
   const fileMatch = /^\/api\/files\/([a-f0-9-]{36})\/(preview|download)$/i.exec(url.pathname);
@@ -118,6 +136,7 @@ export async function handleImageRoute(request, env, url, deps) {
   }
   const config = imageConfig(env);
   if (!config.enabled) return json({error:'Fitur buat/edit gambar belum aktif di BOR AI saat ini.',code:'images_unavailable'},503);
+  if (await pilotBillingUnverified(env)) return json({error:'Pembuatan gambar dihentikan sementara untuk pemeriksaan biaya API. Riwayat gambar tetap tersedia.',code:'image_pilot_suspended'},503);
   if (!env.CHAT_LIMITER?.limit) return json({error:'Pembatasan gambar belum siap.'},503);
   const limited = await env.CHAT_LIMITER.limit({key:'images:'+user.id});
   if (!limited?.success) return json({error:'Terlalu banyak permintaan gambar.'},429,{'Retry-After':'60'});
@@ -228,8 +247,10 @@ export async function processImageJob(env,id) {
   const row = await env.DB.prepare("UPDATE image_jobs SET status='processing', updated_at=? WHERE id=? AND status='queued' RETURNING *").bind(nowSeconds(),id).first();
   if (!row) return;
   let outputKey = null;
+  let providerAttempted = false;
   try {
     if (!imageConfig(env).enabled || row.model !== 'gpt-image-2' || row.size !== '1024x1024') throw new Error('images_unavailable');
+    if (await pilotBillingUnverified(env)) throw new Error('image_pilot_suspended');
     const options = {model:row.model,prompt:row.prompt,n:1,quality:'low',size:row.size,output_format:row.output_format,safety_identifier:await sha256Hex('bor-image:'+row.user_id)};
     let body, headers = {Authorization:'Bearer '+env.OPENAI_API_KEY};
     if (row.mode === 'edit') {
@@ -240,6 +261,8 @@ export async function processImageJob(env,id) {
       body.set('image',new Blob([await source.arrayBuffer()],{type:row.source_mime}),'source.'+(row.source_mime.split('/')[1]));
     } else { body = JSON.stringify(options); headers['Content-Type']='application/json'; }
     const signal = AbortSignal.timeout(150_000);
+    // From this point an outcome may be billed even if no usable response arrives.
+    providerAttempted = true;
     const response = await (env.IMAGE_FETCHER || fetch)('https://api.openai.com/v1/images/'+(row.mode === 'edit' ? 'edits' : 'generations'),{method:'POST',headers,body,signal,redirect:'error'});
     if (!response.ok) throw new Error(response.status === 400 ? 'image_request_rejected' : response.status === 429 ? 'image_provider_limit' : 'image_provider_error');
     const result = JSON.parse(new TextDecoder().decode(await boundedBytes(response,18*1024*1024)));
@@ -258,8 +281,13 @@ export async function processImageJob(env,id) {
   } catch (error) {
     const persisted = await env.DB.prepare('SELECT status FROM image_jobs WHERE id=?').bind(id).first();
     if (persisted?.status === 'completed') return; // completion may commit even if its acknowledgement was lost
-    const allowed = ['images_unavailable','source_unavailable','image_request_rejected','image_provider_limit','image_provider_error','invalid_provider_output','provider_output_too_large'];
-    const code = allowed.includes(error?.message) ? error.message : 'image_processing_failed';
+    const allowed = ['images_unavailable','image_pilot_suspended','source_unavailable','image_request_rejected','image_provider_limit','image_provider_error','invalid_provider_output','provider_output_too_large'];
+    // Confirmed 400/429 rejections are not completed image generations; every
+    // other post-dispatch failure is conservatively treated as billing-unknown.
+    // Customer credit refund policy is unchanged; no automatic paid retry.
+    const code = providerAttempted && !['image_request_rejected','image_provider_limit'].includes(error?.message)
+      ? BILLING_UNVERIFIED
+      : allowed.includes(error?.message) ? error.message : 'image_processing_failed';
     await failJob(env,id,code);
     if (outputKey) await env.IMAGE_FILES.delete(outputKey);
   } finally {
@@ -281,7 +309,8 @@ export async function cleanupImageJobs(env) {
   const now = nowSeconds();
   const rows = await env.DB.prepare("SELECT * FROM image_jobs WHERE (expires_at<=? AND status!='expired') OR (status IN ('queued','processing') AND updated_at<?) OR (status='failed' AND source_key IS NOT NULL) ORDER BY updated_at LIMIT 100").bind(now,now-900).all();
   for (const row of rows.results || []) {
-    if (['queued','processing'].includes(row.status)) await failJob(env,row.id,'processing_interrupted');
+    if (row.status === 'processing') await failJob(env,row.id,BILLING_UNVERIFIED);
+    else if (row.status === 'queued') await failJob(env,row.id,'processing_interrupted');
     await env.IMAGE_FILES.delete([row.source_key,row.output_key].filter(Boolean));
     await env.DB.prepare('UPDATE image_jobs SET source_key=NULL WHERE id=?').bind(row.id).run();
     if (row.expires_at <= now) await env.DB.prepare("UPDATE image_jobs SET status='expired', prompt='', source_key=NULL, output_key=NULL, usage_json=NULL, updated_at=? WHERE id=?").bind(now,row.id).run();
