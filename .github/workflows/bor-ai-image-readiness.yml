@@ -31,6 +31,7 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_R2_AUDIT_TOKEN: ${{ secrets.CLOUDFLARE_R2_AUDIT_TOKEN }}
         run: node scripts/image-readiness-audit.mjs
       - name: List pending production D1 migrations only (NO APPLY)
         env:
