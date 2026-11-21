@@ -9,6 +9,10 @@ on:
     branches: [main]
     paths:
       - 'scripts/image-readiness-audit.mjs'
+      - 'scripts/verify-d1-image-migration-rollback.mjs'
+      - 'scripts/check-production-migration-isolation.mjs'
+      - 'migrations/*.sql'
+      - 'staging/billing/synthetic-reference/*.sql'
       - '.github/workflows/bor-ai-image-readiness.yml'
 
 permissions:
@@ -39,6 +43,6 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           # Listing is read-only, but never use 'migrations apply' in this audit.
-          # Image 0012 and 0016 are interleaved with billing 0013-0015.
+          # Source-only billing fixtures 0013-0015 must remain outside the production migrations directory.
           # The production deploy workflow's migration isolation gate must stay on.
           npx --yes wrangler@4 d1 migrations list bor-ai-chat --remote --config wrangler.jsonc

@@ -27,9 +27,9 @@ async function harness(){
   sqlite.exec('PRAGMA foreign_keys=ON');
   for(const p of [
     '../migrations/0001_auth_and_chat.sql',
-    '../migrations/0013_billing_foundation.sql',
-    '../migrations/0014_billing_invoice_reference_guard.sql',
-    '../migrations/0015_billing_sandbox_invoice_recovery.sql'
+    '../staging/billing/synthetic-reference/0013_billing_foundation.sql',
+    '../staging/billing/synthetic-reference/0014_billing_invoice_reference_guard.sql',
+    '../staging/billing/synthetic-reference/0015_billing_sandbox_invoice_recovery.sql'
   ])sqlite.exec(readFileSync(new URL(p,import.meta.url),'utf8'));
   for(const [user,token] of [[ownerA,tokenA],[ownerB,tokenB]]){
     sqlite.prepare('INSERT INTO users(id,email,created_at,updated_at) VALUES(?,?,?,?)')
