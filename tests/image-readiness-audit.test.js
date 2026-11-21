@@ -61,6 +61,7 @@ test('read-only audit uses GET endpoints only and cannot invoke an image provide
     if(url.endsWith('/deployments?per_page=1'))return ok({deployments:[{versions:[{percentage:100,version_id:'v1'}]}]});
     if(url.endsWith('/versions/v1'))return ok({resources:{bindings}});
     if(url.endsWith('/r2/buckets/bor-ai-images'))return ok({name:'bor-ai-images'});
+    if(url.endsWith('/time_travel/bookmark'))return ok({bookmark:'00000085-0000024c-00004c6d-8e61117bf38d7adb71b934ebbf891683'});
     if(/\/d1\/database\/[0-9a-f-]{36}$/i.test(url)){
       const id=url.split('/').at(-1);
       return ok({name:'bor-ai-chat',uuid:id});
@@ -80,6 +81,8 @@ test('read-only audit uses GET endpoints only and cannot invoke an image provide
   assert.equal(report.features.mediaLabDeployed,'no');
   assert.equal(report.features.pinnedProductionD1,'verified');
   assert.equal(report.features.d1MetadataProbe,'ok');
+  assert.equal(report.features.d1TimeTravelBookmark,'available');
+  assert.equal(report.features.d1TimeTravelProbe,'ok');
   assert.equal(report.features.r2BucketProbe,'ok');
   assert.equal(report.features.queueProbe,'ok');
   assert.ok(calls.length>=9);
@@ -128,6 +131,7 @@ test('an R2 bucket found via GET stays present if private domain inventory is fo
     if(url.endsWith('/r2/buckets/bor-ai-images'))return ok({name:'bor-ai-images'});
     if(url.includes('/r2/buckets/bor-ai-images/domains/'))return new Response('',{status:403});
     if(url.includes('/queues?per_page=100&page=1'))return ok([]);
+    if(url.endsWith('/time_travel/bookmark'))return ok({bookmark:'00000085-0000024c-00004c6d-8e61117bf38d7adb71b934ebbf891683'});
     if(/\/d1\/database\/[0-9a-f-]{36}$/i.test(url)){
       const id=url.split('/').at(-1);
       return ok({name:'bor-ai-chat',uuid:id});
@@ -151,4 +155,33 @@ test('production diagnostics workflow lists but can never apply image or billing
   assert.doesNotMatch(workflow,/^\s*(?:npx|wrangler)\b[^\n]*d1 migrations apply\b/m);
   assert.doesNotMatch(workflow,/^\s*(?:npx|wrangler)\b[^\n]*deploy\b/m);
   assert.doesNotMatch(workflow,/^\s*(?:npx|wrangler)\b[^\n]*d1 execute\b/m);
+});
+
+test('D1 Time Travel bookmark is checked using GET but never logged or restored',async()=>{
+  const bookmark='bookmarks-stay-private-1234';
+  const ok=result=>Response.json({success:true,result});
+  const urls=[];
+  const fetcher=async(url,options)=>{
+    urls.push(url);
+    assert.equal(options.method,'GET');
+    if(url.endsWith('/deployments?per_page=1'))return ok({deployments:[{versions:[{percentage:100,version_id:'v1'}]}]});
+    if(url.endsWith('/versions/v1'))return ok({resources:{bindings}});
+    if(url.endsWith('/r2/buckets/bor-ai-images'))return new Response('',{status:403});
+    if(url.includes('/queues?per_page=100&page=1'))return ok([]);
+    if(url.endsWith('/time_travel/bookmark'))return ok({bookmark});
+    if(/\/d1\/database\/[0-9a-f-]{36}$/i.test(url)){
+      const id=url.split('/').at(-1);return ok({name:'bor-ai-chat',uuid:id});
+    }
+    if(url.endsWith('/api/health?deep=1'))return Response.json({ok:true,checks:{database:true}});
+    if(url.endsWith('/api/images/config'))return Response.json({enabled:false});
+    if(url.endsWith('/media-lab.html'))return new Response('',{status:404});
+    throw Error('Unexpected endpoint');
+  };
+  const report=await runAudit({fetcher,env:{CLOUDFLARE_ACCOUNT_ID:'a'.repeat(32),CLOUDFLARE_API_TOKEN:'fake-token'}});
+  assert.equal(report.features.pinnedProductionD1,'verified');
+  assert.equal(report.features.d1TimeTravelBookmark,'available');
+  assert.equal(report.features.d1TimeTravelProbe,'ok');
+  assert.ok(urls.some(url=>url.endsWith('/time_travel/bookmark')));
+  assert.ok(!urls.some(url=>url.includes('/time_travel/restore')));
+  assert.doesNotMatch(JSON.stringify(report),/bookmarks-stay-private|fake-token/);
 });
