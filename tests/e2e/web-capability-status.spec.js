@@ -5,6 +5,7 @@ import { test, expect } from "./fixtures.js";
 test("Plugins clearly distinguishes Search, URL Reader and unavailable Web Actions", async ({ page, app }) => {
   await page.goto(app.url);
   await page.locator("#continueGuest").click();
+  if (page.viewportSize().width <= 1024) await page.locator("#menuBtn").click();
   await expect(page.locator("#openPlugins")).toBeVisible();
   await page.locator("#openPlugins").click();
   await expect(page.locator("#pluginReaderStatus")).toHaveText("Belum tersedia");
