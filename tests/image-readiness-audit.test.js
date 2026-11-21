@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { summarizeImageReadiness, runAudit } from '../scripts/image-readiness-audit.mjs';
+import { readFileSync } from 'node:fs';
 
 const bindings=[
   {name:'URL_READER_ENABLED',type:'plain_text',text:'true'},
@@ -60,6 +61,10 @@ test('read-only audit uses GET endpoints only and cannot invoke an image provide
     if(url.endsWith('/deployments?per_page=1'))return ok({deployments:[{versions:[{percentage:100,version_id:'v1'}]}]});
     if(url.endsWith('/versions/v1'))return ok({resources:{bindings}});
     if(url.endsWith('/r2/buckets/bor-ai-images'))return ok({name:'bor-ai-images'});
+    if(/\/d1\/database\/[0-9a-f-]{36}$/i.test(url)){
+      const id=url.split('/').at(-1);
+      return ok({name:'bor-ai-chat',uuid:id});
+    }
     if(url.endsWith('/r2/buckets/bor-ai-images/domains/managed'))return ok({enabled:false});
     if(url.endsWith('/r2/buckets/bor-ai-images/domains/custom'))return ok({domains:[]});
     if(url.includes('/queues?per_page=100&page=1'))return ok([{queue_name:'bor-ai-image-jobs'}]);
@@ -73,7 +78,11 @@ test('read-only audit uses GET endpoints only and cannot invoke an image provide
   assert.equal(report.features.dedicatedImageQueue,'present');
   assert.equal(report.features.imageSecretBound,'present');
   assert.equal(report.features.mediaLabDeployed,'no');
-  assert.ok(calls.length>=8);
+  assert.equal(report.features.pinnedProductionD1,'verified');
+  assert.equal(report.features.d1MetadataProbe,'ok');
+  assert.equal(report.features.r2BucketProbe,'ok');
+  assert.equal(report.features.queueProbe,'ok');
+  assert.ok(calls.length>=9);
   assert.ok(calls.every(c=>c.method==='GET'));
   assert.ok(calls.every(c=>/^https:\/\/(?:api\.cloudflare\.com|ai-command-center\.muhriskiawan23\.workers\.dev)\//.test(c.url)));
   assert.doesNotMatch(JSON.stringify(report),/synthetic-secret|not-a-real/);
@@ -84,4 +93,62 @@ test('audit refuses unknown active traffic allocation and missing operator crede
   const result=summarizeImageReadiness({...defaultParams,activeTraffic:null});
   assert.equal(result.features.activeWorkerTraffic,'unverifiable');
   assert.ok(result.blockers.includes('active_worker_version_unverified'));
+});
+
+test('R2 permission errors remain unverifiable rather than claiming bucket missing',async()=>{
+  const ok=result=>Response.json({success:true,result});
+  const fetcher=async(url,options)=>{
+    assert.equal(options.method,'GET');
+    if(url.endsWith('/deployments?per_page=1'))return ok({deployments:[{versions:[{percentage:100,version_id:'v1'}]}]});
+    if(url.endsWith('/versions/v1'))return ok({resources:{bindings}});
+    if(url.endsWith('/r2/buckets/bor-ai-images'))return new Response('',{status:403});
+    if(url.includes('/queues?per_page=100&page=1'))return ok([]);
+    if(/\/d1\/database\/[0-9a-f-]{36}$/i.test(url))return new Response('',{status:403});
+    if(url.endsWith('/api/health?deep=1'))return Response.json({ok:true,checks:{database:true}});
+    if(url.endsWith('/api/images/config'))return Response.json({enabled:false});
+    if(url.endsWith('/media-lab.html'))return new Response('',{status:404});
+    throw Error('Unexpected audit endpoint');
+  };
+  const report=await runAudit({fetcher,env:{CLOUDFLARE_ACCOUNT_ID:'a'.repeat(32),CLOUDFLARE_API_TOKEN:'synthetic-private-token'}});
+  assert.equal(report.features.dedicatedR2Bucket,'unverifiable');
+  assert.equal(report.features.r2BucketProbe,'denied');
+  assert.equal(report.features.privateR2Domains,'unverifiable');
+  assert.equal(report.features.pinnedProductionD1,'unverifiable');
+  assert.equal(report.features.d1MetadataProbe,'denied');
+  assert.equal(report.features.dedicatedImageQueue,'absent');
+  assert.ok(report.blockers.includes('production_d1_identity_not_verified'));
+  assert.doesNotMatch(JSON.stringify(report),/synthetic-private-token/);
+});
+test('an R2 bucket found via GET stays present if private domain inventory is forbidden',async()=>{
+  const ok=result=>Response.json({success:true,result});
+  const fetcher=async(url,options)=>{
+    assert.equal(options.method,'GET');
+    if(url.endsWith('/deployments?per_page=1'))return ok({deployments:[{versions:[{percentage:100,version_id:'v1'}]}]});
+    if(url.endsWith('/versions/v1'))return ok({resources:{bindings}});
+    if(url.endsWith('/r2/buckets/bor-ai-images'))return ok({name:'bor-ai-images'});
+    if(url.includes('/r2/buckets/bor-ai-images/domains/'))return new Response('',{status:403});
+    if(url.includes('/queues?per_page=100&page=1'))return ok([]);
+    if(/\/d1\/database\/[0-9a-f-]{36}$/i.test(url)){
+      const id=url.split('/').at(-1);
+      return ok({name:'bor-ai-chat',uuid:id});
+    }
+    if(url.endsWith('/api/health?deep=1'))return Response.json({ok:true,checks:{database:true}});
+    if(url.endsWith('/api/images/config'))return Response.json({enabled:false});
+    if(url.endsWith('/media-lab.html'))return new Response('',{status:404});
+    throw Error('Unexpected audit endpoint');
+  };
+  const report=await runAudit({fetcher,env:{CLOUDFLARE_ACCOUNT_ID:'a'.repeat(32),CLOUDFLARE_API_TOKEN:'synthetic-private-token'}});
+  assert.equal(report.features.dedicatedR2Bucket,'present');
+  assert.equal(report.features.r2BucketProbe,'ok');
+  assert.equal(report.features.privateR2Domains,'unverifiable');
+  assert.equal(report.features.r2PrivacyProbe,'denied');
+  assert.equal(report.features.pinnedProductionD1,'verified');
+});
+
+test('production diagnostics workflow lists but can never apply image or billing migrations',()=>{
+  const workflow=readFileSync(new URL('../.github/workflows/bor-ai-image-readiness.yml',import.meta.url),'utf8');
+  assert.match(workflow,/d1 migrations list bor-ai-chat --remote --config wrangler\.jsonc/);
+  assert.doesNotMatch(workflow,/^\s*(?:npx|wrangler)\b[^\n]*d1 migrations apply\b/m);
+  assert.doesNotMatch(workflow,/^\s*(?:npx|wrangler)\b[^\n]*deploy\b/m);
+  assert.doesNotMatch(workflow,/^\s*(?:npx|wrangler)\b[^\n]*d1 execute\b/m);
 });
