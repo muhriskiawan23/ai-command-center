@@ -32,7 +32,8 @@ test('image-only local SQL run confirms credits, ownership constraints and no bi
 test('missing image script or changed synthetic billing migration filenames fail closed',()=>{
  const tmp=mkdtempSync(join(tmpdir(),'bor-image-preflight-'));
  try{
-   cpSync(root,tmp,{recursive:true});
+   for (const name of readdirSync(root).filter(x=>x.endsWith('.sql')))
+     cpSync(join(root,name),join(tmp,name));
    rmSync(join(tmp,'0016_image_chat_history.sql'));
    assert.throws(()=>inspectImageMigrationPlan(tmp),/Missing expected image/);
    writeFileSync(join(tmp,'0016_image_chat_history.sql'),readFileSync(join(root,'0016_image_chat_history.sql'),'utf8'));
