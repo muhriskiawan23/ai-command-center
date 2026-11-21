@@ -112,7 +112,7 @@ export async function executeStagingBrowserRead(url, env, { launch } = {}) {
       ok: true, status: "page_read", sourceType: "browser_read",
       requestedUrl: preview.plan.url, resolvedUrl: final.url,
       httpStatus: status, title, text: text.slice(0, BROWSER_MAX_TEXT_CHARS),
-      truncated, links, browserRunVerified: true,
+      truncated, links, renderedInBrowserSession: true,
       // Provenance means real staged browser returned page text, NOT that
       // claims in the untrusted page have been independently fact checked.
       dataTrust: "untrusted_external", actionsPerformed: ["navigate", "read_text"]
