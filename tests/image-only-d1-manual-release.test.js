@@ -44,6 +44,8 @@ test('manual workflow defaults to PLAN and cannot deploy Worker or activate paid
   assert.match(w,/workflow_dispatch:/);
   assert.match(w,/default: plan/);
   assert.match(w,/environment: production/);
+  assert.match(w,/group: bor-ai-production-deploy/);
+  assert.match(w,/git ls-remote origin refs\/heads\/main/);
   assert.match(w,/GITHUB_REF/);
   assert.match(w,/CONFIRM_IMAGE_SCHEMA_0012_0016_BOR_AI_CHAT/);
   assert.match(w,/node scripts\/check-production-migration-isolation\.mjs migrations/);
