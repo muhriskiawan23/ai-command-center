@@ -114,3 +114,15 @@ test('reviewed 0012 then 0016 SQL applies locally with no synthetic billing obje
     assert.ok(db.prepare('PRAGMA table_info(image_jobs)').all().some(x=>x.name==='conversation_id'));
   } finally{db.close();}
 });
+
+test('dedicated D1 image inventory workflow can only list, never apply or deploy',()=>{
+  const workflow=fs.readFileSync(path.join(originalRoot,'.github/workflows/bor-ai-image-only-d1-list.yml'),'utf8');
+  assert.match(workflow,/d1 migrations list bor-ai-chat --remote --config wrangler\.jsonc/);
+  assert.match(workflow,/d1 migrations list bor-ai-chat --remote --config wrangler\.image-only-migrations\.generated\.jsonc/);
+  assert.doesNotMatch(workflow,/^\s*(?:npx|wrangler)\b[^\n]*d1 migrations apply\b/m);
+  assert.doesNotMatch(workflow,/^\s*(?:npx|wrangler)\b[^\n]*d1 execute\b/m);
+  assert.doesNotMatch(workflow,/^\s*(?:npx|wrangler)\b[^\n]*\bdeploy\b/m);
+  assert.doesNotMatch(workflow,/^\s*(?:npx|wrangler)\b[^\n]*\brestore\b/m);
+  assert.match(workflow,/environment: production/);
+  assert.match(workflow,/permissions:\s+contents: read/);
+});
