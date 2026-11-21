@@ -135,7 +135,7 @@ export async function handleImageRoute(request, env, url, deps) {
   if (source) await env.IMAGE_FILES.put(key,source.bytes,{httpMetadata:{contentType:source.mime}});
   try {
     if (!requestedConversationId) {
-      const title = prompt.replace(/\\s+/g,' ').slice(0,72) || 'Gambar baru';
+      const title = prompt.replace(/\s+/g,' ').slice(0,72) || 'Gambar baru';
       await env.DB.prepare('INSERT INTO conversations(id,user_id,title,created_at,updated_at) VALUES(?,?,?,?,?)')
         .bind(conversationId,user.id,title,now,now).run();
       madeConversation = true;
