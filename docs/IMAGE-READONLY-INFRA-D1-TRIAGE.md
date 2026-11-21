@@ -17,6 +17,8 @@ The checked-in `migrations/` directory includes:
 
 **Do NOT run `wrangler d1 migrations apply bor-ai-chat --remote` with this entire directory.** Image migrations are interleaved with unapproved synthetic billing migrations. Existing `scripts/check-production-migration-isolation.mjs` deliberately blocks this. Do not disable it, do not mark billing migrations applied without actually applying them, and do not copy/paste image SQL into production manually.
 
+The Cloudflare API endpoint `GET /accounts/{account_id}/d1/database/{database_id}/time_travel/bookmark` can confirm a restoration bookmark exists for the pinned production DB. The read-only audit checks this with an authenticated **GET** and returns only `available`, `unavailable` or an unverified status; **it never logs, stores or exposes the bookmark value**. Bookmark availability is a safety prerequisite, **not** permission to restore or migrate. Reference: https://developers.cloudflare.com/api/resources/d1/subresources/database/subresources/time_travel/methods/get_bookmark/
+
 The read-only workflow runs **`wrangler d1 migrations list` only** to determine what the production D1 thinks is pending. The exact target D1 identity and a valid Cloudflare D1 Time Travel restoration bookmark must be confirmed before any future narrowly scoped schema change. If the listing or metadata probe fails, report it as unverified; do not infer absent tables.
 
 ## R2 and Queue release order
