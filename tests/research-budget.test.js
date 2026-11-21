@@ -83,3 +83,55 @@ test("shared provider budget remains opt-in until the production D1 migration is
   assert.equal(result.results[0].ok, true);
   assert.equal(calls, 1);
 });
+
+
+test("zero and partial shared daily budgets refuse first provider call without creating usage rows", async () => {
+  for (const ceiling of ["0", "1"]) {
+    const DB = createD1();
+    let calls = 0;
+    try {
+      const result = await searchExternal("budget test", "web", {
+        DB, SEARCH_SHARED_BUDGET_ENABLED: "true",
+        BRAVE_SEARCH_API_KEY: "test-key", SEARCH_DAILY_ATTEMPT_LIMIT_BRAVE: ceiling,
+        SEARCH_FETCHER: async () => { calls++; return successResponse(); }
+      }, { now: Date.parse("2026-11-09T12:00:00Z"), circuitBreaker: createSearchCircuitBreaker() });
+      assert.equal(result.reason, "provider_daily_budget_exhausted", ceiling);
+      assert.equal(calls, 0, "provider was called with budget " + ceiling);
+      const row = DB.sqlite.prepare("SELECT attempts FROM search_provider_usage WHERE day = ? AND provider = ?")
+        .get("2026-11-09", "brave");
+      assert.equal(row, undefined, "zero-budget request must not insert a usage row");
+    } finally {
+      DB.sqlite.close();
+    }
+  }
+});
+
+test("pasted URL paths, private query values and fragments are never forwarded as Tavily search terms", async () => {
+  let calls = 0, terms = "";
+  const result = await searchExternal(
+    'cari informasi https://example.com/private?token="DONT_SEND_THIS"&session=abc#SECRET_FRAGMENT terbaru',
+    "web",
+    {
+      SEARCH_PROVIDER: "tavily", TAVILY_API_KEY: "mock",
+      SEARCH_FETCHER: async (_url, options) => {
+        calls++;
+        terms = JSON.parse(options.body).query;
+        return new Response(JSON.stringify({ results: [] }), { headers: { "Content-Type": "application/json" } });
+      }
+    },
+    { circuitBreaker: createSearchCircuitBreaker() }
+  );
+  assert.equal(calls, 1);
+  assert.equal(terms, "cari informasi terbaru");
+  assert.doesNotMatch(JSON.stringify(result), /DONT_SEND_THIS|SECRET_FRAGMENT|session=abc/);
+});
+
+test("pure URL search input is rejected before any provider request or billing reservation", async () => {
+  let calls = 0;
+  const result = await searchExternal("https://example.com/?token=MY_SECRET", "web", {
+    SEARCH_PROVIDER: "tavily", TAVILY_API_KEY: "mock",
+    SEARCH_FETCHER: async () => { calls++; throw Error("provider must not receive a URL-only query"); }
+  }, { circuitBreaker: createSearchCircuitBreaker() });
+  assert.equal(result.reason, "query_without_search_terms");
+  assert.equal(calls, 0);
+});

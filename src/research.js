@@ -499,6 +499,9 @@ async function reserveSearchProviderBudget(env, provider, now) {
   if (!env.DB?.prepare) return { allowed: false, reason: "provider_budget_unavailable" };
   const day = new Date(now).toISOString().slice(0, 10);
   const limit = searchDailyAttemptLimit(env, provider);
+  // SQLite's UPSERT WHERE does not constrain a fresh INSERT: guard zero/partial
+  // budgets before any D1 write or provider call.
+  if (limit < SEARCH_MAX_ATTEMPTS) return { allowed: false, reason: "provider_daily_budget_exhausted", day, limit };
   try {
     const row = await env.DB.prepare(
       "INSERT INTO search_provider_usage (day, provider, requests, attempts, updated_at) VALUES (?, ?, 1, ?, ?) " +
@@ -542,9 +545,18 @@ async function settleSearchProviderBudget(env, provider, reservation, result, no
   }
 }
 
+// User-pasted links belong to the URL reader, not a search provider's query log.
+// Never forward full URL paths, query strings, fragments or embedded credentials.
+function searchTermsWithoutPastedUrls(query) {
+  // Consume the entire non-whitespace URL token, including quoted values and fragments.
+  return String(query || "").replace(/\b(?:https?:\/\/|www\.)[^\s<>]+/gi, " ").replace(/\s+/g, " ").trim();
+}
+
 export async function searchExternal(query, mode, env = {}, options = {}) {
   const { provider, adapter } = selectedSearchAdapter(env);
   if (!adapter) return { configured: false, provider, mode, results: [], reason: "provider_unsupported" };
+  const safeQuery = searchTermsWithoutPastedUrls(query);
+  if (!safeQuery) return { configured: adapter.isConfigured(env), provider, mode, results: [], reason: "query_without_search_terms", diagnostics: { attempts: 0 } };
   const now = Number.isFinite(options.now) ? options.now : Date.now();
   // Explicitly injected fetchers are test transports. Production requests use D1 budget enforcement.
   // Opt in only after the additive D1 migration is applied; an ordinary code release must not disable live search.
@@ -561,7 +573,7 @@ export async function searchExternal(query, mode, env = {}, options = {}) {
     breaker?.cancelProbe?.(provider);
     return { configured: true, provider, mode, results: [], reason: reservation.reason, diagnostics: { attempts: 0, budgetLimit: reservation.limit } };
   }
-  const result = await adapter.search(query, mode, env, options);
+  const result = await adapter.search(safeQuery, mode, env, options);
   if (reservation?.allowed) await settleSearchProviderBudget(env, provider, reservation, result, now);
   if (breaker && result.configured) {
     const circuitState = breaker.record(provider, result, Date.now());
