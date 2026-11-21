@@ -100,7 +100,7 @@ export async function executeStagingBrowserRead(url, env, { launch } = {}) {
       Array.from(document.querySelectorAll("a[href]")).slice(0, limit * 2)
         .map(link => ({ url: link.href, label: String(link.innerText || "").slice(0, 100) })),
       MAX_LINKS
-    ), remainingMs(2_000);
+    ), remainingMs(2_000));
     const links = Array.isArray(rawLinks) ? rawLinks
       .filter(item => item && typeof item.url === "string" &&
         isPermittedRequest(item.url, "GET", host))
