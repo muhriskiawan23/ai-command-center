@@ -73,7 +73,7 @@ test('uploaded photo plus an edit prompt routes to image edit and survives chat 
  app.db.sqlite.prepare('INSERT INTO image_wallets VALUES(?,?,?)').run('photo-edit-chat',100,1);
  await page.goto(app.url);
  await page.locator('#pdfFile').setInputFiles({name:'source.png',mimeType:'image/png',buffer:png});
- await expect(page.locator('#attachmentPreview')).toBeVisible({timeout:12000});
+ await expect(page.locator('#attachmentPreview')).toHaveAttribute('data-status','ready',{timeout:12000});
  await page.locator('#prompt').fill('Ganti background foto ini jadi biru');
  await page.locator('#send').click();
  await expect(page.locator('#imageDialog')).toBeVisible();
