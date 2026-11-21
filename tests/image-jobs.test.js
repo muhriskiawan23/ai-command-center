@@ -198,3 +198,22 @@ test('chat fetch includes authorized image results only after the schema feature
   assert.equal(foreign.status,404);
  }finally{h.close();}
 });
+
+test('optional image-history storage failure never breaks ordinary saved-chat retrieval',async()=>{
+ const h=setup();try{
+  const job=await (await h.create()).json();
+  h.env.BOR_IMAGE_CHAT_HISTORY_ENABLED='true';
+  const originalPrepare=h.env.DB.prepare;
+  h.env.DB.prepare=(sql)=>{
+    if(sql.includes("SELECT * FROM image_jobs WHERE user_id=? AND conversation_id=?"))
+      throw Error('simulated missing image-history migration');
+    return originalPrepare(sql);
+  };
+  const response=await worker.fetch(h.request('/api/conversations/'+job.conversationId),h.env);
+  assert.equal(response.status,200);
+  const data=await response.json();
+  assert.deepEqual(data.imageJobs,[]);
+  assert.equal(data.imageHistoryUnavailable,true);
+  assert.equal(data.conversation.id,job.conversationId);
+ }finally{h.close();}
+});
