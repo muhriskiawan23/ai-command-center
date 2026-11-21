@@ -27,7 +27,7 @@ export async function readFirstPartyPublicLink(raw, ownHost, assets) {
   let url;
   try { url = new URL(raw); } catch { return fail(raw, "alamat tidak valid"); }
   if (url.protocol !== "https:" || url.port || url.username || url.password)
-    return fail(raw, "hanya halaman HTTPS publik tanpa kredensial yang didukung");
+    return fail(raw, "alamat non-HTTPS, port khusus, atau kredensial tidak diizinkan");
   if (url.search)
     return fail(raw, "parameter URL tidak diizinkan pada halaman publik BOR AI");
   const assetPath = PUBLIC_ASSET_PATHS.get(url.pathname);
