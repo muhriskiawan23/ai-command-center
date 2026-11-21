@@ -8,6 +8,11 @@ on:
         required: true
         type: boolean
         default: false
+      preserve_active_tavily_reader:
+        description: "Explicitly preserve only verified current Tavily Reader (<=8 daily URLs, no new activation), if needed to retain user link reading"
+        required: true
+        type: boolean
+        default: false
       allow_reader_shutdown:
         description: "Explicitly allow disabling an active URL Reader only after separate owner/security review"
         required: true
@@ -97,9 +102,11 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           ALLOW_READER_SHUTDOWN: ${{ inputs.allow_reader_shutdown && 'true' || 'false' }}
+          PRESERVE_ACTIVE_READER: ${{ inputs.preserve_active_tavily_reader && 'true' || 'false' }}
         run: |
           node --input-type=module <<'NODE'
           import fs from "node:fs";
+          import { buildPreservedTavilyReaderConfig } from "./scripts/reader-preserve-guard.mjs";
           const config=JSON.parse(fs.readFileSync("wrangler.jsonc","utf8"));
           const desired=config.vars?.URL_READER_ENABLED;
           if (!["true","false"].includes(desired)) throw Error("Candidate URL Reader flag is missing/invalid");
@@ -125,9 +132,20 @@ jobs:
           const current=named[0].text;
           console.log("URL Reader active state:",current,"candidate state:",desired);
           if(current==="false"&&desired==="true")throw Error("Do not activate external URL Reader without independent security approval");
-          if(current==="true"&&desired==="false"&&process.env.ALLOW_READER_SHUTDOWN!=="true")
-            throw Error("Release would disable currently active URL Reader; explicit review required (issues #351/#156)");
-          console.log("URL Reader transition explicitly verified before image/media release");
+          if (process.env.PRESERVE_ACTIVE_READER==="true") {
+            if(current!=="true" || desired!=="false") throw Error("Preservation requires an already-active Reader and reviewed OFF baseline");
+            if(process.env.ALLOW_READER_SHUTDOWN==="true")throw Error("Reader preservation and shutdown approvals are mutually exclusive");
+            if(process.env.BOR_IMAGES_ENABLED!=="false" || process.env.BOR_BILLING_SHADOW_ENABLED==="true")
+              throw Error("Reader-preserving release cannot activate paid images or billing shadow");
+            const {config: preserved, urlBudget}=buildPreservedTavilyReaderConfig(config,bindings);
+            const path="wrangler.reader-preserve.generated.jsonc";
+            fs.writeFileSync(path,JSON.stringify(preserved,null,2)+"\n");
+            fs.appendFileSync(process.env.GITHUB_ENV,"BOR_READER_DEPLOY_CONFIG="+path+"\n");
+            console.log("Preserving existing Tavily Reader with at most",urlBudget,"URLs per day; no new provider or quota expansion");
+          } else if(current==="true"&&desired==="false"&&process.env.ALLOW_READER_SHUTDOWN!=="true") {
+            throw Error("Release would disable currently active URL Reader; choose reviewed preservation or explicit shutdown");
+          }
+          console.log("URL Reader release transition verified without logging credential values");
           NODE
 
       - name: Test and validate Worker
@@ -143,6 +161,7 @@ jobs:
         run: |
           set -euo pipefail
           if [[ "$BOR_IMAGES_ENABLED" == "true" ]]; then
+            test -z "${BOR_READER_DEPLOY_CONFIG:-}" || { echo "::error::Paid image activation cannot be combined with Reader preservation"; exit 1; }
             node scripts/prepare-image-config.mjs
             npx --yes wrangler@4 deploy --dry-run --config wrangler.images.generated.jsonc
             npx --yes wrangler@4 secret list --config wrangler.jsonc --format json | node --input-type=module -e '
@@ -152,7 +171,7 @@ jobs:
             node scripts/provision-image-resources.mjs
             echo "BOR_DEPLOY_CONFIG=wrangler.images.generated.jsonc" >> "$GITHUB_ENV"
           else
-            echo "BOR_DEPLOY_CONFIG=wrangler.jsonc" >> "$GITHUB_ENV"
+            echo "BOR_DEPLOY_CONFIG=${BOR_READER_DEPLOY_CONFIG:-wrangler.jsonc}" >> "$GITHUB_ENV"
           fi
 
       - name: Verify the pinned production D1 database (read-only)
@@ -407,8 +426,23 @@ jobs:
             done
             echo "Local Media Lab assets are present (no paid image call)"
           }
+          smoke_reader_preservation() {
+            local base_url="$1"
+            if [[ -z "${BOR_READER_DEPLOY_CONFIG:-}" ]]; then return 0; fi
+            curl --fail --silent --show-error --max-time 20 "$base_url/api/plugins/capabilities" |
+              node --input-type=module -e '
+                let body=""; for await(const chunk of process.stdin)body+=chunk;
+                const data=JSON.parse(body);
+                if(data?.tools?.webReading?.enabled!==true || data?.tools?.webReading?.available!==true ||
+                   data?.tools?.webActions?.available!==false) {
+                  throw Error("Candidate public capabilities do not preserve bounded Reader while Web Actions remain OFF");
+                }
+                console.log("Reader capability preserved (configuration only; no billable Extract call)");
+              '
+          }
           smoke_chat "$candidate_url"
           smoke_media "$candidate_url"
+          smoke_reader_preservation "$candidate_url"
           if [[ "$BOR_BILLING_SHADOW_ENABLED" == "true" ]]; then
             smoke_billing_shadow_auth_guard "$candidate_url"
           fi
@@ -417,6 +451,7 @@ jobs:
           wrangler triggers deploy --config "$BOR_DEPLOY_CONFIG"
           smoke_chat "https://ai-command-center.muhriskiawan23.workers.dev"
           smoke_media "https://ai-command-center.muhriskiawan23.workers.dev"
+          smoke_reader_preservation "https://ai-command-center.muhriskiawan23.workers.dev"
           if [[ "$BOR_BILLING_SHADOW_ENABLED" == "true" ]]; then
             smoke_billing_shadow_auth_guard "https://ai-command-center.muhriskiawan23.workers.dev"
           fi
