@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { imageIntent } from '../public/image-intent.js';
+import { imageIntent, referencesEarlierImage } from '../public/image-intent.js';
 
 test('chat prompt generates images without opening the Alat mode first', () => {
  for(const prompt of [
@@ -45,4 +45,13 @@ test('explicit tool modes override ambiguous natural language',()=>{
  assert.equal(imageIntent('Jelaskan foto ini',true,'analyze'),null);
  assert.equal(imageIntent('Jelaskan foto ini',true,'edit'),'edit');
  assert.equal(imageIntent('Buat poster',true,'generate'),'generate');
+});
+
+test('references to a previous generated image resolve to edits only with a source',()=>{
+ for(const prompt of ['Buat versi lain', 'Yang tadi bikin lebih terang', 'Edit lagi dengan latar biru', 'Buat ulang gambar tadi']) {
+   assert.equal(referencesEarlierImage(prompt),true,prompt);
+   assert.equal(imageIntent(prompt,true),'edit',prompt);
+ }
+ assert.equal(referencesEarlierImage('Apa isi gambar tadi?'),false);
+ assert.equal(imageIntent('Apa isi gambar tadi?',true),null);
 });
