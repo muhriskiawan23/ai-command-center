@@ -110,7 +110,7 @@ test('pilot lifetime cap counts admitted attempts across days including failed j
  const refused=await h.create();assert.equal(refused.status,429);
  assert.equal(h.sent.length,2);
  // A failed request still counts: upstream may have charged even if no image was delivered.
- await h.db.sqlite.prepare("UPDATE image_jobs SET status='failed' WHERE id=?").bind((await first.json()).id).run();
+ await h.db.sqlite.prepare("UPDATE image_jobs SET status='failed' WHERE id=?").run((await first.json()).id);
  const refusedAgain=await h.create();assert.equal(refusedAgain.status,429);
  assert.equal(h.calls.length,0);
  }finally{h.close();}
