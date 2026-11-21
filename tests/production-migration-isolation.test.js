@@ -4,6 +4,7 @@ import {mkdtempSync,mkdirSync,writeFileSync,rmSync,readFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {inspectProductionMigrations} from '../scripts/check-production-migration-isolation.mjs';
+import {createD1} from './e2e/harness.js';
 
 test('production D1 migration folder has only account/chat/image SQL, never synthetic billing',()=>{
   const directory=new URL('../migrations/',import.meta.url).pathname;
@@ -49,4 +50,20 @@ test('production workflow cannot run remote D1 apply without preceding financial
   assert.match(workflow,/name: Reject synthetic billing migrations in production D1 directory[\s\S]*?if: \$\{\{ inputs\.apply_db_migrations \}\}/);
   assert.match(workflow,/name: Apply D1 migrations[\s\S]*?if: \$\{\{ inputs\.apply_db_migrations \}\}/);
   assert.match(workflow,/apply_db_migrations:[\s\S]*?default: false/);
+});
+
+test('image migrations can initialize a primary chat D1 with no synthetic billing tables',()=>{
+  const db=createD1();
+  try{
+    const names=new Set(db.sqlite.prepare("SELECT name FROM sqlite_master WHERE type='table'").all().map(row=>row.name));
+    for(const name of ['users','conversations','image_wallets','image_jobs','image_credit_ledger'])
+      assert.equal(names.has(name),true,name+' missing');
+    for(const name of ['billing_quotes','billing_orders','billing_credit_ledger','billing_payment_events'])
+      assert.equal(names.has(name),false,name+' must remain isolated');
+    const fields=db.sqlite.prepare('PRAGMA table_info(image_jobs)').all().map(row=>row.name);
+    assert.ok(fields.includes('conversation_id'),'image chat history migration 0016 must apply after 0012');
+    const triggers=new Set(db.sqlite.prepare("SELECT name FROM sqlite_master WHERE type='trigger'").all().map(row=>row.name));
+    for(const name of ['image_reserve','image_reserve_debit','image_refund','image_grant'])
+      assert.ok(triggers.has(name),'missing image credit guard '+name);
+  }finally{db.sqlite.close()}
 });
