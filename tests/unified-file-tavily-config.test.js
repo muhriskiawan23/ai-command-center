@@ -37,12 +37,12 @@ test("image OCR context is escaped and never misrepresented as visual understand
  assert.equal(buildImageOcrContext({name:"x.jpg",content:"A".repeat(10000)}).includes("truncated"),true);
  assert.equal(IMAGE_OCR_CONTEXT_MAX_CHARS,9000);
 });
-test("Tavily production config is explicitly bounded and managed",()=>{
+test("Tavily Search remains bounded while URL Extract is disabled",()=>{
  const config=JSON.parse(readFileSync(new URL("../wrangler.jsonc",import.meta.url),"utf8"));
- assert.equal(config.vars.URL_READER_ENABLED,"true");
+ assert.equal(config.vars.URL_READER_ENABLED,"false");
  assert.equal(config.vars.URL_READER_PROVIDER,"tavily");
  assert.equal(config.vars.SEARCH_PROVIDER,"tavily");
  assert.equal(config.vars.SEARCH_SHARED_BUDGET_ENABLED,"true");
- assert.ok(Number(config.vars.TAVILY_EXTRACT_DAILY_URL_LIMIT)>0&&Number(config.vars.TAVILY_EXTRACT_DAILY_URL_LIMIT)<=8);
+ assert.equal(config.vars.TAVILY_EXTRACT_DAILY_URL_LIMIT,"0");
  assert.ok(Number(config.vars.SEARCH_DAILY_ATTEMPT_LIMIT_TAVILY)>0&&Number(config.vars.SEARCH_DAILY_ATTEMPT_LIMIT_TAVILY)<=12);
 });
