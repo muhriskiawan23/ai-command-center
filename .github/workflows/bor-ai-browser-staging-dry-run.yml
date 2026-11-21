@@ -1,0 +1,61 @@
+name: BOR AI browser staging dry-run (no browser launch)
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/bor-ai-browser-staging-dry-run.yml"
+      - "staging/browser/**"
+      - "src/browser-staging-*.js"
+      - "src/browser-task-policy.js"
+      - "tests/browser-staging-*.test.js"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bor-ai-browser-dry-run-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  isolated-staging-browser-dry-run:
+    name: Build isolated Browser Run staging Worker (offline only)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 22
+      - name: Install staging dependencies only
+        run: npm install --prefix staging/browser --no-audit --no-fund
+      - name: Check isolated staging syntax
+        run: |
+          node --check staging/browser/worker.js
+          node --check src/browser-staging-handler.js
+          node --check src/browser-staging-executor.js
+          node --check src/browser-staging-budget.js
+      - name: Run isolated browser staging unit and SQLite tests
+        run: node --test tests/browser-staging-*.test.js
+      - name: Render deliberately unprovisioned CI-only config
+        shell: bash
+        run: |
+          node --input-type=module -e '
+            import {readFileSync, writeFileSync} from "node:fs";
+            const path = "staging/browser/";
+            const template = JSON.parse(readFileSync(path + "wrangler.example.jsonc", "utf8"));
+            template.name = "bor-ai-browser-ci-disabled";
+            template.d1_databases[0].database_id = "00000000-0000-0000-0000-000000000000";
+            template.d1_databases[0].database_name = "bor-ai-browser-ci-nonexistent";
+            template.vars.STAGING_BROWSER_ENABLED = "false";
+            template.vars.STAGING_BROWSER_DAILY_SECONDS_LIMIT = "0";
+            template.vars.STAGING_BROWSER_RESERVATION_SECONDS = "0";
+            writeFileSync(path + "wrangler.ci.jsonc", JSON.stringify(template, null, 2));
+          '
+      - name: Build staging Worker bundle without deploy, credentials or browser launch
+        working-directory: staging/browser
+        run: npx wrangler deploy --dry-run --config wrangler.ci.jsonc --outdir .wrangler/ci-preview
