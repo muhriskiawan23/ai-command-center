@@ -42,51 +42,76 @@ export async function reserveTavilyExtractBudget(env, urlCount) {
 }
 const fail = (url, reason) => ({ ok: false, url, requested: url, reason });
 
-export async function extractWithTavily(urls, env = {}, { fetcher = fetch, ownHost = "" } = {}) {
+export async function extractWithTavily(urls, env = {}, { fetcher = fetch, ownHost = "", timeoutMs = TIMEOUT_MS } = {}) {
   const input = Array.isArray(urls) ? urls.slice(0, MAX_LINKS) : [];
   const key = typeof env.TAVILY_API_KEY === "string" ? env.TAVILY_API_KEY.trim() : "";
   const checked = input.map(raw => ({ raw, check: checkPublicUrl(raw, ownHost) }));
   if (!key) return checked.map(x => fail(x.raw, x.check.ok ? "Tavily belum dikonfigurasi" : x.check.reason));
   const eligible = checked.filter(x => x.check.ok);
   if (!eligible.length) return checked.map(x => fail(x.raw, x.check.reason));
+  // The deadline covers both response headers and every streaming read.
+  // Even a custom transport that ignores AbortSignal cannot hang the Worker.
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  let timer, reader, response;
   let extracted = new Map();
   try {
+    if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > TIMEOUT_MS)
+      throw Error("invalid_timeout");
     // Deduplicate URLs to avoid unnecessary provider credits within one extraction batch.
     const uniqueUrls = [...new Set(eligible.map(x => x.check.url.toString()))];
-    if (!(await reserveTavilyExtractBudget(env, uniqueUrls.length))) throw Error("budget_unavailable");
-    const response = await fetcher("https://api.tavily.com/extract", {
+    const deadline = new Promise((_, reject) => {
+      timer = setTimeout(() => {
+        controller.abort();
+        reject(new Error("provider_timeout"));
+      }, timeoutMs);
+    });
+    // D1 admission can also stall. A timed-out reservation must never start
+    // the paid provider call, even if D1 commits the counter later.
+    if (!(await Promise.race([reserveTavilyExtractBudget(env, uniqueUrls.length), deadline])))
+      throw Error("budget_unavailable");
+    response = await Promise.race([fetcher("https://api.tavily.com/extract", {
       method: "POST", redirect: "manual", signal: controller.signal,
       headers: { "Accept": "application/json", "Content-Type": "application/json", "Authorization": "Bearer " + key },
       body: JSON.stringify({ urls: uniqueUrls, extract_depth: "basic" })
-    });
-    if (!response.ok || response.status >= 300) { try { await response.body?.cancel(); } catch {} throw Error("provider_failure"); }
-    const size = Number(response.headers?.get?.("content-length"));
-    if (Number.isFinite(size) && size > MAX_RESPONSE_BYTES) { try { await response.body?.cancel(); } catch {} throw Error("oversize"); }
-    // Bound actual bytes too; Content-Length is not always provided.
-    const reader = response.body?.getReader();
+    }), deadline]);
+    if (!response?.ok || response.status >= 300) throw Error("provider_failure");
+    const advertised = response.headers?.get?.("content-length");
+    if (advertised !== null && advertised !== undefined &&
+        (!/^[0-9]+$/.test(advertised) || BigInt(advertised) > BigInt(MAX_RESPONSE_BYTES)))
+      throw Error("oversize");
+    // Bound actual bytes too; a Content-Length header is not sufficient.
+    reader = response.body?.getReader?.();
     if (!reader) throw Error("empty_response");
     const chunks = [];
     let total = 0;
     while (true) {
-      const { done, value } = await reader.read();
+      const { done, value } = await Promise.race([reader.read(), deadline]);
       if (done) break;
       total += value.byteLength;
-      if (total > MAX_RESPONSE_BYTES) { await reader.cancel(); throw Error("oversize"); }
+      if (total > MAX_RESPONSE_BYTES) throw Error("oversize");
       chunks.push(value);
     }
     const bytes = new Uint8Array(total);
     let offset = 0;
     for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
-    const payload = JSON.parse(new TextDecoder().decode(bytes));
+    const payload = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
     if (!Array.isArray(payload?.results)) throw Error("invalid_response");
     const allowed = new Set(eligible.map(x => x.check.url.toString()));
     extracted = new Map(payload.results.filter(x => typeof x?.url === "string" && allowed.has(x.url)).map(x => [x.url, x]));
   } catch {
+    // A timed-out or unknown provider attempt still consumes its reserved
+    // allowance: never assume upstream billable cost was zero.
     return checked.map(x => fail(x.raw, x.check.ok ? "Tavily tidak dapat membaca URL" : x.check.reason));
   } finally {
     clearTimeout(timer);
+    // A broken ReadableStream.cancel() may never resolve. Release the reader
+    // without awaiting cancellation or exposing provider errors to end users.
+    if (reader) {
+      try { void reader.cancel().catch(() => {}); } catch {}
+      try { reader.releaseLock(); } catch {}
+    } else if (response?.body) {
+      try { void response.body.cancel().catch(() => {}); } catch {}
+    }
   }
   return checked.map(({ raw, check }) => {
     if (!check.ok) return fail(raw, check.reason);
