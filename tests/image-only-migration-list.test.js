@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { prepareImageOnlyMigrationList } from '../scripts/prepare-image-only-migration-list.mjs';
+import { DatabaseSync } from 'node:sqlite';
 
 const originalRoot=path.resolve(new URL('..',import.meta.url).pathname);
 function testRoot(action){
@@ -96,4 +97,19 @@ test('the ordinary production deployment still rejects mixed billing migrations 
   const apply=workflow.indexOf('d1 migrations apply bor-ai-chat --remote');
   assert.ok(guard>0&&apply>guard);
   assert.match(workflow,/apply_db_migrations:[\s\S]*?default: false/);
+});
+
+test('reviewed 0012 then 0016 SQL applies locally with no synthetic billing objects',()=>{
+  const db=new DatabaseSync(':memory:');
+  try{
+    db.exec('PRAGMA foreign_keys=ON; CREATE TABLE users(id TEXT PRIMARY KEY); CREATE TABLE conversations(id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id));');
+    const sql12=fs.readFileSync(path.join(originalRoot,'migrations','0012_image_jobs.sql'),'utf8');
+    const sql16=fs.readFileSync(path.join(originalRoot,'migrations','0016_image_chat_history.sql'),'utf8');
+    db.exec(sql12);db.exec(sql16);
+    const objects=db.prepare("SELECT name FROM sqlite_master WHERE type IN ('table','trigger','index')").all().map(x=>x.name);
+    for(const needed of ['image_wallets','image_jobs','image_credit_ledger','image_reserve','image_reserve_debit','image_refund','image_grant','image_jobs_by_conversation'])
+      assert.ok(objects.includes(needed),'Missing expected image schema object: '+needed);
+    assert.ok(!objects.some(name=>/^billing_|^duitku|^midtrans/.test(name)),'Generated image migration must not create billing objects');
+    assert.ok(db.prepare('PRAGMA table_info(image_jobs)').all().some(x=>x.name==='conversation_id'));
+  } finally{db.close();}
 });
