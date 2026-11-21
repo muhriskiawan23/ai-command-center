@@ -8,6 +8,11 @@ on:
         required: true
         type: boolean
         default: false
+      allow_reader_shutdown:
+        description: "Explicitly allow disabling an active URL Reader only after separate owner/security review"
+        required: true
+        type: boolean
+        default: false
       apply_db_migrations:
         description: "Apply pending production D1 migrations (only after reviewing pending changes and confirming the current Time Travel bookmark)"
         required: true
@@ -81,6 +86,48 @@ jobs:
             echo "::error::Provide the billing shadow D1 UUID from the production Cloudflare account."
             exit 1
           fi
+
+      # Protect the owner's currently working public-link path from a silent
+      # rollout regression. This checks the actual 100%-active Worker version
+      # read-only; a checked-in config cannot attest live Cloudflare state.
+      - name: Block unreviewed URL Reader changes before upload
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          ALLOW_READER_SHUTDOWN: ${{ inputs.allow_reader_shutdown && 'true' || 'false' }}
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          const config=JSON.parse(fs.readFileSync("wrangler.jsonc","utf8"));
+          const desired=config.vars?.URL_READER_ENABLED;
+          if (!["true","false"].includes(desired)) throw Error("Candidate URL Reader flag is missing/invalid");
+          const account=process.env.CLOUDFLARE_ACCOUNT_ID;
+          const token=process.env.CLOUDFLARE_API_TOKEN;
+          const base="https://api.cloudflare.com/client/v4/accounts/"+account+"/workers/scripts/ai-command-center";
+          async function get(path) {
+            const response=await fetch(base+path,{headers:{Authorization:"Bearer "+token,Accept:"application/json"},redirect:"error",signal:AbortSignal.timeout(20000)});
+            if(!response.ok)throw Error("Cannot attest active Worker version: HTTP "+response.status);
+            const json=await response.json();
+            if(json.success!==true)throw Error("Cloudflare active-version attestation failed");
+            return json.result;
+          }
+          const deployment=(await get("/deployments?per_page=1"))?.deployments?.[0];
+          const active=deployment?.versions?.filter(v=>v.percentage>0);
+          if(active?.length!==1||active[0]?.percentage!==100||!active[0]?.version_id)throw Error("Cannot attest 100% active Worker version");
+          const version=await get("/versions/"+encodeURIComponent(active[0].version_id));
+          const bindings=version?.resources?.bindings;
+          if(!Array.isArray(bindings))throw Error("Active Worker bindings unavailable");
+          const named=bindings.filter(b=>b.name==="URL_READER_ENABLED");
+          if(named.length!==1||named[0].type!=="plain_text"||!["true","false"].includes(named[0].text))
+            throw Error("Active URL Reader flag is unverifiable; refuse release");
+          const current=named[0].text;
+          console.log("URL Reader active state:",current,"candidate state:",desired);
+          if(current==="false"&&desired==="true")throw Error("Do not activate external URL Reader without independent security approval");
+          if(current==="true"&&desired==="false"&&process.env.ALLOW_READER_SHUTDOWN!=="true")
+            throw Error("Release would disable currently active URL Reader; explicit review required (issues #351/#156)");
+          console.log("URL Reader transition explicitly verified before image/media release");
+          NODE
 
       - name: Test and validate Worker
         run: |
@@ -344,7 +391,23 @@ jobs:
           NODE
           )"
           read -r version_id candidate_url <<< "$candidate"
+          smoke_media() {
+            local base_url="$1"
+            curl --fail --silent --show-error --max-time 20 "$base_url/media-lab.html" |
+              node --input-type=module -e '
+                let html="";for await(const chunk of process.stdin)html+=chunk;
+                if(!html.includes("id=\"photoCanvas\"") || !html.includes("id=\"extractFrames\"")) {
+                  throw Error("Media Lab HTML is missing expected local photo/video controls");
+                }
+                console.log("Local Media Lab page is present");
+              '
+            for asset in /media-lab.js /media-lab.css /media-validation.js; do
+              curl --fail --silent --show-error --max-time 20 --output /dev/null "$base_url$asset"
+            done
+            echo "Local Media Lab assets are present (no paid image call)"
+          }
           smoke_chat "$candidate_url"
+          smoke_media "$candidate_url"
           if [[ "$BOR_BILLING_SHADOW_ENABLED" == "true" ]]; then
             smoke_billing_shadow_auth_guard "$candidate_url"
           fi
@@ -352,6 +415,7 @@ jobs:
             --message "github-sha:$GITHUB_SHA"
           wrangler triggers deploy --config "$BOR_DEPLOY_CONFIG"
           smoke_chat "https://ai-command-center.muhriskiawan23.workers.dev"
+          smoke_media "https://ai-command-center.muhriskiawan23.workers.dev"
           if [[ "$BOR_BILLING_SHADOW_ENABLED" == "true" ]]; then
             smoke_billing_shadow_auth_guard "https://ai-command-center.muhriskiawan23.workers.dev"
           fi
