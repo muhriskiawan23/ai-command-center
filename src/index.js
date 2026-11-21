@@ -1,6 +1,6 @@
 import { BACKUP_MODEL, withTextProviderFailover } from "./text-provider-failover.js";
 import { TextInferenceBudgetError, withTextInferenceBudget } from "./text-inference-budget.js";
-import { handleImageRoute, imageConfig, consumeImageQueue, cleanupImageJobs } from "./image-jobs.js";
+import { handleImageRoute, imageConfig, consumeImageQueue, cleanupImageJobs, listChatImageJobs } from "./image-jobs.js";
 import { imageIntent } from "../public/image-intent.js";
 import { safeError, safeAiBindingFailure } from "./safe-error.js";
 import { validateCustomization, customizationNotice } from "./customization.js";
@@ -1236,7 +1236,14 @@ async function handleConversationRoute(request, env, url) {
       links: row.links_json ? safeParseLinks(row.links_json) : [],
       feedback: row.feedback_rating ? { rating: row.feedback_rating, reason: row.feedback_reason || "" } : null
     }));
-    return json({ conversation, messages, truncated });
+    // The original text history stays readable even if an optional image
+    // migration is missing or an image query encounters transient D1 errors.
+    let imageJobs = [], imageHistoryUnavailable = false;
+    if (env.BOR_IMAGE_CHAT_HISTORY_ENABLED === "true") {
+      try { imageJobs = await listChatImageJobs(env,user.id,conversationId); }
+      catch { imageHistoryUnavailable = true; }
+    }
+    return json({ conversation, messages, truncated, imageJobs, imageHistoryUnavailable });
   }
   if (request.method === "PATCH") {
     const parsed = await readJsonRequest(request, 4096);

@@ -124,3 +124,96 @@ test('pilot provider request is a single low-quality square image',async()=>{
  assert.equal(body.size,'1024x1024');assert.equal(body.n,1);
  }finally{h.close();}
 });
+
+test('image jobs create an owned conversation and make follow-up images retrievable by chat',async()=>{
+ const h=setup();try{
+  const firstResponse=await h.create({prompt:'Buat poster futuristik'});
+  assert.equal(firstResponse.status,202);
+  const first=await firstResponse.json();
+  assert.match(first.conversationId,/^[a-f0-9-]{36}$/i);
+  const row=h.db.sqlite.prepare('SELECT user_id,title FROM conversations WHERE id=?').get(first.conversationId);
+  assert.equal(row.user_id,'image-user');assert.equal(row.title,'Buat poster futuristik');
+  await processImageJob(h.env,first.id);
+  const followResponse=await h.create({mode:'edit',prompt:'Ganti background',sourceJobId:first.id,conversationId:first.conversationId});
+  assert.equal(followResponse.status,202);
+  const follow=await followResponse.json();
+  assert.equal(follow.conversationId,first.conversationId);
+  const filtered=await worker.fetch(h.request('/api/images/jobs?conversationId='+first.conversationId),h.env);
+  assert.equal(filtered.status,200);const data=await filtered.json();
+  assert.equal(data.jobs.length,2);
+  assert.deepEqual(new Set(data.jobs.map(j=>j.id)),new Set([first.id,follow.id]));
+  assert.equal(h.db.sqlite.prepare('SELECT COUNT(*) AS n FROM conversations').get().n,1);
+  assert.equal(h.db.sqlite.prepare('SELECT balance FROM image_wallets').get().balance,78);
+ }finally{h.close();}
+});
+test('image history is owner-scoped and cannot attach jobs to another account chat',async()=>{
+ const h=setup();try{
+  const owner=await (await h.create()).json();
+  const otherToken=seedSession(h.db,{id:'unrelated-user',email:'unrelated@example.test'});
+  h.db.sqlite.prepare('INSERT INTO image_wallets VALUES(?,?,?)').run('unrelated-user',100,1);
+  const Cookie='__Host-borai_session='+otherToken;
+  const request=h.request('/api/images/jobs',{mode:'generate',prompt:'Buat banner',requestId:crypto.randomUUID(),tariffVersion:'test-v1',maxCredits:10,conversationId:owner.conversationId},{Cookie});
+  assert.equal((await worker.fetch(request,h.env)).status,404);
+  assert.equal((await worker.fetch(h.request('/api/images/jobs?conversationId='+owner.conversationId,null,{Cookie}),h.env)).status,404);
+  assert.equal(h.db.sqlite.prepare('SELECT balance FROM image_wallets WHERE user_id=?').get('unrelated-user').balance,100);
+  assert.equal(h.sent.length,1);
+ }finally{h.close();}
+});
+test('replayed image submission returns same chat and no extra conversation',async()=>{
+ const h=setup();try{
+  const requestId=crypto.randomUUID();
+  const initial=await (await h.create({requestId})).json();
+  const repeated=await (await h.create({requestId})).json();
+  assert.equal(initial.id,repeated.id);
+  assert.equal(initial.conversationId,repeated.conversationId);
+  assert.equal(h.db.sqlite.prepare('SELECT COUNT(*) AS n FROM conversations').get().n,1);
+  assert.equal(h.sent.length,1);
+ }finally{h.close();}
+});
+test('rejected image quota does not leave an empty conversation behind',async()=>{
+ const h=setup();try{
+  h.env.IMAGE_DAILY_LIMIT_GLOBAL='1';
+  assert.equal((await h.create()).status,202);
+  assert.equal((await h.create()).status,429);
+  assert.equal(h.db.sqlite.prepare('SELECT COUNT(*) AS n FROM conversations').get().n,1);
+ }finally{h.close();}
+});
+
+test('chat fetch includes authorized image results only after the schema feature is enabled',async()=>{
+ const h=setup();try{
+  const first=await (await h.create({prompt:'Buat cover buku'})).json();
+  const off=await worker.fetch(h.request('/api/conversations/'+first.conversationId),h.env);
+  assert.equal(off.status,200);
+  assert.deepEqual((await off.json()).imageJobs,[]);
+  h.env.BOR_IMAGE_CHAT_HISTORY_ENABLED='true';
+  const on=await worker.fetch(h.request('/api/conversations/'+first.conversationId),h.env);
+  assert.equal(on.status,200);
+  const data=await on.json();assert.equal(data.imageJobs.length,1);
+  assert.equal(data.imageJobs[0].id,first.id);
+  assert.equal(data.imageJobs[0].conversationId,first.conversationId);
+  assert.equal(data.imageJobs[0].status,'queued');
+  assert.ok(!JSON.stringify(data.imageJobs).includes('secret-never-leak'));
+  const token=seedSession(h.db,{id:'foreign-image-user',email:'foreign-image@example.test'});
+  const foreign=await worker.fetch(h.request('/api/conversations/'+first.conversationId,null,{Cookie:'__Host-borai_session='+token}),h.env);
+  assert.equal(foreign.status,404);
+ }finally{h.close();}
+});
+
+test('optional image-history storage failure never breaks ordinary saved-chat retrieval',async()=>{
+ const h=setup();try{
+  const job=await (await h.create()).json();
+  h.env.BOR_IMAGE_CHAT_HISTORY_ENABLED='true';
+  const originalPrepare=h.env.DB.prepare;
+  h.env.DB.prepare=(sql)=>{
+    if(sql.includes("SELECT * FROM image_jobs WHERE user_id=? AND conversation_id=?"))
+      throw Error('simulated missing image-history migration');
+    return originalPrepare(sql);
+  };
+  const response=await worker.fetch(h.request('/api/conversations/'+job.conversationId),h.env);
+  assert.equal(response.status,200);
+  const data=await response.json();
+  assert.deepEqual(data.imageJobs,[]);
+  assert.equal(data.imageHistoryUnavailable,true);
+  assert.equal(data.conversation.id,job.conversationId);
+ }finally{h.close();}
+});
