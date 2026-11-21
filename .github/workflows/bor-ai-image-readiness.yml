@@ -41,14 +41,3 @@ jobs:
           # Image 0012 and 0016 are interleaved with billing 0013-0015.
           # The production deploy workflow's migration isolation gate must stay on.
           npx --yes wrangler@4 d1 migrations list bor-ai-chat --remote --config wrangler.jsonc
-      - name: Generate isolated image-only D1 migration listing configuration (local-only)
-        run: node scripts/prepare-image-only-migration-list.mjs
-      - name: List ONLY pending image migrations 0012 and 0016 (NO APPLY)
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: |
-          # Uses a generated Wrangler config without Worker entrypoint or assets.
-          # DO NOT use this config to deploy. No SQL is applied.
-          npx --yes wrangler@4 d1 migrations list bor-ai-chat --remote --config wrangler.image-only-migrations.generated.jsonc
-
