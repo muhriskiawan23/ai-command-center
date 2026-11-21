@@ -69,7 +69,18 @@ async function failJob(env,id,code) {
 
 // All state-changing routes require a real session and a same-origin request.
 export async function handleImageRoute(request, env, url, deps) {
-  if (url.pathname === '/api/images/config' && request.method === 'GET') return json(imageConfig(env));
+  if (url.pathname === '/api/images/config' && request.method === 'GET') {
+    const config = imageConfig(env);
+    if (!config.enabled) return json(config);
+    try {
+      if (await pilotBillingUnverified(env)) return json({...config,enabled:false,unavailableReason:'billing_reconciliation_pending'});
+    } catch {
+      // Availability must fail closed rather than advertise a paid service that
+      // cannot prove its D1 billing marker state. No raw SQL/provider errors.
+      return json({...config,enabled:false,unavailableReason:'image_billing_preflight_unavailable'});
+    }
+    return json(config);
+  }
   const isJobs = url.pathname === '/api/images/jobs';
   const jobMatch = /^\/api\/images\/jobs\/([a-f0-9-]{36})$/i.exec(url.pathname);
   const fileMatch = /^\/api\/files\/([a-f0-9-]{36})\/(preview|download)$/i.exec(url.pathname);
