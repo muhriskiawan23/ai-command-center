@@ -94,7 +94,7 @@ test('account deletion during provider call cannot erase outstanding billing evi
 test('missing global meter fails closed before any API call, even with a valid user wallet',async()=>{
  const h=setup();try{
    h.db.sqlite.exec('DROP TRIGGER image_pilot_admit; DROP TRIGGER image_pilot_hold; DELETE FROM image_pilot_meter');
-   assert.equal((await h.create()).status,500); // fail-closed server error; no image/credit writes
+   assert.equal((await h.create()).status,503); // fail-closed unavailable; no image/provider writes
    assert.equal(h.providerCalls.length,0);
    assert.equal((await (await h.config()).json()).enabled,false);
  }finally{h.close();}
