@@ -93,3 +93,37 @@ test("HTTP chat refuses Tavily extraction when the explicit budget is absent", a
   assert.ok([200, 502].includes(result.status));
   assert.equal(calls.length, 0);
 });
+
+test("HTTP chat reads first-party public assets alongside external links in source order", async () => {
+  const { env, calls, prompts } = setup();
+  const assets = [];
+  env.ASSETS = { async fetch(request) {
+    assert.equal(request.method, "GET");
+    assert.equal(request.headers.get("cookie"), null);
+    assets.push(new URL(request.url).pathname);
+    return new Response("<h1>BOR AI</h1><p>Asisten untuk menulis, menganalisis, dan melakukan riset.</p>", {
+      headers: { "Content-Type": "text/html" }
+    });
+  } };
+  const result = await chat(env, "Ringkas https://example.test/ dan https://example.com/guide dan https://example.test/paket.html");
+  assert.equal(result.status, 200);
+  assert.deepEqual(assets, ["/", "/paket"]);
+  assert.deepEqual(calls, [["https://example.com/guide"]]);
+  assert.deepEqual(result.body.links.map(link => [link.sourceId, link.host, link.ok]), [
+    [1, "example.test", true],
+    [2, "example.com", true],
+    [3, "example.test", true]
+  ]);
+  assert.ok(prompts.some(prompt => prompt.includes("Asisten untuk menulis")));
+});
+
+test("HTTP chat keeps first-party APIs and URLs with queries out of both readers", async () => {
+  const { env, calls } = setup();
+  const assets = [];
+  env.ASSETS = { async fetch(request) { assets.push(request.url); return new Response("unexpected"); } };
+  const result = await chat(env, "Baca https://example.test/api/auth/me dan https://example.test/paket?token=test");
+  assert.deepEqual(assets, []);
+  assert.deepEqual(calls, []);
+  assert.ok(result.body.links?.length === 2);
+  assert.ok(result.body.links.every(link => !link.ok));
+});

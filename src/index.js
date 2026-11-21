@@ -5,7 +5,7 @@ import { imageIntent } from "../public/image-intent.js";
 import { safeError, safeAiBindingFailure } from "./safe-error.js";
 import { validateCustomization, customizationNotice } from "./customization.js";
 import { CONFIDENTIALITY_NOTICE, isConfidentialityRequest, confidentialityReply, containsProtectedOutput } from "./confidentiality.js";
-import { extractUrls, readLinks, buildPageContext, summarizeLinks } from "./links.js";
+import { extractUrls, validateUrl, readLink, readLinks, buildPageContext, summarizeLinks } from "./links.js";
 import { createVerifiedLinkFetcher } from "./verified-egress.js";
 import { extractWithTavily } from "./tavily-extract.js";
 import { PDF_MAX_BYTES, PDF_CONTEXT_MAX_CHARS, safePdfName, normalizePdfConversion, buildPdfContext, validatePdfPageCitations, SPREADSHEET_CONTEXT_MAX_CHARS, safeSpreadsheetName, buildSpreadsheetContext, PRESENTATION_CONTEXT_MAX_CHARS, safePresentationName, buildPresentationContext, WORD_CONTEXT_MAX_CHARS, buildWordDocumentContext, IMAGE_OCR_CONTEXT_MAX_CHARS, buildImageOcrContext } from "./documents.js";
@@ -272,6 +272,61 @@ async function serveAsset(request, env) {
     statusText: response.statusText,
     headers
   });
+}
+
+// Read first-party pages directly from the static asset binding, without entering Worker routes.
+const PUBLIC_LINK_ASSETS = new Map([
+  ["/", "/"],
+  ["/index.html", "/"],
+  ["/paket", "/paket"],
+  ["/paket.html", "/paket"]
+]);
+
+async function readChatLinks(urls, env, requestUrl) {
+  const host = value => value.toLowerCase().replace(/\.$/, "");
+  const firstParty = new Map();
+  const external = [];
+  for (const raw of urls) {
+    let target;
+    try { target = new URL(raw); } catch { /* external reader reports invalid URLs */ }
+    if (target && host(target.hostname) === host(requestUrl.hostname)) {
+      const asset = PUBLIC_LINK_ASSETS.get(target.pathname);
+      firstParty.set(raw, asset && !target.search ? asset : null);
+    } else {
+      external.push(raw);
+    }
+  }
+
+  const ownHost = requestUrl.hostname;
+  const [remoteResults, localResults] = await Promise.all([
+    external.length === 0 ? [] : env.URL_READER_PROVIDER === "tavily"
+      ? extractWithTavily(external, env, { ownHost, fetcher: env.TAVILY_EXTRACT_FETCHER || fetch })
+      : readLinks(external, { ownHost, fetcher: createVerifiedLinkFetcher(env) || env.LINK_FETCHER || null }),
+    Promise.all(Array.from(firstParty, async ([raw, asset]) => {
+      const check = validateUrl(raw);
+      if (!check.ok) return [raw, { ok: false, url: raw, reason: check.reason }];
+      if (!asset || !env.ASSETS) {
+        return [raw, { ok: false, url: raw, reason: asset
+          ? "aset halaman publik BOR AI belum tersedia"
+          : "hanya beranda dan halaman paket publik BOR AI yang dapat dibaca" }];
+      }
+      const result = await readLink(raw, { fetcher: async (_url, options) => {
+        const response = await env.ASSETS.fetch(new Request(new URL(asset, requestUrl.origin), {
+          signal: options.signal,
+          redirect: "manual"
+        }));
+        if (response.status >= 300 && response.status < 400) {
+          await response.body?.cancel();
+          return new Response(null, { status: 502 });
+        }
+        return response;
+      } });
+      return [raw, result];
+    }))
+  ]);
+  const resultsByUrl = new Map(localResults);
+  external.forEach((raw, index) => resultsByUrl.set(raw, remoteResults[index]));
+  return urls.map(raw => resultsByUrl.get(raw));
 }
 
 async function readRequestBytesWithinLimit(request, maxBytes) {
@@ -1730,9 +1785,7 @@ export default {
       const wordDocumentContext = wordDocument ? buildWordDocumentContext(wordDocument) : "";
       const imageOcrContext = imageOcr ? buildImageOcrContext(imageOcr) : "";
       if (found.urls.length && env.URL_READER_ENABLED === "true") {
-        const results = env.URL_READER_ENABLED === "true" && env.URL_READER_PROVIDER === "tavily"
-          ? await extractWithTavily(found.urls, env, { ownHost: url.hostname, fetcher: env.TAVILY_EXTRACT_FETCHER || fetch })
-          : await readLinks(found.urls, { fetcher: createVerifiedLinkFetcher(env) || env.LINK_FETCHER || null, ownHost: url.hostname }); // LINK_FETCHER: test hook, unset in production
+        const results = await readChatLinks(found.urls, env, url);
         pages = buildPageContext(results);
         links = summarizeLinks(results);
         toolActivity.push({ tool: "read_links", status: results.some(x => x.ok) ? "completed" : "unavailable", count: results.filter(x => x.ok).length });
@@ -1750,12 +1803,7 @@ export default {
         let pageResults = [];
         if (pageCandidates.length && env.URL_READER_ENABLED === "true") {
           try {
-            pageResults = env.URL_READER_ENABLED === "true" && env.URL_READER_PROVIDER === "tavily"
-              ? await extractWithTavily(pageCandidates.map((item) => item.url), env, { ownHost: url.hostname, fetcher: env.TAVILY_EXTRACT_FETCHER || fetch })
-              : await readLinks(pageCandidates.map((item) => item.url), {
-                fetcher: createVerifiedLinkFetcher(env) || env.LINK_FETCHER || null,
-                ownHost: url.hostname
-              });
+            pageResults = await readChatLinks(pageCandidates.map(item => item.url), env, url);
           } catch {
             pageResults = [];
           }
