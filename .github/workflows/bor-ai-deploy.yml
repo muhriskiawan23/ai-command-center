@@ -171,6 +171,9 @@ jobs:
             node scripts/provision-image-resources.mjs
             echo "BOR_DEPLOY_CONFIG=wrangler.images.generated.jsonc" >> "$GITHUB_ENV"
           else
+            if [[ -n "${BOR_READER_DEPLOY_CONFIG:-}" ]]; then
+              npx --yes wrangler@4 deploy --dry-run --config "$BOR_READER_DEPLOY_CONFIG"
+            fi
             echo "BOR_DEPLOY_CONFIG=${BOR_READER_DEPLOY_CONFIG:-wrangler.jsonc}" >> "$GITHUB_ENV"
           fi
 
