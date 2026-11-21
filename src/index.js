@@ -1675,11 +1675,18 @@ export default {
           return json({ error: "Status permintaan sebelumnya tidak dapat diperiksa. Coba muat ulang riwayat chat." }, 503);
         }
       }
-      if (imageIntent(message, Boolean(imageVision), body.imageMode === "analyze" ? "analyze" : "auto")) {
+      const requestedImageMode = imageIntent(message, Boolean(imageVision),
+        ["chat","analyze","generate","edit"].includes(body.imageMode) ? body.imageMode : "auto");
+      if (requestedImageMode) {
+        // Structured routing hint for non-browser clients. Never submit a paid
+        // job via /api/chat without an explicit tariff-version quote/acceptance.
         const enabled = imageConfig(env).enabled;
-        return json({ type: "image_intent", response: enabled
-          ? "Gunakan mode Buat gambar atau Edit gambar di menu Alat untuk memproses gambar dan melihat biaya kredit sebelum mengirim."
-          : "Fitur buat/edit gambar belum aktif di BOR AI saat ini.", saved: false, imageFeatureEnabled: enabled });
+        const nextAction = !user ? "sign_in" : enabled ? "confirm_image_quote" : "unavailable";
+        return json({type:"image_intent",imageMode:requestedImageMode,nextAction,
+          response: !user ? "Masuk dengan akun Google untuk membuat atau mengedit gambar."
+            : enabled ? "Permintaan gambar siap. Periksa dan setujui kredit yang diperlukan sebelum memulai."
+            : "Fitur buat/edit gambar belum aktif di BOR AI saat ini.",
+          saved:false,imageFeatureEnabled:enabled});
       }
       const githubToolRequest = shouldOfferGitHubTools(message, user, env.BOR_GITHUB_CHAT_TOOLS_ENABLED === "true");
       const useMultiAgent = !imageVision && !githubToolRequest && agentId === "coordinator" && shouldUseMultiAgent(message);
