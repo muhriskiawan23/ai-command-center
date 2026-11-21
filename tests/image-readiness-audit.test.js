@@ -166,3 +166,43 @@ test('bookmarks without verified metadata never produce a false restoration assu
  assert.equal(report.features.d1BookmarkProbe,'denied');
  assert.ok(report.blockers.includes('production_d1_bookmark_not_verified'));
 });
+
+test('a dedicated R2 read-only token is used only for R2 metadata, never D1 or Worker APIs',async()=>{
+  const seen=[];
+  const ok=result=>Response.json({success:true,result});
+  const fetcher=async(url,options)=>{
+    seen.push({url,method:options.method});
+    assert.equal(options.method,'GET');
+    if(url.startsWith('https://api.cloudflare.com/')){
+      const expected=url.includes('/r2/')?'Bearer r2-audit-synthetic':'Bearer deploy-audit-synthetic';
+      assert.equal(options.headers.Authorization,expected,'R2 token must never be used outside R2 metadata');
+    }
+    if(url.endsWith('/deployments?per_page=1'))return ok({deployments:[{versions:[{percentage:100,version_id:'v1'}]}]});
+    if(url.endsWith('/versions/v1'))return ok({resources:{bindings}});
+    if(url.endsWith('/r2/buckets/bor-ai-images'))return ok({name:'bor-ai-images'});
+    if(url.endsWith('/r2/buckets/bor-ai-images/domains/managed'))return ok({enabled:false});
+    if(url.endsWith('/r2/buckets/bor-ai-images/domains/custom'))return ok({domains:[]});
+    if(url.includes('/queues?per_page=100&page=1'))return ok([]);
+    if(/\/d1\/database\/[0-9a-f-]{36}\/time_travel\/bookmark$/i.test(url))return ok({bookmark:'bookmark-redacted-synthetic'});
+    if(/\/d1\/database\/[0-9a-f-]{36}$/i.test(url)){
+      const id=url.split('/').at(-1);
+      return ok({name:'bor-ai-chat',uuid:id});
+    }
+    if(url.endsWith('/api/health?deep=1'))return Response.json({ok:true,checks:{database:true}});
+    if(url.endsWith('/api/images/config'))return Response.json({enabled:false});
+    if(url.endsWith('/media-lab.html'))return new Response('',{status:404});
+    throw Error('Unexpected endpoint');
+  };
+  const report=await runAudit({fetcher,env:{
+    CLOUDFLARE_ACCOUNT_ID:'a'.repeat(32),
+    CLOUDFLARE_API_TOKEN:'deploy-audit-synthetic',
+    CLOUDFLARE_R2_AUDIT_TOKEN:'r2-audit-synthetic'
+  }});
+  assert.equal(report.features.dedicatedR2Bucket,'present');
+  assert.equal(report.features.privateR2Domains,'verified_private');
+  assert.equal(report.features.r2BucketProbe,'ok');
+  assert.equal(report.features.d1Bookmark,'available');
+  assert.ok(seen.some(x=>x.url.includes('/r2/')));
+  assert.ok(seen.some(x=>x.url.includes('/d1/')));
+  assert.doesNotMatch(JSON.stringify(report),/r2-audit-synthetic|deploy-audit-synthetic|bookmark-redacted-synthetic/);
+});

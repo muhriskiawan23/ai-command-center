@@ -74,7 +74,12 @@ export async function runAudit({fetcher=fetch,env=process.env}={}){
   if(!/^[a-f0-9]{32}$/i.test(account||'')||!token)throw Error('Missing production Cloudflare audit credentials');
   const base='https://api.cloudflare.com/client/v4/accounts/'+account;
   const request=async(path,{allow404=false}={})=>{
-    const response=await fetcher(base+path,{method:'GET',headers:{Authorization:'Bearer '+token,Accept:'application/json'},redirect:'error',signal:AbortSignal.timeout(20000)});
+    // A separate R2 metadata-only credential can be used for the R2 REST API.
+    // Never replace/degrade the existing production deploy/audit token.
+    const r2Only = path.startsWith('/r2/');
+    const auditToken = r2Only && typeof env.CLOUDFLARE_R2_AUDIT_TOKEN==='string' &&
+      env.CLOUDFLARE_R2_AUDIT_TOKEN.length>0 ? env.CLOUDFLARE_R2_AUDIT_TOKEN : token;
+    const response=await fetcher(base+path,{method:'GET',headers:{Authorization:'Bearer '+auditToken,Accept:'application/json'},redirect:'error',signal:AbortSignal.timeout(20000)});
     if(response.status===404&&allow404)return null;
     if(!response.ok){
       const error=new Error('Cloudflare read-only audit could not verify an endpoint');
