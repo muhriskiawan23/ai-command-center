@@ -48,7 +48,7 @@ test("stage-only browser opens exactly one guarded host, reads real DOM mock and
   const result = await executeStagingBrowserRead("https://example.com/article", ENV, { launch: fake.launch });
   assert.equal(result.ok, true);
   assert.equal(result.status, "page_read");
-  assert.equal(result.browserRunVerified, true);
+  assert.equal(result.renderedInBrowserSession, true);
   assert.equal(result.sourceType, "browser_read");
   assert.equal(result.title, "Public article");
   assert.equal(result.links.length, 1);
