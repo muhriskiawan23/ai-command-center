@@ -128,7 +128,7 @@ test("HTTP chat preserves citation order for local public and unavailable extern
   env.ASSETS = { async fetch() {
     return new Response("<title>BOR AI</title><p>Public BOR AI homepage explains useful AI features and general information.</p>", { headers: { "Content-Type": "text/html" } });
   } };
-  const result = await chat(env, "Bandingkan https://example.test/ dengan https://other.example/article");
+  const result = await chat(env, "Ringkas https://example.test/ dan https://other.example/article");
   assert.equal(result.status, 200);
   assert.deepEqual(calls, []);
   assert.deepEqual(result.body.links.map(link => [link.host, link.ok]), [
