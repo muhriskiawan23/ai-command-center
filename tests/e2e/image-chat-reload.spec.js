@@ -84,7 +84,7 @@ test('uploaded photo plus an edit prompt routes to image edit and survives chat 
  expect(stored.mode).toBe('edit');
  expect(stored.conversation_id).toMatch(/^[a-f0-9-]{36}$/i);
  expect(providerCalls).toHaveLength(1);
- expect(providerCalls[0].url).toMatch(/\\/v1\\/images\\/edits$/);
+ expect(providerCalls[0].url.endsWith('/v1/images/edits')).toBe(true);
  expect(providerCalls[0].options.body instanceof FormData).toBe(true);
  expect(app.db.sqlite.prepare('SELECT balance FROM image_wallets').get().balance).toBe(88);
  expect(app.aiCalls.length).toBe(0);
