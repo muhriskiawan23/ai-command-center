@@ -50,7 +50,6 @@ jobs:
           if (!Array.isArray(bindings)) throw new Error("Cannot verify active Worker bindings");
           const named = name => bindings.filter(b => b.name === name);
           const flag = named("URL_READER_ENABLED");
-          if (flag.length !== 1 || flag[0].type !== "plain_text" || flag[0].text !== "false") throw new Error("Active Worker URL Reader is not verifiably OFF");
           const limit = named("TAVILY_EXTRACT_DAILY_URL_LIMIT");
           // Non-secret triage only: never print arbitrary binding text, account IDs or credentials.
           const readerState = flag.length === 1 && flag[0].type === "plain_text" &&
@@ -60,6 +59,7 @@ jobs:
             limit.length === 1 && limit[0].type === "plain_text" && /^[1-9][0-9]*$/.test(limit[0].text || "") ? "nonzero" : "unverifiable";
           console.log("Active URL Reader binding state:", readerState);
           console.log("Active Tavily Extract quota class:", quotaState);
+          if (flag.length !== 1 || flag[0].type !== "plain_text" || flag[0].text !== "false") throw new Error("Active Worker URL Reader is not verifiably OFF");
 
           if (limit.length && (limit.length !== 1 || limit[0].type !== "plain_text" || !/^(?:0+)$/.test(limit[0].text || ""))) throw new Error("Active Worker Tavily daily extraction quota is not verifiably zero");
           const releaseMessage = deployment?.annotations?.["workers/message"];
