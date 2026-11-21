@@ -499,6 +499,7 @@ async function reserveSearchProviderBudget(env, provider, now) {
   if (!env.DB?.prepare) return { allowed: false, reason: "provider_budget_unavailable" };
   const day = new Date(now).toISOString().slice(0, 10);
   const limit = searchDailyAttemptLimit(env, provider);
+  if (limit < SEARCH_MAX_ATTEMPTS) return { allowed: false, reason: "provider_daily_budget_exhausted", day, limit };
   try {
     const row = await env.DB.prepare(
       "INSERT INTO search_provider_usage (day, provider, requests, attempts, updated_at) VALUES (?, ?, 1, ?, ?) " +
@@ -561,7 +562,9 @@ export async function searchExternal(query, mode, env = {}, options = {}) {
     breaker?.cancelProbe?.(provider);
     return { configured: true, provider, mode, results: [], reason: reservation.reason, diagnostics: { attempts: 0, budgetLimit: reservation.limit } };
   }
-  const result = await adapter.search(query, mode, env, options);
+  // URLs are handled by the link reader. Never forward their parameters or fragments as search terms.
+  const terms = String(query || "").replace(/\b(?:https?:\/\/|www\.)[^\s<>]+/gi, " ").replace(/\s+/g, " ").trim();
+  const result = await adapter.search(terms, mode, env, options);
   if (reservation?.allowed) await settleSearchProviderBudget(env, provider, reservation, result, now);
   if (breaker && result.configured) {
     const circuitState = breaker.record(provider, result, Date.now());

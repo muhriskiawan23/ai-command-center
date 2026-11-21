@@ -20,6 +20,14 @@ export function checkPublicUrl(raw, ownHost) {
   const check = validateUrl(raw, ownHost);
   if (!check.ok) return check;
   const url = new URL(check.url.toString());
+  // Common private actions carry the credential in the path even when the query is empty.
+  let path;
+  try { path = decodeURIComponent(url.pathname); }
+  catch { return { ok: false, reason: "path URL tidak valid" }; }
+  if (/(?:^|[/])(?:reset[-_]password|password[-_]reset|magic[-_]link|verify[-_]email|invite|invitations|oauth[/]callback|reset)[/][^/]+/i.test(path)
+      || /(?:^|[/])eyJ[A-Za-z0-9_-]+[.]([A-Za-z0-9_-]+)[.][A-Za-z0-9_-]+/.test(path)) {
+    return { ok: false, reason: "URL tampak berisi tautan akses pribadi" };
+  }
   if (url.username || url.password) return { ok: false, reason: "URL berisi kredensial" };
   if ([...url.searchParams.keys()].some(key => isSensitiveQueryKey(key))) return { ok: false, reason: "URL berisi parameter autentikasi sensitif" };
   // Initial privacy rollout: query values can embed credentials under innocuous names (e.g. ?data=JWT).

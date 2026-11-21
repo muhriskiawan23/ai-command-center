@@ -83,3 +83,26 @@ test("shared provider budget remains opt-in until the production D1 migration is
   assert.equal(result.results[0].ok, true);
   assert.equal(calls, 1);
 });
+
+test("a zero daily Tavily limit blocks even the first request of a new day", async () => {
+  const DB = createD1();
+  try {
+    let calls = 0;
+    const result = await searchExternal("budget", "web", {
+      DB, SEARCH_SHARED_BUDGET_ENABLED: "true", SEARCH_DAILY_ATTEMPT_LIMIT_TAVILY: "0",
+      TAVILY_API_KEY: "test", SEARCH_FETCHER: async () => { calls++; return successResponse(); }
+    });
+    assert.equal(result.reason, "provider_daily_budget_exhausted");
+    assert.equal(calls, 0);
+  } finally { DB.sqlite.close(); }
+});
+
+test("search terms exclude pasted URLs including private query and fragment values", async () => {
+  let terms;
+  await searchExternal("cari informasi https://example.com/?data=private#fragment terbaru", "web",
+    { TAVILY_API_KEY: "test" }, { fetcher: async (_url, opts) => {
+      terms = JSON.parse(opts.body).query;
+      return Response.json({ results: [] });
+    } });
+  assert.equal(terms, "cari informasi terbaru");
+});

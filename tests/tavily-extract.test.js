@@ -398,3 +398,11 @@ test("Tavily extraction never accepts an unrequested URL in provider results", a
   assert.equal(result[0].ok, true);
   assert.doesNotMatch(JSON.stringify(result), /SECRET|\/private/);
 });
+
+test("private action URLs are rejected before extraction", async () => {
+  let calls = 0;
+  const results = await extractWithTavily(["https://example.com/password-reset/code", "https://example.com/invite%2Fcode"], testEnv(),
+    { fetcher: async () => { calls++; } });
+  assert.equal(calls, 0);
+  assert.ok(results.every(item => !item.ok && item.reason.includes("pribadi")));
+});
