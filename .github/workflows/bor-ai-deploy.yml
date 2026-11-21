@@ -217,13 +217,21 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: npx --yes wrangler@4 d1 migrations list bor-ai-chat --remote --config wrangler.jsonc
 
-      # The checked-in 0013..0015 billing SQL is synthetic-only and was
-      # never approved for the production chat D1. Stop the ENTIRE migration
-      # dispatch while those files are in the production migration directory:
-      # Wrangler would otherwise apply all pending migrations as one set.
+      # Synthetic 0013..0015 billing SQL must remain in staging/billing and
+      # must never re-enter the primary production D1 migration directory.
       - name: Reject synthetic billing migrations in production D1 directory
         if: ${{ inputs.apply_db_migrations }}
         run: node scripts/check-production-migration-isolation.mjs migrations
+
+      # Cloudflare D1 Time Travel is not a transactional safe-deploy switch.
+      # Verify a valid current bookmark against the pinned primary D1 *before*
+      # any possible schema write. Record only timestamp and hash, not secret.
+      - name: Require production D1 rollback bookmark before migration
+        if: ${{ inputs.apply_db_migrations }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node scripts/verify-d1-image-migration-rollback.mjs
 
       - name: Apply D1 migrations
         if: ${{ inputs.apply_db_migrations }}
