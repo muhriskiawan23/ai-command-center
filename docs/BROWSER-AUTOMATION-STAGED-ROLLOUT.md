@@ -1,6 +1,6 @@
 # BOR AI Browser Automation — independent delivery track
 
-**Date:** 21 November 2026. **Current scope:** reviewed code + offline tests only. No live browser session, paid inference, external website action, production Cloudflare change, secret, or payment.
+**Date:** 21 November 2026. **Current scope:** unprovisioned, operator-only staging Worker implementation plus offline tests. No production chat integration. No live browser session, paid inference, external website action, production Cloudflare change, secret, or payment.
 
 ## Product boundary
 
@@ -28,16 +28,17 @@ As documented on 21 Nov 2026, Workers Free offers **10 minutes/day** browser usa
 - Reuses BOR AI's URL validation and adds HTTPS-only, public hostname-only, no query/fragment, and auth/payment-path exclusions.
 - Step allowlist: `read_text`, `inspect_links`, `screenshot`; `click` / `fill` can be **previewed only** and always require approval. No arbitrary JavaScript or form submit/purchase/send/delete action is accepted.
 - Form values are **redacted** from previews, and output declares `executionEnabled:false`. Default session ceiling for the planned adapter is 30 seconds, one navigation, six steps, 12,000 readable characters.
-- `browserExecutionGate` deliberately refuses all runtime execution even if feature flags are manually set. No browser binding or production route is added.
-- Offline tests for URL/IP/scheme bypasses, internal hosts, query secrets, approval requirements, unsupported actions, no secret echo, limits and fail-closed flags.
+- `browserExecutionGate` deliberately refuses all **production/chat** browser execution even if feature flags are manually set. A separate, staging-only read-only executor and Worker binding example exist, but are **not provisioned or deployed**.
+- Operator-only staging Worker in `staging/browser/worker.js` with a separate D1 migration, per-session exact-host guardrails, request interception, 25-second deadline, browser cleanup, daily reserved-seconds quota, and a one-session lease. Disabled-by-default Wrangler example requires a **new staging D1** and secret provisioned manually.
+- Offline unit/Playwright tests for URL/IP/scheme bypasses, internal hosts, query secrets, approval requirements, unsupported actions, no secret echo, auth failures, quotas, redirects, side-effect rejection and bounded content. No paid/browser-provider calls.
 
 ## Remaining actionable work (no Tavily email needed)
 
-1. **Browser session sandbox**: isolated staging-only Worker/binding, no production credentials, disabled-by-default setting and per-user quota held atomically in staging D1. Separate Cloudflare configuration and independent session cleanup; never silently inherit the public chat Worker binding.
-2. **Read-only browser executor**: one public HTTPS URL, one guarded new incognito session, navigation/redirect checks, deterministic page snapshot/text/links, evidence metadata and strict output limits. Mark all website text, screenshots and DOM as untrusted; never allow page content to override system/tool instructions.
+1. **Staging provisioning and provider proof**: security review, install/pin the nested browser dependency, create a separate staging D1, set a dedicated operator secret and browser binding, deploy disabled by default, and run a narrowly approved live read-only pilot. Verify actual Cloudflare guardrails, egress, session cleanup and metering.
+2. **Authenticated user bridge**: add verified customer identity, separate global and per-user credit/billing reservation, and a secure bridge from the main BOR AI Worker only after staging results are independently reviewed. Staging currently supports a single operator pilot, **not** public-user tasks.
 3. **Automatic safety policies**: current URL and every redirect must remain on the approved hostname; block private IP/internal metadata and credential-bearing URLs, scripts/downloads/popups/third-party requests where appropriate. Audit Cloudflare guardrails and egress behavior independently; do not confuse hostname validation with DNS pinning.
 4. **Permissioned action executor**: propose step plan -> user sees site, proposed selectors, exact action and data-disclosure recipient -> approve -> execute bounded step -> independently verify effect -> report with trace. Sending, posting, purchasing, booking, money movement, irreversible changes and account changes require explicit per-action confirmation, not a blanket "automate" click.
-5. **Usage and rollback**: owner-controlled daily browser-seconds caps (global + user), max concurrent and launches, circuit breakers, hard timeouts, at most one retry after clearly non-billable failure, kill switch, audit without sensitive DOM/credentials, cancel button, and transparent user credit pricing only after measured provider costs.
+5. **Usage and rollback**: staging has a global daily reserved-seconds cap and single-session lease; production still needs per-user quotas, circuit breakers, no unsafe retries, a kill switch, audit without sensitive DOM/credentials, cancel button, and transparent user credit pricing after measured provider costs.
 6. **Browser benchmark**: static, JS-rendered, failed/redirected, unsafe, login, CAPTCHA and cross-origin fixtures on a safe test site. Staging smoke requires review of real billing, session cleanup, provider data handling, and live error messages before any production activation.
 
 ## Release gates
