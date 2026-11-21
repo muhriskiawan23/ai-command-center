@@ -65,3 +65,29 @@ jobs:
           console.log("Active Worker Tavily Extract daily quota: absent or zero");
           console.log("Binding names and secret values are not printed");
           NODE
+
+      - name: Verify public URL Reader and Web Actions are safely unavailable
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="https://ai-command-center.muhriskiawan23.workers.dev"
+          curl --fail --silent --show-error --retry 2 --max-time 20 "$BASE/api/plugins/capabilities" |
+            node -e '
+              let body="";
+              process.stdin.on("data", chunk => body += chunk).on("end", () => {
+                const data = JSON.parse(body);
+                const reading = data?.tools?.webReading;
+                const actions = data?.tools?.webActions;
+                if (!reading || !actions) {
+                  console.error("::error::Active production capabilities are missing webReading/webActions; cannot verify the safe-off release.");
+                  process.exitCode=1;
+                  return;
+                }
+                if (reading.enabled !== false || reading.available !== false || actions.available !== false) {
+                  console.error("::error::Active production reports external reading or browser actions enabled, or status is unverifiable.");
+                  process.exitCode=1;
+                  return;
+                }
+                console.log("Active public capabilities: external URL Reader OFF; Web Actions OFF");
+              });'
