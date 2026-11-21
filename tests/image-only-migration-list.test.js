@@ -13,11 +13,12 @@ function testRoot(action){
     fs.mkdirSync(path.join(root,'migrations'),{recursive:true});
     const base=JSON.parse(fs.readFileSync(path.join(originalRoot,'wrangler.jsonc'),'utf8'));
     fs.writeFileSync(path.join(root,'wrangler.jsonc'),JSON.stringify(base));
-    for(const name of ['0012_image_jobs.sql','0013_billing_foundation.sql',
-      '0014_billing_invoice_reference_guard.sql','0015_billing_sandbox_invoice_recovery.sql',
-      '0016_image_chat_history.sql']){
+    for(const name of ['0012_image_jobs.sql','0016_image_chat_history.sql'])
       fs.copyFileSync(path.join(originalRoot,'migrations',name),path.join(root,'migrations',name));
-    }
+    // Simulate unwanted files, even if source-only billing isolation moves
+    // their actual originals out of the production migration directory.
+    for(const name of ['0013_billing_foundation.sql','0014_billing_invoice_reference_guard.sql','0015_billing_sandbox_invoice_recovery.sql'])
+      fs.writeFileSync(path.join(root,'migrations',name),'CREATE TABLE billing_wallets(id TEXT);');
     return action(root);
   }finally{fs.rmSync(root,{recursive:true,force:true});}
 }
