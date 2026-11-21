@@ -548,7 +548,8 @@ async function settleSearchProviderBudget(env, provider, reservation, result, no
 // User-pasted links belong to the URL reader, not a search provider's query log.
 // Never forward full URL paths, query strings, fragments or embedded credentials.
 function searchTermsWithoutPastedUrls(query) {
-  return String(query || "").replace(/\b(?:https?:\/\/|www\.)[^\s<>"']+/gi, " ").replace(/\s+/g, " ").trim();
+  // Consume the entire non-whitespace URL token, including quoted values and fragments.
+  return String(query || "").replace(/\b(?:https?:\/\/|www\.)[^\s<>]+/gi, " ").replace(/\s+/g, " ").trim();
 }
 
 export async function searchExternal(query, mode, env = {}, options = {}) {
