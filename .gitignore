@@ -24,6 +24,8 @@ tools/egress-proxy/runtime/wrangler*.generated.json
 
 # Image activation config is generated from reviewed deployment variables.
 wrangler.images.generated.jsonc
+# Image-only D1 listing configuration; never deploy or apply as a production migration.
+wrangler.image-only-migrations.generated.jsonc
 image-credit-grant.sql
 wrangler.duitku-sandbox.generated.jsonc
 
