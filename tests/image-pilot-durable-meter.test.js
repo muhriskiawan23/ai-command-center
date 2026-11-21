@@ -35,7 +35,7 @@ test('lifetime cap survives account deletion and does not preserve personal iden
     h.db.sqlite.prepare('DELETE FROM users WHERE id=?').run(h.user.id);
     assert.equal(h.db.sqlite.prepare('SELECT COUNT(*) AS n FROM image_jobs').get().n,0);
     assert.equal(h.db.sqlite.prepare('SELECT admitted_count FROM image_pilot_meter').get().admitted_count,1);
-    assert.deepEqual(Object.keys(h.meter()).sort(),['admitted_count','billing_hold','singleton','unsettled_calls','updated_at']);
+    assert.deepEqual(Object.keys(h.meter()).sort(),['admitted_count','provider_hold','singleton','unsettled_calls','updated_at']);
     const next=h.addUser('new-owner','new@example.test');
     assert.equal((await h.create(next)).status,429);
     assert.equal(h.providerCalls.length,0);
@@ -46,7 +46,7 @@ test('provider timeout persists billing hold after its user and job are deleted'
     h.env.IMAGE_FETCHER=async()=>{h.providerCalls.push('attempt');throw Error('private provider timeout');};
     const job=(await (await h.create()).json());
     await processImageJob(h.env,job.id);
-    assert.equal(h.meter().billing_hold,1);
+    assert.equal(h.meter().provider_hold,1);
     assert.equal(h.meter().unsettled_calls,1);
     assert.equal(h.db.sqlite.prepare('SELECT balance FROM image_wallets').get().balance,100);
     h.db.sqlite.prepare('DELETE FROM users WHERE id=?').run(h.user.id);
@@ -70,7 +70,7 @@ test('inflight provider call blocks concurrent paid admission and clears only af
     release(okImage());
     await processing;
     assert.equal(h.meter().unsettled_calls,0);
-    assert.equal(h.meter().billing_hold,0);
+    assert.equal(h.meter().provider_hold,0);
     assert.equal((await h.create()).status,202);
   }finally{h.close();}
 });
@@ -86,7 +86,7 @@ test('account deletion during provider call cannot erase outstanding billing evi
     release(okImage());
     await processing;
     assert.equal(h.meter().admitted_count,1);
-    assert.equal(h.meter().billing_hold,1);
+    assert.equal(h.meter().provider_hold,1);
     const next=h.addUser('post-delete-owner','post-delete@example.test');
     assert.equal((await h.create(next)).status,503);
   }finally{h.close();}
