@@ -194,7 +194,7 @@ let state=AppState.INIT,conversations=[],activeId=null,busy=false,currentUser=nu
 let historyCursor=null,historyHasMore=false,historyLoadingMore=false,historyRequestSeq=0;
 /* navSeq: setiap navigasi chat menaikkan penghitung ini; pemuatan yang tertimpa navigasi lebih baru dibatalkan. */
 let navSeq=0,loadingChat=false;
-function lockComposer(){const lock=busy||loadingChat;const send=$("send"),stop=$("stopGeneration");send.disabled=lock||Boolean(attachmentPending);send.hidden=busy;stop.hidden=!busy;stop.disabled=!busy;promptEl.readOnly=lock;$("exportConversation").disabled=lock;$("printConversation").disabled=lock;$("attachPdf").disabled=lock;$("attachCsv").disabled=lock;}
+function lockComposer(){const lock=busy||loadingChat;const send=$("send"),stop=$("stopGeneration");send.disabled=lock||Boolean(attachmentPending);send.hidden=busy;stop.hidden=!busy;stop.disabled=!busy;promptEl.readOnly=lock;$("exportConversation").disabled=lock;$("printConversation").disabled=lock;$("attachPdf").setAttribute("aria-disabled",String(lock));$("pdfFile").disabled=lock;$("attachCsv").disabled=lock;}
 
 /* Yang disimpan di sessionStorage HANYA penanda "sudah memilih Guest" (agar refresh tidak kembali ke Welcome).
    Isi chat guest tidak pernah ditulis ke storage mana pun. */
@@ -1434,7 +1434,16 @@ $("editLocalPhoto").addEventListener("click",()=>{
   setTimeout(()=>window.removeEventListener("message",onReady),15_000);
 });
 
-$("attachPdf").addEventListener("click",()=>{if(!busy&&!loadingChat)$("pdfFile").click()});
+// A native <label for="pdfFile"> opens the browser's file picker directly.
+// Programmatic .click() on a hidden input can be blocked on mobile WebViews.
+$("attachPdf").addEventListener("click",event=>{
+  if(busy||loadingChat||attachmentPending)event.preventDefault();
+});
+$("attachPdf").addEventListener("keydown",event=>{
+  if(event.key!=="Enter"&&event.key!==" ")return;
+  event.preventDefault();
+  if(!busy&&!loadingChat&&!attachmentPending)$("pdfFile").click();
+});
 $("pdfFile").addEventListener("change",event=>{const file=event.target.files?.[0];event.target.value="";uploadAnyFile(file)});
 $("clearPdf").addEventListener("click",()=>{clearSelectedAttachment();toast("Lampiran dilepas dari pesan.")});
 $("attachCsv").addEventListener("click",()=>{if(!busy&&!loadingChat)$("csvFile").click()});
