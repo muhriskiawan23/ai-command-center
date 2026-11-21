@@ -17,11 +17,11 @@ const textBinding=(bindings,name)=>{
 };
 const secretState=(bindings,name)=>{
   const entries=named(bindings,name);
-  return entries.length===1 && entries[0].type==='secret_text'?'present':statusFor(entries);
+  return entries.length===1?(entries[0].type==='secret_text'?'present':'unexpected_type'):statusFor(entries);
 };
 const resourceState=(bindings,name,type)=>{
   const entries=named(bindings,name);
-  return entries.length===1&&entries[0].type===type?'present':statusFor(entries);
+  return entries.length===1?(entries[0].type===type?'present':'unexpected_type'):statusFor(entries);
 };
 
 export function summarizeImageReadiness({bindings,activeTraffic,publicHealth,mediaLabStatus,imageConfig,inventory}){
