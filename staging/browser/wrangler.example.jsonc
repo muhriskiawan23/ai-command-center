@@ -1,0 +1,26 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "bor-ai-browser-staging-NOT-PROVISIONED",
+  "main": "worker.js",
+  "compatibility_date": "2026-11-21",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "workers_dev": false,
+  "browser": {
+    "binding": "BOR_BROWSER"
+  },
+  "d1_databases": [
+    {
+      "binding": "BROWSER_DB",
+      "database_name": "REPLACE_WITH_DEDICATED_BROWSER_STAGING_D1",
+      "database_id": "REPLACE_WITH_NEW_STAGING_D1_ID"
+    }
+  ],
+  "vars": {
+    "STAGING_BROWSER_ENABLED": "false",
+    "STAGING_BROWSER_PILOT_HOST": "example.com",
+    "STAGING_BROWSER_DAILY_SECONDS_LIMIT": "0",
+    "STAGING_BROWSER_RESERVATION_SECONDS": "0"
+  }
+}
