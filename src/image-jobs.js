@@ -36,7 +36,7 @@ function decodeImage(dataUrl) {
 }
 function publicJob(row) {
   const completed = row.status === 'completed' && row.expires_at > nowSeconds();
-  return { id: row.id, type: 'image_result', mode: row.mode, prompt: row.prompt, status: row.status === 'completed' && !completed ? 'expired' : row.status,
+  return { id: row.id, type: 'image_result', mode: row.mode, prompt: row.prompt, conversationId: row.conversation_id || null, status: row.status === 'completed' && !completed ? 'expired' : row.status,
     jobStatus: row.status, credits: row.credits, tariffVersion: row.tariff_version, createdAt: row.created_at, expiresAt: row.expires_at,
     errorCode: row.error_code || null,
     files: completed ? [{ id: row.id, name: `bor-ai-${row.id}.${row.output_format}`, mimeType: MIME[row.output_format], size: row.output_bytes,
@@ -60,7 +60,16 @@ export async function handleImageRoute(request, env, url, deps) {
   if (!user) return json({error:'Masuk dengan akun Google untuk membuat dan membuka gambar.'},401);
   if (!env.DB) return json({error:'Penyimpanan gambar belum siap.'},503);
   if (isJobs && request.method === 'GET') {
-    const rows = await env.DB.prepare("SELECT * FROM image_jobs WHERE user_id=? AND status!='expired' ORDER BY created_at DESC LIMIT 50").bind(user.id).all();
+    const conversationId = url.searchParams.get('conversationId');
+    if (conversationId !== null && !/^[a-zA-Z0-9-]{8,80}$/.test(conversationId))
+      return json({error:'Percakapan tidak valid.'},400);
+    if (conversationId !== null) {
+      const owner = await env.DB.prepare('SELECT id FROM conversations WHERE id=? AND user_id=?').bind(conversationId,user.id).first();
+      if (!owner) return json({error:'Percakapan tidak ditemukan.'},404);
+    }
+    const rows = conversationId === null
+      ? await env.DB.prepare("SELECT * FROM image_jobs WHERE user_id=? AND status!='expired' ORDER BY created_at DESC LIMIT 50").bind(user.id).all()
+      : await env.DB.prepare("SELECT * FROM image_jobs WHERE user_id=? AND conversation_id=? AND status!='expired' ORDER BY created_at DESC LIMIT 50").bind(user.id,conversationId).all();
     const wallet = await env.DB.prepare('SELECT balance FROM image_wallets WHERE user_id=?').bind(user.id).first();
     return json({ jobs: (rows.results || []).map(publicJob), balance: wallet?.balance || 0 });
   }
@@ -101,7 +110,14 @@ export async function handleImageRoute(request, env, url, deps) {
   if (mode === 'generate' && (body.sourceImage || body.sourceJobId)) return json({error:'Gunakan mode edit untuk gambar sumber.'},400);
   if (mode === 'edit' && !body.sourceImage && !body.sourceJobId) return json({error:'Unggah foto atau pilih hasil sebelumnya untuk diedit.'},400);
   if (body.sourceImage) { try { source = decodeImage(body.sourceImage); } catch { return json({error:'Pilih JPG, PNG, atau WEBP yang valid, maksimal 5 MB.'},400); } }
-  const fingerprint = await sha256Hex(JSON.stringify([mode,prompt,format,size,body.sourceImage || '',body.sourceJobId || '']));
+  const requestedConversationId = body.conversationId === undefined ? null : body.conversationId;
+  if (requestedConversationId !== null && (typeof requestedConversationId !== 'string' || !/^[a-zA-Z0-9-]{8,80}$/.test(requestedConversationId)))
+    return json({error:'Percakapan gambar tidak valid.'},400);
+  if (requestedConversationId !== null) {
+    const owner = await env.DB.prepare('SELECT id FROM conversations WHERE id=? AND user_id=?').bind(requestedConversationId,user.id).first();
+    if (!owner) return json({error:'Percakapan gambar tidak ditemukan.'},404);
+  }
+  const fingerprint = await sha256Hex(JSON.stringify([mode,prompt,format,size,body.sourceImage || '',body.sourceJobId || '',requestedConversationId || '']));
   const previous = await env.DB.prepare('SELECT * FROM image_jobs WHERE user_id=? AND request_id=?').bind(user.id,requestId).first();
   if (previous) return previous.request_hash === fingerprint ? json(publicJob(previous)) : json({error:'Request ID telah digunakan untuk instruksi berbeda.'},409);
   if (body.tariffVersion !== config.tariffVersion || body.maxCredits !== config.credits[mode]) return json({error:'Tarif gambar berubah. Tutup dialog dan periksa biaya lagi.',code:'image_tariff_changed'},409);
@@ -114,28 +130,51 @@ export async function handleImageRoute(request, env, url, deps) {
     source = {bytes:new Uint8Array(await object.arrayBuffer()),mime:MIME[parent.output_format]};
   }
   const id = crypto.randomUUID(), now = nowSeconds(), key = source ? `images/${user.id}/${id}/source` : null;
+  const conversationId = requestedConversationId || crypto.randomUUID();
+  let madeConversation = false;
   if (source) await env.IMAGE_FILES.put(key,source.bytes,{httpMetadata:{contentType:source.mime}});
+  try {
+    if (!requestedConversationId) {
+      const title = prompt.replace(/\\s+/g,' ').slice(0,72) || 'Gambar baru';
+      await env.DB.prepare('INSERT INTO conversations(id,user_id,title,created_at,updated_at) VALUES(?,?,?,?,?)')
+        .bind(conversationId,user.id,title,now,now).run();
+      madeConversation = true;
+    }
+  } catch (error) {
+    if (key) await env.IMAGE_FILES.delete(key);
+    throw error;
+  }
+  const cleanupUnusedChat = async () => {
+    if (madeConversation) await env.DB.prepare('DELETE FROM conversations WHERE id=? AND user_id=?').bind(conversationId,user.id).run();
+  };
   let inserted;
   try {
     // Atomic admission + triggers: per-account/global daily caps and credit reservation.
     inserted = await env.DB.prepare(`INSERT INTO image_jobs
-      (id,user_id,request_id,request_hash,mode,prompt,model,output_format,size,status,source_key,source_mime,credits,tariff_version,created_at,updated_at,expires_at)
-      SELECT ?,?,?,?,?,?,?,?,?,'queued',?,?,?,?,?,?,?
+      (id,user_id,request_id,request_hash,mode,prompt,model,output_format,size,status,source_key,source_mime,credits,tariff_version,created_at,updated_at,expires_at,conversation_id)
+      SELECT ?,?,?,?,?,?,?,?,?,'queued',?,?,?,?,?,?,?,?
       WHERE (SELECT COUNT(*) FROM image_jobs WHERE created_at>=? AND user_id=?) < ?
         AND (SELECT COUNT(*) FROM image_jobs WHERE created_at>=?) < ?
         AND (SELECT COUNT(*) FROM image_jobs) < ?`)
-      .bind(id,user.id,requestId,fingerprint,mode,prompt,env.OPENAI_IMAGE_MODEL || 'gpt-image-2.5-sunburst',format,size,key,source?.mime || null,config.credits[mode],config.tariffVersion,now,now,now+RETENTION,
+      .bind(id,user.id,requestId,fingerprint,mode,prompt,env.OPENAI_IMAGE_MODEL || 'gpt-image-2.5-sunburst',format,size,key,source?.mime || null,config.credits[mode],config.tariffVersion,now,now,now+RETENTION,conversationId,
         now-now%86400,user.id,positive(env.IMAGE_DAILY_LIMIT_USER)||3,now-now%86400,positive(env.IMAGE_DAILY_LIMIT_GLOBAL)||20,config.pilotMaxAttempts).run();
   } catch (error) {
     const replay = await env.DB.prepare('SELECT * FROM image_jobs WHERE user_id=? AND request_id=?').bind(user.id,requestId).first();
     if (key && replay?.id !== id) await env.IMAGE_FILES.delete(key);
+    if (replay?.id !== id) await cleanupUnusedChat();
     if (replay) return replay.request_hash === fingerprint ? json(publicJob(replay)) : json({error:'Request ID telah digunakan.'},409);
     if (String(error?.message).includes('image_insufficient_credits')) return json({error:'Kredit gambar tidak cukup. Isi kredit melalui pengelola BOR AI.',code:'image_insufficient_credits'},402);
     throw error;
   }
   if (!inserted.meta?.changes) {
     if (key) await env.IMAGE_FILES.delete(key);
+    await cleanupUnusedChat();
     return json({error:'Batas harian gambar tercapai. Coba lagi besok.',code:'image_daily_limit'},429);
+  }
+  if (requestedConversationId) {
+    // A chat can still be read even if reordering its navigation metadata fails.
+    await env.DB.prepare('UPDATE conversations SET updated_at=? WHERE id=? AND user_id=?')
+      .bind(now,requestedConversationId,user.id).run().catch(()=>{});
   }
   try { await env.IMAGE_QUEUE.send({id}); }
   catch {
