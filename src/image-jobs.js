@@ -62,24 +62,24 @@ const imageSchemaUnavailable = () => json({error:'Riwayat gambar belum tersedia.
 const BILLING_UNVERIFIED = 'image_provider_billing_unverified';
 async function pilotState(env) {
   const row = await env.DB.prepare(
-    'SELECT admitted_count,unsettled_calls,billing_hold FROM image_pilot_meter WHERE singleton=1'
+    'SELECT admitted_count,unsettled_calls,provider_hold FROM image_pilot_meter WHERE singleton=1'
   ).first();
   if (!row || !Number.isSafeInteger(row.admitted_count) || row.admitted_count < 0 ||
-      ![0,1].includes(row.unsettled_calls) || ![0,1].includes(row.billing_hold))
+      ![0,1].includes(row.unsettled_calls) || ![0,1].includes(row.provider_hold))
     throw new Error('image_pilot_meter_unavailable');
-  return row.billing_hold ? 'billing_reconciliation_pending'
+  return row.provider_hold ? 'billing_reconciliation_pending'
     : row.unsettled_calls ? 'image_pilot_in_flight' : null;
 }
 const pilotBillingUnverified = async env => Boolean(await pilotState(env));
 async function settlePilotCall(env) {
   const result = await env.DB.prepare(
-    'UPDATE image_pilot_meter SET unsettled_calls=0,updated_at=? WHERE singleton=1 AND unsettled_calls=1 AND billing_hold=0'
+    'UPDATE image_pilot_meter SET unsettled_calls=0,updated_at=? WHERE singleton=1 AND unsettled_calls=1 AND provider_hold=0'
   ).bind(nowSeconds()).run();
   if (result.meta?.changes!==1) throw new Error('image_pilot_meter_unavailable');
 }
 async function holdPilotBilling(env) {
   const result = await env.DB.prepare(
-    'UPDATE image_pilot_meter SET billing_hold=1,updated_at=? WHERE singleton=1'
+    'UPDATE image_pilot_meter SET provider_hold=1,updated_at=? WHERE singleton=1'
   ).bind(nowSeconds()).run();
   if (result.meta?.changes!==1) throw new Error('image_pilot_meter_unavailable');
 }
@@ -286,7 +286,7 @@ export async function processImageJob(env,id) {
     // It survives Worker termination and account deletion. Only one call may be
     // unsettled at once; extra queue consumers cannot bypass this D1 guard.
     const admitted = await env.DB.prepare(
-      'UPDATE image_pilot_meter SET unsettled_calls=1,updated_at=? WHERE singleton=1 AND billing_hold=0 AND unsettled_calls=0'
+      'UPDATE image_pilot_meter SET unsettled_calls=1,updated_at=? WHERE singleton=1 AND provider_hold=0 AND unsettled_calls=0'
     ).bind(nowSeconds()).run();
     if (admitted.meta?.changes!==1) throw new Error('image_pilot_suspended');
     providerAttempted = true;
