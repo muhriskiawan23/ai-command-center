@@ -604,7 +604,7 @@ async function applyRoute(){
 async function openRemoteChat(cid){
   try{
     const d=await api("/api/conversations/"+encodeURIComponent(cid));
-    if(!conversations.some(c=>c.id===cid))conversations.push({id:cid,serverId:cid,title:d.conversation?.title||"Percakapan",pinned:Boolean(d.conversation?.pinned),messages:d.messages||[],truncated:Boolean(d.truncated),updated:(d.conversation?.updated_at||0)*1000,loaded:true});
+    if(!conversations.some(c=>c.id===cid))conversations.push({id:cid,serverId:cid,title:d.conversation?.title||"Percakapan",pinned:Boolean(d.conversation?.pinned),messages:hydrateChatImageTurns(d.messages,d.imageJobs),truncated:Boolean(d.truncated),updated:(d.conversation?.updated_at||0)*1000,loaded:true});
     return showChat(cid);
   }catch{return false}
 }
@@ -794,6 +794,23 @@ function renderHistory(){
 }
 /* Menampilkan chat tanpa menyentuh history; pemanggil yang menentukan rute.
    Mengembalikan true (tampil), false (gagal/tidak ada), atau null (dibatalkan oleh navigasi yang lebih baru). */
+// The Worker returns account-owned image jobs only after the optional history
+// schema is enabled. Rebuild view turns from metadata, never from image bytes.
+function hydrateChatImageTurns(messages,imageJobs){
+  const items=Array.isArray(messages)?messages.slice():[];
+  if(!Array.isArray(imageJobs))return items;
+  for(const job of imageJobs){
+    if(!job || !/^[a-f0-9-]{36}$/i.test(String(job.id||'')) ||
+       !['generate','edit'].includes(job.mode) || typeof job.prompt!=='string')continue;
+    const timestamp=Number.isSafeInteger(job.createdAt)?job.createdAt:0;
+    items.push({role:'user',content:job.prompt,created_at:timestamp,imagePromptFor:job.id});
+    items.push({role:'assistant',content:'Hasil gambar BOR AI',created_at:timestamp,imageJob:job});
+  }
+  return items.map((item,index)=>({item,index})).sort((a,b)=>{
+    const dateA=Number(a.item.created_at)||0,dateB=Number(b.item.created_at)||0;
+    return dateA-dateB||a.index-b.index;
+  }).map(({item})=>item);
+}
 async function showChat(cid){
   const c=conversations.find(x=>x.id===cid);if(!c)return false;
   const seq=++navSeq;
@@ -802,13 +819,13 @@ async function showChat(cid){
     try{
       const d=await api("/api/conversations/"+encodeURIComponent(c.serverId));
       if(seq!==navSeq)return null;
-      c.messages=d.messages||[];c.loaded=true;c.truncated=Boolean(d.truncated);c.title=d.conversation?.title||c.title;c.pinned=Boolean(d.conversation?.pinned);if(d.truncated)toast("Percakapan panjang: hanya 500 pesan terakhir yang ditampilkan.");
+      c.messages=hydrateChatImageTurns(d.messages,d.imageJobs);c.loaded=true;c.truncated=Boolean(d.truncated);c.title=d.conversation?.title||c.title;c.pinned=Boolean(d.conversation?.pinned);if(d.truncated)toast("Percakapan panjang: hanya 500 pesan terakhir yang ditampilkan.");
     }catch(e){if(seq!==navSeq)return null;toast(e.message||"Gagal memuat chat");return false}
     finally{if(seq===navSeq){loadingChat=false;lockComposer()}}
   }
   if(seq!==navSeq)return null;
   attachmentSequence++;releaseUnsentThumbnail();attachmentPending=null;activePdf=null;activeCsv=null;renderPdfAttachment();renderCsvAttachment();activeId=cid;$("exportConversation").hidden=false;$("printConversation").hidden=false;welcomeEl.hidden=true;messagesEl.hidden=false;messagesEl.replaceChildren();
-  for(let i=0;i<c.messages.length;i++){const m=c.messages[i];const last=i===c.messages.length-1;const previous=i===c.messages.length-2;appendMessage(m.role,m.content,false,{edit:m.role==="user"&&previous&&c.messages.at(-1)?.role==="assistant",regenerate:m.role==="assistant"&&last&&c.messages.at(-2)?.role==="user",responseId:m.role==="assistant"?m.id:null,conversationId:c.serverId||c.id,feedback:m.feedback||null,previewUrl:m.previewUrl||null});if(m.role==="assistant"&&m.links?.length)appendSources(m.links);if(m.role==="assistant"&&m.pdf)appendPdfSource(m.pdf);if(m.role==="assistant"&&m.spreadsheet)appendSpreadsheetSource(m.spreadsheet);if(m.role==="assistant"&&m.wordDocument)appendWordDocumentSource(m.wordDocument);}
+  for(let i=0;i<c.messages.length;i++){const m=c.messages[i];if(m.imageJob){appendImageResultMessage(m.imageJob);watchImageJob(m.imageJob);continue;}const last=i===c.messages.length-1;const previous=i===c.messages.length-2;appendMessage(m.role,m.content,false,{edit:m.role==="user"&&previous&&c.messages.at(-1)?.role==="assistant"&&!c.messages.at(-1)?.imageJob,regenerate:m.role==="assistant"&&last&&c.messages.at(-2)?.role==="user"&&!m.imageJob,responseId:m.role==="assistant"?m.id:null,conversationId:c.serverId||c.id,feedback:m.feedback||null,previewUrl:m.previewUrl||null});if(m.role==="assistant"&&m.links?.length)appendSources(m.links);if(m.role==="assistant"&&m.pdf)appendPdfSource(m.pdf);if(m.role==="assistant"&&m.spreadsheet)appendSpreadsheetSource(m.spreadsheet);if(m.role==="assistant"&&m.wordDocument)appendWordDocumentSource(m.wordDocument);}
   $("workflow").hidden=true;renderHistory();conversation.scrollTop=conversation.scrollHeight;
   return true;
 }
@@ -1235,9 +1252,14 @@ async function submit(options={}){
   if(!options.imageApproved){
     routingImageRequest=true;
     try{
-      const {imageIntent}=await import("/image-intent.js");
-      const mode=imageIntent(text,selectedCsv?.kind==="image-vision",$("imageTask").value);
-      if(mode){await prepareImageRequest(text,mode,selectedCsv);return;}
+      const {imageIntent,referencesEarlierImage}=await import("/image-intent.js");
+      const selectedSource=Boolean(selectedCsv?.originalFile);
+      const chosenJob=imageFollowupChatId===activeId?imageFollowupSource:null;
+      const priorJob=mostRecentCompletedChatImageId();
+      const implicitPrior=priorJob&&(referencesEarlierImage(text)||imageIntent(text,false,$("imageTask").value)==="edit")?priorJob:null;
+      const sourceJobId=selectedSource?null:(chosenJob||implicitPrior);
+      const mode=imageIntent(text,Boolean(selectedSource||sourceJobId),$("imageTask").value);
+      if(mode){await prepareImageRequest(text,mode,selectedCsv,mode==="edit"?sourceJobId:null);return;}
     }finally{routingImageRequest=false;}
   }
   const savedText=packAttachmentMessage(text,selectedPdf||selectedCsv);
@@ -1575,16 +1597,26 @@ syncInert();health();boot();
 // Image jobs live independently from text history and survive reloads in Gambar saya.
 let pendingImageRequest=null;
 let imageFollowupSource=null;
+let imageFollowupChatId=null;
 const imageJobsWatching=new Set();
+function mostRecentCompletedChatImageId(){
+  const chat=conversations.find(c=>c.id===activeId);
+  if(!chat)return null;
+  for(let i=chat.messages.length-1;i>=0;i--){
+    const job=chat.messages[i]?.imageJob;
+    if(job?.id&&job.status==="completed")return job.id;
+  }
+  return null;
+}
 const imageSleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 function originalImageData(file){return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(new Error('Foto gagal dibaca.'));reader.readAsDataURL(file);});}
-async function prepareImageRequest(text,mode,attachment){
+async function prepareImageRequest(text,mode,attachment,sourceJobId=null){
   if(state!==AppState.AUTH){toast('Masuk dengan akun Google untuk membuat atau mengedit gambar.');return;}
-  if(mode==='edit'&&!attachment?.originalFile&&!imageFollowupSource){toast('Unggah foto atau pilih Edit lagi pada hasil gambar.');return;}
+  if(mode==='edit'&&!attachment?.originalFile&&!sourceJobId){toast('Unggah foto atau buat gambar terlebih dahulu untuk diedit.');return;}
   try{
     const config=await api('/api/images/config');
     if(!config.enabled){toast('Fitur buat/edit gambar belum aktif di BOR AI saat ini.');return;}
-    pendingImageRequest={text,mode,tariffVersion:config.tariffVersion,maxCredits:config.credits[mode],file:attachment?.originalFile||null,sourceJobId:attachment?null:imageFollowupSource,requestId:crypto.randomUUID()};
+    pendingImageRequest={text,mode,tariffVersion:config.tariffVersion,maxCredits:config.credits[mode],file:mode==='edit'?(attachment?.originalFile||null):null,sourceJobId:mode==='edit'?(attachment?.originalFile?null:sourceJobId):null,chatId:activeId,requestId:crypto.randomUUID()};
     $('imageQuote').textContent='Biaya: '+config.credits[mode]+' kredit gambar · tarif '+config.tariffVersion+'. Kredit dikembalikan jika job gagal.';
     $('imageSourceNotice').textContent=mode==='edit'?'Sumber: '+(attachment?.name||'hasil gambar sebelumnya'):'';
     $('imageGallery').replaceChildren();$('imageConfirm').hidden=false;$('imageConfirm').disabled=false;
@@ -1606,7 +1638,7 @@ function imageResultCard(job){
     const download=document.createElement('a');download.href='/api/files/'+job.id+'/download';download.textContent='Download';download.className='message-action';download.download=file.name;card.append(download);
     for(const [label,mode,prompt] of [['Edit lagi','edit',''],['Buat variasi','edit','Buat variasi dari gambar ini. '+job.prompt],['Buat ulang','generate',job.prompt]]){
       const button=document.createElement('button');button.type='button';button.className='message-action';button.textContent=label;
-      button.addEventListener('click',()=>{$('imageDialog').close();imageFollowupSource=mode==='edit'?job.id:null;$('imageTask').value=mode;promptEl.value=prompt;resizePrompt();promptEl.focus();toast('Tulis instruksi, lalu kirim untuk melihat biaya.');});card.append(button);
+      button.addEventListener('click',()=>{$('imageDialog').close();imageFollowupSource=mode==='edit'?job.id:null;imageFollowupChatId=activeId;$('imageTask').value=mode;promptEl.value=prompt;resizePrompt();promptEl.focus();toast('Tulis instruksi, lalu kirim untuk melihat biaya.');});card.append(button);
     }
   }
   if(!['queued','processing','expired'].includes(job.status)){
@@ -1615,7 +1647,21 @@ function imageResultCard(job){
   }
   return card;
 }
-function updateImageCards(job){for(const card of document.querySelectorAll('.image-result'))if(card.dataset.jobId===job.id)card.replaceWith(imageResultCard(job));}
+function appendImageResultMessage(job){
+  const row=document.createElement('article');row.className='message assistant image-response';
+  const avatar=document.createElement('div');avatar.className='avatar';avatar.textContent='✳';
+  const body=document.createElement('div');body.className='message-body';
+  body.append(imageResultCard(job));row.append(avatar,body);messagesEl.append(row);
+  conversation.scrollTop=conversation.scrollHeight;
+}
+function updateImageCards(job){
+  for(const chat of conversations)for(const message of chat.messages){
+    if(message.imageJob?.id===job.id)message.imageJob=job;
+  }
+  for(const card of document.querySelectorAll('.image-result')){
+    if(card.dataset.jobId===job.id)card.replaceWith(imageResultCard(job));
+  }
+}
 async function watchImageJob(job){
   if(imageJobsWatching.has(job.id)||!['queued','processing'].includes(job.status))return;
   imageJobsWatching.add(job.id);
@@ -1632,9 +1678,39 @@ $('imageConfirm').addEventListener('click',async()=>{
   $('imageQuote').textContent='Mengunggah dan mengantrekan gambar…';
   try{
     const sourceImage=pending.file?await originalImageData(pending.file):undefined;
-    const job=await postJson('/api/images/jobs',{requestId:pending.requestId,prompt:pending.text,mode:pending.mode,tariffVersion:pending.tariffVersion,maxCredits:pending.maxCredits,sourceImage,sourceJobId:pending.sourceJobId||undefined,size:$('imageSize').value,outputFormat:$('imageFormat').value},30000);
-    $('imageDialog').close();promptEl.value='';resizePrompt();clearSelectedAttachment();imageFollowupSource=null;$('imageTask').value='auto';
-    welcomeEl.hidden=true;messagesEl.hidden=false;messagesEl.append(imageResultCard(job));watchImageJob(job);
+    const localChat=conversations.find(c=>c.id===pending.chatId);
+    const conversationId=localChat?.serverId||undefined;
+    const job=await postJson('/api/images/jobs',{requestId:pending.requestId,prompt:pending.text,mode:pending.mode,tariffVersion:pending.tariffVersion,maxCredits:pending.maxCredits,sourceImage,sourceJobId:pending.sourceJobId||undefined,conversationId,size:$('imageSize').value,outputFormat:$('imageFormat').value},30000);
+    $('imageDialog').close();
+    if(pending.chatId===activeId){
+      if(!activeId){
+        activeId=job.conversationId||id();
+        conversations.push({id:activeId,serverId:job.conversationId||null,title:pending.text.replace(/\s+/g,' ').slice(0,72),messages:[],updated:Date.now(),loaded:true});
+        replaceRoute({name:'chat',id:activeId});
+      }else if(job.conversationId&&localChat&&!localChat.serverId){
+        localChat.serverId=job.conversationId;
+        localChat.id=job.conversationId;
+        activeId=job.conversationId;
+        replaceRoute({name:'chat',id:activeId});
+      }
+      const chat=conversations.find(c=>c.id===activeId);
+      const sourceAttachment=pending.file?{name:pending.file.name,type:'IMAGE'}:null;
+      const savedText=packAttachmentMessage(pending.text,sourceAttachment);
+      const previewUrl=attachmentThumbnailUrl;
+      if(previewUrl){attachmentThumbnailUrl=null;keepSentThumbnail(previewUrl);}
+      if(chat){
+        chat.messages.push({role:'user',content:savedText,previewUrl});
+        chat.messages.push({role:'assistant',content:'Hasil gambar dibuat oleh BOR AI.',imageJob:job});
+        chat.updated=Date.now();
+      }
+      welcomeEl.hidden=true;messagesEl.hidden=false;
+      appendMessage('user',savedText,true,{previewUrl});
+      appendImageResultMessage(job);
+      renderHistory();watchImageJob(job);
+    }else{
+      toast('Pekerjaan gambar diterima. Buka Gambar saya untuk memantau hasil.');
+    }
+    promptEl.value='';resizePrompt();clearSelectedAttachment();imageFollowupSource=null;imageFollowupChatId=null;$('imageTask').value='auto';
   }catch(error){$('imageQuote').textContent=error.message+' Jika mengulang, gunakan tombol ini agar job tidak ditagih dua kali.';$('imageConfirm').disabled=false;}
 });
 async function openImageGallery(){

@@ -21,3 +21,22 @@ test('generate, preview, download, reload gallery and edit previous image',async
 test('guest generation shows honest sign-in notice without calling chat or paid API',async({page,app})=>{
  await page.goto(app.url);await page.locator('#continueGuest').click();await page.locator('#prompt').fill('Buat poster promosi');await page.locator('#send').click();await expect(page.locator('#toast')).toContainText('Masuk dengan akun Google');expect(app.aiCalls.length).toBe(0);await expect(page.locator('#imageDialog')).not.toBeVisible();
 });
+
+test('prompt-only request appears in chat and follow-up edits the prior image automatically',async({page,context,app})=>{
+ await loginAs(context,app,{id:'image-e2e',email:'image-e2e@example.test'});await setupImages(app);await page.goto(app.url);
+ await page.locator('#prompt').fill('Buat poster promo top up game');await page.locator('#send').click();
+ await expect(page.locator('#imageDialog')).toBeVisible();
+ await expect(page.locator('#imageQuote')).toContainText('10 kredit');
+ await page.locator('#imageConfirm').click();
+ await expect(page.locator('#messages .message.user .message-text')).toContainText('Buat poster promo top up game');
+ await expect(page.locator('#messages .image-response .image-result img')).toBeVisible({timeout:10000});
+ await expect.poll(()=>page.locator('#messages .image-response .image-result img').first().evaluate(img=>img.naturalWidth)).toBe(4);
+ await page.locator('#prompt').fill('Buat versi lain yang lebih cerah');await page.locator('#send').click();
+ await expect(page.locator('#imageDialog')).toBeVisible();
+ await expect(page.locator('#imageQuote')).toContainText('12 kredit');
+ await page.locator('#imageConfirm').click();
+ await expect(page.locator('#messages .image-response .image-result img')).toHaveCount(2,{timeout:12000});
+ await expect(page.locator('#messages .message.user .message-text').last()).toContainText('Buat versi lain');
+ expect(app.db.sqlite.prepare('SELECT balance FROM image_wallets').get().balance).toBe(78);
+ expect(app.db.sqlite.prepare('SELECT COUNT(*) AS n FROM image_jobs').get().n).toBe(2);
+});
