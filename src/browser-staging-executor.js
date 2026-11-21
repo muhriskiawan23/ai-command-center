@@ -45,13 +45,14 @@ export async function executeStagingBrowserRead(url, env, { launch } = {}) {
   let browser, context;
   let lateBrowserPromise;
   const started = Date.now();
+  const remainingMs = (stageMax) => Math.max(1, Math.min(stageMax, FULL_SESSION_MS - (Date.now() - started)));
   try {
     const guardedLaunch = Promise.resolve().then(() => launch(env.BOR_BROWSER, {
       guardrails: { allowedDomains: [host] }
     }));
     lateBrowserPromise = guardedLaunch;
     try {
-      browser = await bounded(guardedLaunch, 7_000);
+      browser = await bounded(guardedLaunch, remainingMs(7_000));
     } catch {
       // If the provider resolves after a timeout, close that late session too.
       guardedLaunch.then(late => { try { void late?.close?.(); } catch {} }).catch(() => {});
@@ -62,7 +63,7 @@ export async function executeStagingBrowserRead(url, env, { launch } = {}) {
       acceptDownloads: false,
       serviceWorkers: "block",
       permissions: []
-    }), 4_000);
+    }), remainingMs(4_000));
     if (!context?.newPage || !context?.route) return deny("browser_invalid_context");
 
     // Additional request-layer restrictions. Browser Run session guardrails
@@ -74,32 +75,32 @@ export async function executeStagingBrowserRead(url, env, { launch } = {}) {
         permitted = isPermittedRequest(request.url(), request.method(), host);
       } catch {}
       return permitted ? route.continue() : route.abort("blockedbyclient");
-    }), 3_000);
+    }), remainingMs(3_000));
 
-    const page = await bounded(context.newPage(), 3_000);
+    const page = await bounded(context.newPage(), remainingMs(3_000));
     if (!page?.goto || !page?.url || !page?.evaluate || !page?.title) return deny("browser_invalid_page");
     const response = await bounded(page.goto(preview.plan.url, {
       waitUntil: "domcontentloaded",
       timeout: NAVIGATION_MS
-    }), NAVIGATION_MS + 500);
+    }), remainingMs(NAVIGATION_MS + 500));
     const finalUrl = page.url();
     const final = validateBrowserTarget(finalUrl);
     if (!final.ok || final.hostname !== host) return deny("navigation_not_permitted");
     const status = typeof response?.status === "function" ? response.status() : null;
     if (!Number.isInteger(status) || status < 200 || status >= 400) return deny("page_unavailable");
-    const title = trim(await bounded(page.title(), 1_500), 160);
+    const title = trim(await bounded(page.title(), remainingMs(1_500)), 160);
     // The browser executes its own page javascript; BOR AI treats the
     // returned DOM text as *untrusted evidence*, never as agent instructions.
     const text = trim(await bounded(
       page.evaluate(max => String(document.body?.innerText || "").slice(0, max + 1), BROWSER_MAX_TEXT_CHARS),
-      2_000
+      remainingMs(2_000)
     ), BROWSER_MAX_TEXT_CHARS + 1);
     const truncated = text.length > BROWSER_MAX_TEXT_CHARS;
     const rawLinks = await bounded(page.evaluate(limit =>
       Array.from(document.querySelectorAll("a[href]")).slice(0, limit * 2)
         .map(link => ({ url: link.href, label: String(link.innerText || "").slice(0, 100) })),
       MAX_LINKS
-    ), 2_000);
+    ), remainingMs(2_000);
     const links = Array.isArray(rawLinks) ? rawLinks
       .filter(item => item && typeof item.url === "string" &&
         isPermittedRequest(item.url, "GET", host))
