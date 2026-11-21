@@ -24,7 +24,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: bor-ai-image-d1-schema-release
+  group: bor-ai-production-deploy
   cancel-in-progress: false
 
 jobs:
@@ -84,6 +84,17 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: node scripts/verify-d1-image-migration-rollback.mjs
+
+      - name: Refuse stale main commits before live D1 changes
+        if: ${{ inputs.phase == 'apply' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          current_main="$(git ls-remote origin refs/heads/main | cut -f1)"
+          if [[ -z "$current_main" || "$current_main" != "$GITHUB_SHA" ]]; then
+            echo "::error::main moved during review; re-run planning against the new head before any schema write"
+            exit 1
+          fi
 
       - name: Apply ONLY reviewed 0012 and 0016 image SQL (EXPLICIT MANUAL APPROVAL)
         if: ${{ inputs.phase == 'apply' }}
