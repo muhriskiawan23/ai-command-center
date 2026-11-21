@@ -111,7 +111,7 @@ export function validateUrl(raw, ownHost = "") {
   if (url.port) return { ok: false, reason: "port khusus tidak diizinkan" };    // the URL parser already drops default ports
   const blocked = blockedHostReason(url.hostname);
   if (blocked) return { ok: false, reason: blocked };
-  if (ownHost && url.hostname.toLowerCase() === String(ownHost).toLowerCase()) return { ok: false, reason: "alamat aplikasi ini sendiri tidak dibaca" };
+  if (ownHost && url.hostname.toLowerCase().replace(/\.$/, "") === String(ownHost).toLowerCase().replace(/\.$/, "")) return { ok: false, reason: "alamat aplikasi ini sendiri tidak dibaca" };
   return { ok: true, url };
 }
 
