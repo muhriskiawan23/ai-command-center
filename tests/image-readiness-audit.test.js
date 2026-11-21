@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { summarizeImageReadiness, runAudit } from '../scripts/image-readiness-audit.mjs';
+import { readFileSync } from 'node:fs';
 
 const bindings=[
   {name:'URL_READER_ENABLED',type:'plain_text',text:'true'},
@@ -142,4 +143,12 @@ test('an R2 bucket found via GET stays present if private domain inventory is fo
   assert.equal(report.features.privateR2Domains,'unverifiable');
   assert.equal(report.features.r2PrivacyProbe,'denied');
   assert.equal(report.features.pinnedProductionD1,'verified');
+});
+
+test('production diagnostics workflow lists but can never apply image or billing migrations',()=>{
+  const workflow=readFileSync(new URL('../.github/workflows/bor-ai-image-readiness.yml',import.meta.url),'utf8');
+  assert.match(workflow,/d1 migrations list bor-ai-chat --remote --config wrangler\.jsonc/);
+  assert.doesNotMatch(workflow,/^\s*(?:npx|wrangler)\b[^\n]*d1 migrations apply\b/m);
+  assert.doesNotMatch(workflow,/^\s*(?:npx|wrangler)\b[^\n]*deploy\b/m);
+  assert.doesNotMatch(workflow,/^\s*(?:npx|wrangler)\b[^\n]*d1 execute\b/m);
 });
