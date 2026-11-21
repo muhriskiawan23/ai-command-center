@@ -1236,13 +1236,13 @@ async function submit(options={}){
     routingImageRequest=true;
     try{
       const {imageIntent,referencesEarlierImage}=await import("/image-intent.js");
-      const selectedSource=selectedCsv?.kind==="image-vision";
+      const selectedSource=Boolean(selectedCsv?.originalFile);
       const chosenJob=imageFollowupChatId===activeId?imageFollowupSource:null;
       const priorJob=mostRecentCompletedChatImageId();
       const implicitPrior=priorJob&&(referencesEarlierImage(text)||imageIntent(text,false,$("imageTask").value)==="edit")?priorJob:null;
       const sourceJobId=selectedSource?null:(chosenJob||implicitPrior);
       const mode=imageIntent(text,Boolean(selectedSource||sourceJobId),$("imageTask").value);
-      if(mode){await prepareImageRequest(text,mode,selectedCsv,sourceJobId);return;}
+      if(mode){await prepareImageRequest(text,mode,selectedCsv,mode==="edit"?sourceJobId:null);return;}
     }finally{routingImageRequest=false;}
   }
   const savedText=packAttachmentMessage(text,selectedPdf||selectedCsv);
@@ -1666,7 +1666,7 @@ $('imageConfirm').addEventListener('click',async()=>{
     if(pending.chatId===activeId){
       if(!activeId){
         activeId=id();
-        conversations.push({id:activeId,serverId:null,title:pending.text.replace(/\\s+/g,' ').slice(0,72),messages:[],updated:Date.now(),loaded:true});
+        conversations.push({id:activeId,serverId:null,title:pending.text.replace(/\s+/g,' ').slice(0,72),messages:[],updated:Date.now(),loaded:true});
         replaceRoute({name:'chat',id:activeId});
       }
       const chat=conversations.find(c=>c.id===activeId);
