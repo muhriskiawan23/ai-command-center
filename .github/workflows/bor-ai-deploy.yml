@@ -125,6 +125,7 @@ jobs:
           const deployment=(await get("/deployments?per_page=1"))?.deployments?.[0];
           const active=deployment?.versions?.filter(v=>v.percentage>0);
           if(active?.length!==1||active[0]?.percentage!==100||!active[0]?.version_id)throw Error("Cannot attest 100% active Worker version");
+          fs.appendFileSync(process.env.GITHUB_ENV,"BOR_EXPECTED_ACTIVE_VERSION="+active[0].version_id+"\n");
           const version=await get("/versions/"+encodeURIComponent(active[0].version_id));
           const bindings=version?.resources?.bindings;
           if(!Array.isArray(bindings))throw Error("Active Worker bindings unavailable");
@@ -453,6 +454,21 @@ jobs:
           if [[ "$BOR_BILLING_SHADOW_ENABLED" == "true" ]]; then
             smoke_billing_shadow_auth_guard "$candidate_url"
           fi
+          # A manual Cloudflare change could race after preflight/candidate tests.
+          # Never overwrite an active version that changed during our release.
+          node --input-type=module <<'NODE'
+          const account=process.env.CLOUDFLARE_ACCOUNT_ID,token=process.env.CLOUDFLARE_API_TOKEN;
+          const expected=process.env.BOR_EXPECTED_ACTIVE_VERSION;
+          if(!/^[0-9a-f-]{36}$/i.test(expected||'')) throw Error("Preflight Worker version attestation unavailable");
+          const url="https://api.cloudflare.com/client/v4/accounts/"+account+"/workers/scripts/ai-command-center/deployments?per_page=1";
+          const response=await fetch(url,{headers:{Authorization:"Bearer "+token,Accept:"application/json"},redirect:"error",signal:AbortSignal.timeout(20000)});
+          if(!response.ok)throw Error("Cannot recheck active Worker before promotion");
+          const data=await response.json();
+          const active=data?.result?.deployments?.[0]?.versions?.filter(v=>v.percentage>0);
+          if(data.success!==true || active?.length!==1 || active[0]?.percentage!==100 || active[0]?.version_id!==expected)
+            throw Error("Active Worker version changed after preflight; aborting promotion");
+          console.log("Active Worker version remains unchanged since candidate preflight");
+          NODE
           wrangler versions deploy "$version_id@100" --yes --config "$BOR_DEPLOY_CONFIG" \
             --message "github-sha:$GITHUB_SHA"
           wrangler triggers deploy --config "$BOR_DEPLOY_CONFIG"
