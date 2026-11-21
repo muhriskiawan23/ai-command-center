@@ -91,7 +91,7 @@ test("health is not a shortcut to trigger browser activity", async () => {
   const handle = createBrowserStagingHandler({ launch: launcher() });
   const response = await handle(new Request("https://staging.example.test/health"), makeEnv());
   assert.equal(response.status, 200);
-  assert.equal((await response.json()).browserEnabled, false);
+  assert.equal((await response.json()).browserAttempted, false);
 });
 
 test("staging endpoint rejects missing/wrong authorization without browser or quota changes", async () => {
