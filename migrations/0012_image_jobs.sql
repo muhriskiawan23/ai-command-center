@@ -64,9 +64,9 @@ WHEN NEW.event='grant' AND NEW.delta>0 BEGIN
     ON CONFLICT(user_id) DO UPDATE SET balance=balance+NEW.delta,updated_at=NEW.created_at;
 END;
 
-// This aggregate has NO user identifier or job FK. It must survive account
-// deletion, expiry and normal retention cleanup so the lifetime pilot ceiling
-// and an uncertain charge cannot silently reset.
+-- This aggregate has NO user identifier or job FK. It must survive account
+-- deletion, expiry and normal retention cleanup so the lifetime pilot ceiling
+-- and an uncertain charge cannot silently reset.
 CREATE TABLE image_pilot_meter (
   singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
   admitted_count INTEGER NOT NULL DEFAULT 0 CHECK (admitted_count >= 0 AND admitted_count <= 9007199254740991),
