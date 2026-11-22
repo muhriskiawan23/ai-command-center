@@ -1,6 +1,7 @@
+import {pngBytes} from '../helpers/media-fixtures.js';
 import {test,expect,loginAs,drawerMode} from './fixtures.js';
 import {processImageJob} from '../../src/image-jobs.js';
-const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAAFUlEQVR4nGMUaTrxnwEJMDGgAcICAJqcAmUgQSjSAAAAAElFTkSuQmCC','base64');
+const png=pngBytes();
 async function setupImages(app){
  const files=new Map();
  Object.assign(app.env,{BOR_IMAGES_ENABLED:'true',OPENAI_API_KEY:'synthetic-test-key',IMAGE_CREDITS_GENERATE:'10',IMAGE_CREDITS_EDIT:'12',IMAGE_TARIFF_VERSION:'test-v1',OPENAI_IMAGE_MODEL:'gpt-image-2',IMAGE_PILOT_QUALITY:'low',IMAGE_PROVIDER_TOTAL_ATTEMPT_LIMIT:'10',IMAGE_QUEUE:{send:async body=>{setTimeout(()=>processImageJob(app.env,body.id),20);}},IMAGE_FETCHER:async()=>Response.json({data:[{b64_json:png.toString('base64')}]}),IMAGE_FILES:{put:async(key,bytes)=>files.set(key,Buffer.from(bytes)),get:async key=>{const bytes=files.get(key);return bytes?{body:bytes,arrayBuffer:async()=>bytes}:null;},delete:async keys=>{for(const key of Array.isArray(keys)?keys:[keys])files.delete(key);}}});
