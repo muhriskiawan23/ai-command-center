@@ -46,35 +46,54 @@ export function initSyntheticProjection(db) {
   );
 }
 
-// Domain validation deliberately fail-closed. This is NOT a production event schema.
+// Fail-closed domain validation. Offline proof; caller authentication is NOT implemented.
 function validate(input) {
   requireValid(input && typeof input === 'object' && !Array.isArray(input));
   const {event_id, user_id, kind, payload} = input;
   requireValid(validId(event_id) && validId(user_id) && KINDS.has(kind));
   requireValid(payload && typeof payload === 'object' && !Array.isArray(payload));
-  if (kind === 'conversation.created') {
-    requireValid(validId(payload.conversation_id) && textValue(payload.title, 180));
-  } else if (kind === 'message.saved') {
-    requireValid(validId(payload.conversation_id) && validId(payload.message_id));
-    requireValid(['user','assistant'].includes(payload.role) && textValue(payload.content));
-  } else if (kind === 'conversation.renamed') {
-    requireValid(validId(payload.conversation_id) && textValue(payload.title, 180));
-  } else if (kind === 'conversation.deleted') {
-    requireValid(validId(payload.conversation_id));
-  } else {
-    requireValid(Object.keys(payload).length === 0);
-  }
-  // Reject unknown fields instead of silently ignoring security-relevant mutations.
   const allowed = {
     'account.created':[], 'account.deleted':[],
     'conversation.created':['conversation_id','title'],
     'message.saved':['conversation_id','message_id','role','content'],
     'conversation.renamed':['conversation_id','title'],
+    'conversation.updated':['conversation_id','title','pinned','archived'],
+    'turn.replaced':['conversation_id','old_user_message_id','old_assistant_message_id',
+      'new_user_message_id','new_assistant_message_id','user_content','assistant_content'],
+    'feedback.set':['conversation_id','message_id','rating','reason'],
+    'conversations.deleted_all':[],
     'conversation.deleted':['conversation_id']
   }[kind];
-  requireValid(Object.keys(payload).every(k => allowed.includes(k)) &&
-    Object.keys(payload).length === allowed.length);
-  return {event_id, user_id, kind, payload_json:JSON.stringify(payload)};
+  const keys=Object.keys(payload);
+  requireValid(keys.every(k=>allowed.includes(k)));
+  if(kind==='conversation.updated') {
+    requireValid(validId(payload.conversation_id));
+    requireValid(keys.some(k=>k!=='conversation_id'));
+    if(keys.includes('title'))requireValid(textValue(payload.title,180));
+    if(keys.includes('pinned'))requireValid(typeof payload.pinned==='boolean');
+    if(keys.includes('archived'))requireValid(typeof payload.archived==='boolean');
+  } else if(kind==='conversation.created'||kind==='conversation.renamed') {
+    requireValid(keys.length===2&&validId(payload.conversation_id)&&textValue(payload.title,180));
+  } else if(kind==='message.saved') {
+    requireValid(keys.length===4&&validId(payload.conversation_id)&&validId(payload.message_id));
+    requireValid(['user','assistant'].includes(payload.role)&&textValue(payload.content));
+  } else if(kind==='turn.replaced') {
+    requireValid(keys.length===7&&validId(payload.conversation_id));
+    const ids=['old_user_message_id','old_assistant_message_id',
+      'new_user_message_id','new_assistant_message_id'].map(k=>payload[k]);
+    requireValid(ids.every(validId)&&new Set(ids).size===4);
+    requireValid(textValue(payload.user_content)&&textValue(payload.assistant_content));
+  } else if(kind==='feedback.set') {
+    requireValid(keys.length===4&&validId(payload.conversation_id)&&validId(payload.message_id));
+    requireValid(['up','down'].includes(payload.rating)&&typeof payload.reason==='string'&&payload.reason.length<=800);
+  } else if(kind==='conversation.deleted') {
+    requireValid(keys.length===1&&validId(payload.conversation_id));
+  } else {
+    requireValid(keys.length===0);
+  }
+  // Sort shallow payload keys to make duplicate requests independent of JSON key order.
+  const canonical=Object.fromEntries(keys.sort().map(key=>[key,payload[key]]));
+  return {event_id,user_id,kind,payload_json:JSON.stringify(canonical)};
 }
 
 export function appendSyntheticEvent(db, input) {
