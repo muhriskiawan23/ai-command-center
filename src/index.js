@@ -1333,11 +1333,11 @@ async function readJsonBody(request) {
   } catch { return null; }
 }
 
-async function findSavedChatRequest(env, user, requestId) {
+async function findSavedChatRequest(env, user, requestId, expectedMessage) {
   if (!env.DB || !user || !requestId) return null;
   try {
     const row = await env.DB.prepare(
-      "SELECT u.conversation_id, a.id AS response_id, a.content AS response, a.links_json AS links_json FROM messages u " +
+      "SELECT u.conversation_id, u.content AS request_content, a.id AS response_id, a.content AS response, a.links_json AS links_json FROM messages u " +
       // D1 batch writes the user+assistant pair atomically. Only the very next
       // message for this owner/conversation can be the saved reply. Never
       // attach a later unrelated assistant to a stranded user request.
@@ -1347,6 +1347,10 @@ async function findSavedChatRequest(env, user, requestId) {
       "WHERE u.user_id = ? AND u.idempotency_key = ? ORDER BY u.id ASC LIMIT 1"
     ).bind(user.id, requestId).first();
     if (!row) return null;
+    // Reusing a stable request ID for different content must never silently
+    // replay an unrelated answer or bypass the original prompt context.
+    if (typeof expectedMessage === "string" && row.request_content !== expectedMessage)
+      return { conflict: true };
     if (!row.response_id || typeof row.response !== "string" || !row.response)
       return { incomplete: true };
     return { conversationId: row.conversation_id, responseId: Number(row.response_id), response: row.response, links: row.links_json ? safeParseLinks(row.links_json) : [] };
@@ -1682,7 +1686,8 @@ export default {
       if (isConfidentialityRequest(message, user ? [] : clientHistory.history)) return policyReply();
       if (user && body.requestId) {
         try {
-          const saved = await findSavedChatRequest(env, user, body.requestId);
+          const saved = await findSavedChatRequest(env, user, body.requestId, message);
+          if (saved?.conflict) return json({ error: "ID permintaan sudah digunakan untuk pesan berbeda.", code: "chat_request_id_conflict" }, 409);
           if (saved?.incomplete) return json({ error: "Permintaan sebelumnya belum memiliki pasangan jawaban tersimpan. Muat ulang riwayat sebelum mengulang.", code: "chat_turn_incomplete" }, 409);
           if (saved) return json({ agent: AGENTS[agentId].name, model: MODEL, workflow: "idempotent-replay", response: protectSavedResponse(saved.response, env, language, message), links: saved.links, conversationId: saved.conversationId, responseId: saved.responseId, saved: true, replayed: true });
         } catch (error) {
@@ -1893,8 +1898,8 @@ export default {
           } catch (error) {
             if (body.requestId) {
               try {
-                const saved = await findSavedChatRequest(env, user, body.requestId);
-                if (saved && !saved.incomplete) {
+                const saved = await findSavedChatRequest(env, user, body.requestId, message);
+                if (saved && !saved.incomplete && !saved.conflict) {
                   await refundUsage(env, usage.day, usage.charges);
                   return json({ agent: AGENTS[agentId].name, model: MODEL, workflow: "idempotent-replay", response: protectSavedResponse(saved.response, env, language, message), links: saved.links, conversationId: saved.conversationId, responseId: saved.responseId, saved: true, replayed: true });
                 }
