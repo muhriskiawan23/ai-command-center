@@ -212,3 +212,34 @@ test('journal prototype is completely disconnected from production Worker and de
   assert.doesNotMatch(worker,/chat-journal-prototype|replaySyntheticJournal|appendSyntheticEvent/);
   assert.doesNotMatch(config,/CHAT_JOURNAL_DO|CHAT_RECOVERY_JOURNAL|recovery_journal/);
 });
+
+test('journal admission checks account tombstones and event identity while the write lock is held',()=>{
+  const h=setup();
+  try {
+    const observed=[];
+    const guarded={
+      exec(sql){ observed.push(sql); return h.journal.exec(sql); },
+      prepare(sql){
+        if(sql.includes('SELECT event_id FROM recovery_journal') ||
+           sql.includes('SELECT seq,user_id,kind,payload_json FROM recovery_journal')) {
+          assert.equal(h.journal.isTransaction,true,'preflight must run in BEGIN IMMEDIATE');
+        }
+        return h.journal.prepare(sql);
+      }
+    };
+    const append=(event_id,kind,payload={})=>
+      appendSyntheticEvent(guarded,{event_id,user_id:'person-1',kind,payload});
+    const created=append('evt-account-created','account.created');
+    assert.equal(created.duplicate,false);
+    assert.equal(append('evt-account-created','account.created').duplicate,true);
+    assert.equal(h.journal.isTransaction,false);
+    assert.throws(()=>append('evt-account-created','account.deleted'),/event_id_conflict/);
+    assert.equal(h.journal.isTransaction,false,'conflicting ID must release write lock');
+    append('evt-account-deleted','account.deleted');
+    assert.equal(append('evt-account-deleted','account.deleted').duplicate,true);
+    assert.throws(()=>append('evt-late','account.created'),/deleted_account_event/);
+    assert.equal(h.journal.isTransaction,false,'deleted-account check must release write lock');
+    assert.equal(h.journal.prepare('SELECT COUNT(*) n FROM recovery_journal').get().n,2);
+    assert.ok(observed.some(sql=>sql==='BEGIN IMMEDIATE'));
+  } finally {h.close();}
+});
