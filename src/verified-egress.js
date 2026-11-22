@@ -1,3 +1,5 @@
+import { blockedHostReason, validateUrl } from './links.js';
+
 // Fail-closed Worker adapter for a dedicated, authenticated, pinned egress proxy.
 // Bind EGRESS_PROXY to a private Cloudflare VPC Service after security review.
 // Never substitute global fetch or an arbitrary public endpoint.
@@ -8,6 +10,16 @@ function decodeBase64(value) {
   return Uint8Array.from(binary, char => char.charCodeAt(0));
 }
 
+// Defense in depth: the proxy must pin and verify its TCP/TLS peer, while
+// the Worker independently rejects private and malformed reported peer IPs.
+function publicPeerIp(ip) {
+  if (typeof ip !== 'string') return false;
+  if (/^\d{1,3}(?:\.\d{1,3}){3}$/.test(ip)) return blockedHostReason(ip) === null;
+  if (/^[0-9a-f:.]+$/i.test(ip) && ip.includes(':') && !ip.includes('.'))
+    return blockedHostReason('[' + ip + ']') === null;
+  return false;
+}
+
 export function createVerifiedLinkFetcher(env) {
   // Provisioning credentials must never implicitly activate production URL reading.
   if (env?.URL_READER_ENABLED !== "true") return null;
@@ -15,8 +27,11 @@ export function createVerifiedLinkFetcher(env) {
   const token = env?.EGRESS_PROXY_TOKEN;
   if (!binding || typeof binding.fetch !== "function" || typeof token !== "string" || token.length < 32) return null;
   return async (url, { signal } = {}) => {
-    const parsed = new URL(url);
-    if (!["http:", "https:"].includes(parsed.protocol)) throw Error("invalid_scheme");
+    // This adapter can be called outside readLink. Never assume callers have
+    // performed its URL validation before transferring a URL to the proxy.
+    const checked = validateUrl(url);
+    if (!checked.ok) throw Error("proxy_url_disallowed");
+    const parsed = checked.url;
     const response = await binding.fetch("http://egress.internal/fetch", {
       method: "POST",
       headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
@@ -27,7 +42,7 @@ export function createVerifiedLinkFetcher(env) {
     if (!response.ok) throw Error("proxy_unavailable");
     const data = await response.json();
     if (!data || !Number.isInteger(data.status) || data.status < 100 || data.status > 599 ||
-        typeof data.peerIp !== "string" || !data.transport ||
+        !publicPeerIp(data.peerIp) || !data.transport ||
         data.transport.peerIpVerified !== true ||
         data.transport.selectedPeerIp !== data.transport.observedPeerIp ||
         data.transport.selectedPeerIp !== data.peerIp ||
