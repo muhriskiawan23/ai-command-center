@@ -49,16 +49,25 @@ export function verifyExportEnvelope(data,expectedBookmark=null){
   const r=data.result;
   if(r.status==='error'||r.error)throw Error('private_backup_export_api_failed');
   if(expectedBookmark!==null){
-    // Cloudflare's documented D1 /export response returns result.signed_url
-    // directly (NOT result.result.signed_url), and may omit both status and
-    // at_bookmark during the polling response. The requested current_bookmark
-    // is already pinned in the POST body; reject only explicit disagreement.
+    // The Cloudflare Workflow example uses result.signed_url directly;
+    // the D1 API reference also documents result.result.signed_url for
+    // status=complete. Accept either shape, but never conflicting sources.
+    // The signed URL stays in Worker memory, never in GitHub or step output.
     if(r.at_bookmark!==undefined&&r.at_bookmark!==expectedBookmark)
       throw Error('private_backup_export_bookmark_changed');
-    const signed=r.signed_url;
+    if(r.result!==undefined&&r.result!==null&&
+       (typeof r.result!=='object'||Array.isArray(r.result)))
+      throw Error('private_backup_export_invalid_result');
+    const direct=r.signed_url;
+    const nested=r.result?.signed_url;
+    if(direct!==undefined&&nested!==undefined&&direct!==nested)
+      throw Error('private_backup_export_conflicting_urls');
+    const signed=direct!==undefined?direct:nested;
     if(signed!==undefined&&signed!==null){
       if(typeof signed!=='string'||!signed)
         throw Error('private_backup_export_missing_url');
+      if(r.status!==undefined&&r.status!=='complete')
+        throw Error('private_backup_export_status_mismatch');
       return {status:'complete',signedUrl:signed};
     }
     if(r.status==='complete')throw Error('private_backup_export_missing_url');
