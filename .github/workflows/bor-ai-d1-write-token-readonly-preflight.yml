@@ -1,0 +1,71 @@
+name: BOR AI production D1 migration token permission probe (read only)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bor-ai-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    environment: production
+    steps:
+      - name: Checkout pinned main source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+      - name: Install Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 22
+      - name: Refuse production probe on unreviewed branch or wrong D1 config
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REF" == "refs/heads/main" ]] || { echo "::error::Dispatch this read-only probe from main"; exit 1; }
+          node --input-type=module <<'NODE'
+          import {readFileSync} from "node:fs";
+          const c=JSON.parse(readFileSync("wrangler.jsonc","utf8"));
+          if(c.name!=="ai-command-center" || c.d1_databases?.length!==1 ||
+             c.d1_databases[0].database_name!=="bor-ai-chat" ||
+             c.d1_databases[0].database_id!=="d71231a9-9a04-471c-b904-d1bc843940aa")
+            throw Error("Production D1 identity does not match the reviewed image-only plan");
+          console.log("Pinned production D1 identity validated without contacting customer data.");
+          NODE
+      - name: Confirm dedicated D1 Edit token can execute a literal SELECT 1 (NO WRITES)
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_D1_MIGRATION_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${CLOUDFLARE_API_TOKEN:-}" || -z "${CLOUDFLARE_ACCOUNT_ID:-}" ]]; then
+            echo "::error::Dedicated D1 token or account ID is unavailable in production Environment secrets"
+            exit 1
+          fi
+          # Unlike migrations list, this makes a READ-ONLY query via the very
+          # D1 /query endpoint that previously returned Cloudflare error 7500.
+          # The query contains only a numeric literal: NO database tables or
+          # customer rows are read, no state is written, no token value logged.
+          npx --yes wrangler@4.165.0 d1 execute bor-ai-chat --remote \
+            --config wrangler.jsonc \
+            --command "SELECT 1 AS bor_ai_d1_token_probe" \
+            > "$RUNNER_TEMP/bor-ai-d1-token-probe.txt"
+          node --input-type=module <<'NODE'
+          import {readFileSync} from "node:fs";
+          const log=readFileSync(process.env.RUNNER_TEMP+"/bor-ai-d1-token-probe.txt","utf8");
+          if(log.length>16000 || !log.includes("bor_ai_d1_token_probe") ||
+             !/\b1\b/.test(log) || /ERROR|permission denied|7500/i.test(log))
+            throw Error("Read-only D1 Edit token query response is not independently verifiable");
+          console.log("PASS: dedicated token executed a constant SELECT 1 on the pinned D1 query endpoint. No production rows, writes, restore or Worker deploy.");
+          NODE
+      - name: Clarify this probe does not establish backup or migration clearance
+        run: |
+          echo "This verifies Cloudflare /query authorization only. Image migrations remain unapproved until private external backup and restoration evidence are independently reviewed."
+          echo "Do not dispatch schema APPLY, deploy a Worker, expose paid images, or restore D1 based solely on this check."
