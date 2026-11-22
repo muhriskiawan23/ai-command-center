@@ -184,11 +184,19 @@ export class ChatJournalDurableObject {
       // Recovery operator path remains private: no public Worker forwarding.
       const from=Number(url.searchParams.get('after')||'0');
       const limit=Number(url.searchParams.get('limit')||'50');
-      if(!Number.isSafeInteger(from)||from<0||!Number.isSafeInteger(limit)||limit<1||limit>100)
+      const expectedRaw=url.searchParams.get('expectedHead');
+      const expectedHead=expectedRaw===null?null:Number(expectedRaw);
+      if(!Number.isSafeInteger(from)||from<0||!Number.isSafeInteger(limit)||limit<1||limit>100||
+        (expectedHead!==null&&(!Number.isSafeInteger(expectedHead)||expectedHead<0)))
         return err('invalid_cursor',400);
       try{
         const sql=this.ctx.storage.sql;
         const head=first(sql,'SELECT seq FROM journal_events ORDER BY seq DESC LIMIT 1')?.seq||0;
+        // Reject paging across a concurrent journal append, including erasure
+        // of previous payloads by deletion. No mixed-version recovery snapshot.
+        if(expectedHead!==null&&head!==expectedHead)
+          return err('journal_head_changed',409);
+        if(from>head)return err('journal_cursor_ahead_of_head',409);
         const events=list(sql,
           'SELECT seq,event_id,user_id,kind,conversation_id,payload_json,redacted FROM journal_events WHERE seq>? ORDER BY seq LIMIT ?',
           from,limit);

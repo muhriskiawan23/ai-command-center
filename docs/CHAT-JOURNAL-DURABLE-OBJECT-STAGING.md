@@ -68,3 +68,32 @@ References:
 - https://developers.cloudflare.com/durable-objects/api/sqlite-storage-api/
 - https://developers.cloudflare.com/durable-objects/reference/durable-objects-migrations/
 - https://github.com/muhriskiawan23/ai-command-center/issues/382
+
+## Independent source-read and replay staging disaster drill (22 Nov 2026)
+
+The new **tools/recovery/do-journal-staging-drill.mjs** consumes the actual
+private Durable Object journal wire format. It is **offline/test only**.
+It uses an independently verified minimum journal-head watermark, pages
+private source records with a fixed `expectedHead`, rejects gaps, duplicate
+IDs, invalid owner, missing tail, forged redactions and any changed source
+head during multi-page reads. Deleted conversation payloads remain scrubbed;
+redaction is only accepted when a later verified chat/account deletion exists.
+
+A complete verified snapshot is projected into a **fresh synthetic SQLite
+primary**, using the older independently tested recovery prototype for turn
+replacement, feedback, account and chat tombstones. The test injects a
+failure between a recovered message and checkpoint and verifies that a clean
+restart replays without extra turns. Diagnostics return only event counts,
+not user prompts or media. This is **not** a copy or export of customer data.
+
+The Durable Object adds an optional `expectedHead` parameter to its private
+/read endpoint, returning **409** if new data/deletion appears mid-snapshot.
+This forbids mixing pre-deletion and post-deletion pages. No public route,
+production D1 binding, chat writer or live replay endpoint was added.
+
+Remaining production blockers: dedicated deploy and secured namespace, budget,
+server-side verified account routing, full existing-chat backfill and accurate
+ID mappings, deletion of earlier replicas/backups, complete receipt-based
+acknowledgement/projection protocol, proof every mutation is covered, full
+staging disaster drill against realistic D1 schema and **explicit owner
+release approval**. No zero-loss claim is justified yet.
