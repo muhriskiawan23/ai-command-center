@@ -334,3 +334,56 @@ test('optional image-history storage failure never breaks ordinary saved-chat re
   assert.equal(data.conversation.id,job.conversationId);
  }finally{h.close();}
 });
+
+test('corrupted upload containers are refused before R2 storage, queue admission or credit reservation',async()=>{
+ const h=setup();try{
+  const wrongCrc=Buffer.from(png);wrongCrc[29]^=1;
+  for(const invalid of [wrongCrc,png.subarray(0,-12),Buffer.concat([png,Buffer.from('<script>')])]){
+   const res=await h.create({mode:'edit',sourceImage:'data:image/png;base64,'+invalid.toString('base64')});
+   assert.equal(res.status,400);
+  }
+  assert.equal(h.sent.length,0);assert.equal(h.files.size,0);
+  assert.equal(h.db.sqlite.prepare('SELECT balance FROM image_wallets').get().balance,100);
+  assert.equal(h.db.sqlite.prepare('SELECT COUNT(*) n FROM image_jobs').get().n,0);
+ }finally{h.close();}
+});
+test('corrupted queued edit source never triggers an OpenAI request',async()=>{
+ const h=setup();try{
+  const job=await (await h.create({mode:'edit',sourceImage:photo})).json();
+  const row=h.db.sqlite.prepare('SELECT source_key FROM image_jobs').get();
+  const damaged=Buffer.from(png);damaged[29]^=1;
+  h.files.set(row.source_key,damaged);
+  await processImageJob(h.env,job.id);
+  const failed=h.db.sqlite.prepare('SELECT status,error_code FROM image_jobs').get();
+  assert.equal(failed.status,'failed');assert.equal(failed.error_code,'source_unavailable');
+  assert.equal(h.calls.length,0);assert.equal(h.files.size,0);
+  assert.equal(h.db.sqlite.prepare('SELECT balance FROM image_wallets').get().balance,100);
+  assert.equal(h.db.sqlite.prepare('SELECT provider_hold FROM image_pilot_meter').get().provider_hold,0);
+ }finally{h.close();}
+});
+test('corrupted earlier image cannot be used to start another paid edit',async()=>{
+ const h=setup();try{
+  const job=await (await h.create()).json();await processImageJob(h.env,job.id);
+  const key=h.db.sqlite.prepare('SELECT output_key FROM image_jobs').get().output_key;
+  const damaged=Buffer.from(png);damaged[29]^=1;
+  h.files.set(key,damaged);
+  const res=await h.create({mode:'edit',sourceJobId:job.id});
+  assert.equal(res.status,400);assert.equal(h.calls.length,1);
+  assert.equal(h.sent.length,1);
+  assert.equal(h.db.sqlite.prepare('SELECT balance FROM image_wallets').get().balance,90);
+ }finally{h.close();}
+});
+test('malformed provider image body cannot appear as a completed download',async()=>{
+ for(const invalid of [png.subarray(0,-12),Buffer.concat([png,Buffer.from('<script>')])]){
+  const h=setup();try{
+   h.env.IMAGE_FETCHER=async()=>Response.json({data:[{b64_json:invalid.toString('base64')}]});
+   const job=await (await h.create()).json();
+   await processImageJob(h.env,job.id);
+   const row=h.db.sqlite.prepare('SELECT status,error_code FROM image_jobs').get();
+   assert.equal(row.status,'failed');assert.equal(row.error_code,'image_provider_billing_unverified');
+   assert.equal(h.files.size,0);assert.equal(h.calls.length,0);
+   assert.equal(h.db.sqlite.prepare('SELECT balance FROM image_wallets').get().balance,100);
+   assert.equal(h.db.sqlite.prepare('SELECT provider_hold FROM image_pilot_meter').get().provider_hold,1);
+  }finally{h.close();}
+ }
+});
