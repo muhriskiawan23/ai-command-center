@@ -104,6 +104,37 @@ test('stale never-started queued jobs are refunded and expired files are removed
  const other=await (await h.create()).json();await processImageJob(h.env,other.id);h.db.sqlite.prepare('UPDATE image_jobs SET expires_at=1 WHERE id=?').run(other.id);assert.equal((await worker.fetch(h.request('/api/files/'+other.id+'/download'),h.env)).status,410);await cleanupImageJobs(h.env);assert.equal(h.files.size,0);
  }finally{h.close();}
 });
+test('paused image pilot still purges expired objects and sensitive prompt metadata',async()=>{
+  const h=setup();try{
+    const job=await (await h.create({prompt:'private photo instruction'})).json();
+    await processImageJob(h.env,job.id);
+    assert.equal(h.files.size,1);
+    h.db.sqlite.prepare('UPDATE image_jobs SET expires_at=1 WHERE id=?').run(job.id);
+    h.env.BOR_IMAGES_ENABLED='false';
+    await cleanupImageJobs(h.env);
+    const row=h.db.sqlite.prepare('SELECT status,prompt,source_key,output_key,usage_json FROM image_jobs WHERE id=?').get(job.id);
+    assert.equal(row.status,'expired');
+    assert.equal(row.prompt,'');
+    assert.equal(row.source_key,null);
+    assert.equal(row.output_key,null);
+    assert.equal(row.usage_json,null);
+    assert.equal(h.files.size,0);
+    assert.equal(h.calls.length,1); // Cleanup made no extra provider call.
+  }finally{h.close();}
+});
+test('paused image pilot still refunds stale queued jobs without provider calls',async()=>{
+  const h=setup();try{
+    const job=await (await h.create()).json();
+    h.db.sqlite.prepare('UPDATE image_jobs SET updated_at=1 WHERE id=?').run(job.id);
+    h.env.BOR_IMAGES_ENABLED='false';
+    await cleanupImageJobs(h.env);
+    const row=h.db.sqlite.prepare('SELECT status,error_code FROM image_jobs WHERE id=?').get(job.id);
+    assert.equal(row.status,'failed');
+    assert.equal(row.error_code,'processing_interrupted');
+    assert.equal(h.db.sqlite.prepare('SELECT balance FROM image_wallets').get().balance,100);
+    assert.equal(h.calls.length,0);
+  }finally{h.close();}
+});
 test('ambiguous upstream timeout suspends new and queued image calls without extra provider charges',async()=>{
  const h=setup();try{
   let attempts=0; h.env.IMAGE_FETCHER=async()=>{attempts++;throw Error('synthetic network timeout private provider secret');};
