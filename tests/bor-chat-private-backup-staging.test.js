@@ -156,6 +156,51 @@ test('official Cloudflare direct result.signed_url works when poll omits status 
   assert.throws(()=>verifyExportEnvelope({success:true,result:{status:'complete'}},bookmark),
     /private_backup_export_missing_url/);
 });
+test('D1 API reference nested result.result.signed_url exports only to private R2',async()=>{
+  const h=fixture();
+  const fetch=h.fetcher;
+  h.fetcher=async(url,opts)=>{
+    if(url.includes('api.cloudflare.com')&&opts.body.includes('current_bookmark')){
+      return Response.json({success:true,result:{
+        status:'complete',at_bookmark:bookmark,
+        result:{filename:'synthetic-private-backup.sql',
+          signed_url:'https://'+hostname+'/synthetic.sql?signature=PRIVATE_FAKE'}
+      }});
+    }
+    return fetch(url,opts);
+  };
+  const receipt=await runPrivateBackup(h);
+  assert.equal(receipt.ok,true);
+  assert.equal(receipt.privateR2,true);
+  assert.equal(receipt.customerDataIncludedInOutput,false);
+  assert.equal(h.written.size,1);
+  assert.ok(JSON.stringify(receipt).indexOf('PRIVATE_FAKE')===-1);
+});
+
+test('D1 export nested signed URL mismatch and invalid shapes fail closed',()=>{
+  const url='https://'+hostname+'/file.sql?signature=safe-synthetic';
+  const result=details=>({success:true,result:{status:'complete',...details}});
+  assert.deepEqual(verifyExportEnvelope(result({result:{filename:'file.sql',signed_url:url}}),bookmark),{
+    status:'complete',signedUrl:url
+  });
+  for(const invalid of [
+    {signed_url:url,result:{signed_url:'https://another.r2.cloudflarestorage.com/bad'}},
+    {result:{signed_url:''}},
+    {result:{signed_url:123}},
+    {result:'invalid'},
+    {status:'polling',result:{signed_url:url}}
+  ]){
+    const response=invalid.status?{success:true,result:invalid}:result(invalid);
+    assert.throws(()=>verifyExportEnvelope(response,bookmark),/private_backup_export_/);
+  }
+  assert.deepEqual(verifyExportEnvelope(result({
+    signed_url:url,result:{signed_url:url}
+  }),bookmark),{status:'complete',signedUrl:url});
+  assert.deepEqual(verifyExportEnvelope({success:true,result:{
+    status:'polling',result:{}
+  }},bookmark),{status:'pending'});
+});
+
 test('D1 start export matches documented polling request, no speculative dump options',async()=>{
   const h=fixture();
   const original=h.fetcher;
