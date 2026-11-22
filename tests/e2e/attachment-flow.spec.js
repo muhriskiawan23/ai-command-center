@@ -3,6 +3,11 @@ import {test,expect,loginAs} from "./fixtures.js";
 const account={id:"attachment-style-tester",email:"attachments@example.test",name:"Attachment Tester"};
 async function guest(page,app){await page.goto(app.url);await page.locator("#continueGuest").click();await expect(page.locator("#prompt")).toBeVisible();}
 async function setTextImage(page,name="invoice.jpg"){
+  // The actual input is disabled while chat/session history is loading.
+  // Programmatically dispatching a change before readiness silently drops the
+  // file via uploadAnyFile's busy/loadingChat guard and flakes on slow tablets.
+  await expect(page.locator("#prompt")).toBeVisible();
+  await expect(page.locator("#pdfFile")).toBeEnabled();
   // Construct a real JPEG using the browser itself: no paid vision model or network.
   await page.evaluate(async filename => {
     const canvas=document.createElement("canvas");
@@ -20,6 +25,8 @@ async function setTextImage(page,name="invoice.jpg"){
   },name);
 }
 async function setCsv(page){
+  await expect(page.locator("#prompt")).toBeVisible();
+  await expect(page.locator("#pdfFile")).toBeEnabled();
   await page.locator("#pdfFile").setInputFiles({name:"sales.csv",mimeType:"text/csv",buffer:Buffer.from("Item,Price\nCoffee,120000\nTea,80000")});
 }
 
