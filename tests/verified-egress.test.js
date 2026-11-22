@@ -78,6 +78,7 @@ test("unsafe URL never reaches the private egress binding even when called direc
 });
 test("private or invented peer IPs are rejected even when a proxy reports verified transport", async () => {
   for (const ip of ["127.0.0.1", "10.2.3.4", "169.254.169.254", "192.168.1.1",
+    "8.8.8.999", "8.8.8.01", "256.8.8.8", "8.8.8.256", "1.2.3.4.5",
     "::1", "fe80::1", "::ffff:127.0.0.1", "example.com"]) {
     const data = payload({ peerIp: ip, transport: {
       ...payload().transport, selectedPeerIp: ip, observedPeerIp: ip
