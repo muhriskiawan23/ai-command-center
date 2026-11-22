@@ -5,7 +5,7 @@ const yaml=readFileSync('.github/workflows/bor-ai-private-chat-backup-release.ym
 
 test('private D1 backup release is manual only, defaults to non-writing PLAN with production lock',()=>{
   assert.match(yaml,/workflow_dispatch:/);
-  assert.match(yaml,/options: \[plan, deploy, trigger\]/);
+  assert.match(yaml,/options: \[plan, preflight, deploy, trigger\]/);
   assert.match(yaml,/default: plan/);
   assert.match(yaml,/environment: production/);
   assert.match(yaml,/group: bor-ai-production-deploy/);
@@ -54,4 +54,60 @@ test('safe-off PLAN dry-run explicitly checks production resources remain isolat
   assert.match(yaml,/tests\/bor-chat-private-backup-staging\.test\.js/);
   assert.match(yaml,/tests\/bor-ai-private-backup-r2-audit\.test\.js/);
   assert.match(yaml,/No production Worker deploy, D1 export, R2 write, restore, schema mutation or paid image call/);
+});
+
+test('both dedicated secrets are required BEFORE backup Worker deployment, not checked afterward',()=>{
+  const audit=yaml.indexOf('- name: Verify existing dedicated R2 backup bucket is private (GET only)');
+  const gate=yaml.indexOf('- name: Fail before deploy if either dedicated backup credential is unavailable');
+  const deploy=yaml.indexOf('- name: Deploy ONLY the isolated backup Worker and Cloudflare Workflow');
+  assert.ok(audit>=0&&gate>audit&&deploy>gate,'strict audit, credential gate, deploy order');
+  const step=yaml.slice(gate,deploy);
+  assert.ok(step.includes("if: ${{ inputs.phase == 'deploy' || inputs.phase == 'preflight' }}"));
+  assert.match(step,/CLOUDFLARE_BACKUP_DEPLOY_TOKEN: \$\{\{ secrets\.CLOUDFLARE_BACKUP_DEPLOY_TOKEN \}\}/);
+  assert.match(step,/BOR_PRIVATE_D1_EXPORT_TOKEN: \$\{\{ secrets\.BOR_PRIVATE_D1_EXPORT_TOKEN \}\}/);
+  assert.match(step,/Dedicated Worker deploy AND D1 export credentials are required before deploy/);
+  assert.match(step,/Cloudflare account ID missing or malformed/);
+  assert.doesNotMatch(step,/wrangler@|curl |d1 export|r2 bucket|secret put|echo.*\$\{(?:BOR_PRIVATE_D1_EXPORT_TOKEN|CLOUDFLARE_BACKUP_DEPLOY_TOKEN)/);
+});
+
+test('dedicated deployment and D1 export token status + pinned metadata are read-only checked before Worker deploy',()=>{
+  const credentialGate=yaml.indexOf('- name: Fail before deploy if either dedicated backup credential is unavailable');
+  const readonlyGate=yaml.indexOf('- name: Read-only verify dedicated Cloudflare credentials and exact pinned D1 metadata');
+  const deploy=yaml.indexOf('- name: Deploy ONLY the isolated backup Worker and Cloudflare Workflow');
+  assert.ok(credentialGate>=0&&readonlyGate>credentialGate&&deploy>readonlyGate);
+  const step=yaml.slice(readonlyGate,deploy);
+  assert.match(step,/inputs\.phase == 'deploy'/);
+  assert.match(step,/method:'GET'/);
+  assert.match(step,/redirect:'error'/);
+  assert.match(step,/user\/tokens\/verify/);
+  assert.match(step,/verified\.status!=='active'/);
+  assert.match(step,/PINNED_D1_ID/);
+  assert.match(step,/db\.uuid!==PINNED_D1_ID\|\|db\.name!=='bor-ai-chat'/);
+  assert.match(step,/workers\/scripts\?per_page=1/);
+  assert.match(step,/CLOUDFLARE_BACKUP_DEPLOY_TOKEN/);
+  assert.match(step,/BOR_PRIVATE_D1_EXPORT_TOKEN/);
+  assert.match(step,/console\.log\('Dedicated Cloudflare tokens are active/);
+  assert.doesNotMatch(step,/method:'POST'|wrangler@|d1 execute|d1 export|workflows trigger|\.sql\b|r2 bucket create|secret put|console\.log\(json/);
+});
+
+test('manual PREFLIGHT uses scoped read-only API checks without deployment or export',()=>{
+  assert.ok(yaml.includes('options: [plan, preflight, deploy, trigger]'));
+  assert.ok(yaml.includes('if [[ "$PHASE" == "plan" || "$PHASE" == "preflight" ]]'));
+  assert.ok(yaml.includes('PLAN/PREFLIGHT must not receive mutation or export confirmations'));
+  const gate=yaml.indexOf('- name: Fail before deploy if either dedicated backup credential is unavailable');
+  const readonly=yaml.indexOf('- name: Read-only verify dedicated Cloudflare credentials and exact pinned D1 metadata');
+  const deploy=yaml.indexOf('- name: Deploy ONLY the isolated backup Worker and Cloudflare Workflow');
+  const trigger=yaml.indexOf('- name: Manually trigger exactly one owner-approved Cloudflare backup instance');
+  const report=yaml.indexOf('- name: Report read-only PREFLIGHT only, no exports or releases');
+  assert.ok(gate>=0&&readonly>gate&&deploy>readonly&&trigger>deploy&&report>trigger);
+  for(const step of [yaml.slice(gate,readonly),yaml.slice(readonly,deploy)])
+    assert.ok(step.includes("inputs.phase == 'deploy' || inputs.phase == 'preflight'"));
+  const deployStep=yaml.slice(deploy,trigger);
+  assert.ok(deployStep.includes("if: ${{ inputs.phase == 'deploy' }}"));
+  assert.ok(!deployStep.includes("inputs.phase == 'preflight'"));
+  const triggerStep=yaml.slice(trigger,report);
+  assert.ok(triggerStep.includes("if: ${{ inputs.phase == 'trigger' }}"));
+  assert.ok(!triggerStep.includes("inputs.phase == 'preflight'"));
+  assert.ok(yaml.slice(report).includes("if: ${{ inputs.phase == 'preflight' }}"));
+  assert.ok(yaml.slice(report).includes('no D1 export, no R2 writes, no restore'));
 });

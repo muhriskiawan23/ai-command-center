@@ -7,7 +7,7 @@ on:
     inputs:
       phase:
         type: choice
-        options: [plan, deploy, trigger]
+        options: [plan, preflight, deploy, trigger]
         required: true
         default: plan
       reviewed_main_sha:
@@ -57,9 +57,9 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$GITHUB_REF" == "refs/heads/main" ]] || { echo "::error::Use main only"; exit 1; }
-          if [[ "$PHASE" == "plan" ]]; then
+          if [[ "$PHASE" == "plan" || "$PHASE" == "preflight" ]]; then
             [[ -z "$SHA_APPROVED" && -z "$APPROVAL" && -z "$HOST" && -z "$TRAFFIC_ACK" ]] || {
-              echo "::error::PLAN must not receive mutation or export confirmations"; exit 1;
+              echo "::error::PLAN/PREFLIGHT must not receive mutation or export confirmations"; exit 1;
             }
           elif [[ "$PHASE" == "deploy" ]]; then
             [[ "$SHA_APPROVED" == "$GITHUB_SHA" && "$APPROVAL" == "DEPLOY_BOR_PRIVATE_CHAT_BACKUP" &&
@@ -118,6 +118,73 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_R2_AUDIT_TOKEN: ${{ secrets.CLOUDFLARE_R2_AUDIT_TOKEN }}
         run: node scripts/verify-private-backup-r2-preflight.mjs
+
+      - name: Fail before deploy if either dedicated backup credential is unavailable
+        if: ${{ inputs.phase == 'deploy' || inputs.phase == 'preflight' }}
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_BACKUP_DEPLOY_TOKEN: ${{ secrets.CLOUDFLARE_BACKUP_DEPLOY_TOKEN }}
+          BOR_PRIVATE_D1_EXPORT_TOKEN: ${{ secrets.BOR_PRIVATE_D1_EXPORT_TOKEN }}
+        run: |
+          set -euo pipefail
+          # Fail BEFORE creating a Cloudflare Worker or Workflow. A later
+          # secret-put failure must not leave an unnecessary half-deployed
+          # release when an expected GitHub secret is missing.
+          [[ "${CLOUDFLARE_ACCOUNT_ID:-}" =~ ^[0-9a-fA-F]{32}$ ]] || {
+            echo "::error::Cloudflare account ID missing or malformed"; exit 1;
+          }
+          [[ -n "${CLOUDFLARE_BACKUP_DEPLOY_TOKEN:-}" && -n "${BOR_PRIVATE_D1_EXPORT_TOKEN:-}" ]] || {
+            echo "::error::Dedicated Worker deploy AND D1 export credentials are required before deploy"; exit 1;
+          }
+          echo 'Dedicated backup credentials present (values never logged); no Cloudflare changes in this gate.'
+
+      - name: Read-only verify dedicated Cloudflare credentials and exact pinned D1 metadata
+        if: ${{ inputs.phase == 'deploy' || inputs.phase == 'preflight' }}
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_BACKUP_DEPLOY_TOKEN: ${{ secrets.CLOUDFLARE_BACKUP_DEPLOY_TOKEN }}
+          BOR_PRIVATE_D1_EXPORT_TOKEN: ${{ secrets.BOR_PRIVATE_D1_EXPORT_TOKEN }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import {PINNED_D1_ID} from './src/bor-chat-private-backup-core.js';
+          const account=process.env.CLOUDFLARE_ACCOUNT_ID;
+          const deploy=process.env.CLOUDFLARE_BACKUP_DEPLOY_TOKEN;
+          const exportToken=process.env.BOR_PRIVATE_D1_EXPORT_TOKEN;
+          if(!/^[0-9a-f]{32}$/i.test(account||'')||!deploy||!exportToken)
+            throw Error('private_backup_readonly_token_preflight_missing');
+          // GET-only: do not invoke D1 export, D1 SQL, Worker deploy or R2 writes.
+          // Never log token values, bearer headers, API JSON bodies or user data.
+          const get=async(path,token)=>{
+            let response;
+            try{response=await fetch('https://api.cloudflare.com/client/v4/'+path,{
+              method:'GET',redirect:'error',signal:AbortSignal.timeout(20000),
+              headers:{Authorization:'Bearer '+token,Accept:'application/json'}
+            });}catch{throw Error('private_backup_readonly_cloudflare_unreachable');}
+            if(!response.ok)throw Error('private_backup_readonly_cloudflare_http_'+response.status);
+            let json;
+            try{json=await response.json();}catch{throw Error('private_backup_readonly_invalid_json');}
+            if(json.success!==true||!json.result)
+              throw Error('private_backup_readonly_cloudflare_response_invalid');
+            return json.result;
+          };
+          for(const [name,token] of [['deploy',deploy],['export',exportToken]]){
+            const verified=await get('user/tokens/verify',token);
+            if(verified.status!=='active')
+              throw Error('private_backup_'+name+'_token_not_active');
+          }
+          // Cloudflare GET /d1/database/<id> exposes metadata, NOT SQL/chat.
+          const db=await get('accounts/'+account+'/d1/database/'+PINNED_D1_ID,exportToken);
+          if(db.uuid!==PINNED_D1_ID||db.name!=='bor-ai-chat')
+            throw Error('private_backup_export_token_database_pin_mismatch');
+          // Verify ability to read Workers metadata on the pinned account.
+          // Does not prove a Workflow can be deployed; Wrangler still fails
+          // closed on any later insufficient permission.
+          await get('accounts/'+account+'/workers/scripts?per_page=1',deploy);
+          console.log('Dedicated Cloudflare tokens are active; pinned account resource metadata GET checks passed. No D1 export or Worker deploy.');
+          NODE
 
       - name: Deploy ONLY the isolated backup Worker and Cloudflare Workflow (no export)
         if: ${{ inputs.phase == 'deploy' }}
@@ -185,6 +252,11 @@ jobs:
             --id "$instance" > "$RUNNER_TEMP/bor-ai-backup-trigger.txt"
           echo "Cloudflare private backup instance accepted: $instance"
           echo 'Trigger is not backup completion or independently proven recovery.'
+
+      - name: Report read-only PREFLIGHT only, no exports or releases
+        if: ${{ inputs.phase == 'preflight' }}
+        run: |
+          echo 'PREFLIGHT passed. Active scoped credentials and pinned D1 metadata are verified via GET only; isolated Worker not deployed, no D1 export, no R2 writes, no restore.'
 
       - name: Report PLAN only, no real backups
         if: ${{ inputs.phase == 'plan' }}
