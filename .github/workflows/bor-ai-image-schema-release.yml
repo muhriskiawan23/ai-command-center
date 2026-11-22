@@ -1,15 +1,15 @@
-name: BOR AI image-only D1 schema release (no Worker deploy)
+name: BOR AI image-only D1 inventory (read only)
 
 on:
   workflow_dispatch:
     inputs:
       apply_image_schema:
-        description: "Apply ONLY 0012/0016 image migrations to production bor-ai-chat D1 after independent operator review"
+        description: "READ-ONLY inventory. For production apply, use separately gated bor-ai-image-d1-release.yml"
         type: boolean
         required: true
         default: false
       owner_confirmation:
-        description: "For D1 writes type APPLY_IMAGE_SCHEMA_BOR_AI after reviewing current bookmark and change"
+        description: "Legacy input; must remain EMPTY. This inventory workflow NEVER applies migrations."
         type: string
         required: false
         default: ""
@@ -43,12 +43,8 @@ jobs:
             echo "::error::Production image migration must be dispatched from main"
             exit 1
           fi
-          if [[ "$APPLY_IMAGE_SCHEMA" == "true" && "$OWNER_CONFIRMATION" != "APPLY_IMAGE_SCHEMA_BOR_AI" ]]; then
-            echo "::error::Production schema write requires separate operator approval and exact confirmation phrase"
-            exit 1
-          fi
-          if [[ "$APPLY_IMAGE_SCHEMA" == "false" && -n "$OWNER_CONFIRMATION" ]]; then
-            echo "::error::Read-only inspection must not include a write confirmation"
+          if [[ "$APPLY_IMAGE_SCHEMA" != "false" || -n "$OWNER_CONFIRMATION" ]]; then
+            echo "::error::Inventory workflow is READ ONLY. Never use it for production D1 writes. Use the independently gated bor-ai-image-d1-release.yml requiring plan SHA and private recovery attestation."
             exit 1
           fi
 
@@ -97,59 +93,6 @@ jobs:
             > "$RUNNER_TEMP/bor-image-pending-before.txt"
           node scripts/verify-image-schema-pending.mjs \
             "$RUNNER_TEMP/bor-image-pending-before.txt" --expect-pair
-
-      - name: Verify a live Time Travel bookmark without invoking restore (read only)
-        if: ${{ inputs.apply_image_schema }}
-        shell: bash
-        run: node scripts/verify-d1-image-migration-rollback.mjs
-
-      - name: Apply the two approved additive image migrations ONLY
-        id: apply_image_schema
-        # Capture failure so the next step can attest the unchanged/partial
-        # remote inventory. The final explicit failure gate still fails the job.
-        continue-on-error: true
-        if: ${{ inputs.apply_image_schema }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          # Explicit review is required before this point. This does NOT
-          # restore D1, change old chat rows, deploy a Worker or grant credits.
-          npx --yes wrangler@4.165.0 d1 migrations apply bor-ai-chat --remote \
-            --config wrangler.image-only-migrations.generated.jsonc
-
-      - name: Inspect remote image D1 migration inventory after failed apply (read only)
-        id: verify_failed_apply
-        if: ${{ always() && inputs.apply_image_schema && steps.apply_image_schema.outcome == 'failure' }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          # No retry, no restore, no SQL mutation and no remote content dump.
-          npx --yes wrangler@4.165.0 d1 migrations list bor-ai-chat --remote \
-            --config wrangler.image-only-migrations.generated.jsonc \
-            > "$RUNNER_TEMP/bor-image-after-failed-apply.txt"
-          node scripts/verify-image-schema-pending.mjs \
-            "$RUNNER_TEMP/bor-image-after-failed-apply.txt" --expect-pair
-          echo "::warning::Image migration was refused. Both image migrations still appear pending. Check the D1 Edit permission of the production GitHub Actions Cloudflare token. No automatic retry."
-
-      - name: Reject a failed image migration even if the remote inventory looks unchanged
-        if: ${{ always() && inputs.apply_image_schema && steps.apply_image_schema.outcome == 'failure' }}
-        shell: bash
-        run: |
-          echo "::error::Production image migration did not complete. Never treat a failed/partial migration as activated."
-          exit 1
-
-      - name: Verify no image schema remains pending after approved apply (read only)
-        if: ${{ inputs.apply_image_schema && steps.apply_image_schema.outcome == 'success' }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          npx --yes wrangler@4.165.0 d1 migrations list bor-ai-chat --remote \
-            --config wrangler.image-only-migrations.generated.jsonc \
-            > "$RUNNER_TEMP/bor-image-pending-after.txt"
-          node scripts/verify-image-schema-pending.mjs \
-            "$RUNNER_TEMP/bor-image-pending-after.txt" --expect-none
-          node scripts/verify-image-production-schema.mjs \
-            --config wrangler.image-only-migrations.generated.jsonc
 
       - name: Report read-only state, no migrations applied
         if: ${{ !inputs.apply_image_schema }}
