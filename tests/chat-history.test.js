@@ -185,6 +185,30 @@ test("akun: requestId dengan user-only row tidak boleh memutar ulang jawaban gil
   await app.close();
 });
 
+test("akun: requestId yang dipakai ulang untuk pesan berbeda ditolak tanpa memanggil AI", async () => {
+  const { app, post } = await setup();
+  const requestId = "4e0e7ac9-71eb-4ac1-b49a-e328979334c1";
+  const original = await (await post({ message: "Permintaan pertama", requestId })).json();
+  assert.equal(original.saved, true);
+  const callsBefore = app.aiCalls.length;
+  const usageBefore = app.db.sqlite.prepare(
+    "SELECT SUM(units) AS n FROM daily_usage WHERE subject LIKE 'user:%'"
+  ).get().n;
+  const second = await post({ message: "Permintaan kedua yang berbeda", requestId });
+  assert.equal(second.status, 409);
+  const body = await second.json();
+  assert.equal(body.code, "chat_request_id_conflict");
+  assert.notEqual(body.saved, true);
+  assert.equal(app.aiCalls.length, callsBefore);
+  assert.equal(app.db.sqlite.prepare(
+    "SELECT SUM(units) AS n FROM daily_usage WHERE subject LIKE 'user:%'"
+  ).get().n, usageBefore);
+  assert.equal(app.db.sqlite.prepare(
+    "SELECT COUNT(*) AS n FROM messages WHERE user_id=?"
+  ).get(ALICE.id).n, 2);
+  await app.close();
+});
+
 test("akun: sumber sitasi link tersimpan dan dikembalikan saat percakapan dibuka ulang", async () => {
   const { app, post, token } = await setup({ extraEnv: {
     LINK_FETCHER: async () => new Response("<!doctype html><html><head><title>Artikel Uji</title></head><body><p>Ini adalah paragraf sumber uji yang cukup panjang supaya dianggap berisi teks yang berguna bagi model dan dapat diverifikasi dalam riwayat percakapan tersimpan.</p></body></html>", { headers: { "content-type": "text/html" } })
