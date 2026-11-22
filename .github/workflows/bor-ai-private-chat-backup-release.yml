@@ -7,7 +7,7 @@ on:
     inputs:
       phase:
         type: choice
-        options: [plan, deploy, trigger]
+        options: [plan, preflight, deploy, trigger]
         required: true
         default: plan
       reviewed_main_sha:
@@ -57,9 +57,9 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$GITHUB_REF" == "refs/heads/main" ]] || { echo "::error::Use main only"; exit 1; }
-          if [[ "$PHASE" == "plan" ]]; then
+          if [[ "$PHASE" == "plan" || "$PHASE" == "preflight" ]]; then
             [[ -z "$SHA_APPROVED" && -z "$APPROVAL" && -z "$HOST" && -z "$TRAFFIC_ACK" ]] || {
-              echo "::error::PLAN must not receive mutation or export confirmations"; exit 1;
+              echo "::error::PLAN/PREFLIGHT must not receive mutation or export confirmations"; exit 1;
             }
           elif [[ "$PHASE" == "deploy" ]]; then
             [[ "$SHA_APPROVED" == "$GITHUB_SHA" && "$APPROVAL" == "DEPLOY_BOR_PRIVATE_CHAT_BACKUP" &&
@@ -120,7 +120,7 @@ jobs:
         run: node scripts/verify-private-backup-r2-preflight.mjs
 
       - name: Fail before deploy if either dedicated backup credential is unavailable
-        if: ${{ inputs.phase == 'deploy' }}
+        if: ${{ inputs.phase == 'deploy' || inputs.phase == 'preflight' }}
         shell: bash
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -140,7 +140,7 @@ jobs:
           echo 'Dedicated backup credentials present (values never logged); no Cloudflare changes in this gate.'
 
       - name: Read-only verify dedicated Cloudflare credentials and exact pinned D1 metadata
-        if: ${{ inputs.phase == 'deploy' }}
+        if: ${{ inputs.phase == 'deploy' || inputs.phase == 'preflight' }}
         shell: bash
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -252,6 +252,11 @@ jobs:
             --id "$instance" > "$RUNNER_TEMP/bor-ai-backup-trigger.txt"
           echo "Cloudflare private backup instance accepted: $instance"
           echo 'Trigger is not backup completion or independently proven recovery.'
+
+      - name: Report read-only PREFLIGHT only, no exports or releases
+        if: ${{ inputs.phase == 'preflight' }}
+        run: |
+          echo 'PREFLIGHT passed. Active scoped credentials and pinned D1 metadata are verified via GET only; isolated Worker not deployed, no D1 export, no R2 writes, no restore.'
 
       - name: Report PLAN only, no real backups
         if: ${{ inputs.phase == 'plan' }}
