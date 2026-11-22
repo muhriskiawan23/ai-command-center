@@ -124,10 +124,17 @@ jobs:
         continue-on-error: true
         if: ${{ inputs.phase == 'apply' }}
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          # A separate short-lived least-privilege D1 Edit token is used ONLY
+          # in this owner-attested mutation step. Do not elevate the existing
+          # Cloudflare token used by read-only audits and regular workflows.
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_D1_MIGRATION_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           set -euo pipefail
+          if [[ -z "${CLOUDFLARE_API_TOKEN:-}" ]]; then
+            echo "::error::Missing protected-production CLOUDFLARE_D1_MIGRATION_TOKEN (D1 Edit, account scoped)"
+            exit 1
+          fi
           npx --yes wrangler@4 d1 migrations apply bor-ai-chat --remote --config wrangler.image-only-migrations.generated.jsonc
 
       - name: Inspect remote image migration state after failed apply (READ ONLY)

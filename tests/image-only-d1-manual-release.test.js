@@ -77,3 +77,24 @@ test('manual workflow defaults to PLAN and cannot deploy Worker or activate paid
   const indexApply=w.indexOf('d1 migrations apply bor-ai-chat --remote');
   assert.ok(indexInventory>0&&indexBookmark>indexInventory&&indexApply>indexBookmark);
 });
+
+test('only approved mutation step receives a dedicated Cloudflare D1 Edit token',()=>{
+  const workflow=readFileSync(new URL('../.github/workflows/bor-ai-image-d1-release.yml',import.meta.url),'utf8');
+  const applyMarker='      - name: Apply ONLY reviewed 0012 and 0016 image SQL';
+  const postMarker='      - name: Inspect remote image migration state after failed apply';
+  const start=workflow.indexOf(applyMarker);
+  const end=workflow.indexOf(postMarker,start);
+  assert.ok(start>0 && end>start,'approved write step must remain explicit');
+  const apply=workflow.slice(start,end);
+  const outside=workflow.slice(0,start)+workflow.slice(end);
+  assert.match(apply,/CLOUDFLARE_API_TOKEN: \$\{\{ secrets\.CLOUDFLARE_D1_MIGRATION_TOKEN \}\}/);
+  assert.match(apply,/Missing protected-production CLOUDFLARE_D1_MIGRATION_TOKEN/);
+  assert.match(apply,/CLOUDFLARE_ACCOUNT_ID: \$\{\{ secrets\.CLOUDFLARE_ACCOUNT_ID \}\}/);
+  assert.match(apply,/d1 migrations apply bor-ai-chat --remote/);
+  assert.doesNotMatch(apply,/CLOUDFLARE_API_TOKEN: \$\{\{ secrets\.CLOUDFLARE_API_TOKEN \}\}/);
+  assert.doesNotMatch(outside,/secrets\.CLOUDFLARE_D1_MIGRATION_TOKEN/);
+  assert.match(outside,/CLOUDFLARE_API_TOKEN: \$\{\{ secrets\.CLOUDFLARE_API_TOKEN \}\}/);
+  assert.match(workflow,/PRIVATE_D1_RECOVERY_EVIDENCE_REVIEWED/);
+  assert.match(workflow,/\"\$REVIEWED_PLAN_SHA\" != \"\$GITHUB_SHA\"/);
+  assert.doesNotMatch(workflow,/d1 time-travel restore|wrangler(?:@\S+)?\s+deploy\b/);
+});

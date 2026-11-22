@@ -10,9 +10,10 @@
 
 ## To resolve Cloudflare error 7500 — owner/admin action
 
-1. In the **correct Cloudflare account** verify the existing restricted API token used by GitHub Actions has **Account / D1 / Edit** permission for the account containing the pinned **bor-ai-chat** D1 database. Prefer least privilege and a dedicated production deploy credential. Do not expose the token value, grant broad account administrator permissions, or send it in chat.
-2. If Cloudflare requires a replacement token, update the **GitHub repository production environment secret** `CLOUDFLARE_API_TOKEN` through GitHub settings; do not commit it, print it or add it to a workflow file. Audit that `CLOUDFLARE_ACCOUNT_ID` is for the same Cloudflare account.
-3. After separate protected recovery evidence review and new successful PLAN run, apply via **only** the more strictly gated workflow. Never use Time Travel restore as a routine rollback, never apply unrelated billing SQL, and never bypass a failed/partial migration check.
+1. In the correct Cloudflare account create a **separate restricted API token** with **Account / D1 / Edit**, scoped only to the BOR AI account containing pinned `bor-ai-chat`. Choose an appropriate expiration and do not assign broad account administrator privileges. Leave the existing read-only `CLOUDFLARE_API_TOKEN` unchanged.
+2. In the GitHub repository **Settings → Environments → production → Environment secrets**, create/update **`CLOUDFLARE_D1_MIGRATION_TOKEN`** with this new token. The separate `CLOUDFLARE_ACCOUNT_ID` must still reference that same account. **Never** paste tokens into ChatGPT, commits, workflow logs or issue comments. The write token is only injected into the gated APPLY step; other checks keep the existing audit token.
+3. Operator must independently review private recovery evidence and run a fresh successful PLAN on unchanged `main`, then use only the strictly gated APPLY workflow with its exact plan SHA and all required confirmations. Never use Time Travel restore as routine rollback or bypass a failed/partial migration check.
+4. After migration, rotate or revoke the temporary D1 Edit token if no further approved writes are needed. An absent migration token is a safe failure, not authorization to borrow a more privileged credential.
 
 ## USD 2 paid Image Assistant pilot guard
 
