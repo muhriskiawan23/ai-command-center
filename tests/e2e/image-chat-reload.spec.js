@@ -1,8 +1,9 @@
+import {pngBytes} from '../helpers/media-fixtures.js';
 import { test, expect, loginAs } from './fixtures.js';
 import { processImageJob } from '../../src/image-jobs.js';
 
 // Real Cloudflare Worker routes + real in-memory D1 + synthetic image provider.
-const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAAFUlEQVR4nGMUaTrxnwEJMDGgAcICAJqcAmUgQSjSAAAAAElFTkSuQmCC','base64');
+const png=pngBytes();
 test('owner generates from chat, reloads the same conversation and edits the prior image without menu',async({page,context,app})=>{
  const files=new Map();
  Object.assign(app.env,{
@@ -27,12 +28,12 @@ test('owner generates from chat, reloads the same conversation and edits the pri
  await expect(page.locator('#imageDialog')).toBeVisible();
  await expect(page.locator('#imageQuote')).toContainText('10 kredit');
  await page.locator('#imageConfirm').click();
- await expect.poll(()=>page.locator('#messages .image-response .image-result img').first().evaluate(img=>img.naturalWidth),{timeout:15000}).toBe(4);
+ await expect.poll(()=>page.locator('#messages .image-response .image-result img').first().evaluate(img=>img.naturalWidth),{timeout:15000}).toBe(64);
  const chatId=app.db.sqlite.prepare('SELECT conversation_id FROM image_jobs LIMIT 1').get().conversation_id;
  expect(chatId).toMatch(/^[a-f0-9-]{36}$/i);
  expect(app.db.sqlite.prepare('SELECT COUNT(*) AS n FROM conversations').get().n).toBe(1);
  await page.reload();
- await expect.poll(()=>page.locator('#messages .image-response .image-result img').first().evaluate(img=>img.naturalWidth),{timeout:15000}).toBe(4);
+ await expect.poll(()=>page.locator('#messages .image-response .image-result img').first().evaluate(img=>img.naturalWidth),{timeout:15000}).toBe(64);
  await expect(page.locator('#messages .message.user .message-text')).toContainText('Buat poster promo top up game');
  await page.locator('#prompt').fill('Buat versi lain yang lebih cerah');
  await page.locator('#send').click();
@@ -40,7 +41,7 @@ test('owner generates from chat, reloads the same conversation and edits the pri
  await expect(page.locator('#imageQuote')).toContainText('12 kredit');
  await page.locator('#imageConfirm').click();
  await expect(page.locator('#messages .image-response .image-result img')).toHaveCount(2,{timeout:15000});
- await expect.poll(()=>page.locator('#messages .image-response .image-result img').last().evaluate(img=>img.naturalWidth),{timeout:15000}).toBe(4);
+ await expect.poll(()=>page.locator('#messages .image-response .image-result img').last().evaluate(img=>img.naturalWidth),{timeout:15000}).toBe(64);
  await page.reload();
  await expect(page.locator('#messages .image-response .image-result')).toHaveCount(2,{timeout:15000});
  await expect(page.locator('#messages .message.user .message-text')).toHaveCount(2);
@@ -79,7 +80,7 @@ test('uploaded photo plus an edit prompt routes to image edit and survives chat 
  await expect(page.locator('#imageDialog')).toBeVisible();
  await expect(page.locator('#imageQuote')).toContainText('12 kredit');
  await page.locator('#imageConfirm').click();
- await expect.poll(()=>page.locator('#messages .image-response .image-result img').first().evaluate(img=>img.naturalWidth),{timeout:15000}).toBe(4);
+ await expect.poll(()=>page.locator('#messages .image-response .image-result img').first().evaluate(img=>img.naturalWidth),{timeout:15000}).toBe(64);
  const stored=app.db.sqlite.prepare('SELECT mode,conversation_id FROM image_jobs').get();
  expect(stored.mode).toBe('edit');
  expect(stored.conversation_id).toMatch(/^[a-f0-9-]{36}$/i);

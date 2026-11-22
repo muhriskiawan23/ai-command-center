@@ -1,10 +1,11 @@
+import {pngBytes} from './helpers/media-fixtures.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import worker from '../src/index.js';
 import {processImageJob} from '../src/image-jobs.js';
 import {createD1,seedSession} from './e2e/harness.js';
 
-const validPng=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAAFUlEQVR4nGMUaTrxnwEJMDGgAcICAJqcAmUgQSjSAAAAAElFTkSuQmCC','base64');
+const validPng=pngBytes();
 const okImage=()=>Response.json({data:[{b64_json:validPng.toString('base64')}],usage:{input_tokens:5,output_tokens:10,total_tokens:15}});
 function setup(limit='10'){
   const db=createD1();

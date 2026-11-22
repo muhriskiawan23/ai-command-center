@@ -1,6 +1,7 @@
+import {pngBytes} from '../helpers/media-fixtures.js';
 import {test,expect,loginAs,drawerMode} from './fixtures.js';
 import {processImageJob} from '../../src/image-jobs.js';
-const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAAFUlEQVR4nGMUaTrxnwEJMDGgAcICAJqcAmUgQSjSAAAAAElFTkSuQmCC','base64');
+const png=pngBytes();
 async function setupImages(app){
  const files=new Map();
  Object.assign(app.env,{BOR_IMAGES_ENABLED:'true',OPENAI_API_KEY:'synthetic-test-key',IMAGE_CREDITS_GENERATE:'10',IMAGE_CREDITS_EDIT:'12',IMAGE_TARIFF_VERSION:'test-v1',OPENAI_IMAGE_MODEL:'gpt-image-2',IMAGE_PILOT_QUALITY:'low',IMAGE_PROVIDER_TOTAL_ATTEMPT_LIMIT:'10',IMAGE_QUEUE:{send:async body=>{setTimeout(()=>processImageJob(app.env,body.id),20);}},IMAGE_FETCHER:async()=>Response.json({data:[{b64_json:png.toString('base64')}]}),IMAGE_FILES:{put:async(key,bytes)=>files.set(key,Buffer.from(bytes)),get:async key=>{const bytes=files.get(key);return bytes?{body:bytes,arrayBuffer:async()=>bytes}:null;},delete:async keys=>{for(const key of Array.isArray(keys)?keys:[keys])files.delete(key);}}});
@@ -11,7 +12,7 @@ test('generate, preview, download, reload gallery and edit previous image',async
  await loginAs(context,app,{id:'image-e2e',email:'image-e2e@example.test'});await setupImages(app);await page.goto(app.url);
  await page.locator('#prompt').fill('Buat poster promo top up game');await page.locator('#send').click();
  await expect(page.locator('#imageDialog')).toBeVisible();await expect(page.locator('#imageQuote')).toContainText('10 kredit');
- await page.locator('#imageConfirm').click();await expect(page.locator('.image-result img')).toBeVisible({timeout:10000});await expect.poll(()=>page.locator('.image-result img').evaluate(img=>img.naturalWidth)).toBe(4);
+ await page.locator('#imageConfirm').click();await expect(page.locator('.image-result img')).toBeVisible({timeout:10000});await expect.poll(()=>page.locator('.image-result img').evaluate(img=>img.naturalWidth)).toBe(64);
  const downloadPromise=page.waitForEvent('download');await page.getByRole('link',{name:'Download',exact:true}).click();const download=await downloadPromise;expect(download.suggestedFilename()).toMatch(/\.png$/);
  await page.reload();if(drawerMode(page))await page.locator('#menuBtn').click();await page.locator('#openPlugins').click();await expect(page.locator('#pluginImagesGallery')).toBeVisible();await page.locator('#pluginImagesGallery').click();await expect(page.locator('#imageGallery img')).toBeVisible();
  await page.getByRole('button',{name:'Edit lagi',exact:true}).click();await page.locator('#prompt').fill('Ganti background jadi biru');await page.locator('#send').click();await expect(page.locator('#imageQuote')).toContainText('12 kredit');await page.locator('#imageConfirm').click();await expect(page.locator('#messages .image-result img')).toBeVisible({timeout:10000});
@@ -30,7 +31,7 @@ test('prompt-only request appears in chat and follow-up edits the prior image au
  await page.locator('#imageConfirm').click();
  await expect(page.locator('#messages .message.user .message-text')).toContainText('Buat poster promo top up game');
  await expect(page.locator('#messages .image-response .image-result img')).toBeVisible({timeout:10000});
- await expect.poll(()=>page.locator('#messages .image-response .image-result img').first().evaluate(img=>img.naturalWidth)).toBe(4);
+ await expect.poll(()=>page.locator('#messages .image-response .image-result img').first().evaluate(img=>img.naturalWidth)).toBe(64);
  await page.locator('#prompt').fill('Buat versi lain yang lebih cerah');await page.locator('#send').click();
  await expect(page.locator('#imageDialog')).toBeVisible();
  await expect(page.locator('#imageQuote')).toContainText('12 kredit');

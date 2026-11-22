@@ -1,4 +1,5 @@
 import { json, sha256Hex } from './http.js';
+import { decodeImageDataUri, validateImageBytes } from '../public/media-validation.js';
 
 const MAX_INPUT = 5 * 1024 * 1024;
 const MAX_OUTPUT = 12 * 1024 * 1024;
@@ -20,19 +21,16 @@ export function imageConfig(env) {
   return { enabled, pilotMaxAttempts: safePilot ? totalAttemptLimit : null, credits: { generate, edit }, tariffVersion: version || null, formats: Object.keys(MIME), sizes: ['1024x1024'], retentionDays: 7, provider: 'OpenAI', enhancement: 'generative' };
 }
 
+// Validate complete, bounded image containers, not just magic-file headers.
+// The shared validator is also used by browser preflight, so upload and
+// downloaded provider outputs cannot disagree on basic format safety.
 export function imageSignature(bytes, mime) {
-  if (mime === MIME.png) return bytes.length > 8 && [137,80,78,71,13,10,26,10].every((v,i) => bytes[i] === v);
-  if (mime === MIME.jpeg) return bytes.length > 3 && bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255;
-  if (mime === MIME.webp) return bytes.length > 12 && String.fromCharCode(...bytes.slice(0,4)) === 'RIFF' && String.fromCharCode(...bytes.slice(8,12)) === 'WEBP';
-  return false;
+  try { validateImageBytes(bytes, mime, { maxBytes: MAX_OUTPUT }); return true; }
+  catch { return false; }
 }
 function decodeImage(dataUrl) {
-  if (typeof dataUrl !== 'string' || dataUrl.length > Math.ceil(MAX_INPUT / 3) * 4 + 50) throw new Error('invalid_image');
-  const match = /^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/]+={0,2})$/.exec(dataUrl);
-  if (!match || match[2].length % 4) throw new Error('invalid_image');
-  const bytes = Uint8Array.from(atob(match[2]), c => c.charCodeAt(0));
-  if (bytes.length > MAX_INPUT || !imageSignature(bytes, match[1])) throw new Error('invalid_image');
-  return { bytes, mime: match[1] };
+  const { bytes, mime } = decodeImageDataUri(dataUrl, { maxBytes: MAX_INPUT });
+  return { bytes, mime };
 }
 function publicJob(row) {
   const completed = row.status === 'completed' && row.expires_at > nowSeconds();
@@ -190,7 +188,10 @@ export async function handleImageRoute(request, env, url, deps) {
     if (!parent || parent.status !== 'completed' || parent.expires_at <= nowSeconds()) return json({error:'Sumber gambar tidak ditemukan atau kedaluwarsa.'},404);
     const object = await env.IMAGE_FILES.get(parent.output_key);
     if (!object || parent.output_bytes > MAX_INPUT) return json({error:'Sumber tidak tersedia atau melebihi 5 MB.'},400);
-    source = {bytes:new Uint8Array(await object.arrayBuffer()),mime:MIME[parent.output_format]};
+    const original = new Uint8Array(await object.arrayBuffer());
+    if (original.length > MAX_INPUT || !imageSignature(original,MIME[parent.output_format]))
+      return json({error:'Sumber gambar rusak atau tidak didukung.'},400);
+    source = {bytes:original,mime:MIME[parent.output_format]};
   }
   const id = crypto.randomUUID(), now = nowSeconds(), key = source ? `images/${user.id}/${id}/source` : null;
   const conversationId = requestedConversationId || crypto.randomUUID();
@@ -279,7 +280,9 @@ export async function processImageJob(env,id) {
       if (!source) throw new Error('source_unavailable');
       body = new FormData();
       for (const [key,value] of Object.entries(options)) body.set(key,String(value));
-      body.set('image',new Blob([await source.arrayBuffer()],{type:row.source_mime}),'source.'+(row.source_mime.split('/')[1]));
+      const original = new Uint8Array(await source.arrayBuffer());
+      if (original.length > MAX_INPUT || !imageSignature(original,row.source_mime)) throw new Error('source_unavailable');
+      body.set('image',new Blob([original],{type:row.source_mime}),'source.'+(row.source_mime.split('/')[1]));
     } else { body = JSON.stringify(options); headers['Content-Type']='application/json'; }
     const signal = AbortSignal.timeout(150_000);
     // Persist a global pending-provider-call marker BEFORE any network dispatch.
