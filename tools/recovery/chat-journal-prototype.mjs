@@ -226,8 +226,17 @@ function project(db, e) {
 
 // Single-threaded offline proof. Production will need authentication, concurrency,
 // lifecycle, cross-storage acknowledgment and event-stream integrity protections.
-export function replaySyntheticJournal(journal, projection, {maxEvents=500, beforeCheckpoint=()=>{}}={}) {
+export function replaySyntheticJournal(journal, projection, {maxEvents=500, expectedHeadSeq=null, beforeCheckpoint=()=>{}}={}) {
   if (!Number.isSafeInteger(maxEvents)||maxEvents<1||maxEvents>10000) throw Error('invalid_replay_limit');
+  // An externally reviewed, independently retained minimum watermark is the
+  // only way to detect a fully missing tail. Do not derive it from this journal.
+  if (expectedHeadSeq!==null && (!Number.isSafeInteger(expectedHeadSeq)||expectedHeadSeq<0))
+    throw Error('invalid_expected_journal_head');
+  const sourceHead=journal.prepare('SELECT MAX(seq) AS head FROM recovery_journal').get()?.head ?? 0;
+  const projectedLast=projection.prepare('SELECT seq FROM recovery_checkpoint WHERE singleton=1').get()?.seq;
+  if (!Number.isSafeInteger(projectedLast)||projectedLast<0) throw Error('journal_checkpoint_invalid');
+  if (projectedLast>sourceHead) throw Error('journal_checkpoint_ahead_of_source');
+  if (expectedHeadSeq!==null && sourceHead<expectedHeadSeq) throw Error('journal_tail_missing');
   let applied=0;
   while (applied<maxEvents) {
     const last=projection.prepare('SELECT seq FROM recovery_checkpoint WHERE singleton=1').get()?.seq;
@@ -240,6 +249,9 @@ export function replaySyntheticJournal(journal, projection, {maxEvents=500, befo
     projection.exec('BEGIN IMMEDIATE');
     try {
       if(e.redacted===1) {
+        // A deletion marker must erase the source payload itself, not merely
+        // cause projection to skip it. Otherwise private content remains stored.
+        if(e.payload_json!=='{}'||e.kind==='account.deleted')throw Error('journal_invalid_redaction');
         // Fail closed unless a later account-deletion tombstone explains this redaction.
         const tombstone=journal.prepare(
           "SELECT seq FROM recovery_journal WHERE user_id=? AND kind='account.deleted' AND seq>? LIMIT 1"
@@ -260,5 +272,12 @@ export function replaySyntheticJournal(journal, projection, {maxEvents=500, befo
       throw error;
     }
   }
-  return {applied,lastSeq:projection.prepare('SELECT seq FROM recovery_checkpoint WHERE singleton=1').get().seq};
+  const lastSeq=projection.prepare('SELECT seq FROM recovery_checkpoint WHERE singleton=1').get().seq;
+  // Never report a successful recovery when a bounded batch stopped mid-stream.
+  // The transactionally persisted checkpoint allows a subsequent retry to
+  // continue; callers must not promote the partial projection into service.
+  if (journal.prepare('SELECT seq FROM recovery_journal WHERE seq>? ORDER BY seq LIMIT 1').get(lastSeq))
+    throw Error('journal_replay_incomplete');
+  if (expectedHeadSeq!==null && lastSeq<expectedHeadSeq) throw Error('journal_replay_incomplete');
+  return {applied,lastSeq};
 }
