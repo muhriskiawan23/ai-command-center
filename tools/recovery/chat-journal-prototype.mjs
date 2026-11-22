@@ -15,7 +15,8 @@ export function initSyntheticJournal(db) {
     'CREATE TABLE IF NOT EXISTS recovery_journal(' +
     'seq INTEGER PRIMARY KEY AUTOINCREMENT, event_id TEXT NOT NULL UNIQUE,' +
     'user_id TEXT NOT NULL, kind TEXT NOT NULL, payload_json TEXT NOT NULL,' +
-    'version INTEGER NOT NULL CHECK(version=1));' +
+    'version INTEGER NOT NULL CHECK(version=1),' +
+    'redacted INTEGER NOT NULL DEFAULT 0 CHECK(redacted IN (0,1)));' +
     'CREATE INDEX IF NOT EXISTS recovery_journal_user_seq ON recovery_journal(user_id,seq);'
   );
 }
@@ -98,21 +99,40 @@ function validate(input) {
 
 export function appendSyntheticEvent(db, input) {
   const e = validate(input);
-  const existing = db.prepare(
+  const deleted=db.prepare(
+    "SELECT event_id FROM recovery_journal WHERE user_id=? AND kind='account.deleted' LIMIT 1"
+  ).get(e.user_id);
+  // Once deleted, even retries of historical payloads must not repopulate data.
+  if(deleted && (e.kind!=='account.deleted'||deleted.event_id!==e.event_id))
+    throw Error('deleted_account_event');
+  const existing=db.prepare(
     'SELECT seq,user_id,kind,payload_json FROM recovery_journal WHERE event_id=?'
   ).get(e.event_id);
-  if (existing) {
-    if (existing.user_id!==e.user_id || existing.kind!==e.kind ||
-        existing.payload_json!==e.payload_json) throw Error('event_id_conflict');
+  if(existing) {
+    if(existing.user_id!==e.user_id||existing.kind!==e.kind||
+       existing.payload_json!==e.payload_json)throw Error('event_id_conflict');
     return {seq:existing.seq,duplicate:true};
   }
-  if (db.prepare(
-    "SELECT 1 AS found FROM recovery_journal WHERE user_id=? AND kind='account.deleted' LIMIT 1"
-  ).get(e.user_id)) throw Error('deleted_account_event');
-  const inserted = db.prepare(
-    'INSERT INTO recovery_journal(event_id,user_id,kind,payload_json,version) VALUES(?,?,?,?,1)'
-  ).run(e.event_id,e.user_id,e.kind,e.payload_json);
-  return {seq:Number(inserted.lastInsertRowid),duplicate:false};
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    const inserted=db.prepare(
+      'INSERT INTO recovery_journal(event_id,user_id,kind,payload_json,version) VALUES(?,?,?,?,1)'
+    ).run(e.event_id,e.user_id,e.kind,e.payload_json);
+    const seq=Number(inserted.lastInsertRowid);
+    if(e.kind==='account.deleted') {
+      // Synthetic privacy rule: erase earlier payloads atomically with the tombstone.
+      // Sequence and event kind remain to prevent older events from being replayed.
+      db.prepare(
+        "UPDATE recovery_journal SET payload_json='{}',redacted=1 " +
+        "WHERE user_id=? AND seq<? AND kind!='account.deleted'"
+      ).run(e.user_id,seq);
+    }
+    db.exec('COMMIT');
+    return {seq,duplicate:false};
+  } catch(error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
 }
 
 const requireOwnedConversation = (db, userId, conversationId) => {
@@ -209,13 +229,21 @@ export function replaySyntheticJournal(journal, projection, {maxEvents=500, befo
     const last=projection.prepare('SELECT seq FROM recovery_checkpoint WHERE singleton=1').get()?.seq;
     if (!Number.isSafeInteger(last)||last<0) throw Error('journal_checkpoint_invalid');
     const e=journal.prepare(
-      'SELECT seq,event_id,user_id,kind,payload_json,version FROM recovery_journal WHERE seq>? ORDER BY seq LIMIT 1'
+      'SELECT seq,event_id,user_id,kind,payload_json,version,redacted FROM recovery_journal WHERE seq>? ORDER BY seq LIMIT 1'
     ).get(last);
     if (!e) break;
     if (e.seq!==last+1 || e.version!==1) throw Error('journal_sequence_gap_or_version');
     projection.exec('BEGIN IMMEDIATE');
     try {
-      project(projection,e);
+      if(e.redacted===1) {
+        // Fail closed unless a later account-deletion tombstone explains this redaction.
+        const tombstone=journal.prepare(
+          "SELECT seq FROM recovery_journal WHERE user_id=? AND kind='account.deleted' AND seq>? LIMIT 1"
+        ).get(e.user_id,e.seq);
+        if(!tombstone)throw Error('journal_unverified_redaction');
+      } else if(e.redacted===0) {
+        project(projection,e);
+      } else throw Error('journal_redaction_state_invalid');
       beforeCheckpoint(e); // deterministic fault injection to test crash rollback
       const updated=projection.prepare(
         'UPDATE recovery_checkpoint SET seq=? WHERE singleton=1 AND seq=?'
