@@ -55,3 +55,17 @@ test('safe-off PLAN dry-run explicitly checks production resources remain isolat
   assert.match(yaml,/tests\/bor-ai-private-backup-r2-audit\.test\.js/);
   assert.match(yaml,/No production Worker deploy, D1 export, R2 write, restore, schema mutation or paid image call/);
 });
+
+test('both dedicated secrets are required BEFORE backup Worker deployment, not checked afterward',()=>{
+  const audit=yaml.indexOf('- name: Verify existing dedicated R2 backup bucket is private (GET only)');
+  const gate=yaml.indexOf('- name: Fail before deploy if either dedicated backup credential is unavailable');
+  const deploy=yaml.indexOf('- name: Deploy ONLY the isolated backup Worker and Cloudflare Workflow');
+  assert.ok(audit>=0&&gate>audit&&deploy>gate,'strict audit, credential gate, deploy order');
+  const step=yaml.slice(gate,deploy);
+  assert.match(step,/if: \\$\\{\\{ inputs\\.phase == 'deploy' \\}\\}/);
+  assert.match(step,/CLOUDFLARE_BACKUP_DEPLOY_TOKEN: \\$\\{\\{ secrets\\.CLOUDFLARE_BACKUP_DEPLOY_TOKEN \\}\\}/);
+  assert.match(step,/BOR_PRIVATE_D1_EXPORT_TOKEN: \\$\\{\\{ secrets\\.BOR_PRIVATE_D1_EXPORT_TOKEN \\}\\}/);
+  assert.match(step,/Dedicated Worker deploy AND D1 export credentials are required before deploy/);
+  assert.match(step,/Cloudflare account ID missing or malformed/);
+  assert.doesNotMatch(step,/wrangler@|curl |d1 export|r2 bucket|secret put|echo.*\\$\\{(?:BOR_PRIVATE_D1_EXPORT_TOKEN|CLOUDFLARE_BACKUP_DEPLOY_TOKEN)/);
+});
