@@ -1,0 +1,133 @@
+name: BOR AI image-only D1 schema release (no Worker deploy)
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply_image_schema:
+        description: "Apply ONLY 0012/0016 image migrations to production bor-ai-chat D1 after independent operator review"
+        type: boolean
+        required: true
+        default: false
+      owner_confirmation:
+        description: "For D1 writes type APPLY_IMAGE_SCHEMA_BOR_AI after reviewing current bookmark and change"
+        type: string
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+# Never mutate primary D1 concurrently with a regular Worker/migration deploy.
+concurrency:
+  group: bor-ai-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  image-schema:
+    name: Verify isolated image schema, optionally apply additive SQL
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: production
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - name: Reject non-main or unconfirmed D1 mutations before accessing any secrets
+        env:
+          APPLY_IMAGE_SCHEMA: ${{ inputs.apply_image_schema && 'true' || 'false' }}
+          OWNER_CONFIRMATION: ${{ inputs.owner_confirmation }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "::error::Production image migration must be dispatched from main"
+            exit 1
+          fi
+          if [[ "$APPLY_IMAGE_SCHEMA" == "true" && "$OWNER_CONFIRMATION" != "APPLY_IMAGE_SCHEMA_BOR_AI" ]]; then
+            echo "::error::Production schema write requires separate operator approval and exact confirmation phrase"
+            exit 1
+          fi
+          if [[ "$APPLY_IMAGE_SCHEMA" == "false" && -n "$OWNER_CONFIRMATION" ]]; then
+            echo "::error::Read-only inspection must not include a write confirmation"
+            exit 1
+          fi
+
+      - name: Check out exact main SHA
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 22
+
+      - name: Verify authentication and offline image-only migration proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_API_TOKEN" && test -n "$CLOUDFLARE_ACCOUNT_ID" || {
+            echo "::error::Missing Cloudflare production D1 credentials"; exit 1;
+          }
+          npm ci
+          node scripts/check-production-migration-isolation.mjs migrations
+          node scripts/image-migration-offline-proof.mjs
+          node scripts/prepare-image-only-migration-list.mjs
+          # Do not enable paid images or change the live URL Reader during schema preparation.
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const main = JSON.parse(fs.readFileSync('wrangler.jsonc','utf8'));
+          const image = JSON.parse(fs.readFileSync('wrangler.image-only-migrations.generated.jsonc','utf8'));
+          if(main.name!=='ai-command-center'||main.vars?.BOR_IMAGES_ENABLED!=='false')throw Error('Paid image baseline must stay OFF');
+          if(image.name==='ai-command-center'||image.main||image.assets||image.queues||image.r2_buckets||image.ai||image.vars)
+            throw Error('Image-only migration config must not be deployable as production Worker');
+          const bindings=image.d1_databases||[];
+          if(bindings.length!==1||bindings[0].database_name!=='bor-ai-chat'||
+             bindings[0].database_id!==main.d1_databases?.[0]?.database_id)
+            throw Error('Image schema release did not pin primary D1 identity');
+          console.log('Verified isolated image-only D1 configuration; no Worker deploy or paid activation.');
+          NODE
+
+      - name: Inspect exact pending image SQL in the existing primary database (read only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4.165.0 d1 migrations list bor-ai-chat --remote \
+            --config wrangler.image-only-migrations.generated.jsonc \
+            > "$RUNNER_TEMP/bor-image-pending-before.txt"
+          node scripts/verify-image-schema-pending.mjs \
+            "$RUNNER_TEMP/bor-image-pending-before.txt" --expect-pair
+
+      - name: Verify a live Time Travel bookmark without invoking restore (read only)
+        if: ${{ inputs.apply_image_schema }}
+        shell: bash
+        run: node scripts/verify-d1-image-migration-rollback.mjs
+
+      - name: Apply the two approved additive image migrations ONLY
+        if: ${{ inputs.apply_image_schema }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Explicit review is required before this point. This does NOT
+          # restore D1, change old chat rows, deploy a Worker or grant credits.
+          npx --yes wrangler@4.165.0 d1 migrations apply bor-ai-chat --remote \
+            --config wrangler.image-only-migrations.generated.jsonc
+
+      - name: Verify no image schema remains pending after approved apply (read only)
+        if: ${{ inputs.apply_image_schema }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4.165.0 d1 migrations list bor-ai-chat --remote \
+            --config wrangler.image-only-migrations.generated.jsonc \
+            > "$RUNNER_TEMP/bor-image-pending-after.txt"
+          node scripts/verify-image-schema-pending.mjs \
+            "$RUNNER_TEMP/bor-image-pending-after.txt" --expect-none
+          node scripts/verify-image-production-schema.mjs \
+            --config wrangler.image-only-migrations.generated.jsonc
+
+      - name: Report read-only state, no migrations applied
+        if: ${{ !inputs.apply_image_schema }}
+        run: |
+          echo 'Verified exact two-image-migration pending set read-only. Nothing was applied.'
+          echo 'No production Worker release, chat restore, credit grant or paid OpenAI request was started.'
