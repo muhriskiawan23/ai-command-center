@@ -26,6 +26,7 @@ Status: **NOT LIVE**. This is an opt-in staging/pilot hardening change, not appr
 - A single atomic D1 INSERT checks both daily quotas and the lifetime total **before** enqueuing a paid request. No retry of already claimed provider calls.
 - Provider errors cannot disclose response bodies or secrets to the user.
 - The Local Media Lab does not transmit selected photos to OpenAI; it remains free and local until a separate explicit server-backed AI image flow is enabled.
+- **Privacy during a pilot pause:** `BOR_IMAGES_ENABLED=false` stops new paid submissions, but must never stop cleanup of already-stored images or overdue queued-job refunds. The cleanup routine operates whenever the existing D1 and private R2 bindings are available. Preserve the scheduled cleanup trigger and those bindings in any pause/rollback release; otherwise operators must run a separately reviewed cleanup process. R2's 7-day `images/` lifecycle removes objects, **not** D1 prompts, so the lifecycle rule alone does not prove complete data retention compliance.
 - URL Reader/Browser Automation are separate security and billing launches. Do not treat an image pilot as consent to enable them.
 
 Source documentation to recheck before activation:
