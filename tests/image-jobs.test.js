@@ -1,10 +1,11 @@
+import {pngBytes} from './helpers/media-fixtures.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import worker from '../src/index.js';
 import { createD1, seedSession } from './e2e/harness.js';
 import { processImageJob, cleanupImageJobs } from '../src/image-jobs.js';
 import { imageIntent } from '../public/image-intent.js';
-const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAAFUlEQVR4nGMUaTrxnwEJMDGgAcICAJqcAmUgQSjSAAAAAElFTkSuQmCC','base64');
+const png=pngBytes();
 const photo='data:image/png;base64,'+png.toString('base64');
 function setup(){
  const db=createD1(); const user={id:'image-user',email:'image@example.test'}; const token=seedSession(db,user);
