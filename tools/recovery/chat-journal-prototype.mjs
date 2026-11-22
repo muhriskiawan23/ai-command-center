@@ -97,6 +97,47 @@ function validate(input) {
   return {event_id,user_id,kind,payload_json:JSON.stringify(canonical)};
 }
 
+// Synthetic-only privacy erasure. Keep non-content conversation IDs so
+// deletion tombstones remain provable on a fresh replay. Never retain erased
+// prompts, titles, regenerated text, feedback reasons or citation metadata.
+const CONVERSATION_EVENT_KINDS=new Set([
+  'conversation.created','message.saved','conversation.renamed',
+  'conversation.updated','turn.replaced','feedback.set'
+]);
+function eraseSyntheticConversationPayloads(db,userId,deleteSeq,conversationId=null) {
+  const rows=db.prepare(
+    "SELECT seq,kind,payload_json FROM recovery_journal WHERE user_id=? AND seq<? AND redacted=0 ORDER BY seq"
+  ).all(userId,deleteSeq);
+  for(const row of rows) {
+    if(!CONVERSATION_EVENT_KINDS.has(row.kind)) continue;
+    const payload=JSON.parse(row.payload_json);
+    if(!validId(payload.conversation_id)) throw Error('journal_conversation_metadata_invalid');
+    if(conversationId!==null && payload.conversation_id!==conversationId) continue;
+    db.prepare(
+      'UPDATE recovery_journal SET payload_json=?,redacted=1 WHERE seq=? AND user_id=? AND redacted=0'
+    ).run(JSON.stringify({conversation_id:payload.conversation_id}),row.seq,userId);
+  }
+}
+
+// Fail before journaling private payloads belonging to deleted or foreign
+// conversations. This is only an offline ownership preflight: production must
+// derive userId from a verified session and provide transactional isolation.
+function requireAdmissibleSyntheticConversation(db,e) {
+  if(!CONVERSATION_EVENT_KINDS.has(e.kind)&&e.kind!=='conversation.deleted')return;
+  const id=JSON.parse(e.payload_json).conversation_id;
+  const existing=db.prepare(
+    "SELECT user_id,payload_json,redacted FROM recovery_journal WHERE kind='conversation.created'"
+  ).all().filter(row=>JSON.parse(row.payload_json).conversation_id===id);
+  if(e.kind==='conversation.created') {
+    if(existing.length) throw Error('journal_conversation_id_reused');
+    return;
+  }
+  if(existing.length!==1||existing[0].redacted!==0)
+    throw Error('journal_conversation_not_active');
+  if(existing[0].user_id!==e.user_id)
+    throw Error('journal_conversation_ownership_mismatch');
+}
+
 export function appendSyntheticEvent(db, input) {
   const e = validate(input);
   // A later production implementation must never check tombstones or
@@ -119,10 +160,16 @@ export function appendSyntheticEvent(db, input) {
       db.exec('COMMIT');
       return {seq:existing.seq,duplicate:true};
     }
+    // Admission must be inside BEGIN IMMEDIATE and precede any raw payload insert.
+    requireAdmissibleSyntheticConversation(db,e);
     const inserted=db.prepare(
       'INSERT INTO recovery_journal(event_id,user_id,kind,payload_json,version) VALUES(?,?,?,?,1)'
     ).run(e.event_id,e.user_id,e.kind,e.payload_json);
     const seq=Number(inserted.lastInsertRowid);
+    if(e.kind==='conversation.deleted')
+      eraseSyntheticConversationPayloads(db,e.user_id,seq,JSON.parse(e.payload_json).conversation_id);
+    if(e.kind==='conversations.deleted_all')
+      eraseSyntheticConversationPayloads(db,e.user_id,seq);
     if(e.kind==='account.deleted') {
       // Synthetic privacy rule: erase earlier payloads atomically with the tombstone.
       // Sequence and event kind remain to prevent older events from being replayed.
@@ -204,8 +251,17 @@ function project(db, e) {
       'ON CONFLICT(message_id) DO UPDATE SET rating=excluded.rating,reason=excluded.reason'
     ).run(p.message_id,p.rating,p.reason);
   } else if (e.kind==='conversation.deleted') {
-    requireOwnedConversation(db,e.user_id,p.conversation_id);
-    db.prepare('INSERT INTO recovered_conversation_tombstones(user_id,conversation_id) VALUES(?,?)')
+    // On a fresh recovery the earlier creation was privacy-redacted into a
+    // tombstone; on incremental replay the original conversation may exist.
+    const existing=db.prepare(
+      'SELECT user_id FROM recovered_conversations WHERE conversation_id=?'
+    ).get(p.conversation_id);
+    const tombstone=db.prepare(
+      'SELECT 1 AS found FROM recovered_conversation_tombstones WHERE user_id=? AND conversation_id=?'
+    ).get(e.user_id,p.conversation_id);
+    if((existing && existing.user_id!==e.user_id)||(!existing&&!tombstone))
+      throw Error('journal_conversation_ownership_mismatch');
+    db.prepare('INSERT OR IGNORE INTO recovered_conversation_tombstones(user_id,conversation_id) VALUES(?,?)')
       .run(e.user_id,p.conversation_id);
     db.prepare('DELETE FROM recovered_conversations WHERE conversation_id=? AND user_id=?')
       .run(p.conversation_id,e.user_id);
@@ -249,14 +305,38 @@ export function replaySyntheticJournal(journal, projection, {maxEvents=500, expe
     projection.exec('BEGIN IMMEDIATE');
     try {
       if(e.redacted===1) {
-        // A deletion marker must erase the source payload itself, not merely
-        // cause projection to skip it. Otherwise private content remains stored.
-        if(e.payload_json!=='{}'||e.kind==='account.deleted')throw Error('journal_invalid_redaction');
-        // Fail closed unless a later account-deletion tombstone explains this redaction.
-        const tombstone=journal.prepare(
+        // For account deletion every prior payload must be empty. For a
+        // conversation deletion only a non-content ID may survive to prove
+        // the tombstone without restoring deleted messages.
+        const accountTombstone=journal.prepare(
           "SELECT seq FROM recovery_journal WHERE user_id=? AND kind='account.deleted' AND seq>? LIMIT 1"
         ).get(e.user_id,e.seq);
-        if(!tombstone)throw Error('journal_unverified_redaction');
+        if(e.payload_json==='{}') {
+          if(e.kind==='account.deleted'||!accountTombstone)throw Error('journal_unverified_redaction');
+        } else {
+          if(accountTombstone||!CONVERSATION_EVENT_KINDS.has(e.kind))throw Error('journal_invalid_redaction');
+          let p;
+          try{p=JSON.parse(e.payload_json);}catch{throw Error('journal_invalid_redaction');}
+          if(Object.keys(p).length!==1||!validId(p.conversation_id)||
+             JSON.stringify({conversation_id:p.conversation_id})!==e.payload_json)
+            throw Error('journal_invalid_redaction');
+          const laterDeletion=journal.prepare(
+            "SELECT seq FROM recovery_journal WHERE user_id=? AND seq>? AND " +
+            "(kind='conversations.deleted_all' OR (kind='conversation.deleted' AND payload_json=?)) LIMIT 1"
+          ).get(e.user_id,e.seq,e.payload_json);
+          if(!laterDeletion)throw Error('journal_unverified_redaction');
+          if(e.kind==='conversation.created') {
+            // Deletion must defeat stale conversation-ID reuse even when the
+            // entire primary database has been rebuilt from a blank slate.
+            const foreign=projection.prepare(
+              'SELECT user_id FROM recovered_conversations WHERE conversation_id=?'
+            ).get(p.conversation_id);
+            if(foreign && foreign.user_id!==e.user_id)throw Error('journal_conversation_ownership_mismatch');
+            projection.prepare(
+              'INSERT OR IGNORE INTO recovered_conversation_tombstones(user_id,conversation_id) VALUES(?,?)'
+            ).run(e.user_id,p.conversation_id);
+          }
+        }
       } else if(e.redacted===0) {
         project(projection,e);
       } else throw Error('journal_redaction_state_invalid');

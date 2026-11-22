@@ -93,8 +93,7 @@ test('conversation deletion tombstone prevents restoring deleted content or reus
     replaySyntheticJournal(h.journal,h.primary);
     assert.equal(messages(h.primary).length,0);
     assert.equal(h.primary.prepare('SELECT COUNT(*) AS n FROM recovered_conversation_tombstones').get().n,1);
-    h.push('event-recreate-conversation','conversation.created',{conversation_id:'conv-1',title:'Should not resurrect'});
-    assert.throws(()=>replaySyntheticJournal(h.journal,h.primary),/journal_conversation_resurrection/);
+    assert.throws(()=>h.push('event-recreate-conversation','conversation.created',{conversation_id:'conv-1',title:'Should not resurrect'}),/journal_conversation_id_reused/);
     assert.equal(h.primary.prepare('SELECT seq FROM recovery_checkpoint').get().seq,5);
     assert.equal(messages(h.primary).length,0);
   } finally {h.close();}
@@ -120,10 +119,10 @@ test('cross-user conversation writes cannot be replayed as owned chat',()=>{
   try {
     sample(h);
     h.push('event-account-2','account.created',{},'account-2');
-    h.push('event-foreign-message','message.saved',{
+    assert.throws(()=>h.push('event-foreign-message','message.saved',{
       conversation_id:'conv-1',message_id:'foreign-message',role:'user',content:'should be rejected'
-    },'account-2');
-    assert.throws(()=>replaySyntheticJournal(h.journal,h.primary),/journal_conversation_ownership_mismatch/);
+    },'account-2'),/journal_conversation_ownership_mismatch/);
+    replaySyntheticJournal(h.journal,h.primary);
     assert.equal(h.primary.prepare('SELECT seq FROM recovery_checkpoint').get().seq,5);
     assert.equal(messages(h.primary).length,2);
   } finally {h.close();}

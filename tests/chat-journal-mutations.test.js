@@ -103,8 +103,8 @@ test('delete-all cascades owned messages and feedback and prevents stale ID resu
     assert.equal(h.primary.prepare('SELECT COUNT(*) AS n FROM recovered_feedback').get().n,0);
     assert.deepEqual(messages(h.primary),[{message_id:'msg-other',content:'Keep me'}]);
     assert.equal(h.primary.prepare('SELECT COUNT(*) AS n FROM recovered_conversation_tombstones WHERE user_id=?').get('person-1').n,1);
-    h.add('e-attempt-recreate','conversation.created',{conversation_id:'conv-1',title:'Should fail'});
-    assert.throws(()=>replaySyntheticJournal(h.journal,h.primary),/journal_conversation_resurrection/);
+    assert.throws(()=>h.add('e-attempt-recreate','conversation.created',{conversation_id:'conv-1',title:'Should fail'}),/journal_conversation_id_reused/);
+    assert.deepEqual(replaySyntheticJournal(h.journal,h.primary),{applied:0,lastSeq:9});
     assert.deepEqual(messages(h.primary),[{message_id:'msg-other',content:'Keep me'}]);
   } finally {h.close();}
 });
@@ -121,8 +121,7 @@ test('feedback only attaches to owned assistant message; editing removes obsolet
     h.add('e-replace','turn.replaced',replacement);
     replaySyntheticJournal(h.journal,h.primary);
     assert.equal(h.primary.prepare('SELECT COUNT(*) AS n FROM recovered_feedback').get().n,0);
-    h.add('e-malicious-feedback','feedback.set',{conversation_id:'conv-1',message_id:'msg-4',rating:'up',reason:'wrong owner'},'person-2');
-    assert.throws(()=>replaySyntheticJournal(h.journal,h.primary),/journal_conversation_ownership_mismatch/);
+    assert.throws(()=>h.add('e-malicious-feedback','feedback.set',{conversation_id:'conv-1',message_id:'msg-4',rating:'up',reason:'wrong owner'},'person-2'),/journal_conversation_ownership_mismatch/);
     assert.equal(h.primary.prepare('SELECT seq FROM recovery_checkpoint').get().seq,7);
   } finally {h.close();}
 });
