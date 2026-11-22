@@ -22,6 +22,31 @@ const safeEqual = (a,b) => {
   return diff===0;
 };
 const validText = (value,length=16000) => typeof value==='string' && value.length>0 && value.length<=length;
+// The private interface still must not buffer unbounded caller-controlled bytes.
+async function readBoundedEventBody(request){
+  const limit=MAX_EVENT_BYTES+1200;
+  const claimed=request.headers.get('Content-Length');
+  if(claimed && Number(claimed)>limit)throw Error('invalid_event');
+  if(!request.body)return '';
+  const reader=request.body.getReader();
+  let total=0;
+  const chunks=[];
+  try{
+    while(true){
+      const {value,done}=await reader.read();
+      if(done)break;
+      total+=value.byteLength;
+      if(total>limit)throw Error('invalid_event');
+      chunks.push(value);
+    }
+  }finally{await reader.cancel().catch(()=>{});}
+  const buffer=new Uint8Array(total);
+  let offset=0;
+  for(const chunk of chunks){buffer.set(chunk,offset);offset+=chunk.length;}
+  try{return new TextDecoder('utf-8',{fatal:true}).decode(buffer);}
+  catch{throw Error('invalid_event');}
+}
+
 const shape = (p,keys,optional=[]) => Object.keys(p).every(key=>keys.includes(key)||optional.includes(key)) &&
   keys.every(key=>Object.hasOwn(p,key));
 function validateEvent(event){
@@ -139,10 +164,13 @@ export class ChatJournalDurableObject {
       return err('journal_unauthorized',401);
     const url=new URL(request.url);
     if(request.method==='POST'&&url.pathname==='/append'){
-      const raw=await request.text();
-      if(raw.length>MAX_EVENT_BYTES+1200)return err('invalid_event',400);
+      let raw;
+      try{raw=await readBoundedEventBody(request);}
+      catch{return err('invalid_event',400);}
       try{
-        const event=validateEvent(JSON.parse(raw));
+        let payload;
+        try{payload=JSON.parse(raw);}catch{throw Error('invalid_event');}
+        const event=validateEvent(payload);
         const result=append(this.ctx.storage,event);
         return respond({ok:true,...result});
       }catch(error){
