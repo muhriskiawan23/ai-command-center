@@ -70,9 +70,6 @@ jobs:
             limit.length === 1 && limit[0].type === "plain_text" && /^[1-9][0-9]*$/.test(limit[0].text || "") ? "nonzero" : "unverifiable";
           console.log("Active URL Reader binding state:", readerState);
           console.log("Active Tavily Extract quota class:", quotaState);
-          if (flag.length !== 1 || flag[0].type !== "plain_text" || flag[0].text !== "false") throw new Error("Active Worker URL Reader is not verifiably OFF");
-
-          if (limit.length && (limit.length !== 1 || limit[0].type !== "plain_text" || !/^(?:0+)$/.test(limit[0].text || ""))) throw new Error("Active Worker Tavily daily extraction quota is not verifiably zero");
           // Image generation is independently paid: no implicit activation of the pilot.
           // Missing BOR_IMAGES_ENABLED is safe-off for the Worker, but unknown/secret/true is not.
           const images = named("BOR_IMAGES_ENABLED");
@@ -80,6 +77,9 @@ jobs:
             images.length === 1 && images[0].type === "plain_text" && images[0].text === "false" ? "off" : "unverifiable-or-on";
           console.log("Active Image Assistant binding state:", imageState);
           if (imageState !== "absent" && imageState !== "off") throw new Error("Active Worker image generation is not verifiably OFF");
+          if (flag.length !== 1 || flag[0].type !== "plain_text" || flag[0].text !== "false") throw new Error("Active Worker URL Reader is not verifiably OFF");
+
+          if (limit.length && (limit.length !== 1 || limit[0].type !== "plain_text" || !/^(?:0+)$/.test(limit[0].text || ""))) throw new Error("Active Worker Tavily daily extraction quota is not verifiably zero");
           const releaseMessage = deployment?.annotations?.["workers/message"];
           const expected = "github-sha:" + process.env.EXPECTED_MAIN_SHA;
           if (releaseMessage !== expected) {
