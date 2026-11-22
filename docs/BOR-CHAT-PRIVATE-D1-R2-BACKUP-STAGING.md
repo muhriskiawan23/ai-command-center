@@ -54,12 +54,14 @@ This is based on https://developers.cloudflare.com/workflows/examples/backup-d1/
 
 The initial export request is exactly `{"output_format":"polling"}` and
 returns `result.at_bookmark`. The subsequent POST supplies only
-`{"current_bookmark": "<pinned bookmark>"}`. In the official sample,
-the completed response exposes **`result.signed_url` directly**; it does
-not use `result.result.signed_url` and might omit `status` or
-`at_bookmark` when polling. The staging adapter now accepts that exact
-shape, rejects any *explicitly mismatched* bookmark and rejects missing
-signed URL when a response explicitly reports completion.
+`{"current_bookmark": "<pinned bookmark>"}`. In the official Workflow example,
+the completed response exposes **`result.signed_url` directly**, while
+the D1 API reference also documents **`result.result.signed_url`** for
+`status=complete`. The staging adapter now accepts either exact envelope
+shape, rejects conflicting nested/direct URLs, missing or invalid URLs,
+mismatched status and any *explicitly mismatched* bookmark. The signed
+URL is still checked against an independently reviewed exact hostname
+before fetching; this is **not yet evidence of a real D1 backup**.
 
 This was caught **before any production backup/export** and fixed with
 negative unit tests. Signed URL hostname is still fail-closed and must be
