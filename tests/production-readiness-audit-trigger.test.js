@@ -46,3 +46,13 @@ test('readiness workflow never mutates production or calls billable providers', 
   assert.doesNotMatch(workflow, /api\/images\/jobs|api\/chat|tavily\.com|api\.openai\.com/i);
   assert.match(workflow, /Binding names and secret values are not printed/);
 });
+
+test('active image binding is triaged even when Reader state is a release blocker', () => {
+  const readerFailure = workflow.indexOf('if (flag.length !== 1 || flag[0].type !== "plain_text"');
+  const imageInspect = workflow.indexOf('const images = named("BOR_IMAGES_ENABLED")');
+  const imageLog = workflow.indexOf('console.log("Active Image Assistant binding state:", imageState)');
+  assert.ok(imageInspect > 0 && imageLog > imageInspect, 'image state must be inspected and reported');
+  assert.ok(readerFailure > imageLog, 'Reader mismatch must not mask paid-image binding status');
+  assert.match(workflow, /Active Worker URL Reader is not verifiably OFF/);
+  assert.match(workflow, /Active Worker image generation is not verifiably OFF/);
+});
