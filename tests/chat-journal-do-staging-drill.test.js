@@ -70,10 +70,6 @@ test('full journal pages rebuild chat after simulated loss of independent primar
     // Fresh projection rebuilt from independently retained source: counted
     // all chat turns since the earlier simulated D1 checkpoint.
     assert.equal(report.productionDatabaseTouched,false);
-    assert.equal((await collectPrivateDoSnapshot(h.object,{...h.auth,expectedMinimumHead:9})).head,8);
-  }catch(error){
-    if(error.message==='journal_snapshot_tail_missing')return; // checked below independently
-    throw error;
   }finally{h.close();}
 });
 test('higher externally retained watermark detects a fully lost or truncated DO tail',async()=>{
