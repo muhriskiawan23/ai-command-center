@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   ACCOUNT_PIN,PRIMARY_D1_PIN,EXACT_APPROVAL,namesForRun,
   validateSyntheticResource,approvedSyntheticDownloadHost,
-  extractSyntheticSignedUrl,validRows,runSyntheticD1Drill
+  extractSyntheticSignedUrl,validRows,normalizeSyntheticDumpForQuery,runSyntheticD1Drill
 } from '../scripts/synthetic-d1-export-recovery-drill.mjs';
 
 const runId='45079999123',sourceId='12345678-1234-1234-1234-123456789001';
@@ -120,6 +120,23 @@ test('nested and direct Cloudflare export envelopes are allowed but conflicts de
 test('synthetic row digest includes a deletion tombstone',()=>{
   assert.equal(validRows(rows).length,64);
   assert.throws(()=>validRows(rows.filter(x=>x.kind!=='delete')),/row_count_mismatch/);
+});
+
+test('synthetic import strips D1 transaction wrappers and rejects all unapproved SQL',()=>{
+  const dump=[
+    'PRAGMA foreign_keys=OFF;',
+    'BEGIN TRANSACTION;',
+    'CREATE TABLE "synth_events"(event_id TEXT PRIMARY KEY,kind TEXT,payload TEXT);',
+    "INSERT INTO \"synth_events\" VALUES('synthetic-0003','delete','SYNTHETIC_ONLY_TOMBSTONE');",
+    'COMMIT;'
+  ].join('\n');
+  const normalized=normalizeSyntheticDumpForQuery(dump);
+  assert.ok(normalized.includes('CREATE TABLE "synth_events"'));
+  assert.ok(normalized.includes('SYNTHETIC_ONLY_TOMBSTONE'));
+  assert.ok(!normalized.includes('BEGIN TRANSACTION'));
+  assert.ok(!normalized.includes('COMMIT;'));
+  assert.throws(()=>normalizeSyntheticDumpForQuery(dump+'DELETE FROM conversations;'),/unapproved_sql_statement/);
+  assert.throws(()=>normalizeSyntheticDumpForQuery(dump.replace('synth_events','users')),/unapproved_sql_statement/);
 });
 test('realistic synthetic D1 export/restore verifies row digest and deletes only two run-owned D1s',async()=>{
   const f=fakeCloudflare(),messages=[];
