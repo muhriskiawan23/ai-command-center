@@ -99,22 +99,26 @@ function validate(input) {
 
 export function appendSyntheticEvent(db, input) {
   const e = validate(input);
-  const deleted=db.prepare(
-    "SELECT event_id FROM recovery_journal WHERE user_id=? AND kind='account.deleted' LIMIT 1"
-  ).get(e.user_id);
-  // Once deleted, even retries of historical payloads must not repopulate data.
-  if(deleted && (e.kind!=='account.deleted'||deleted.event_id!==e.event_id))
-    throw Error('deleted_account_event');
-  const existing=db.prepare(
-    'SELECT seq,user_id,kind,payload_json FROM recovery_journal WHERE event_id=?'
-  ).get(e.event_id);
-  if(existing) {
-    if(existing.user_id!==e.user_id||existing.kind!==e.kind||
-       existing.payload_json!==e.payload_json)throw Error('event_id_conflict');
-    return {seq:existing.seq,duplicate:true};
-  }
+  // A later production implementation must never check tombstones or
+  // idempotency outside the same write lock as the append. Otherwise another
+  // writer can delete an account between check and insert (resurrection).
   db.exec('BEGIN IMMEDIATE');
   try {
+    const deleted=db.prepare(
+      "SELECT event_id FROM recovery_journal WHERE user_id=? AND kind='account.deleted' LIMIT 1"
+    ).get(e.user_id);
+    // Once deleted, even retries of historical payloads must not repopulate data.
+    if(deleted && (e.kind!=='account.deleted'||deleted.event_id!==e.event_id))
+      throw Error('deleted_account_event');
+    const existing=db.prepare(
+      'SELECT seq,user_id,kind,payload_json FROM recovery_journal WHERE event_id=?'
+    ).get(e.event_id);
+    if(existing) {
+      if(existing.user_id!==e.user_id||existing.kind!==e.kind||
+         existing.payload_json!==e.payload_json)throw Error('event_id_conflict');
+      db.exec('COMMIT');
+      return {seq:existing.seq,duplicate:true};
+    }
     const inserted=db.prepare(
       'INSERT INTO recovery_journal(event_id,user_id,kind,payload_json,version) VALUES(?,?,?,?,1)'
     ).run(e.event_id,e.user_id,e.kind,e.payload_json);
