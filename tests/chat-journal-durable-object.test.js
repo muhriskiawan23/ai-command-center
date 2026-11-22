@@ -15,7 +15,7 @@ function fixture(database=new DatabaseSync(':memory:')){
   const object=new ChatJournalDurableObject({storage},{CHAT_JOURNAL_INTERNAL_SECRET:SECRET});
   const post=async(event,token=SECRET)=>{
     const response=await object.fetch(new Request('https://journal.internal/append',{
-      method:'POST',headers:{'X-BOR-Journal-Token':token},
+      method:'POST',headers:token===null?{}:{'X-BOR-Journal-Token':token},
       body:JSON.stringify(event)
     }));
     return {status:response.status,body:await response.json()};
@@ -59,7 +59,7 @@ test('independent journal accepts an authenticated event once and proves its dur
 test('no public endpoint or wrong secret can read private journal or write events',async()=>{
   const h=fixture();try{
     const data={event_id:'account-one',user_id:'user-one',kind:'account.created',payload:{}};
-    for(const badToken of [undefined,'wrong-token','']){
+    for(const badToken of [null,'wrong-token','']){
       const result=await h.post(data,badToken);
       assert.equal(result.status,401);
     }
