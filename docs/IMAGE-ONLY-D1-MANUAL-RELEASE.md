@@ -12,6 +12,12 @@ This runbook does not authorize a Worker deploy, paid OpenAI call, image-credit 
 
 The image-only workflow `.github/workflows/bor-ai-image-d1-release.yml` is manual-only, always runs from `main`, compares standard/isolated remote migration listings, and uses a locally generated, Worker-less Wrangler configuration containing **only** the two approved image SQL files. Never run production `d1 migrations apply` against the ordinary migrations directory or use the normal Worker deploy as a substitute.
 
+## Chat-continuity strategy — never rewind chat to undo image-only schema
+
+**Non-destructive recovery is the default for image migrations.** The primary `bor-ai-chat` database stores current chat, authentication and session data; an in-place Time Travel restore could delete every chat event after its bookmark. If image schema `0012` or `0016` causes a problem, stop image submissions, keep the active URL Reader/chat path intact, inspect actual database state, and use an independently reviewed **forward-only corrective migration** where feasible. Do **not** automatically run `d1 time-travel restore bor-ai-chat` as an image rollback.
+
+This preserves later chat writes during a *forward repair*; it **does not** establish zero-loss recovery for catastrophic primary-DB corruption. An independent durable event journal and thoroughly tested replay would be required before lossless point-in-time restoration can be claimed. See [Non-destructive chat continuity and recovery](CHAT-CONTINUITY-NONDESTRUCTIVE-RECOVERY.md) and its offline regression test.
+
 ## Recovery review — owner action required **before** any APPLY
 
 1. Confirm which Cloudflare account and exact production D1 `bor-ai-chat` are active. Confirm D1 Time Travel availability **and** the database's production backend; the presence of a GET bookmark is useful evidence but not itself a recovery exercise.
