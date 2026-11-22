@@ -19,6 +19,16 @@ on:
         required: false
         type: string
         default: ""
+      reviewed_plan_sha:
+        description: "For APPLY only: paste the full reviewed 40-character main SHA from a successful PLAN run"
+        required: false
+        type: string
+        default: ""
+      recovery_attestation:
+        description: "For APPLY only: type PRIVATE_D1_RECOVERY_EVIDENCE_REVIEWED after securing the recovery point outside CI"
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -38,6 +48,8 @@ jobs:
         env:
           RELEASE_PHASE: ${{ inputs.phase }}
           CONFIRMATION: ${{ inputs.confirmation }}
+          REVIEWED_PLAN_SHA: ${{ inputs.reviewed_plan_sha }}
+          RECOVERY_ATTESTATION: ${{ inputs.recovery_attestation }}
         run: |
           set -euo pipefail
           if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
@@ -50,6 +62,15 @@ jobs:
           fi
           if [[ "$RELEASE_PHASE" == "apply" && "$CONFIRMATION" != "CONFIRM_IMAGE_SCHEMA_0012_0016_BOR_AI_CHAT" ]]; then
             echo "::error::Explicit owner approval phrase required for a live schema write"
+            exit 1
+          fi
+          if [[ "$RELEASE_PHASE" == "apply" && "$REVIEWED_PLAN_SHA" != "$GITHUB_SHA" ]]; then
+            echo "::error::Apply requires owner review of the exact current main commit from a successful PLAN run"
+            exit 1
+          fi
+          if [[ "$RELEASE_PHASE" == "apply" &&
+                "$RECOVERY_ATTESTATION" != "PRIVATE_D1_RECOVERY_EVIDENCE_REVIEWED" ]]; then
+            echo "::error::Apply requires operator-attested private recovery evidence; a CI bookmark fingerprint is not a backup"
             exit 1
           fi
 

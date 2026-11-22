@@ -54,6 +54,18 @@ test('manual workflow defaults to PLAN and cannot deploy Worker or activate paid
   assert.match(w,/git ls-remote origin refs\/heads\/main/);
   assert.match(w,/GITHUB_REF/);
   assert.match(w,/CONFIRM_IMAGE_SCHEMA_0012_0016_BOR_AI_CHAT/);
+  assert.ok(w.includes('reviewed_plan_sha:'));
+  assert.ok(w.includes('recovery_attestation:'));
+  assert.ok(w.includes('REVIEWED_PLAN_SHA: ${{ inputs.reviewed_plan_sha }}'));
+  assert.ok(w.includes('RECOVERY_ATTESTATION: ${{ inputs.recovery_attestation }}'));
+  assert.match(w,/PRIVATE_D1_RECOVERY_EVIDENCE_REVIEWED/);
+  const checkFirst=w.indexOf('Refuse unreviewed refs or missing manual approval');
+  const checkApply=w.indexOf('Apply ONLY reviewed 0012 and 0016 image SQL');
+  assert.ok(checkFirst>=0&&checkApply>checkFirst);
+  const gate=w.slice(checkFirst,checkApply);
+  assert.ok(gate.includes('"$REVIEWED_PLAN_SHA" != "$GITHUB_SHA"'));
+  assert.ok(gate.includes('"$RECOVERY_ATTESTATION" != "PRIVATE_D1_RECOVERY_EVIDENCE_REVIEWED"'));
+  assert.ok(gate.includes('"$RELEASE_PHASE" == "apply"'));
   assert.match(w,/node scripts\/check-production-migration-isolation\.mjs migrations/);
   assert.match(w,/node scripts\/verify-d1-image-migration-rollback\.mjs/);
   assert.match(w,/d1 migrations apply bor-ai-chat --remote --config wrangler\.image-only-migrations\.generated\.jsonc/);
