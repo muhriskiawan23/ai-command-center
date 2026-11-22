@@ -37,8 +37,8 @@ function fixture(){
   const step={async do(name,options,fn){assert.ok(name&&!('customerContent' in options));return fn();}};
   const now=()=>new Date('2026-11-23T00:00:00.000Z');
   const poll=(data={})=>Response.json({success:true,result:{
-    at_bookmark:bookmark,status:'complete',
-    result:{signed_url:'https://'+hostname+'/fake-only-synthetic.sql?signature=PRIVATE_FAKE'},
+    status:'complete',
+    signed_url:'https://'+hostname+'/fake-only-synthetic.sql?signature=PRIVATE_FAKE',
     ...data
   }});
   const start=()=>Response.json({success:true,result:{at_bookmark:bookmark}});
@@ -143,9 +143,33 @@ test('export API response errors, missing bookmark and wrong polling bookmark ar
   ])assert.throws(()=>verifyExportEnvelope(sample),/private_backup_export/);
   assert.throws(()=>verifyExportEnvelope({success:true,result:{
     status:'complete',at_bookmark:'different',
-    result:{signed_url:'https://'+hostname+'/dump'}
+    signed_url:'https://'+hostname+'/dump'
   }},bookmark),/private_backup_export_bookmark_changed/);
   assert.deepEqual(verifyExportEnvelope({success:true,result:{at_bookmark:bookmark,status:'polling'}},bookmark),{status:'pending'});
+});
+test('official Cloudflare direct result.signed_url works when poll omits status and bookmark',()=>{
+  const signed='https://'+hostname+'/backup.sql?signature=fake';
+  assert.deepEqual(verifyExportEnvelope({success:true,result:{signed_url:signed}},bookmark),{
+    status:'complete',signedUrl:signed
+  });
+  assert.deepEqual(verifyExportEnvelope({success:true,result:{}},bookmark),{status:'pending'});
+  assert.throws(()=>verifyExportEnvelope({success:true,result:{status:'complete'}},bookmark),
+    /private_backup_export_missing_url/);
+});
+test('D1 start export matches documented polling request, no speculative dump options',async()=>{
+  const h=fixture();
+  const original=h.fetcher;
+  let started=false;
+  h.fetcher=async(url,opts)=>{
+    if(url.includes('api.cloudflare.com')&&!started){
+      started=true;
+      assert.equal(opts.body,'{"output_format":"polling"}');
+    }
+    return original(url,opts);
+  };
+  const receipt=await runPrivateBackup(h);
+  assert.equal(started,true);
+  assert.equal(receipt.ok,true);
 });
 test('a pending export is only retried inside Cloudflare, never sends SQL into job output',async()=>{
   const h=fixture();
@@ -153,7 +177,7 @@ test('a pending export is only retried inside Cloudflare, never sends SQL into j
   const original=h.fetcher;
   h.fetcher=async(url,options)=>{
     if(url.includes('api.cloudflare.com')&&options.body.includes('current_bookmark')&&polls++===0)
-      return h.poll({status:'polling',result:undefined});
+      return h.poll({status:'polling',signed_url:undefined});
     return original(url,options);
   };
   const step=h.step;
@@ -174,7 +198,7 @@ test('signed URL host mismatch and a HTML response fail without writing to R2',a
     const original=h.fetcher;
     h.fetcher=async(url,opts)=>{
       if(url.includes('api.cloudflare.com')&&opts.body.includes('current_bookmark')&&failure==='foreign')
-        return h.poll({result:{signed_url:'https://attacker.example.org/secret'}});
+        return h.poll({signed_url:'https://attacker.example.org/secret'});
       if(!url.includes('api.cloudflare.com')&&failure==='html')
         return new Response('<html>sensitive</html>',{headers:{'Content-Type':'text/html'}});
       return original(url,opts);

@@ -49,6 +49,22 @@ This is based on https://developers.cloudflare.com/workflows/examples/backup-d1/
 - Export can temporarily block ordinary D1 requests; schedule a separately
   reviewed low-traffic maintenance period before the first paid or live run.
 
+
+## API response contract verified against Cloudflare's own example
+
+The initial export request is exactly `{"output_format":"polling"}` and
+returns `result.at_bookmark`. The subsequent POST supplies only
+`{"current_bookmark": "<pinned bookmark>"}`. In the official sample,
+the completed response exposes **`result.signed_url` directly**; it does
+not use `result.result.signed_url` and might omit `status` or
+`at_bookmark` when polling. The staging adapter now accepts that exact
+shape, rejects any *explicitly mismatched* bookmark and rejects missing
+signed URL when a response explicitly reports completion.
+
+This was caught **before any production backup/export** and fixed with
+negative unit tests. Signed URL hostname is still fail-closed and must be
+reviewed against a real provider response without exposing its value.
+
 ## Remaining deployment gates (do not skip)
 
 1. Owner explicitly approves backup scope, brief potential D1 read outage,

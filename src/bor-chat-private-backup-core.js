@@ -49,12 +49,19 @@ export function verifyExportEnvelope(data,expectedBookmark=null){
   const r=data.result;
   if(r.status==='error'||r.error)throw Error('private_backup_export_api_failed');
   if(expectedBookmark!==null){
-    if(r.at_bookmark!==expectedBookmark)throw Error('private_backup_export_bookmark_changed');
-    if(r.status==='complete'){
-      const signed=r.result?.signed_url;
-      if(typeof signed!=='string'||!signed)throw Error('private_backup_export_missing_url');
+    // Cloudflare's documented D1 /export response returns result.signed_url
+    // directly (NOT result.result.signed_url), and may omit both status and
+    // at_bookmark during the polling response. The requested current_bookmark
+    // is already pinned in the POST body; reject only explicit disagreement.
+    if(r.at_bookmark!==undefined&&r.at_bookmark!==expectedBookmark)
+      throw Error('private_backup_export_bookmark_changed');
+    const signed=r.signed_url;
+    if(signed!==undefined&&signed!==null){
+      if(typeof signed!=='string'||!signed)
+        throw Error('private_backup_export_missing_url');
       return {status:'complete',signedUrl:signed};
     }
+    if(r.status==='complete')throw Error('private_backup_export_missing_url');
     if(r.status===undefined||r.status==='polling'||r.status==='in_progress')
       return {status:'pending'};
     throw Error('private_backup_export_unknown_status');
@@ -111,7 +118,7 @@ export async function runPrivateBackup({env,event,step,fetcher=fetch,now=()=>new
     {retries:{limit:0,delay:'10 seconds',backoff:'constant'},timeout:'40 seconds'},
     async()=>{
       const result=verifyExportEnvelope(await callExport(fetcher,api,env.BOR_D1_EXPORT_TOKEN,
-        {output_format:'polling',dump_options:{compatibility:'d1'}}));
+        {output_format:'polling'}));
       // Persist the object key with its export bookmark; a restarted Workflow
       // must reuse exactly the same key even if UTC date changes meanwhile.
       return {bookmark:result.bookmark,key:createPrivateBackupKey(c.instance,now())};
