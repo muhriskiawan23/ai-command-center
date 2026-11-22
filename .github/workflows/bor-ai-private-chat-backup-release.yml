@@ -119,6 +119,26 @@ jobs:
           CLOUDFLARE_R2_AUDIT_TOKEN: ${{ secrets.CLOUDFLARE_R2_AUDIT_TOKEN }}
         run: node scripts/verify-private-backup-r2-preflight.mjs
 
+      - name: Fail before deploy if either dedicated backup credential is unavailable
+        if: ${{ inputs.phase == 'deploy' }}
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_BACKUP_DEPLOY_TOKEN: ${{ secrets.CLOUDFLARE_BACKUP_DEPLOY_TOKEN }}
+          BOR_PRIVATE_D1_EXPORT_TOKEN: ${{ secrets.BOR_PRIVATE_D1_EXPORT_TOKEN }}
+        run: |
+          set -euo pipefail
+          # Fail BEFORE creating a Cloudflare Worker or Workflow. A later
+          # secret-put failure must not leave an unnecessary half-deployed
+          # release when an expected GitHub secret is missing.
+          [[ "${CLOUDFLARE_ACCOUNT_ID:-}" =~ ^[0-9a-fA-F]{32}$ ]] || {
+            echo "::error::Cloudflare account ID missing or malformed"; exit 1;
+          }
+          [[ -n "${CLOUDFLARE_BACKUP_DEPLOY_TOKEN:-}" && -n "${BOR_PRIVATE_D1_EXPORT_TOKEN:-}" ]] || {
+            echo "::error::Dedicated Worker deploy AND D1 export credentials are required before deploy"; exit 1;
+          }
+          echo 'Dedicated backup credentials present (values never logged); no Cloudflare changes in this gate.'
+
       - name: Deploy ONLY the isolated backup Worker and Cloudflare Workflow (no export)
         if: ${{ inputs.phase == 'deploy' }}
         env:
