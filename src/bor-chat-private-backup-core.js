@@ -106,7 +106,9 @@ export async function runPrivateBackup({env,event,step,fetcher=fetch,now=()=>new
   const api='https://api.cloudflare.com/client/v4/accounts/'+c.account+
     '/d1/database/'+c.db+'/export';
   const exportState=await step.do('start pinned D1 private export',
-    {retries:{limit:1,delay:'10 seconds',backoff:'constant'},timeout:'40 seconds'},
+    // Initiating an export may briefly block primary D1 requests; do not
+    // retry an ambiguous start automatically. Require explicit operator review.
+    {retries:{limit:0,delay:'10 seconds',backoff:'constant'},timeout:'40 seconds'},
     async()=>{
       const result=verifyExportEnvelope(await callExport(fetcher,api,env.BOR_D1_EXPORT_TOKEN,
         {output_format:'polling',dump_options:{compatibility:'d1'}}));
