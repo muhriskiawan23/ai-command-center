@@ -119,6 +119,25 @@ function eraseSyntheticConversationPayloads(db,userId,deleteSeq,conversationId=n
   }
 }
 
+// Fail before journaling private payloads belonging to deleted or foreign
+// conversations. This is only an offline ownership preflight: production must
+// derive userId from a verified session and provide transactional isolation.
+function requireAdmissibleSyntheticConversation(db,e) {
+  if(!CONVERSATION_EVENT_KINDS.has(e.kind)&&e.kind!=='conversation.deleted')return;
+  const id=JSON.parse(e.payload_json).conversation_id;
+  const existing=db.prepare(
+    "SELECT user_id,payload_json,redacted FROM recovery_journal WHERE kind='conversation.created'"
+  ).all().filter(row=>JSON.parse(row.payload_json).conversation_id===id);
+  if(e.kind==='conversation.created') {
+    if(existing.length) throw Error('journal_conversation_id_reused');
+    return;
+  }
+  if(existing.length!==1||existing[0].redacted!==0)
+    throw Error('journal_conversation_not_active');
+  if(existing[0].user_id!==e.user_id)
+    throw Error('journal_conversation_ownership_mismatch');
+}
+
 export function appendSyntheticEvent(db, input) {
   const e = validate(input);
   // A later production implementation must never check tombstones or
@@ -141,13 +160,8 @@ export function appendSyntheticEvent(db, input) {
       db.exec('COMMIT');
       return {seq:existing.seq,duplicate:true};
     }
-    if(e.kind==='conversation.deleted') {
-      const id=JSON.parse(e.payload_json).conversation_id;
-      const created=db.prepare(
-        "SELECT payload_json FROM recovery_journal WHERE user_id=? AND kind='conversation.created' AND redacted=0"
-      ).all(e.user_id).some(row=>JSON.parse(row.payload_json).conversation_id===id);
-      if(!created) throw Error('journal_conversation_not_active');
-    }
+    // Admission must be inside BEGIN IMMEDIATE and precede any raw payload insert.
+    requireAdmissibleSyntheticConversation(db,e);
     const inserted=db.prepare(
       'INSERT INTO recovery_journal(event_id,user_id,kind,payload_json,version) VALUES(?,?,?,?,1)'
     ).run(e.event_id,e.user_id,e.kind,e.payload_json);
