@@ -20,7 +20,7 @@ function seed(h) {
   h.add('e-old-user','message.saved',{conversation_id:'conv-1',message_id:'msg-1',role:'user',content:'Old prompt'});
   h.add('e-old-assistant','message.saved',{conversation_id:'conv-1',message_id:'msg-2',role:'assistant',content:'Old response'});
 }
-const messages = db=>db.prepare('SELECT message_id,content FROM recovered_messages ORDER BY rowid').all();
+const messages = db=>db.prepare('SELECT message_id,content FROM recovered_messages ORDER BY rowid').all().map(row=>({...row}));
 const replacement = {
   conversation_id:'conv-1',
   old_user_message_id:'msg-1',old_assistant_message_id:'msg-2',
@@ -76,14 +76,14 @@ test('rename + pin + archive restore exact conversation preferences',()=>{
     seed(h);
     h.add('e-metadata','conversation.updated',{conversation_id:'conv-1',archived:true,pinned:true,title:'Pinned archived'});
     assert.deepEqual(replaySyntheticJournal(h.journal,h.primary),{applied:5,lastSeq:5});
-    assert.deepEqual(h.primary.prepare(
+    assert.deepEqual({...h.primary.prepare(
       'SELECT title,pinned,archived FROM recovered_conversations WHERE conversation_id=?'
-    ).get('conv-1'),{title:'Pinned archived',pinned:1,archived:1});
+    ).get('conv-1')},{title:'Pinned archived',pinned:1,archived:1});
     h.add('e-unpin','conversation.updated',{conversation_id:'conv-1',pinned:false,archived:false});
     replaySyntheticJournal(h.journal,h.primary);
-    assert.deepEqual(h.primary.prepare(
+    assert.deepEqual({...h.primary.prepare(
       'SELECT title,pinned,archived FROM recovered_conversations WHERE conversation_id=?'
-    ).get('conv-1'),{title:'Pinned archived',pinned:0,archived:0});
+    ).get('conv-1')},{title:'Pinned archived',pinned:0,archived:0});
     assert.throws(()=>h.add('bad-metadata','conversation.updated',{conversation_id:'conv-1',pinned:'true'}),/invalid_journal_event/);
     assert.throws(()=>h.add('empty-metadata','conversation.updated',{conversation_id:'conv-1'}),/invalid_journal_event/);
   } finally {h.close();}
@@ -114,7 +114,7 @@ test('feedback only attaches to owned assistant message; editing removes obsolet
     seed(h);replaySyntheticJournal(h.journal,h.primary);
     h.add('e-feedback','feedback.set',{conversation_id:'conv-1',message_id:'msg-2',rating:'up',reason:'Helpful'});
     replaySyntheticJournal(h.journal,h.primary);
-    assert.deepEqual(h.primary.prepare('SELECT rating,reason FROM recovered_feedback').get(),{rating:'up',reason:'Helpful'});
+    assert.deepEqual({...h.primary.prepare('SELECT rating,reason FROM recovered_feedback').get()},{rating:'up',reason:'Helpful'});
     h.add('e-update-feedback','feedback.set',{conversation_id:'conv-1',message_id:'msg-2',rating:'down',reason:'Outdated'});
     replaySyntheticJournal(h.journal,h.primary);
     assert.equal(h.primary.prepare('SELECT rating FROM recovered_feedback').get().rating,'down');
@@ -189,7 +189,7 @@ test('deleted account payloads are redacted without resurrecting chat on fresh r
       assert.equal(replaySyntheticJournal(h.journal,restored).lastSeq,8);
       assert.equal(restored.prepare('SELECT COUNT(*) AS n FROM recovered_accounts WHERE user_id=?').get('person-1').n,0);
       assert.equal(restored.prepare('SELECT COUNT(*) AS n FROM recovered_messages WHERE user_id=?').get('person-1').n,0);
-      assert.deepEqual(restored.prepare('SELECT message_id,content FROM recovered_messages').all(),[
+      assert.deepEqual(restored.prepare('SELECT message_id,content FROM recovered_messages').all().map(row=>({...row})),[
         {message_id:'msg-other',content:'other owner keeps chat'}
       ]);
       assert.equal(restored.prepare('SELECT COUNT(*) AS n FROM recovered_account_tombstones').get().n,1);
