@@ -138,16 +138,62 @@ function project(db, e) {
     requireOwnedConversation(db,e.user_id,p.conversation_id);
     db.prepare('INSERT INTO recovered_messages(message_id,conversation_id,user_id,role,content) VALUES(?,?,?,?,?)')
       .run(p.message_id,p.conversation_id,e.user_id,p.role,p.content);
+  } else if (e.kind==='turn.replaced') {
+    requireOwnedConversation(db,e.user_id,p.conversation_id);
+    // BOR AI's replaceLastTurn only replaces the most recent user/assistant pair.
+    const latest=db.prepare(
+      'SELECT message_id,role FROM recovered_messages WHERE conversation_id=? AND user_id=? ORDER BY rowid DESC LIMIT 2'
+    ).all(p.conversation_id,e.user_id);
+    if(latest.length!==2||latest[0].role!=='assistant'||latest[1].role!=='user'||
+       latest[0].message_id!==p.old_assistant_message_id||
+       latest[1].message_id!==p.old_user_message_id) throw Error('journal_stale_turn_replacement');
+    db.prepare(
+      'DELETE FROM recovered_messages WHERE message_id IN (?,?) AND user_id=? AND conversation_id=?'
+    ).run(p.old_user_message_id,p.old_assistant_message_id,e.user_id,p.conversation_id);
+    db.prepare(
+      "INSERT INTO recovered_messages(message_id,conversation_id,user_id,role,content) VALUES(?,?,?,'user',?)"
+    ).run(p.new_user_message_id,p.conversation_id,e.user_id,p.user_content);
+    db.prepare(
+      "INSERT INTO recovered_messages(message_id,conversation_id,user_id,role,content) VALUES(?,?,?,'assistant',?)"
+    ).run(p.new_assistant_message_id,p.conversation_id,e.user_id,p.assistant_content);
   } else if (e.kind==='conversation.renamed') {
     requireOwnedConversation(db,e.user_id,p.conversation_id);
     db.prepare('UPDATE recovered_conversations SET title=? WHERE conversation_id=? AND user_id=?')
       .run(p.title,p.conversation_id,e.user_id);
+  } else if (e.kind==='conversation.updated') {
+    requireOwnedConversation(db,e.user_id,p.conversation_id);
+    const fields=[], values=[];
+    if(Object.hasOwn(p,'title')){fields.push('title=?');values.push(p.title);}
+    if(Object.hasOwn(p,'pinned')){fields.push('pinned=?');values.push(p.pinned?1:0);}
+    if(Object.hasOwn(p,'archived')){fields.push('archived=?');values.push(p.archived?1:0);}
+    db.prepare('UPDATE recovered_conversations SET '+fields.join(',')+
+      ' WHERE conversation_id=? AND user_id=?').run(...values,p.conversation_id,e.user_id);
+  } else if (e.kind==='feedback.set') {
+    requireOwnedConversation(db,e.user_id,p.conversation_id);
+    const message=db.prepare(
+      'SELECT role,user_id,conversation_id FROM recovered_messages WHERE message_id=?'
+    ).get(p.message_id);
+    if(!message||message.role!=='assistant'||message.user_id!==e.user_id||
+       message.conversation_id!==p.conversation_id) throw Error('journal_feedback_ownership_mismatch');
+    db.prepare(
+      'INSERT INTO recovered_feedback(message_id,rating,reason) VALUES(?,?,?) '+
+      'ON CONFLICT(message_id) DO UPDATE SET rating=excluded.rating,reason=excluded.reason'
+    ).run(p.message_id,p.rating,p.reason);
   } else if (e.kind==='conversation.deleted') {
     requireOwnedConversation(db,e.user_id,p.conversation_id);
     db.prepare('INSERT INTO recovered_conversation_tombstones(user_id,conversation_id) VALUES(?,?)')
       .run(e.user_id,p.conversation_id);
     db.prepare('DELETE FROM recovered_conversations WHERE conversation_id=? AND user_id=?')
       .run(p.conversation_id,e.user_id);
+  } else if (e.kind==='conversations.deleted_all') {
+    const owned=db.prepare(
+      'SELECT conversation_id FROM recovered_conversations WHERE user_id=?'
+    ).all(e.user_id);
+    for(const row of owned) {
+      db.prepare('INSERT OR IGNORE INTO recovered_conversation_tombstones(user_id,conversation_id) VALUES(?,?)')
+        .run(e.user_id,row.conversation_id);
+    }
+    db.prepare('DELETE FROM recovered_conversations WHERE user_id=?').run(e.user_id);
   } else if (e.kind==='account.deleted') {
     db.prepare('INSERT INTO recovered_account_tombstones(user_id) VALUES(?)').run(e.user_id);
     db.prepare('DELETE FROM recovered_accounts WHERE user_id=?').run(e.user_id);
