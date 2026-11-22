@@ -148,3 +148,18 @@ test('staging journal config isolates production D1, image storage, billing, and
   for(const key of ['d1_databases','r2_buckets','queues','ai','assets','routes','triggers'])
     assert.equal(Object.hasOwn(config,key),false,key+' must be absent');
 });
+
+test('malformed and oversized internal journal requests fail before any source write',async()=>{
+  const h=fixture();try{
+    const endpoint='https://journal.internal/append';
+    const auth={'X-BOR-Journal-Token':SECRET};
+    const malformed=await h.object.fetch(new Request(endpoint,{method:'POST',headers:auth,body:'{invalid-json'}));
+    assert.equal(malformed.status,400);
+    assert.equal((await malformed.json()).code,'invalid_event');
+    const huge='x'.repeat(25000);
+    const excessive=await h.object.fetch(new Request(endpoint,{method:'POST',headers:auth,body:huge}));
+    assert.equal(excessive.status,400);
+    assert.equal((await excessive.json()).code,'invalid_event');
+    assert.equal(h.db.prepare('SELECT COUNT(*) n FROM journal_events').get().n,0);
+  }finally{h.close();}
+});
