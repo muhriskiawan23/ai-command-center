@@ -9,6 +9,9 @@
 - Journal-first event admission with strict payload validation and idempotent event IDs; changed payload with the same ID fails closed.
 - Transactional projection of each event and its replay checkpoint. A simulated crash between projection and checkpoint rolls back the partial projection.
 - Strict contiguous sequence checks, non-replay of checkpointed events, ownership checks, deletion tombstones and account-delete blocking.
+- **Extended synthetic mutation coverage:** atomic last-turn replacement/regeneration with stale-turn detection, title/pin/archive updates, delete-all conversations with ownership tombstones, and feedback restricted to owned assistant messages. This models common user actions, but is not connected to BOR AI's live chat routes.
+- **Synthetic account-delete redaction:** atomically replace earlier payloads for that account with empty JSON while retaining ordered sequence markers and an account-deletion tombstone. Replay skips only entries supported by a later tombstone, so deleted chat does not reappear. This is not physical erasure of old SQLite pages or copies/backups; do not claim production privacy compliance based on the prototype.
+- **Retry and outage tests:** a journal-first write can remain durable when the synthetic primary projection fails; resending the same event ID allows a single replay without duplicated chat. Production acknowledgement and read-after-write contracts still need implementation.
 - Replay after synthetic projection loss, including messages created **after** a previous checkpoint.
 
 Run: node --test tests/chat-journal-prototype.test.js. Two **distinct in-memory SQLite databases**, no Cloudflare or external API calls.
@@ -16,8 +19,8 @@ Run: node --test tests/chat-journal-prototype.test.js. Two **distinct in-memory 
 ## What this does NOT do
 
 1. **No live journal.** The production Worker still writes directly into bor-ai-chat. No production chat mutation is independently captured. No zero-data-loss or RPO=0 claim.
-2. **No complete mutation coverage.** The limited vocabulary supports account create/delete, conversation create/rename/delete, and message save. It does not yet cover actual BOR AI's last-turn replacement/regeneration, pin/archive, delete-all, feedback, memory, session or other account mutations.
-3. **No privacy-ready retention.** Synthetic message payloads persist in this append-only journal after an account-delete tombstone. A real service must implement data-subject erasure, appropriate encryption/crypto-shredding, journal and backup retention, and privacy tests before recording real users.
+2. **No complete mutation coverage.** The synthetic vocabulary now exercises last-turn replacement, pin/archive/title, delete-all and feedback, but actual BOR AI's full mutation handlers, memory, sessions, link metadata, request-ID mapping, concurrent updates, account lifecycle and historical backfill are not integrated.
+3. **No production-ready erasure.** Synthetic account deletion now redacts earlier payload columns transactionally and keeps a tombstone. That is only a logical row-level redaction: old SQLite pages, PITR snapshots, cross-storage backups, derived data, conversation-level deletion remnants and encryption-key deletion still require end-to-end design, verification and retention policy before real users.
 4. **No full tamper-proofing.** A gap detector cannot prove completeness if the journal tail or entire journal is lost; separate integrity attestations and monotonic checkpoints must be designed.
 5. **No cross-database atomic transaction.** Journal and D1 cannot commit as one transaction. A live solution needs explicit acknowledgment rules, per-account ordering, retries, idempotent replay, read-your-writes consistency, and crash tests.
 6. **No deployment, resource provisioning or cost approval.** SQLite-backed Durable Objects support transactional, strongly consistent storage and exist on Workers Free subject to limits. This is a candidate, not a provisioned or approved resource.
