@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 import {DatabaseSync} from 'node:sqlite';
 import {initSyntheticJournal,initSyntheticProjection,appendSyntheticEvent,replaySyntheticJournal}
   from '../tools/recovery/chat-journal-prototype.mjs';
@@ -203,4 +204,11 @@ test('manual journal redaction without matching deletion tombstone blocks replay
     assert.throws(()=>replaySyntheticJournal(h.journal,h.primary),/journal_unverified_redaction/);
     assert.equal(h.primary.prepare('SELECT seq FROM recovery_checkpoint').get().seq,2);
   } finally {h.close();}
+});
+
+test('journal prototype is completely disconnected from production Worker and deploy bindings',()=>{
+  const worker=readFileSync(new URL('../src/index.js',import.meta.url),'utf8');
+  const config=readFileSync(new URL('../wrangler.jsonc',import.meta.url),'utf8');
+  assert.doesNotMatch(worker,/chat-journal-prototype|replaySyntheticJournal|appendSyntheticEvent/);
+  assert.doesNotMatch(config,/CHAT_JOURNAL_DO|CHAT_RECOVERY_JOURNAL|recovery_journal/);
 });
