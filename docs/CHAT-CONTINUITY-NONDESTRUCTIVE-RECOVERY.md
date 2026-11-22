@@ -33,6 +33,14 @@ Proposed design (not implemented):
 
 Separate D1 databases for chat and image features could further limit the blast radius of future image migrations; the **current** `image_jobs` schema has foreign keys to `users`/`conversations`, so splitting it requires application/schema refactoring and explicit deletion/cascade tests, not simply changing a binding.
 
+## Offline conversation-deletion privacy proof (not deployed)
+
+The synthetic journal prototype in `tools/recovery/chat-journal-prototype.mjs` now overwrites **earlier conversation-scoped payloads in the independent journal within the same write transaction** when `conversation.deleted` or `conversations.deleted_all` is admitted. It erases prompt text, assistant answers, titles, regeneration text and feedback reasons. A minimal `conversation_id` tombstone remains so an offline full replay can verify the subsequent deletion and reject a stale conversation ID without re-creating deleted content. Other users' journal rows are not touched. `account.deleted` clears all earlier payload JSON, including retained conversation IDs. The tests do not move data to external providers or create storage resources.
+
+The synthetic recovery code is **not in the production Worker**, has no real authenticated writer, and does not represent GDPR/comprehensive deletion guarantees. Separate retention review must cover journal metadata (`user_id`, event IDs, conversation IDs), replicas, backups, logs, old exports, key management, replay integrity, durable concurrency, pending queues and privacy-erasure proof across the actual primary and independent stores. Historical copies made **before** erasure are not automatically wiped by updating a journal row. No live chat data has been erased or moved in this change.
+
+Evidence: `tests/chat-journal-conversation-erasure.test.js` checks single conversation deletion, delete-all, an independent other owner, fabricated redaction, stale ID re-creation and account deletion on independent in-memory SQLite databases. Passing tests are **offline design proof only**, not a production RPO or privacy certification.
+
 ## Production decision gates
 
 - **Now:** image-only schema `plan` is safe read-only; `apply` requires separate owner approval. No production Time Travel restore permitted to "undo" image migrations by default.
