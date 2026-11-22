@@ -60,3 +60,30 @@ test("configured credentials do not activate reader without explicit opt-in", ()
     assert.equal(createVerifiedLinkFetcher(env), null);
   }
 });
+
+test("unsafe URL never reaches the private egress binding even when called directly", async () => {
+  let calls = 0;
+  const fetcher = createVerifiedLinkFetcher(fakeEnv(async () => {
+    calls++;
+    return new Response(JSON.stringify(payload()));
+  }));
+  for (const url of [
+    "http://127.0.0.1/", "http://10.0.0.5/", "http://169.254.169.254/latest/meta-data/",
+    "http://localhost/", "https://[::1]/", "https://example.com:8443/",
+    "https://user:pass@example.com/", "file:///etc/passwd", "http://singlelabel/"
+  ]) {
+    await assert.rejects(() => fetcher(url), /proxy_url_disallowed/, url);
+  }
+  assert.equal(calls, 0);
+});
+test("private or invented peer IPs are rejected even when a proxy reports verified transport", async () => {
+  for (const ip of ["127.0.0.1", "10.2.3.4", "169.254.169.254", "192.168.1.1",
+    "::1", "fe80::1", "::ffff:127.0.0.1", "example.com"]) {
+    const data = payload({ peerIp: ip, transport: {
+      ...payload().transport, selectedPeerIp: ip, observedPeerIp: ip
+    } });
+    const fetcher = createVerifiedLinkFetcher(fakeEnv(async () =>
+      new Response(JSON.stringify(data), {status: 200})));
+    await assert.rejects(() => fetcher("https://example.com/"), /proxy_security_proof_missing/, ip);
+  }
+});
