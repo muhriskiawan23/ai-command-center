@@ -4,12 +4,23 @@ on:
   push:
     branches: [main]
     paths:
+      # Read-only audit when a merged change can alter release/egress/media behavior.
+      # This workflow NEVER deploys or exercises paid inference/extraction.
       - '.github/workflows/bor-ai-readonly-production-readiness.yml'
+      - '.github/workflows/bor-ai-deploy.yml'
+      - '.github/workflows/bor-ai-image-d1-release.yml'
+      - 'wrangler.jsonc'
+      - 'src/index.js'
+      - 'src/links.js'
+      - 'src/tavily-extract.js'
+      - 'src/verified-egress.js'
+      - 'src/image-jobs.js'
+      - 'scripts/reader-preserve-guard.mjs'
 permissions:
   contents: read
 jobs:
   verify:
-    name: Read-only runtime and URL Reader gates
+    name: Read-only runtime, URL Reader and image gates
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     environment: production
@@ -62,6 +73,13 @@ jobs:
           if (flag.length !== 1 || flag[0].type !== "plain_text" || flag[0].text !== "false") throw new Error("Active Worker URL Reader is not verifiably OFF");
 
           if (limit.length && (limit.length !== 1 || limit[0].type !== "plain_text" || !/^(?:0+)$/.test(limit[0].text || ""))) throw new Error("Active Worker Tavily daily extraction quota is not verifiably zero");
+          // Image generation is independently paid: no implicit activation of the pilot.
+          // Missing BOR_IMAGES_ENABLED is safe-off for the Worker, but unknown/secret/true is not.
+          const images = named("BOR_IMAGES_ENABLED");
+          const imageState = images.length === 0 ? "absent" :
+            images.length === 1 && images[0].type === "plain_text" && images[0].text === "false" ? "off" : "unverifiable-or-on";
+          console.log("Active Image Assistant binding state:", imageState);
+          if (imageState !== "absent" && imageState !== "off") throw new Error("Active Worker image generation is not verifiably OFF");
           const releaseMessage = deployment?.annotations?.["workers/message"];
           const expected = "github-sha:" + process.env.EXPECTED_MAIN_SHA;
           if (releaseMessage !== expected) {
@@ -71,6 +89,7 @@ jobs:
             console.log("Production release synchronization: MATCHED");
           }
           console.log("Active Worker URL Reader: OFF");
+          console.log("Active Worker paid Image Assistant: OFF");
           console.log("Active Worker Tavily Extract daily quota: absent or zero");
           console.log("Binding names and secret values are not printed");
           NODE
