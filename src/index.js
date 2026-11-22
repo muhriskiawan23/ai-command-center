@@ -1338,11 +1338,18 @@ async function findSavedChatRequest(env, user, requestId) {
   try {
     const row = await env.DB.prepare(
       "SELECT u.conversation_id, a.id AS response_id, a.content AS response, a.links_json AS links_json FROM messages u " +
-      "JOIN messages a ON a.conversation_id = u.conversation_id AND a.user_id = u.user_id " +
-      "AND a.role = 'assistant' AND a.id > u.id " +
-      "WHERE u.user_id = ? AND u.idempotency_key = ? ORDER BY a.id ASC LIMIT 1"
+      // D1 batch writes the user+assistant pair atomically. Only the very next
+      // message for this owner/conversation can be the saved reply. Never
+      // attach a later unrelated assistant to a stranded user request.
+      "LEFT JOIN messages a ON a.id = (SELECT MIN(next.id) FROM messages next " +
+      "WHERE next.conversation_id = u.conversation_id AND next.user_id = u.user_id AND next.id > u.id) " +
+      "AND a.role = 'assistant' " +
+      "WHERE u.user_id = ? AND u.idempotency_key = ? ORDER BY u.id ASC LIMIT 1"
     ).bind(user.id, requestId).first();
-    return row?.response ? { conversationId: row.conversation_id, responseId: Number(row.response_id), response: row.response, links: row.links_json ? safeParseLinks(row.links_json) : [] } : null;
+    if (!row) return null;
+    if (!row.response_id || typeof row.response !== "string" || !row.response)
+      return { incomplete: true };
+    return { conversationId: row.conversation_id, responseId: Number(row.response_id), response: row.response, links: row.links_json ? safeParseLinks(row.links_json) : [] };
   } catch (error) {
     if (/no such column/i.test(String(error?.message))) return null;
     throw error;
@@ -1676,6 +1683,7 @@ export default {
       if (user && body.requestId) {
         try {
           const saved = await findSavedChatRequest(env, user, body.requestId);
+          if (saved?.incomplete) return json({ error: "Permintaan sebelumnya belum memiliki pasangan jawaban tersimpan. Muat ulang riwayat sebelum mengulang.", code: "chat_turn_incomplete" }, 409);
           if (saved) return json({ agent: AGENTS[agentId].name, model: MODEL, workflow: "idempotent-replay", response: protectSavedResponse(saved.response, env, language, message), links: saved.links, conversationId: saved.conversationId, responseId: saved.responseId, saved: true, replayed: true });
         } catch (error) {
           console.error("Chat idempotency lookup failed:", safeError(error));
@@ -1886,7 +1894,7 @@ export default {
             if (body.requestId) {
               try {
                 const saved = await findSavedChatRequest(env, user, body.requestId);
-                if (saved) {
+                if (saved && !saved.incomplete) {
                   await refundUsage(env, usage.day, usage.charges);
                   return json({ agent: AGENTS[agentId].name, model: MODEL, workflow: "idempotent-replay", response: protectSavedResponse(saved.response, env, language, message), links: saved.links, conversationId: saved.conversationId, responseId: saved.responseId, saved: true, replayed: true });
                 }
