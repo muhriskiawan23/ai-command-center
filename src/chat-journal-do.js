@@ -149,7 +149,7 @@ export class ChatJournalDurableObject {
         const known=['invalid_event','account_not_initialized','owner_mismatch','deleted_account',
           'deleted_event','event_id_conflict','deleted_conversation','conversation_id_reused','conversation_missing'];
         return err(known.includes(error?.message)?error.message:'journal_storage_unavailable',
-          error?.message==='invalid_event'?400:error?.message==='owner_mismatch'?403:409);
+          !known.includes(error?.message)?503:error?.message==='invalid_event'?400:error?.message==='owner_mismatch'?403:409);
       }
     }
     if(request.method==='GET'&&url.pathname==='/read'){
