@@ -29,7 +29,7 @@ test('read-only production safety checks run after merge of sensitive Worker and
 
 test('audit checks the active 100-percent Worker version, not only source config', () => {
   assert.match(workflow, /\/deployments\?per_page=1/);
-  assert.match(workflow, /active\.length !== 1 \|\| active\[0\]\.percentage !== 100/);
+  assert.ok(workflow.includes('active?.length !== 1 || active[0].percentage !== 100'));
   assert.match(workflow, /\/versions\/["']? \+ encodeURIComponent\(active\[0\]\.version_id\)/);
   assert.match(workflow, /named\("URL_READER_ENABLED"\)/);
   assert.match(workflow, /named\("TAVILY_EXTRACT_DAILY_URL_LIMIT"\)/);
