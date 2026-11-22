@@ -5,7 +5,7 @@ const yaml=readFileSync('.github/workflows/bor-ai-private-chat-backup-release.ym
 
 test('private D1 backup release is manual only, defaults to non-writing PLAN with production lock',()=>{
   assert.match(yaml,/workflow_dispatch:/);
-  assert.match(yaml,/options: \[plan, deploy, trigger\]/);
+  assert.match(yaml,/options: \[plan, preflight, deploy, trigger\]/);
   assert.match(yaml,/default: plan/);
   assert.match(yaml,/environment: production/);
   assert.match(yaml,/group: bor-ai-production-deploy/);
@@ -88,4 +88,26 @@ test('dedicated deployment and D1 export token status + pinned metadata are read
   assert.match(step,/BOR_PRIVATE_D1_EXPORT_TOKEN/);
   assert.match(step,/console\.log\('Dedicated Cloudflare tokens are active/);
   assert.doesNotMatch(step,/method:'POST'|wrangler@|d1 execute|d1 export|workflows trigger|\.sql\b|r2 bucket create|secret put|console\.log\(json/);
+});
+
+test('manual PREFLIGHT uses scoped read-only API checks without deployment or export',()=>{
+  assert.ok(yaml.includes('options: [plan, preflight, deploy, trigger]'));
+  assert.ok(yaml.includes('if [[ "$PHASE" == "plan" || "$PHASE" == "preflight" ]]'));
+  assert.ok(yaml.includes('PLAN/PREFLIGHT must not receive mutation or export confirmations'));
+  const gate=yaml.indexOf('- name: Fail before deploy if either dedicated backup credential is unavailable');
+  const readonly=yaml.indexOf('- name: Read-only verify dedicated Cloudflare credentials and exact pinned D1 metadata');
+  const deploy=yaml.indexOf('- name: Deploy ONLY the isolated backup Worker and Cloudflare Workflow');
+  const trigger=yaml.indexOf('- name: Manually trigger exactly one owner-approved Cloudflare backup instance');
+  const report=yaml.indexOf('- name: Report read-only PREFLIGHT only, no exports or releases');
+  assert.ok(gate>=0&&readonly>gate&&deploy>readonly&&trigger>deploy&&report>trigger);
+  for(const step of [yaml.slice(gate,readonly),yaml.slice(readonly,deploy)])
+    assert.ok(step.includes("inputs.phase == 'deploy' || inputs.phase == 'preflight'"));
+  const deployStep=yaml.slice(deploy,trigger);
+  assert.ok(deployStep.includes("if: ${{ inputs.phase == 'deploy' }}"));
+  assert.ok(!deployStep.includes("inputs.phase == 'preflight'"));
+  const triggerStep=yaml.slice(trigger,report);
+  assert.ok(triggerStep.includes("if: ${{ inputs.phase == 'trigger' }}"));
+  assert.ok(!triggerStep.includes("inputs.phase == 'preflight'"));
+  assert.ok(yaml.slice(report).includes("if: ${{ inputs.phase == 'preflight' }}"));
+  assert.ok(yaml.slice(report).includes('no D1 export, no R2 writes, no restore'));
 });
