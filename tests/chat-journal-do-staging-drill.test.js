@@ -8,7 +8,7 @@ import {collectPrivateDoSnapshot,replayDoSnapshotOffline}
 const TOKEN='synthetic-private-token-for-offline-recovery-tests';
 function setup(){
   const db=new DatabaseSync(':memory:');
-  const sql={exec(query,...args){return {toArray:()=>db.prepare(query).all(...args)};}};
+  const sql={exec(query,...args){const rows=db.prepare(query).all(...args);return {toArray:()=>rows};}};
   const storage={sql,transactionSync(callback){
     db.exec('BEGIN IMMEDIATE');
     try{const value=callback();db.exec('COMMIT');return value;}
