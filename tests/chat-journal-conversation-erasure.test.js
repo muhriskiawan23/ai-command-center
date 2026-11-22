@@ -52,8 +52,7 @@ test('deleting one chat erases all source text, title and feedback but preserves
       assert.equal(restored.prepare('SELECT content FROM recovered_messages WHERE user_id=?').get('owner-two').content,'OTHER_OWNER_UNTOUCHED');
       assert.deepEqual(replaySyntheticJournal(h.journal,restored),{applied:0,lastSeq:9});
     } finally {restored.close();}
-    h.add('recreate-deleted','conversation.created',{conversation_id:'conv-one',title:'Recreate after erase'});
-    assert.throws(()=>replaySyntheticJournal(h.journal,h.primary),/journal_conversation_resurrection/);
+    assert.throws(()=>h.add('recreate-deleted','conversation.created',{conversation_id:'conv-one',title:'Recreate after erase'}),/journal_conversation_id_reused/);
   } finally {h.close();}
 });
 
@@ -71,14 +70,13 @@ test('delete-all erases every owned conversation while keeping other-account con
       assert.equal(restored.prepare('SELECT COUNT(*) n FROM recovered_messages WHERE user_id=?').get('owner-one').n,0);
       assert.equal(restored.prepare('SELECT COUNT(*) n FROM recovered_messages WHERE user_id=?').get('owner-two').n,1);
     } finally {restored.close();}
-    h.add('recreate-duplicate','conversation.created',{conversation_id:'conv-new',title:'Should not revive'});
-    assert.throws(()=>replaySyntheticJournal(h.journal,h.primary),/journal_conversation_resurrection/);
+    assert.throws(()=>h.add('recreate-duplicate','conversation.created',{conversation_id:'conv-new',title:'Should not revive'}),/journal_conversation_id_reused/);
   } finally {h.close();}
 });
 
 test('cross-owner deletion and fabricated redaction fail without erasing other-account data',()=>{
   const h=setup();try {
-    assert.throws(()=>h.add('malicious-delete','conversation.deleted',{conversation_id:'conv-two'}),/journal_conversation_not_active/);
+    assert.throws(()=>h.add('malicious-delete','conversation.deleted',{conversation_id:'conv-two'}),/journal_conversation_ownership_mismatch/);
     assert.match(persisted(h.journal),/OTHER_OWNER_UNTOUCHED/);
     h.journal.prepare(
       "UPDATE recovery_journal SET payload_json=?,redacted=1 WHERE event_id='conversation-one'"
