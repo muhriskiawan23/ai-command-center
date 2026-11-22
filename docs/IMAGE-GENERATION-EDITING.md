@@ -1,56 +1,46 @@
-# BOR AI image generation and editing
+# BOR AI image generation and editing — current launch/runbook
 
-Implemented MVP, disabled until production setup is complete. This is not evidence of a live OpenAI image call or commercial payment integration.
+**Status (2026-11-22): source implemented; paid Image Assistant NOT LIVE.** This is documentation, not authorization to spend API credits, modify production D1, enable images, or deploy a Worker. Keep existing production URL Reader functioning. See [pilot controls](OPENAI-IMAGE-PILOT.md), [explicit image deploy gate](IMAGE-PILOT-EXPLICIT-DEPLOY-GATE.md), [image-only D1 release](IMAGE-ONLY-D1-MANUAL-RELEASE.md), and [Reader-preserving release](READER-PRESERVING-MEDIA-RELEASE.md).
 
-## User experience
+## User experience and supported inputs
 
-Automatic prompt detection or explicit Alat → Buat gambar / Edit foto. Questions such as “Ini foto apa?” still use vision. “Bagaimana cara membuat poster?” stays in chat. The image dialog discloses OpenAI processing, versioned credit cost, output size/format and retention before submission. JPG/PNG/WEBP originals (up to 5 MiB) remain in volatile browser state until submission; editing does not use the smaller JPEG prepared for vision.
+Users can ask to generate/edit images from a prompt or use the image tools. Questions *about* an image remain in chat/vision, not a paid image job. Originals for edit are JPG/PNG/WEBP up to 5 MiB; they are submitted only after user consent. Image outputs are currently **1024×1024 only** (PNG, JPEG, WEBP), with **low** pilot quality, not arbitrary portrait or landscape dimensions. High-definition edits can change visual details. No guarantees of exact text, pixel-perfect upscaling, PDF export, masks, or precise social-story dimensions.
 
-Queued/processing jobs display in chat; Gambar saya restores the newest 50 jobs after reload. Completed cards support preview, authenticated download, edit again, variation, regenerate and deletion. PNG, JPEG and WEBP are supported. Portrait is 1024×1536, not an exact 9:16 Instagram Story template. PDF export, pixel-preserving super-resolution, region masks and exact layout templates remain future work. “HD” uses generative editing and can alter details.
+Authenticated previews/downloads, repeat/edit actions, job history and per-conversation association are implemented in source. This is **not** evidence that the Media Lab assets, bindings or OpenAI provider processing have been deployed.
 
-## API
+## Image API
 
 | Endpoint | Purpose |
 | --- | --- |
-| `GET /api/images/config` | Public availability, tariff, fixed sizes/formats; no secrets |
-| `POST /api/images/jobs` | Session + same-origin + rate limit; reserve credits and enqueue |
-| `GET /api/images/jobs` | Owner's last 50 jobs and image-credit balance |
-| `GET /api/images/jobs/:id` | Owner's status and output metadata |
-| `DELETE /api/images/jobs/:id` | Delete completed/failed output and erase prompt |
-| `GET /api/files/:id/preview` | Private inline image |
-| `GET /api/files/:id/download` | Private attachment download |
+| `GET /api/images/config` | Public disabled/enabled status, exact pilot constraints and tariff; no secrets |
+| `POST /api/images/jobs` | Authenticated, same-origin, versioned-credit quote, reserve and queue |
+| `GET /api/images/jobs` | Own latest 50 jobs and image-credit balance |
+| `GET /api/images/jobs/:id` | Owned job status/metadata |
+| `DELETE /api/images/jobs/:id` | Owner delete and erase source/output metadata |
+| `GET /api/files/:id/preview` | Authenticated private preview |
+| `GET /api/files/:id/download` | Authenticated private file download |
 
-POST fields: `requestId` (UUID), `tariffVersion` and `maxCredits` (must match current quote), `mode` (`generate`/`edit`), `prompt` (1–4000 chars), `outputFormat` (`png`/`jpeg`/`webp`), `size` (1024×1024 / 1024×1536 / 1536×1024). Edit requires exactly one `sourceImage` (base64 data URL) or owned completed `sourceJobId`. No arbitrary remote source URLs. Unavailable images receive an explicit feature-status notice rather than fabricated image results from a text model.
+Submission requires a UUID `requestId`, `mode` generate/edit, a nonempty `prompt` (up to 4,000 characters), `outputFormat` png/jpeg/webp, `size=1024x1024`, and a matching `tariffVersion` / `maxCredits`. Edit requires an uploaded image or one owned previous result; arbitrary remote image URLs are not accepted.
 
-## Reliability, money and privacy
+## Safety, retention and cost controls
 
-D1 migration 0012 adds jobs, image wallets and a credit ledger. Database triggers reserve credits atomically on job creation, reject insufficient funds, and refund once on failure. Idempotency is per account/request UUID and a hash of normalized inputs. Changed payloads with the same ID return 409. Job IDs are checked against the signed-in owner on every status, download, reuse and delete request.
+- R2 objects are private, stored under `images/`, and use a seven-day `bor-image-retention` bucket lifecycle. Lifecycle expiration is asynchronous and **does not erase prompts or job metadata in D1**. The scheduled cleanup removes expired source/output objects, erases expired prompts, and handles stale jobs. **Pausing paid generation must preserve D1/R2 bindings and the cleanup cron**; `cleanupImageJobs` also runs when `BOR_IMAGES_ENABLED=false` if those bindings remain present (PR #377).
+- D1 image schema is **0012** (`image_jobs`, wallets, atomic ledger reserve/refund, durable pilot meter) and **0016** (nullable conversation association). Neither migration is yet applied to the production `bor-ai-chat` database. Image wallets are independent of subscription/chat quota/billing; no payment-triggered image credits are live.
+- Only job IDs are sent on the dedicated `bor-ai-image-jobs` Queue. Claimed jobs must never retry an already-started provider call. Provider-billing uncertainty pauses future attempts until reviewed; failure refunds image credits but does not imply zero OpenAI cost.
+- Configured pilot model is `gpt-image-2` at `quality=low`, one 1024×1024 output/job, one user job/day, two jobs/day globally, and an operator-set **1–10 lifetime job admission cap**. Availability, account eligibility, actual provider prices and exact USD exposure **must be independently verified**. This is an attempt cap, **not a monetary hard cap**; protect the OpenAI account with separate spending controls and automatic recharge disabled.
+- Private downloads require an authenticated, owning user; image output is not served through a public `r2.dev` URL or custom bucket domain. Never print API keys, prompts, provider error bodies or private images into CI logs.
 
-Cloudflare Queue messages contain only job IDs. A compare-and-set `queued → processing` claim allows at most one paid invocation. Duplicate deliveries never regenerate a claimed job. A provider timeout is ambiguous: no automatic paid retry; customer credits are refunded and the founder may still incur provider cost. Daily attempt caps (3/account, 20/global by default), concurrency 2, medium quality and fixed sizes bound exposure. These are attempt controls, not a guaranteed USD cost ceiling. Failed attempts still count for daily caps.
+## Production preparation order — owner/security gates
 
-Store measured input/output/total token usage when returned. No claim that missing usage means zero cost. Image credits are a separately funded wallet; existing Basic/Pro chat prices, payment flows and chat quotas are untouched. Subscription/top-up payment settlement must later issue idempotent ledger grants after verified payment. No public credit-grant endpoint or free automatic balance exists.
+1. **Already verified read-only (2026-11-22):** existing `bor-ai-images` bucket, no public R2 domains, and dedicated `bor-ai-image-jobs` Queue ([readiness audit attempt 8](https://github.com/muhriskiawan23/ai-command-center/actions/runs/44933803400)). Owner-provided dashboard state shows enabled `bor-image-retention` rule scoped to `images/` and seven days. The separate `scripts/verify-image-resource-preflight.mjs` can GET-check the exact lifecycle/Queue criteria before a future release. Never provision, expose, or alter these resources implicitly during normal deployment.
+2. **Database review only:** image-only manual workflow `.github/workflows/bor-ai-image-d1-release.yml` **`phase=plan`** passed on [run 44986999616](https://github.com/muhriskiawan23/ai-command-center/actions/runs/44986999616), confirming exactly the two pending image migrations, no synthetic billing SQL, and current Time Travel bookmark. This did **not** apply SQL. `phase=apply` needs **separate explicit owner/security approval**, production data/impact review and a tested, operator-controlled recovery plan. A bookmark *fingerprint* in CI cannot be used for restoration; Time Travel restore may destructively erase newer chats. Do not couple D1 migration to normal Worker deployment.
+3. **Preserve the production Reader:** current deployed URL Reader is ON, but `main/wrangler.jsonc` has `URL_READER_ENABLED=false`. **Never perform an ordinary production Worker deployment**, including to publish Media Lab, without verifying active Worker settings and an independently approved Reader-preserving workflow. Issues [#351](https://github.com/muhriskiawan23/ai-command-center/issues/351) and [#156](https://github.com/muhriskiawan23/ai-command-center/issues/156) remain open. Keep browser automation out of the image release.
+4. **Secret, tariff and payment review:** owner verifies OpenAI API Platform credit, org/model eligibility, rates and separate spend ceiling before installing `OPENAI_API_KEY` as a **Cloudflare Worker secret** (never GitHub plaintext variables, JS frontend or chat). Review `IMAGE_CREDITS_GENERATE`, `IMAGE_CREDITS_EDIT`, `IMAGE_TARIFF_VERSION`, and `IMAGE_PROVIDER_TOTAL_ATTEMPT_LIMIT` (1–10). No automatic image-credit grant, checkout, top-up, or OpenAI paid smoke is approved by this guide.
+5. **Separate paid pilot dispatch, only after gates above:** the manual `BOR AI production deploy` workflow requires `BOR_IMAGES_ENABLED=true` in its approved production environment, explicit `enable_image_pilot=true` and exact `image_pilot_confirmation=CONFIRM_BOR_AI_IMAGE_PILOT_RELEASE`. It **verifies**, but does not create, R2/Queue/lifecycle. Run with `apply_db_migrations=false`, `enable_billing_shadow=false`, `run_tavily_smoke=false`, and an independently approved Reader-preserving selection. Never interpret an image-enabled flag by itself as consent for paid provider work.
+6. **Post-release verification:** verify active binding names `IMAGE_FILES`, `IMAGE_QUEUE`, `OPENAI_API_KEY` (not secret values), Media Lab assets, URL Reader continuity, private download ownership, and D1 history. Only after the owner's separate consent, run at most one bounded, chargeable pilot image request and reconcile OpenAI provider-side usage. Expand generate/edit tests and public availability only after confirmed economics and privacy.
 
-Use `node scripts/image-credit-grant.mjs USER_ID CREDITS UNIQUE_REFERENCE > image-credit-grant.sql` to prepare reviewable, idempotent founder grants. Apply the SQL using the existing D1 operator process. The script does not execute money movement. Never grant test credits to a customer based only on an unverified payment event.
+## Pausing, recovery, and non-goals
 
-R2 is private: no r2.dev URL or custom public domain. Worker downloads require session ownership and use `private, no-store`, `nosniff` and attachment headers. Provider requests go only to the fixed OpenAI Images endpoints with redirects rejected. Original edit sources are deleted after terminal processing; interrupted work is failed/refunded after 15 minutes by a 10-minute cron. Output access expires after seven days. Cron erases prompts/files in batches of 100; R2 lifecycle provides a seven-day orphan-object backstop (physical lifecycle deletion is asynchronous). D1 user deletion cascades image metadata; R2 objects then age out under lifecycle. Logs do not contain raw errors, keys, prompts or pixels. Provider retention follows the configured OpenAI account terms; the app's seven-day policy describes BOR storage.
+Pausing Image Assistant must block **new paid jobs** while retaining storage bindings, schedules and access to previously generated files until their retention expires. Do **not** use an unreviewed disabled-baseline deployment to pause the pilot: it could remove image storage/cleanup bindings and **turn off the active URL Reader**. Cloudflare R2 lifecycle is only an object-store backstop. If a post-release issue occurs, halt additional paid dispatch, inspect outstanding `image_pilot_meter` state, preserve evidence and follow the reviewed rollback procedure; do not blindly restore a production D1 bookmark.
 
-## Activation and deployment
-
-1. Apply reviewed migration `0012_image_jobs.sql` with the existing production migration process and capture a D1 recovery bookmark first. Run the production workflow with `apply_db_migrations=true` only after review.
-2. Configure `OPENAI_API_KEY` as a **Cloudflare Worker secret**, using an OpenAI account with image-model access and billing. Do not put keys in source, GitHub variables or chat. Default image model is `gpt-image-2.5-sunburst`; the runtime variable can be changed after model/cost validation.
-3. Set GitHub repository variables `IMAGE_CREDITS_GENERATE`, `IMAGE_CREDITS_EDIT` to reviewed positive integer costs, and `IMAGE_TARIFF_VERSION` to a stable rate version. Validate the USD value of credits against observed API costs before commercial sales. Example values in tests are synthetic, not approved prices.
-4. Set repository variable `BOR_IMAGES_ENABLED=true`, then run the existing **BOR AI production deploy** workflow. Its image branch validates the generated config, verifies the Worker secret name, provisions the dedicated R2 bucket and queue, confirms the image triggers exist, and deploys bindings/cron. Cloudflare token needs R2, Queues, Workers and D1 permissions. Resource provisioning rejects public bucket domains.
-5. Grant bounded internal-test image credits using the reviewed SQL. Perform one real generation, one uploaded-image edit, download both files, reload the gallery and verify ledger/usage. Local/CI provider stubs are not evidence of live provider access or image quality.
-
-Routine releases read the same repository variables so enabled image bindings survive deployments. The standard `wrangler.jsonc` is deliberately disabled and remains the rollback config. Setting `BOR_IMAGES_ENABLED=false` in repository variables and redeploying turns off paid submissions; preserved D1/R2 records are not deleted. Pausing submissions alone can also be done by setting the Worker flag false while retaining bindings, allowing private downloads until expiry. Do not use the disabled baseline deployment if you intend to keep gallery/download bindings active during an incident.
-
-## Validation
-
-Real SQLite with production migrations verifies reservation/refund, request replay, cross-account isolation, source byte forwarding, failed queues, stale recovery and file expiry. Playwright tests exercise generation → preview → download → reload gallery → edit on mobile and desktop using a deterministic image provider, plus guest and disabled-feature paths. No test spends provider money.
-
-API references checked during implementation:
-
-- https://developers.openai.com/api/docs/guides/image-generation
-- https://developers.openai.com/api/reference/resources/images/methods/generate
-- https://developers.cloudflare.com/queues/configuration/configure-queues/
-- https://developers.cloudflare.com/api/resources/r2/subresources/buckets/subresources/lifecycle/methods/update/
+Offline SQLite and Playwright tests use a synthetic image provider and never demonstrate live OpenAI compatibility or production readiness. This document must not be treated as authorization for a production migration, deployment, financial transaction or external user-content transfer.
