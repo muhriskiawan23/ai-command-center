@@ -69,3 +69,23 @@ test('both dedicated secrets are required BEFORE backup Worker deployment, not c
   assert.match(step,/Cloudflare account ID missing or malformed/);
   assert.doesNotMatch(step,/wrangler@|curl |d1 export|r2 bucket|secret put|echo.*\$\{(?:BOR_PRIVATE_D1_EXPORT_TOKEN|CLOUDFLARE_BACKUP_DEPLOY_TOKEN)/);
 });
+
+test('dedicated deployment and D1 export token status + pinned metadata are read-only checked before Worker deploy',()=>{
+  const credentialGate=yaml.indexOf('- name: Fail before deploy if either dedicated backup credential is unavailable');
+  const readonlyGate=yaml.indexOf('- name: Read-only verify dedicated Cloudflare credentials and exact pinned D1 metadata');
+  const deploy=yaml.indexOf('- name: Deploy ONLY the isolated backup Worker and Cloudflare Workflow');
+  assert.ok(credentialGate>=0&&readonlyGate>credentialGate&&deploy>readonlyGate);
+  const step=yaml.slice(readonlyGate,deploy);
+  assert.match(step,/inputs\.phase == 'deploy'/);
+  assert.match(step,/method:'GET'/);
+  assert.match(step,/redirect:'error'/);
+  assert.match(step,/user\/tokens\/verify/);
+  assert.match(step,/verified\.status!=='active'/);
+  assert.match(step,/PINNED_D1_ID/);
+  assert.match(step,/db\.uuid!==PINNED_D1_ID\|\|db\.name!=='bor-ai-chat'/);
+  assert.match(step,/workers\/scripts\?per_page=1/);
+  assert.match(step,/CLOUDFLARE_BACKUP_DEPLOY_TOKEN/);
+  assert.match(step,/BOR_PRIVATE_D1_EXPORT_TOKEN/);
+  assert.match(step,/console\.log\('Dedicated Cloudflare tokens are active/);
+  assert.doesNotMatch(step,/method:'POST'|wrangler@|d1 execute|d1 export|workflows trigger|\.sql\b|r2 bucket create|secret put|console\.log\(json/);
+});
