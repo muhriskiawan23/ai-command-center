@@ -1,0 +1,57 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+const yaml=readFileSync('.github/workflows/bor-ai-private-chat-backup-release.yml','utf8');
+
+test('private D1 backup release is manual only, defaults to non-writing PLAN with production lock',()=>{
+  assert.match(yaml,/workflow_dispatch:/);
+  assert.match(yaml,/options: \[plan, deploy, trigger\]/);
+  assert.match(yaml,/default: plan/);
+  assert.match(yaml,/environment: production/);
+  assert.match(yaml,/group: bor-ai-production-deploy/);
+  assert.match(yaml,/cancel-in-progress: false/);
+  assert.match(yaml,/refs\/heads\/main/);
+  assert.match(yaml,/reviewed_main_sha:/);
+  assert.match(yaml,/\"\$SHA_APPROVED\" == \"\$GITHUB_SHA\"/);
+  assert.match(yaml,/git ls-remote origin refs\/heads\/main/);
+  assert.doesNotMatch(yaml,/^\s+(?:push|pull_request|schedule):/m);
+});
+test('deploy can only target separate backup Worker after private bucket GET audit, no auto provisioning',()=>{
+  const gate=yaml.indexOf('- name: Verify existing dedicated R2 backup bucket is private (GET only)');
+  const deploy=yaml.indexOf('- name: Deploy ONLY the isolated backup Worker and Cloudflare Workflow');
+  const secret=yaml.indexOf('- name: Set the restricted export token only on the isolated Worker');
+  assert.ok(gate>0&&deploy>gate&&secret>deploy);
+  assert.match(yaml,/DEPLOY_BOR_PRIVATE_CHAT_BACKUP/);
+  assert.match(yaml,/DEPLOY_ISOLATED_BOR_CHAT_PRIVATE_BACKUP_WORKFLOW/);
+  assert.match(yaml,/BOR_PRIVATE_BACKUP_BUCKET_REVIEWED: bor-ai-chat-private-backups/);
+  assert.match(yaml,/BOR_PRIVATE_BACKUP_SIGNED_HOST: \$\{\{ inputs\.signed_host \}\}/);
+  assert.match(yaml,/secrets\.CLOUDFLARE_BACKUP_DEPLOY_TOKEN/);
+  assert.match(yaml,/secrets\.BOR_PRIVATE_D1_EXPORT_TOKEN/);
+  assert.match(yaml,/wrangler@4\.165\.0 deploy --experimental-auto-create=false/);
+  assert.match(yaml,/wrangler@4\.165\.0 secret put BOR_D1_EXPORT_TOKEN/);
+  assert.doesNotMatch(yaml,/wrangler\.jsonc\s*$/m);
+  assert.doesNotMatch(yaml,/d1 migrations apply|d1 time-travel restore|d1 backup restore/);
+  assert.doesNotMatch(yaml,/r2 bucket create|r2 object put|queue create|OPENAI_API_KEY/);
+});
+test('trigger has separate low-traffic owner consent and never logs SQL, R2 object or signed download URL',()=>{
+  const trigger=yaml.indexOf('- name: Manually trigger exactly one owner-approved Cloudflare backup instance');
+  const plan=yaml.indexOf('- name: Report PLAN only, no real backups');
+  assert.ok(trigger>0&&plan>trigger);
+  const run=yaml.slice(trigger,plan);
+  assert.match(yaml,/TRIGGER_BOR_PRIVATE_CHAT_BACKUP/);
+  assert.match(yaml,/I_ACCEPT_BRIEF_D1_EXPORT_UNAVAILABILITY/);
+  assert.match(yaml,/if: \$\{\{ inputs\.phase == 'trigger' \}\}/);
+  assert.match(run,/wrangler@4\.165\.0 workflows trigger bor-ai-chat-private-backup-v1/);
+  assert.match(run,/owner-approved-private-backup/);
+  assert.match(run,/--id "\$instance" > "\$RUNNER_TEMP\/bor-ai-backup-trigger\.txt"/);
+  assert.match(run,/Trigger is not backup completion or independently proven recovery/);
+  assert.doesNotMatch(run,/cat "\$RUNNER_TEMP|d1 export|\.sql|R2_BUCKET\.get\(/);
+});
+test('safe-off PLAN dry-run explicitly checks production resources remain isolated',()=>{
+  assert.match(yaml,/node scripts\/prepare-chat-private-backup-staging\.mjs/);
+  assert.match(yaml,/cfg\.vars\.BOR_BACKUP_ENABLED!=='false'/);
+  assert.match(yaml,/--dry-run --experimental-auto-create=false/);
+  assert.match(yaml,/tests\/bor-chat-private-backup-staging\.test\.js/);
+  assert.match(yaml,/tests\/bor-ai-private-backup-r2-audit\.test\.js/);
+  assert.match(yaml,/No production Worker deploy, D1 export, R2 write, restore, schema mutation or paid image call/);
+});
