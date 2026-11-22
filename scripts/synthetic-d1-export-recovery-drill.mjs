@@ -65,6 +65,26 @@ export function validRows(rows) {
     throw Error('synthetic_drill_content_or_tombstone_mismatch');
   return digest(actual);
 }
+
+// D1's query endpoint may wrap batched statements in its own transaction.
+// For this synthetic-only SQL shape, remove dump-only wrappers and reject
+// every statement except CREATE/INSERT of the single known synthetic table.
+export function normalizeSyntheticDumpForQuery(dump) {
+  if(typeof dump!=='string'||dump.length>1024*1024||
+     !dump.includes('SYNTHETIC_ONLY_TOMBSTONE'))throw Error('synthetic_drill_dump_unexpected');
+  const statements=dump.split(';').map(x=>x.trim()).filter(Boolean);
+  const allowed=[], wrappers=/^(?:BEGIN(?:\s+TRANSACTION)?|COMMIT|END(?:\s+TRANSACTION)?|PRAGMA\s+(?:defer_foreign_keys|foreign_keys)\s*=\s*(?:TRUE|FALSE|ON|OFF|0|1))$/i;
+  let creates=0,inserts=0;
+  for(const item of statements){
+    if(wrappers.test(item))continue;
+    if(/^CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?["'\[]?synth_events\b/i.test(item))creates++;
+    else if(/^INSERT\s+INTO\s+["'\[]?synth_events\b/i.test(item))inserts++;
+    else throw Error('synthetic_drill_dump_unapproved_sql_statement');
+    allowed.push(item);
+  }
+  if(creates!==1||inserts<1)throw Error('synthetic_drill_dump_schema_or_rows_missing');
+  return allowed.join(';\n')+';';
+}
 function timeDelay(ms) {return new Promise(resolve=>setTimeout(resolve,ms));}
 
 // The HTTP helper never logs response bodies, bearer token, signed URL or SQL.
@@ -212,7 +232,7 @@ export async function runSyntheticD1Drill(env,{fetcher=fetch,log=console.log,sle
       throw Error('synthetic_drill_export_content_unexpected');
     // A distinct, newly created D1 is the ONLY import target.
     const target=await safeCreate(names.target);
-    await sqlQuery(target,dump,'restore');
+    await sqlQuery(target,normalizeSyntheticDumpForQuery(dump),'restore');
     const restoredHash=validRows(await exactRows(target));
     if(restoredHash!==originalHash)throw Error('synthetic_drill_recovery_checksum_mismatch');
     outcome={success:true,host:link.hostname,syntheticEvents:4,
