@@ -18,19 +18,35 @@ test('image schema inspection requires complete typed objects and chat associati
     /image_job_column_missing/);
   assert.throws(()=>verifyImageProductionSchema('bogus',validColumns()),/image_schema_metadata_unverifiable/);
 });
-test('image-only production migration workflow is manual and cannot deploy or restore Worker/chat',()=>{
+test('legacy image-schema workflow is strict read-only inventory; cannot bypass stronger production gate',()=>{
   const yaml=readFileSync(new URL('../.github/workflows/bor-ai-image-schema-release.yml',import.meta.url),'utf8');
   assert.match(yaml,/workflow_dispatch:/);
   assert.match(yaml,/apply_image_schema:/);
-  assert.match(yaml,/APPLY_IMAGE_SCHEMA_BOR_AI/);
+  assert.match(yaml,/READ-ONLY inventory/);
+  assert.match(yaml,/APPLY_IMAGE_SCHEMA/);
+  assert.match(yaml,/if \[\[ "\$APPLY_IMAGE_SCHEMA" != "false" \|\| -n "\$OWNER_CONFIRMATION" \]\]/);
+  assert.match(yaml,/--expect-pair/);
   assert.match(yaml,/concurrency:[\s\S]*?group: bor-ai-production-deploy/);
   assert.match(yaml,/environment: production/);
-  assert.match(yaml,/if: \$\{\{ inputs\.apply_image_schema \}\}/);
-  assert.match(yaml,/--expect-pair/);
-  assert.match(yaml,/--expect-none/);
+  assert.match(yaml,/bor-ai-image-d1-release\.yml/);
+  assert.doesNotMatch(yaml,/d1 migrations apply bor-ai-chat|d1 execute bor-ai-chat|d1 time-travel restore/);
+  assert.doesNotMatch(yaml,/wrangler(?:@\S+)?\s+deploy\b|OPENAI_API_KEY|TAVILY_API_KEY/);
+});
+test('strict image D1 release requires SHA-bound owner approval and independent private recovery proof',()=>{
+  const yaml=readFileSync(new URL('../.github/workflows/bor-ai-image-d1-release.yml',import.meta.url),'utf8');
+  assert.match(yaml,/CONFIRM_IMAGE_SCHEMA_0012_0016_BOR_AI_CHAT/);
+  assert.match(yaml,/REVIEWED_PLAN_SHA.*\$\{\{ inputs\.reviewed_plan_sha \}\}/);
+  assert.match(yaml,/PRIVATE_D1_RECOVERY_EVIDENCE_REVIEWED/);
+  assert.match(yaml,/\"\$REVIEWED_PLAN_SHA\" != \"\$GITHUB_SHA\"/);
+  assert.match(yaml,/git ls-remote origin refs\/heads\/main/);
   assert.match(yaml,/d1 migrations apply bor-ai-chat --remote/);
-  assert.match(yaml,/wrangler\.image-only-migrations\.generated\.jsonc/);
-  assert.doesNotMatch(yaml,/wrangler(?:@\S+)?\s+deploy\b/);
-  assert.doesNotMatch(yaml,/d1 time-travel restore|d1 backup restore|d1 export\b/);
-  assert.doesNotMatch(yaml,/OPENAI_API_KEY|TAVILY_API_KEY|billing_shadow/);
+  assert.match(yaml,/id: approved_image_sql_apply/);
+  assert.match(yaml,/continue-on-error: true/);
+  assert.match(yaml,/steps\.approved_image_sql_apply\.outcome == 'failure'/);
+  assert.match(yaml,/image-d1-after-failed-apply\.txt/);
+  assert.match(yaml,/--expect-pair/);
+  assert.match(yaml,/Fail a refused migration even if postfailure inventory is unchanged/);
+  assert.match(yaml,/steps\.approved_image_sql_apply\.outcome == 'success'/);
+  assert.match(yaml,/--expect-none/);
+  assert.doesNotMatch(yaml,/d1 time-travel restore|d1 backup restore|wrangler(?:@\S+)?\s+deploy\b/);
 });

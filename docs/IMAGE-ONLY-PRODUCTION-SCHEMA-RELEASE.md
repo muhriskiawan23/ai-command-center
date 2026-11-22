@@ -1,41 +1,23 @@
-# BOR AI — isolated image-only production D1 schema release
+# BOR AI — production image-only D1 schema safety and USD 2 pilot
 
-**Status: workflow source only; no migrations applied, Worker deployed, images enabled or paid provider calls made.**
+**Verified on 22 Nov 2026:** Read-only image migration inventory and current D1 bookmark checks passed. The authorized migration workflow run [#45034518336](https://github.com/muhriskiawan23/ai-command-center/actions/runs/45034518336) **FAILED** when Cloudflare refused SQL write with permission error **7500** (the GitHub Actions token lacks D1 write access). Its confirmed preflight identified exactly two pending files; no restore was attempted. A second read-only [run #45034722545](https://github.com/muhriskiawan23/ai-command-center/actions/runs/45034722545) succeeded with **both files still pending**, so the failed attempt did not register an applied migration. No production Worker was deployed, no paid image API was invoked, and no image credits were granted.
 
-The production chat D1 is bor-ai-chat. The image-only migration pair is:
-- 0012_image_jobs.sql: image wallet/jobs, private object metadata, debit/refund triggers, lifetime provider attempt meter.
-- 0016_image_chat_history.sql: nullable image-to-conversation reference and index.
+## Two workflows — only one can write
 
-These are additive schema changes. Do not use in-place D1 Time Travel restore as a rollback; it can erase conversations written after the bookmark.
+- **BOR AI image-only D1 inventory (read only)** — file `.github/workflows/bor-ai-image-schema-release.yml`. This workflow is now **strictly read-only**. Any `apply_image_schema=true` dispatch fails before accessing Cloudflare. It checks pinned production D1 and the exact pending pair without exposing user chat or secrets.
+- **BOR AI image-only D1 schema release (manual and gated)** — file `.github/workflows/bor-ai-image-d1-release.yml`. Its default `phase=plan` performs a read-only check using *both* pinned migration configs and a current Time Travel bookmark. Only this workflow may APPLY production SQL, and only when **all** of the following are satisfied: existing protected production environment approval; the approved confirmation phrase; exact reviewed PLAN run commit SHA equals the current unchanged `main`; a separately obtained and operator-reviewed **private recovery evidence attestation**; the remote inventory contains exactly `0012_image_jobs.sql` and `0016_image_chat_history.sql`; and D1 credentials are sufficient. Bookmark fingerprint alone is **not** private backup or proof that new chat messages will survive an in-place restore.
+- The stricter workflow performs a read-only remote migration inventory **after any failed APPLY**, to distinguish a safely refused write from a partial migration. It never retries automatically and always fails if APPLY failed, even if no files were applied.
 
-The new manual workflow is **BOR AI image-only D1 schema release (no Worker deploy)**.
-Start it from main with apply_image_schema=false to inventory exact pending SQL. It
-performs an offline migration proof, checks for billing/sandbox contamination,
-pins the production database ID, and refuses any pending migrations other
-than the exact two-image pair. This read-only mode cannot change D1 or
-activate image generation.
+## To resolve Cloudflare error 7500 — owner/admin action
 
-Only after a separate review, open an independently approved production
-environment workflow dispatch and set apply_image_schema=true with the
-exact owner confirmation APPLY_IMAGE_SCHEMA_BOR_AI. The guarded workflow:
-1. Runs offline image SQL checks, verifies the exact pending pair, and obtains
-   a read-only D1 Time Travel bookmark fingerprint (no restore).
-2. Applies **only** the two files from the generated image-only migration
-   directory to the pinned existing production D1.
-3. Re-reads the pending list, requires none remain, verifies the image
-   tables/triggers/indexes and the conversation association column.
-4. Does not switch a Worker version, change the active URL Reader, grant
-   credits, call OpenAI, or activate a payment provider.
+1. In the **correct Cloudflare account** verify the existing restricted API token used by GitHub Actions has **Account / D1 / Edit** permission for the account containing the pinned **bor-ai-chat** D1 database. Prefer least privilege and a dedicated production deploy credential. Do not expose the token value, grant broad account administrator permissions, or send it in chat.
+2. If Cloudflare requires a replacement token, update the **GitHub repository production environment secret** `CLOUDFLARE_API_TOKEN` through GitHub settings; do not commit it, print it or add it to a workflow file. Audit that `CLOUDFLARE_ACCOUNT_ID` is for the same Cloudflare account.
+3. After separate protected recovery evidence review and new successful PLAN run, apply via **only** the more strictly gated workflow. Never use Time Travel restore as a routine rollback, never apply unrelated billing SQL, and never bypass a failed/partial migration check.
 
-This is **not enough to turn Image Assistant on**. A later independent
-image-only Worker release still needs the OpenAI credential present as a
-secret, private R2 and Queue binding checks, reviewed per-image tariff and
-provider cost caps, verified signed-in image credit policy and a pilot budget,
-real provider testing under an owner-approved spend ceiling, and preservation
-of the currently active URL Reader only after its safety gate #156/#351.
-Do not call the image service live until these are demonstrated.
+## USD 2 paid Image Assistant pilot guard
 
-The isolation allows image schema failures to be addressed with a forward-only
-repair instead of rewinding primary D1, preserving chat writes from after the
-schema change. It does not protect against catastrophic primary D1 loss;
-independent chat journal #382 remains necessary.
+Owner approved a **maximum USD 2 experimental image-provider budget**. The generated image Worker configuration now refuses activation unless `IMAGE_PILOT_BUDGET_USD=2` and `IMAGE_PROVIDER_TOTAL_ATTEMPT_LIMIT=1` are explicitly reviewed. Only one lifetime provider attempt (including ambiguous failures) and one image per UTC day globally may be admitted; model `gpt-image-2`, size `1024x1024`, quality `low`, and 1 output per request remain pinned. Paid image work remains OFF while `OPENAI_API_KEY` and live image bindings are unverified.
+
+**Important:** An attempt count is a conservative exposure limiter, not a mathematically guaranteed hard USD billing ceiling. Model billing is token-based, actual usage may be unknown after network failures, and provider-side billing controls may be soft limits. Before issuing any paid provider call, an operator must independently verify OpenAI project permissions, cost estimation and any enforceable usage/spend controls, plus approved pilot credit and private R2/Queue bindings. If there is no reliable budget guarantee, do not place a paid API call.
+
+The schema work is additive: no automatic restore and no modifications to existing chat content. Independent disaster recovery for primary chat loss still requires separate journal integration, backfill and staging replay in #382.

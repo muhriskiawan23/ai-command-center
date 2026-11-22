@@ -118,6 +118,10 @@ jobs:
           fi
 
       - name: Apply ONLY reviewed 0012 and 0016 image SQL (EXPLICIT MANUAL APPROVAL)
+        id: approved_image_sql_apply
+        # Never mask a failed write: capture its outcome so we can run a
+        # READ-ONLY postfailure inventory, then fail the workflow explicitly.
+        continue-on-error: true
         if: ${{ inputs.phase == 'apply' }}
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -126,8 +130,32 @@ jobs:
           set -euo pipefail
           npx --yes wrangler@4 d1 migrations apply bor-ai-chat --remote --config wrangler.image-only-migrations.generated.jsonc
 
+      - name: Inspect remote image migration state after failed apply (READ ONLY)
+        if: ${{ always() && inputs.phase == 'apply' && steps.approved_image_sql_apply.outcome == 'failure' }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Check the exact full pair remains pending. If partial, this fails
+          # closed rather than silently applying the missing half or restoring.
+          npx --yes wrangler@4 d1 migrations list bor-ai-chat --remote \
+            --config wrangler.image-only-migrations.generated.jsonc \
+            > "$RUNNER_TEMP/image-d1-after-failed-apply.txt"
+          node scripts/verify-image-schema-pending.mjs \
+            "$RUNNER_TEMP/image-d1-after-failed-apply.txt" --expect-pair
+          echo "::warning::Cloudflare D1 refused the write; both migrations remain pending. Verify GitHub Actions token D1 Edit permissions in the CORRECT account, never paste the token into chat. No auto-retry."
+
+      - name: Fail a refused migration even if postfailure inventory is unchanged
+        if: ${{ always() && inputs.phase == 'apply' && steps.approved_image_sql_apply.outcome == 'failure' }}
+        shell: bash
+        run: |
+          echo "::error::Image-only production D1 migration failed. No deployment or paid-image activation allowed."
+          exit 1
+
       - name: Check no remaining image migrations after approved apply (READ ONLY)
-        if: ${{ inputs.phase == 'apply' }}
+        if: ${{ inputs.phase == 'apply' && steps.approved_image_sql_apply.outcome == 'success' }}
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
