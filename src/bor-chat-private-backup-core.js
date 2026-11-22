@@ -105,14 +105,17 @@ export async function runPrivateBackup({env,event,step,fetcher=fetch,now=()=>new
   const c=verifyPrivateBackupPreflight(env,event);
   const api='https://api.cloudflare.com/client/v4/accounts/'+c.account+
     '/d1/database/'+c.db+'/export';
-  const bookmark=await step.do('start pinned D1 private export',
+  const exportState=await step.do('start pinned D1 private export',
     {retries:{limit:1,delay:'10 seconds',backoff:'constant'},timeout:'40 seconds'},
     async()=>{
       const result=verifyExportEnvelope(await callExport(fetcher,api,env.BOR_D1_EXPORT_TOKEN,
         {output_format:'polling',dump_options:{compatibility:'d1'}}));
-      return result.bookmark;
+      // Persist the object key with its export bookmark; a restarted Workflow
+      // must reuse exactly the same key even if UTC date changes meanwhile.
+      return {bookmark:result.bookmark,key:createPrivateBackupKey(c.instance,now())};
     });
-  const key=createPrivateBackupKey(c.instance,now());
+  const bookmark=exportState.bookmark;
+  const key=exportState.key;
   const receipt=await step.do('poll private D1 export and stream to private R2',
     {retries:{limit:15,delay:'10 seconds',backoff:'constant'},timeout:'7 minutes'},
     async()=>{
