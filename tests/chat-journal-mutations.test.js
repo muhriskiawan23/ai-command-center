@@ -159,3 +159,48 @@ test('journal-first write fails safely when projection crashes and retry recover
     assert.equal(h.primary.prepare('SELECT COUNT(*) AS n FROM recovered_messages').get().n,3);
   } finally {h.close();}
 });
+
+test('deleted account payloads are redacted without resurrecting chat on fresh replay',()=>{
+  const h=setup();try {
+    seed(h);
+    h.add('e-account-other','account.created',{},'person-2');
+    h.add('e-chat-other','conversation.created',{conversation_id:'conv-2',title:'Other chat'},'person-2');
+    h.add('e-msg-other','message.saved',{conversation_id:'conv-2',message_id:'msg-other',role:'user',content:'other owner keeps chat'},'person-2');
+    replaySyntheticJournal(h.journal,h.primary);
+    h.add('e-account-deleted','account.deleted');
+    const owned=h.journal.prepare(
+      'SELECT kind,payload_json,redacted FROM recovery_journal WHERE user_id=? ORDER BY seq'
+    ).all('person-1');
+    assert.equal(owned.length,5);
+    assert.ok(owned.slice(0,-1).every(x=>x.payload_json==='{}'&&x.redacted===1));
+    assert.equal(owned.at(-1).kind,'account.deleted');
+    assert.equal(owned.at(-1).redacted,0);
+    const data=JSON.stringify(h.journal.prepare('SELECT payload_json FROM recovery_journal').all());
+    assert.doesNotMatch(data,/Old prompt|Old response|First chat/);
+    assert.match(data,/other owner keeps chat/);
+    assert.throws(()=>h.add('e-later','message.saved',{
+      conversation_id:'conv-1',message_id:'msg-3',role:'user',content:'cannot resurrect'
+    }),/deleted_account_event/);
+    assert.equal(replaySyntheticJournal(h.journal,h.primary).lastSeq,8);
+    const restored=new DatabaseSync(':memory:');
+    try {
+      initSyntheticProjection(restored);
+      assert.equal(replaySyntheticJournal(h.journal,restored).lastSeq,8);
+      assert.equal(restored.prepare('SELECT COUNT(*) AS n FROM recovered_accounts WHERE user_id=?').get('person-1').n,0);
+      assert.equal(restored.prepare('SELECT COUNT(*) AS n FROM recovered_messages WHERE user_id=?').get('person-1').n,0);
+      assert.deepEqual(restored.prepare('SELECT message_id,content FROM recovered_messages').all(),[
+        {message_id:'msg-other',content:'other owner keeps chat'}
+      ]);
+      assert.equal(restored.prepare('SELECT COUNT(*) AS n FROM recovered_account_tombstones').get().n,1);
+    } finally {restored.close();}
+  } finally {h.close();}
+});
+
+test('manual journal redaction without matching deletion tombstone blocks replay',()=>{
+  const h=setup();try {
+    seed(h);
+    h.journal.prepare("UPDATE recovery_journal SET payload_json='{}',redacted=1 WHERE seq=3").run();
+    assert.throws(()=>replaySyntheticJournal(h.journal,h.primary),/journal_unverified_redaction/);
+    assert.equal(h.primary.prepare('SELECT seq FROM recovery_checkpoint').get().seq,2);
+  } finally {h.close();}
+});
