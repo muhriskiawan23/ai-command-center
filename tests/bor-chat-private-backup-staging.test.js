@@ -81,6 +81,23 @@ test('synthetic D1 export streams only to private R2 and returns a non-sensitive
   for(const privateValue of ['PRIVATE_FAKE','SYNTHETIC-NONPRODUCTION','CREATE TABLE',bookmark])
     assert.equal(serialized.includes(privateValue),false);
 });
+test('Workflow resume across midnight reuses persisted private R2 key, never creates a second backup path',async()=>{
+  const h=fixture();
+  let startState;
+  h.step={async do(name,_config,fn){
+    if(name==='start pinned D1 private export'){
+      if(startState===undefined)startState=await fn();
+      return startState;
+    }
+    return fn();
+  }};
+  const first=await runPrivateBackup(h);
+  h.now=()=>new Date('2026-11-24T00:02:00Z');
+  const afterRestart=await runPrivateBackup(h);
+  assert.equal(afterRestart.objectKey,first.objectKey);
+  assert.equal(h.written.size,1);
+  assert.equal(afterRestart.customerDataIncludedInOutput,false);
+});
 test('missing approval/owner, account mismatch, bucket and export credentials stop BEFORE API calls',async()=>{
   for(const change of [
     {BOR_BACKUP_ENABLED:'false'},
