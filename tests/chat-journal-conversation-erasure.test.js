@@ -100,3 +100,31 @@ test('account deletion after a conversation deletion clears even retained conver
     } finally {restored.close();}
   } finally {h.close();}
 });
+
+test('post-deletion chat writes are rejected before any sensitive payload reaches the journal',()=>{
+  const h=setup();try {
+    h.add('delete-one','conversation.deleted',{conversation_id:'conv-one'});
+    const count=h.journal.prepare('SELECT COUNT(*) n FROM recovery_journal').get().n;
+    assert.throws(()=>h.add('late-user','message.saved',{
+      conversation_id:'conv-one',message_id:'late-message',role:'user',content:'SECRET_AFTER_DELETION'
+    }),/journal_conversation_not_active/);
+    assert.throws(()=>h.add('late-feedback','feedback.set',{
+      conversation_id:'conv-one',message_id:'msg-two',rating:'down',reason:'SECRET_LATE_FEEDBACK'
+    }),/journal_conversation_not_active/);
+    assert.throws(()=>h.add('late-recreate','conversation.created',{
+      conversation_id:'conv-one',title:'SECRET_LATE_TITLE'
+    }),/journal_conversation_id_reused/);
+    assert.equal(h.journal.prepare('SELECT COUNT(*) n FROM recovery_journal').get().n,count);
+    assert.doesNotMatch(persisted(h.journal),/SECRET_AFTER_DELETION|SECRET_LATE_FEEDBACK|SECRET_LATE_TITLE/);
+    const restored=restore(h.journal);try {
+      assert.equal(restored.prepare('SELECT COUNT(*) n FROM recovered_messages WHERE user_id=?').get('owner-one').n,0);
+      assert.equal(restored.prepare('SELECT COUNT(*) n FROM recovered_conversation_tombstones WHERE user_id=?').get('owner-one').n,1);
+    } finally {restored.close();}
+    // A new conversation ID can still be created after deletion.
+    h.add('fresh-conversation','conversation.created',{conversation_id:'conv-fresh',title:'New valid chat'});
+    h.add('fresh-message','message.saved',{conversation_id:'conv-fresh',message_id:'fresh-msg',role:'user',content:'New valid message'});
+    replaySyntheticJournal(h.journal,h.primary);
+    assert.equal(h.primary.prepare('SELECT content FROM recovered_messages WHERE user_id=?').get('owner-one').content,'New valid message');
+  } finally {h.close();}
+});
+
