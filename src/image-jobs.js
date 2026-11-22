@@ -343,7 +343,9 @@ export async function consumeImageQueue(batch,env) {
   }
 }
 export async function cleanupImageJobs(env) {
-  if (!env.DB || !env.IMAGE_FILES || env.BOR_IMAGES_ENABLED !== 'true') return;
+  // Pausing paid image generation must not pause retention or stale-job refunds.
+  // Only skip cleanup when the database or private object-store binding is absent.
+  if (!env.DB || !env.IMAGE_FILES) return;
   const now = nowSeconds();
   const rows = await env.DB.prepare("SELECT * FROM image_jobs WHERE (expires_at<=? AND status!='expired') OR (status IN ('queued','processing') AND updated_at<?) OR (status='failed' AND source_key IS NOT NULL) ORDER BY updated_at LIMIT 100").bind(now,now-900).all();
   for (const row of rows.results || []) {
