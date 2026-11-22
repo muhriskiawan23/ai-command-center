@@ -7,6 +7,12 @@ Workflow: `.github/workflows/bor-ai-private-chat-backup-release.yml`.
 Available inputs on `main`:
 - `phase=plan` (default) — offline syntax/config/tests and Wrangler dry-run;
   requires **no Cloudflare backup credential** and makes **no** D1/R2 writes.
+- `phase=preflight` — manual, GET-only validation of dedicated deployment and D1
+  export token status, exact pinned D1 name/UUID and private R2 bucket metadata.
+  Requires both tokens in the protected GitHub `production` environment but **no
+  approval strings**. Makes **no** D1 export/SQL query, Worker deployment,
+  private R2 object write, restore or migration. Does not prove permission to
+  perform a future export or that existing backups are restorable.
 - `phase=deploy` — owner-reviewed 40-character PLAN SHA, exact confirmation,
   vetted signed-download URL hostname, dedicated private R2 bucket audit
   and reviewed private backup service credential required. Deploys only
