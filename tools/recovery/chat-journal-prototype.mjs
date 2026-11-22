@@ -3,7 +3,8 @@
 // No production data, Cloudflare connections, or user-content telemetry.
 const KINDS = new Set([
   'account.created', 'conversation.created', 'message.saved',
-  'conversation.renamed', 'conversation.deleted', 'account.deleted'
+  'conversation.renamed', 'conversation.updated', 'turn.replaced',
+  'conversations.deleted_all', 'feedback.set', 'conversation.deleted', 'account.deleted'
 ]);
 const validId = x => typeof x === 'string' && /^[A-Za-z0-9_-]{2,100}$/.test(x);
 const textValue = (x, max = 16000) => typeof x === 'string' && x.length > 0 && x.length <= max;
@@ -31,12 +32,17 @@ export function initSyntheticProjection(db) {
     'user_id TEXT NOT NULL,conversation_id TEXT NOT NULL,PRIMARY KEY(user_id,conversation_id));' +
     'CREATE TABLE IF NOT EXISTS recovered_conversations(' +
     'conversation_id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES recovered_accounts(user_id) ON DELETE CASCADE,' +
-    'title TEXT NOT NULL);' +
+    'title TEXT NOT NULL,pinned INTEGER NOT NULL DEFAULT 0 CHECK(pinned IN (0,1)),' +
+    'archived INTEGER NOT NULL DEFAULT 0 CHECK(archived IN (0,1)));' +
     'CREATE TABLE IF NOT EXISTS recovered_messages(' +
     'message_id TEXT PRIMARY KEY,conversation_id TEXT NOT NULL REFERENCES recovered_conversations(conversation_id) ON DELETE CASCADE,' +
     'user_id TEXT NOT NULL REFERENCES recovered_accounts(user_id) ON DELETE CASCADE,' +
     "role TEXT NOT NULL CHECK(role IN ('user','assistant'))," +
-    'content TEXT NOT NULL);'
+    'content TEXT NOT NULL);' +
+    'CREATE TABLE IF NOT EXISTS recovered_feedback(' +
+    'message_id TEXT PRIMARY KEY REFERENCES recovered_messages(message_id) ON DELETE CASCADE,' +
+    'rating TEXT NOT NULL CHECK(rating IN (\'up\',\'down\')),' +
+    'reason TEXT NOT NULL DEFAULT \'\');'
   );
 }
 
