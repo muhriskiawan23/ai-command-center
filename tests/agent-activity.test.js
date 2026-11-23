@@ -22,7 +22,7 @@ test("Agent Activity loads its own same-origin assets and required controls", ()
 test("Activity uses the real chat request lifecycle without fabricated progress", () => {
   assert.match(app, /bor:agent-activity/);
   for (const phase of ["started", "completed", "cancelled", "failed"])
-    assert.match(app, new RegExp('phase:"' + phase + '"'));
+    assert.ok(app.includes('publishActivity("' + phase + '"'), "missing phase " + phase);
   assert.match(activity, /existingStop\.click\(\)/);
   assert.match(activity, /data\.requestId !== current\.requestId/);
   assert.doesNotMatch(activity, /setInterval|fetch\(|percentComplete|progress:\s*80/);
