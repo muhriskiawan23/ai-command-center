@@ -322,6 +322,17 @@ jobs:
           fs.appendFileSync(process.env.GITHUB_ENV, "BOR_DEPLOY_CONFIG=" + path + "\n");
           NODE
 
+      # Must verify four independent D1 UUID/name pairs using a dedicated
+      # metadata-only token BEFORE any shadow schema SQL may run.
+      # Never substitute the migration/deployment token for the read-only token.
+      - name: Verify four D1 metadata identities before shadow schema writes (READ ONLY)
+        if: ${{ env.BOR_BILLING_SHADOW_ENABLED == 'true' }}
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          BOR_CLOUDFLARE_D1_READ_TOKEN: ${{ secrets.BOR_CLOUDFLARE_D1_READ_TOKEN }}
+          BOR_BILLING_STAGING_D1_ID: ${{ secrets.BOR_BILLING_STAGING_D1_ID }}
+        run: node scripts/audit-cloudflare-d1-metadata-readonly.mjs
+
       - name: Prepare isolated billing shadow config for production only
         if: ${{ env.BOR_BILLING_SHADOW_ENABLED == 'true' }}
         run: node scripts/prepare-billing-shadow-config.mjs
