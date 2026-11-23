@@ -59,8 +59,12 @@ export async function drill(env,{payload,runId}={}){
   if(first.seq!==1||second.seq!==2||third.seq!==3||third.duplicate!==false)
     fail('staging_recovery_source_commit_failed');
   const snapshot=await journal('/read?after=0&limit=10&expectedHead=3');
+  let sourceTurn;
+  try{sourceTurn=JSON.parse(snapshot.events?.[2]?.payload_json);}catch{}
   if(snapshot.head!==3||snapshot.events?.length!==3||
-    snapshot.events[2].payload_json!==JSON.stringify(turn))fail('staging_recovery_source_snapshot_invalid');
+    !sourceTurn||Object.keys(sourceTurn).length!==Object.keys(turn).length||
+    Object.keys(turn).some(k=>sourceTurn[k]!==turn[k]))
+    fail('staging_recovery_source_snapshot_invalid');
   await batch([
     ['INSERT INTO users(id,email,name,picture,created_at,updated_at) VALUES(?,?,?,?,?,?)',
       uid,'synthetic@example.invalid','Synthetic','',stamp,stamp],
