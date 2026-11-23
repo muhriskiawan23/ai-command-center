@@ -6,16 +6,16 @@ on:
     inputs:
       phase:
         type: choice
-        options: [plan, audit]
+        options: [plan, audit, diagnose]
         required: true
         default: plan
       reviewed_main_sha:
-        description: "AUDIT only: current reviewed main SHA; keep blank for PLAN"
+        description: "AUDIT/DIAGNOSE: current reviewed main SHA; keep blank for PLAN"
         type: string
         required: false
         default: ''
       owner_confirmation:
-        description: "AUDIT only: AUDIT_ONLY_NO_EXPORT; keep blank for PLAN"
+        description: "AUDIT/DIAGNOSE: AUDIT_ONLY_NO_EXPORT; keep blank for PLAN"
         type: string
         required: false
         default: ''
@@ -42,7 +42,7 @@ jobs:
           [[ "$GITHUB_REF" == "refs/heads/main" ]] || { echo "::error::main-only audit"; exit 1; }
           if [[ "$PHASE" == "plan" ]]; then
             [[ -z "$SHA_APPROVED" && -z "$OWNER" ]] || { echo "::error::PLAN must not receive audit approvals"; exit 1; }
-          elif [[ "$PHASE" == "audit" ]]; then
+          elif [[ "$PHASE" == "audit" || "$PHASE" == "diagnose" ]]; then
             [[ "$SHA_APPROVED" == "$GITHUB_SHA" &&
               "$OWNER" == "AUDIT_ONLY_NO_EXPORT" ]] || {
               echo "::error::Audit requires reviewed exact main SHA and GET-only approval"; exit 1;
@@ -64,7 +64,7 @@ jobs:
           node --test tests/private-chat-backup-instance-receipt-audit.test.js
 
       - name: Verify approved main SHA still matches remote before reading Cloudflare
-        if: ${{ inputs.phase == 'audit' }}
+        if: ${{ inputs.phase == 'audit' || inputs.phase == 'diagnose' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -84,6 +84,19 @@ jobs:
         run: |
           set -euo pipefail
           node scripts/audit-private-chat-backup-instance-readonly.mjs
+
+      - name: GET redacted error category and failed stage for exact previous instance (NO SQL)
+        if: ${{ inputs.phase == 'diagnose' }}
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_BACKUP_DEPLOY_TOKEN: ${{ secrets.CLOUDFLARE_BACKUP_DEPLOY_TOKEN }}
+          BOR_BACKUP_RECEIPT_AUDIT_APPROVED: ${{ inputs.owner_confirmation }}
+        run: |
+          set -euo pipefail
+          node --check scripts/diagnose-private-chat-backup-instance-readonly.mjs
+          node --test tests/private-chat-backup-instance-diagnostics.test.js
+          node scripts/diagnose-private-chat-backup-instance-readonly.mjs
 
       - name: PLAN passed; no Cloudflare operations performed
         if: ${{ inputs.phase == 'plan' }}
