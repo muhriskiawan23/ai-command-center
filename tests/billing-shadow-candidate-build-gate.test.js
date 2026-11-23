@@ -1,13 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,readFileSync,writeFileSync,rmSync} from 'node:fs';
+import {mkdtempSync,readFileSync,writeFileSync,rmSync,existsSync} from 'node:fs';
+import {fileURLToPath} from 'node:url';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {spawnSync} from 'node:child_process';
 
 const workflow=readFileSync(new URL('../.github/workflows/bor-ai-deploy.yml',import.meta.url),'utf8');
 const manifest=readFileSync(new URL('../wrangler.jsonc',import.meta.url),'utf8');
-const script=new URL('../scripts/prepare-billing-shadow-config.mjs',import.meta.url).pathname;
+const script=fileURLToPath(new URL('../scripts/prepare-billing-shadow-config.mjs',import.meta.url));
 const ID='88888888-8888-4888-8888-888888888888';
 
 test('production workflow compiles generated shadow config before remote SQL writes',()=>{
@@ -63,5 +64,34 @@ test('offline generation rejects accidental reuse of the production chat UUID',(
     });
     assert.notEqual(result.status,0);
     assert.doesNotMatch(result.stderr,/Bearer |PRIVATE_SESSION|api[_-]?key/i);
+  }finally{rmSync(dir,{recursive:true,force:true});}
+});
+
+test('shadow candidate generator refuses uppercase chat UUID reuse and zero UUID',()=>{
+  const chat=JSON.parse(manifest).d1_databases[0].database_id;
+  for(const shadowId of [chat.toUpperCase(),'00000000-0000-0000-0000-000000000000']){
+    const dir=mkdtempSync(join(tmpdir(),'bor-shadow-forged-id-'));
+    try{
+      writeFileSync(join(dir,'wrangler.jsonc'),manifest);
+      writeFileSync(join(dir,'github_env'),'');
+      const result=spawnSync(process.execPath,[script],{
+        cwd:dir,encoding:'utf8',
+        env:{...process.env,BOR_DEPLOY_CONFIG:'wrangler.jsonc',
+          BOR_BILLING_SHADOW_D1_ID:shadowId,GITHUB_ENV:join(dir,'github_env')}
+      });
+      assert.notEqual(result.status,0,'invalid UUID must fail closed');
+      assert.equal(existsSync(join(dir,'wrangler.billing-shadow.generated.jsonc')),false);
+    }finally{rmSync(dir,{recursive:true,force:true});}
+  }
+});
+test('missing GitHub Actions env fails before writing any shadow candidate',()=>{
+  const dir=mkdtempSync(join(tmpdir(),'bor-shadow-env-missing-'));
+  try{
+    writeFileSync(join(dir,'wrangler.jsonc'),manifest);
+    const env={...process.env,BOR_DEPLOY_CONFIG:'wrangler.jsonc',BOR_BILLING_SHADOW_D1_ID:ID};
+    delete env.GITHUB_ENV;
+    const result=spawnSync(process.execPath,[script],{cwd:dir,encoding:'utf8',env});
+    assert.notEqual(result.status,0);
+    assert.equal(existsSync(join(dir,'wrangler.billing-shadow.generated.jsonc')),false);
   }finally{rmSync(dir,{recursive:true,force:true});}
 });
