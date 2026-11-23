@@ -22,3 +22,25 @@ References:
 - Cloudflare [Workflow instance GET](https://developers.cloudflare.com/api/resources/workflows/subresources/instances/methods/get/)
 - Cloudflare [R2 metadata object LIST](https://developers.cloudflare.com/api/resources/r2/subresources/buckets/subresources/objects/methods/list/)
 - Issue #382.
+
+## Diagnosing a failed Workflow WITHOUT retriggering D1 export
+
+The owner ran the first metadata receipt check on 23 Nov 2026:
+[GitHub run #45091708681](https://github.com/muhriskiawan23/ai-command-center/actions/runs/45091708681).
+The GET of the exact Cloudflare instance returned `workflowStatus=errored`.
+The audit therefore correctly **failed closed**, made no R2 object-list call and
+did not prove SQL backup completion. Do NOT trigger another export.
+
+Use the same manual audit workflow with `phase=diagnose` instead of `audit`,
+the unchanged current `main` SHA and the same `AUDIT_ONLY_NO_EXPORT`
+confirmation. The diagnose phase performs exactly **one** Cloudflare GET for
+the already-errored Workflow instance, with step details available only to an
+in-memory sanitizer in the GitHub runner. It prints **only** a bounded,
+allowlisted BOR error code/category, fixed known step labels and statuses;
+it never logs raw API JSON, step outputs, inputs, provider error messages,
+tokens, signed export URLs, bookmarks or SQL. No D1/R2 queries or writes,
+no Workflow trigger, no deploy and no database restore.
+
+A failed Workflow may have partially exported D1 or partially uploaded to R2.
+An errored status is NOT proof that no R2 object exists; investigate exact
+private bucket metadata separately before any additional export request.
