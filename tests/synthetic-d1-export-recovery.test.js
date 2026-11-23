@@ -70,7 +70,8 @@ function fakeCloudflare({unexpectedHost=false,failRestore=false}={}){
     }
     if(method==='POST'&&suffix==='/'+id+'/export'){
       assert.equal(id,sourceId,'Export MUST target synthetic source not production');
-      if(body.output_format==='polling')return send({success:true,result:{at_bookmark:'SYNTHETIC_BOOKMARK_1234567890'}});
+      assert.equal(body.output_format,'polling','D1 requires output_format on start AND poll');
+      if(body.current_bookmark===undefined)return send({success:true,result:{at_bookmark:'SYNTHETIC_BOOKMARK_1234567890'}});
       if(body.current_bookmark){
         pollCount++;
         const host=unexpectedHost?'not-cloudflare.example':'synthetic.r2.cloudflarestorage.com';

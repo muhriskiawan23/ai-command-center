@@ -1,0 +1,67 @@
+name: BOR AI owner-approved one-shot SYNTHETIC D1 recovery drill request
+
+# Exact-scope ONE-TIME bridge to existing protected synthetic D1 workflow.
+# Triggered only when THIS file is squash-merged on main. This dispatcher
+# holds NO Cloudflare credential and MUST NEVER target primary bor-ai-chat.
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/bor-ai-one-shot-synthetic-d1-drill-20261123.yml'
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: bor-ai-one-shot-synthetic-d1-20261123
+  cancel-in-progress: false
+
+jobs:
+  dispatch_once:
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && github.run_attempt == 1 }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+      - name: Verify explicit scope, reviewed main parent, exact diff and first attempt
+        shell: bash
+        env:
+          REVIEWED_PARENT: 49b758c517c7a951e7bfa0b99dab82a90c74f8e2
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REPOSITORY" == "muhriskiawan23/ai-command-center" &&
+             "$GITHUB_REF" == "refs/heads/main" && "$GITHUB_RUN_ATTEMPT" == "1" ]] || {
+            echo "::error::Wrong repository/ref/attempt"; exit 1;
+          }
+          [[ "$(git rev-parse HEAD^)" == "$REVIEWED_PARENT" ]] || {
+            echo "::error::Unreviewed main parent; no synthetic resource creation"; exit 1;
+          }
+          [[ "$(git show -s --format=%s HEAD)" == "release(recovery): one approved synthetic D1 drill only" ]] || {
+            echo "::error::Unexpected merge title; no dispatch"; exit 1;
+          }
+          expected="$(printf '%s\n'             '.github/workflows/bor-ai-one-shot-synthetic-d1-drill-20261123.yml'             'scripts/synthetic-d1-export-recovery-drill.mjs'             'tests/bor-ai-one-shot-synthetic-d1-drill.test.js'             'tests/synthetic-d1-export-recovery.test.js')"
+          actual="$(git diff --name-only "$REVIEWED_PARENT" HEAD | LC_ALL=C sort)"
+          [[ "$actual" == "$expected" ]] || {
+            echo "::error::Only exact synthetic drill safety files may change"; exit 1;
+          }
+          latest="$(git ls-remote origin refs/heads/main | cut -f1)"
+          [[ "$latest" == "$GITHUB_SHA" ]] || {
+            echo "::error::main moved; no drill"; exit 1;
+          }
+          # No production export approval can be inferred.
+          grep -q 'THIRD PRODUCTION D1 EXPORT LOCKED'             .github/workflows/bor-ai-private-chat-backup-release.yml
+          grep -q 'PRIMARY_D1_PIN=' scripts/synthetic-d1-export-recovery-drill.mjs
+          echo 'One-shot approved isolated synthetic scope confirmed.'
+
+      - name: Dispatch existing protected SYNTHETIC-only two-D1 drill
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api --method POST             "repos/$GITHUB_REPOSITORY/actions/workflows/bor-ai-synthetic-d1-recovery.yml/dispatches"             -f 'ref=main'             -f 'inputs[phase]=drill'             -f "inputs[reviewed_main_sha]=$GITHUB_SHA"             -f 'inputs[owner_confirmation]=I_APPROVE_SYNTHETIC_D1_CREATE_EXPORT_RESTORE_CLEANUP'             -f 'inputs[storage_cost_approval]=I_APPROVE_TEMP_SYNTHETIC_D1_CLOUDFLARE_USAGE'
+          echo 'One owner-approved synthetic test run requested; no production D1 export or restore.'
