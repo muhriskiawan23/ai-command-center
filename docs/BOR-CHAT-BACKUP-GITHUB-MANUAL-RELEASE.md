@@ -76,3 +76,25 @@ explicitly disables Wrangler automatic resource creation.
 
 Reference: https://developers.cloudflare.com/workflows/examples/backup-d1/
 Reference: https://developers.cloudflare.com/workers/wrangler/commands/workflows/
+
+## Cloudflare Worker runtime redirect-mode correction
+
+The one-time live Workflow instance `bor-ai-private-backup-45090501363-1`
+returned `errored`, and the GET-only diagnosis produced the sanitized code
+`private_backup_export_request_failed` in
+[run #45092364018](https://github.com/muhriskiawan23/ai-command-center/actions/runs/45092364018).
+The initial Worker source used `fetch(...,{redirect:'error'})`; unlike browser
+Fetch, **Cloudflare Workers does not implement this mode and throws TypeError
+before the request is sent**. This is a strong, independently documented
+explanation for the failure, but the sanitizer did not preserve the raw
+exception cause, so causation is not yet proved from that single instance.
+
+The corrected isolated Worker uses `redirect:'manual'` and explicitly rejects
+all 3xx responses for both the D1 export POST and private signed SQL GET.
+Never change this to `follow`. No new export or R2 write occurs merely from
+merging this source code. A future isolated Worker redeploy must be reviewed
+separately; any *second* live production D1 export requires a new explicit
+low-traffic approval after private R2 partial-state audit and code release.
+
+Reference:
+https://developers.cloudflare.com/workers/runtime-apis/request/#redirect

@@ -90,11 +90,16 @@ async function callExport(fetcher,api,token,body){
   let response;
   try{
     response=await fetcher(api,{
-      method:'POST',redirect:'error',signal:AbortSignal.timeout(25_000),
+      method:'POST',redirect:'manual',signal:AbortSignal.timeout(25_000),
       headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},
       body:JSON.stringify(body)
     });
   }catch{throw Error('private_backup_export_request_failed');}
+  // Cloudflare Workers rejects redirect:'error' with TypeError even before the
+  // request is sent. redirect:'manual' is supported; a 3xx still fails closed
+  // without following Location (which could leak the export bearer token).
+  if(response.status>=300&&response.status<400)
+    throw Error('private_backup_export_redirect_blocked');
   if(!response.ok)throw Error('private_backup_export_api_unavailable');
   let data;
   try{data=await response.json();}catch{throw Error('private_backup_export_invalid_json');}
@@ -142,8 +147,12 @@ export async function runPrivateBackup({env,event,step,fetcher=fetch,now=()=>new
       if(state.status==='pending')throw Error('private_backup_export_pending');
       const url=verifySignedExportUrl(state.signedUrl,c.host);
       let response;
-      try{response=await fetcher(url,{redirect:'error',signal:AbortSignal.timeout(35_000)});}
+      try{response=await fetcher(url,{redirect:'manual',signal:AbortSignal.timeout(35_000)});}
       catch{throw Error('private_backup_dump_unavailable');}
+      // Never follow any signed SQL download redirect: only the reviewed,
+      // pinned Cloudflare R2 hostname may receive this signed request.
+      if(response.status>=300&&response.status<400)
+        throw Error('private_backup_dump_redirect_blocked');
       if(!response.ok||!response.body)throw Error('private_backup_dump_unavailable');
       const rawLength=response.headers.get('Content-Length');
       if(rawLength!==null&&(!/^\d+$/.test(rawLength)||Number(rawLength)<1||
