@@ -1,0 +1,24 @@
+name: BOR AI public core liveness (manual, no inference)
+
+# Separate operational liveness from the strict security/release-drift audit.
+# Explicit manual dispatch only: do not consume paid AI, Tavily or scheduled CI.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check-public-core:
+    name: Inspect public BOR AI hosts without inference or credentials
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - name: Check out the reviewed source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 22
+      - name: Probe only static app and health/agent endpoints
+        run: node scripts/public-core-liveness.mjs
