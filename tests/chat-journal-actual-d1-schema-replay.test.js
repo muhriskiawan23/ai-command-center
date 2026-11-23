@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import {ChatJournalDurableObject} from '../src/chat-journal-do.js';
-import {collectPrivateDoSnapshot} from '../tools/recovery/do-journal-staging-drill.mjs';
+import {collectPrivateDoSnapshot,replayDoSnapshotOffline}
+  from '../tools/recovery/do-journal-staging-drill.mjs';
 import {createIsolatedActualChatSchemaOffline,replayVerifiedDoSnapshotIntoActualChatSchemaOffline}
   from '../tools/recovery/replay-do-journal-to-real-chat-schema-offline.mjs';
 
@@ -237,6 +238,8 @@ test('one durable turn.saved projects BOTH real SQLite messages atomically with 
     const snapshot=await h.snapshot(3);
     assert.equal(snapshot.events[2].kind,'turn.saved');
     assert.equal(snapshot.events.length,3);
+    assert.throws(()=>replayDoSnapshotOffline(snapshot),
+      /journal_snapshot_atomic_turn_requires_real_schema_replay/);
     const result=replayVerifiedDoSnapshotIntoActualChatSchemaOffline(h.target,snapshot,{
       owner:OWNER,syntheticTimestamp:EPOCH
     });
