@@ -94,6 +94,13 @@
     render();
   });
 
+  // Never carry text from a previous guest/account session into a new one.
+  window.addEventListener("bor:session-state", () => {
+    current = { phase: "idle", requestId: null, agent: "", task: "", toolActivity: [] };
+    setOpen(false);
+    render();
+  });
+
   window.addEventListener("bor:agent-activity", event => {
     const data = event.detail;
     if (!data || typeof data !== "object") return;
