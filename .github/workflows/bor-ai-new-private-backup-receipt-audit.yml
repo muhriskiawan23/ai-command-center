@@ -4,23 +4,23 @@ on:
   workflow_dispatch:
     inputs:
       phase:
-        description: "plan=offline only; audit=read-only status + exact R2 metadata"
+        description: "plan=offline, audit=status/R2 metadata, diagnose=error category GET-only"
         type: choice
-        options: [plan, audit]
+        options: [plan, audit, diagnose]
         default: plan
         required: true
       reviewed_main_sha:
-        description: "AUDIT only: exact 40-character reviewed main SHA; blank for PLAN"
+        description: "AUDIT/DIAGNOSE: exact reviewed main SHA; blank for PLAN"
         type: string
         default: ''
         required: false
       owner_confirmation:
-        description: "AUDIT only: AUDIT_ONLY_NO_EXPORT; blank for PLAN"
+        description: "AUDIT/DIAGNOSE: AUDIT_ONLY_NO_EXPORT; blank for PLAN"
         type: string
         default: ''
         required: false
       trigger_run_id:
-        description: "AUDIT only: numeric GitHub run ID of the NEW owner-approved backup trigger"
+        description: "AUDIT/DIAGNOSE: numeric run ID of the approved backup trigger"
         type: string
         default: ''
         required: false
@@ -52,7 +52,7 @@ jobs:
             [[ -z "$REVIEWED" && -z "$APPROVAL" && -z "$TRIGGER_RUN_ID" ]] || {
               echo '::error::PLAN must not have live audit inputs'; exit 1;
             }
-          elif [[ "$PHASE" == 'audit' ]]; then
+          elif [[ "$PHASE" == 'audit' || "$PHASE" == 'diagnose' ]]; then
             [[ "$REVIEWED" == "$GITHUB_SHA" &&
                "$APPROVAL" == 'AUDIT_ONLY_NO_EXPORT' &&
                "$TRIGGER_RUN_ID" =~ ^[1-9][0-9]{9,14}$ ]] || {
@@ -75,7 +75,7 @@ jobs:
           node --check scripts/audit-private-chat-backup-new-run-readonly.mjs
           node --test tests/private-chat-backup-new-run-receipt.test.js
       - name: Recheck exact main SHA has not changed before Cloudflare GET
-        if: ${{ inputs.phase == 'audit' }}
+        if: ${{ inputs.phase == 'audit' || inputs.phase == 'diagnose' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -95,6 +95,20 @@ jobs:
         run: |
           set -euo pipefail
           node scripts/audit-private-chat-backup-new-run-readonly.mjs
+      - name: GET redacted error category from only the failed second Workflow instance (NO SQL)
+        if: ${{ inputs.phase == 'diagnose' }}
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_BACKUP_DEPLOY_TOKEN: ${{ secrets.CLOUDFLARE_BACKUP_DEPLOY_TOKEN }}
+          BOR_BACKUP_RECEIPT_AUDIT_APPROVED: ${{ inputs.owner_confirmation }}
+          BOR_BACKUP_TRIGGER_RUN_ID: ${{ inputs.trigger_run_id }}
+        run: |
+          set -euo pipefail
+          node --check scripts/diagnose-second-private-backup-readonly.mjs
+          node --test tests/second-private-backup-workflow-diagnosis.test.js
+          node scripts/diagnose-second-private-backup-readonly.mjs
+
       - name: PLAN passed; no Cloudflare requests or external writes
         if: ${{ inputs.phase == 'plan' }}
         run: echo 'Offline synthetic receipt tests passed; no Cloudflare operations.'
