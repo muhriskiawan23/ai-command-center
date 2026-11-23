@@ -464,3 +464,64 @@ Production export `phase=trigger` remains hard locked and issue #382
 remains OPEN. A source-only build and CI check alone are not proof that
 this specific staging upgrade has run; the GitHub Cloudflare job receipt
 must be checked before marking it complete.
+
+## VERIFIED 23 Nov 2026 — Cloudflare atomic V2 closed staging drill SUCCESS
+
+The owner-approved existing staging Worker upgrade was completed by
+[GitHub run #45116544614](https://github.com/muhriskiawan23/ai-command-center/actions/runs/45116544614),
+job `137500601969`, on reviewed source commit
+`e418abed076379f8d4e130ca4b9a29d981c30490` from
+[PR #432](https://github.com/muhriskiawan23/ai-command-center/pull/432).
+
+- Exact parent/diff/first-attempt release gates passed. The runner's
+  focused test suite reported **45 passed, 0 failed**, followed by a
+  successful isolated Wrangler dry-run with no production bindings.
+- Restricted Cloudflare deploy token was verified active via GET.
+  The **preexisting** `bor-ai-chat-journal-staging` script was verified
+  present before the update, and its `workers.dev` and preview URLs
+  were verified disabled by Cloudflare GET **both before and after**.
+  The update did not deploy any application, billing or backup Worker.
+- Wrangler reported a new staging Worker **version ID**
+  `6acf067c-16db-4759-87f4-e0e8a8c430c6`. This is the deployment
+  CLI's ID; a separate read-only active-version API check was not
+  performed. The existing private
+  `CHAT_JOURNAL_INTERNAL_SECRET` was **reused, not printed or rotated**.
+- Exactly one closed Cloudflare Workflow instance was triggered:
+  `bor-atomic-synthetic-45116544614-1`, existing manual Workflow
+  `bor-ai-chat-journal-staging-drill-v1`, payload purpose
+  `BOR_SYNTHETIC_CLOSED_ATOMIC_TURN_DRILL_V2`. The authenticated
+  Cloudflare GET instances API reported status `complete` and the
+  following content-free receipt:
+
+  ```json
+  {"passed":true,"drillVersion":2,"isolated":true,"syntheticOnly":true,
+   "publicChatAccess":false,"independentSQLite":true,"head":9,"events":9,
+   "atomicTurns":2,"erasedPayloadEvents":8,
+   "duplicateRetriesVerified":3,"requestConflictBlocked":true,
+   "halfTurnBlocked":true,"staleMutationBlocked":true,
+   "customerDataAccessed":false,"productionD1Accessed":false}
+  ```
+
+- Thus **two full user/assistant synthetic turns** were durably
+  committed as separate single events, exact retry receipts were
+  validated, different event IDs reusing the same request were rejected,
+  missing half-turn and stale writes were rejected, and the nine-event
+  log's preceding eight payloads were redacted by account erasure.
+  No customer data or secrets were logged.
+- The consumed one-shot GitHub staging deployment workflow and its
+  dedicated static test were removed in the follow-up cleanup PR.
+  The **internal** staging Workflow and synthetic test module remain
+  present for any *separately approved* subsequent drill; there is no
+  public HTTP test endpoint or automatic schedule.
+
+**This is a staging-only test, NOT full BOR AI disaster recovery.**
+It does not prove that a production `D1.batch` write can commit atomically
+with a separate Cloudflare Durable Object or that production chat is
+journaled. The primary D1 still has no live journal integration,
+historical chat has not been backfilled, and original integer message
+IDs, account sessions, images and links still require an end-to-end
+private recovery contract. There is no successful real production D1
+export or restore; the third production export remains HARD LOCKED.
+RPO=0 is unproven. This is not an authorization to enable live journaling,
+modify the main Worker or incur further Cloudflare staging expenses.
+Issue #382 remains OPEN, and actual billed usage was not measured.
