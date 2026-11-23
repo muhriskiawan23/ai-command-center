@@ -10,7 +10,7 @@ const TOKEN='synthetic-staging-only-token-not-a-real-credential-0001';
 const instanceId='bor-staging-test-48111122233';
 function mock(){
   const db=new DatabaseSync(':memory:');
-  const storage={sql:{exec(sql,...args){return {toArray:()=>db.prepare(sql).all(...args)};}},
+  const storage={sql:{exec(sql,...args){const rows=db.prepare(sql).all(...args);return {toArray:()=>rows};}},
     transactionSync(fn){db.exec('BEGIN IMMEDIATE');
       try{const out=fn();db.exec('COMMIT');return out;}
       catch(err){db.exec('ROLLBACK');throw err;}
