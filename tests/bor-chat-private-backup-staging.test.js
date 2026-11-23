@@ -217,6 +217,44 @@ test('D1 start export matches documented polling request, no speculative dump op
   assert.equal(started,true);
   assert.equal(receipt.ok,true);
 });
+test('initial and continuation POSTs both carry Cloudflare-required polling output_format',async()=>{
+  const h=fixture();
+  const original=h.fetcher;
+  const payloads=[];
+  h.fetcher=async(url,options)=>{
+    if(url.includes('api.cloudflare.com'))payloads.push(JSON.parse(options.body));
+    return original(url,options);
+  };
+  const receipt=await runPrivateBackup(h);
+  assert.equal(receipt.ok,true);
+  assert.deepEqual(payloads,[
+    {output_format:'polling'},
+    {output_format:'polling',current_bookmark:bookmark}
+  ]);
+  assert.equal(h.written.size,1);
+});
+
+test('mock D1 API rejects continuation missing output_format, corrected Worker succeeds',async()=>{
+  const h=fixture();
+  const original=h.fetcher;
+  let continuationChecked=false;
+  h.fetcher=async(url,options)=>{
+    if(url.includes('api.cloudflare.com')){
+      const parsed=JSON.parse(options.body);
+      if(parsed.current_bookmark!==undefined){
+        continuationChecked=true;
+        if(parsed.output_format!=='polling')return Response.json(
+          {success:false,errors:[{code:1000,message:'output_format required'}]},
+          {status:400});
+      }
+    }
+    return original(url,options);
+  };
+  const receipt=await runPrivateBackup(h);
+  assert.equal(continuationChecked,true);
+  assert.equal(receipt.ok,true);
+  assert.equal(receipt.customerDataIncludedInOutput,false);
+});
 test('a pending export is only retried inside Cloudflare, never sends SQL into job output',async()=>{
   const h=fixture();
   let polls=0;
