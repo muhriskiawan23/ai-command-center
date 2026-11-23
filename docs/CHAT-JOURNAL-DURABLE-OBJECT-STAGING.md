@@ -284,3 +284,34 @@ restore, a successful production SQL export, a zero-loss RPO, or an
 acceptable recurring cost budget. These require separately authorized
 production work; P0 #382 stays OPEN. The third production D1 export
 remains explicitly HARD LOCKED.
+
+## 23 Nov 2026 — complete checked-in D1 schema fidelity drill (offline only)
+
+`tools/recovery/full-schema-synthetic-sqlite-recovery.mjs` builds a
+**new in-memory SQLite database** from **all 13** current repository
+migrations (`0001`–`0012`, `0016`) and inserts strictly invented data
+across login, sessions, conversations, messages, integer IDs, prompt/assistant
+idempotency keys, citation links, feedback, memory, daily usage, public API
+keys, GitHub OAuth records, search usage, image wallet/jobs/credit ledger and
+pilot meter. The real image triggers execute, including credit reservation
+and the non-resettable aggregate meter.
+
+An actual SQLite **online backup copy** is written to a randomly named
+temporary directory and reopened as a separate restored database.
+The drill compares hashes of **every table row, full schema DDL,
+indexes, triggers, and `sqlite_sequence`**, checks `PRAGMA integrity_check`
+and `foreign_key_check`, verifies original message IDs and dependent
+feedback/image references, and deletes the temporary file in a `finally`
+block. Additional tests mutate one row and a foreign key to prove the
+integrity gate fails, then demonstrate real cascading chat/account deletion
+while protecting the operator-owned image pilot lifetime meter.
+
+**Scope boundary:** This is an offline source/target SQLite file-copy
+fidelity check, NOT the Cloudflare D1 SQL-export API, NOT a production
+data backup, NOT proof of an independently retained journal, and NOT a
+post-checkpoint recovery guarantee. The fully synthetic restored data can
+retain original integer IDs precisely because it is a full-image copy; the
+earlier minimal journal-only adapter CANNOT. A production full-schema
+restore still requires an owner-approved real export and secure restore
+rehearsal after fresh backfill, privacy/cost review and journal-first write
+coverage. Do not deploy or unlock third production export from this result.
