@@ -1,0 +1,238 @@
+name: BOR AI owner-approved ONE-SHOT CLOSED DO journal staging deploy and synthetic test
+
+# One owner-approved Cloudflare staging deploy only. No production D1, no
+# customer chat API, no public Worker URL, no cron, no journal live cutover.
+# Retire this workflow immediately after the single authorized run.
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/bor-ai-one-shot-journal-staging-deploy-20261123.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bor-ai-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  closed_staging_deploy:
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && github.run_attempt == 1 }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: production
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 22
+
+      - name: Fail closed unless exact reviewed source branch is squash merged
+        shell: bash
+        env:
+          REVIEWED_PARENT: 44bf563f5adeede4eec48377069fda5e194d159f
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REPOSITORY" == "muhriskiawan23/ai-command-center" &&
+             "$GITHUB_REF" == "refs/heads/main" && "$GITHUB_RUN_ATTEMPT" == "1" ]] || {
+            echo "::error::Unapproved ref, repository or rerun"; exit 1;
+          }
+          [[ "$(git rev-parse HEAD^)" == "$REVIEWED_PARENT" ]] || {
+            echo "::error::main changed since reviewed staging source"; exit 1;
+          }
+          [[ "$(git show -s --format=%s HEAD)" == "release(journal): deploy isolated synthetic DO staging only" ]] || {
+            echo "::error::Unexpected deployment commit"; exit 1;
+          }
+          expected="$(printf '%s\n' \
+            '.github/workflows/bor-ai-one-shot-journal-staging-deploy-20261123.yml' \
+            'docs/CHAT-JOURNAL-DURABLE-OBJECT-STAGING.md' \
+            'scripts/prepare-chat-journal-staging.mjs' \
+            'src/chat-journal-staging-synthetic-drill.js' \
+            'src/chat-journal-staging-worker.js' \
+            'tests/chat-journal-cloudflare-staging-synthetic.test.js')"
+          actual="$(git diff --name-only "$REVIEWED_PARENT" HEAD | LC_ALL=C sort)"
+          [[ "$actual" == "$expected" ]] || {
+            echo "::error::Unexpected deployment changes"; exit 1;
+          }
+          latest="$(git ls-remote origin refs/heads/main | cut -f1)"
+          [[ "$latest" == "$GITHUB_SHA" ]] || {
+            echo "::error::main moved before deployment"; exit 1;
+          }
+          grep -q 'THIRD PRODUCTION D1 EXPORT LOCKED' \
+            .github/workflows/bor-ai-private-chat-backup-release.yml
+          echo 'Exact owner-reviewed staging scope verified. Production export remains locked.'
+
+      - name: Test isolated real SQLite DO logic and compile staging without Cloudflare calls
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test \
+            tests/chat-journal-cloudflare-staging-synthetic.test.js \
+            tests/chat-journal-durable-object.test.js \
+            tests/chat-journal-do-staging-drill.test.js \
+            tests/chat-journal-actual-d1-schema-replay.test.js
+          node scripts/prepare-chat-journal-staging.mjs
+          node --input-type=module <<'NODE'
+          import {readFileSync} from 'node:fs';
+          const c=JSON.parse(readFileSync('wrangler.chat-journal-staging.generated.jsonc','utf8'));
+          if(c.name!=='bor-ai-chat-journal-staging' ||
+             c.main!=='src/chat-journal-staging-worker.js' ||
+             c.workers_dev!==false || c.preview_urls!==false ||
+             c.vars.CHAT_JOURNAL_ACTIVE!=='false' ||
+             c.vars.CHAT_JOURNAL_STAGING_SYNTHETIC_ONLY!=='true' ||
+             c.d1_databases||c.r2_buckets||c.routes||c.route||c.triggers||c.assets||c.queues||c.ai||
+             c.workflows?.length!==1||c.workflows[0].schedules||
+             c.workflows[0].name!=='bor-ai-chat-journal-staging-drill-v1' ||
+             c.durable_objects?.bindings?.length!==1||
+             c.migrations?.[0]?.new_sqlite_classes?.[0]!=='ChatJournalDurableObject')
+            throw Error('isolated_staging_security_gate_failed');
+          console.log('Cloudflare staging config verified: private, synthetic-only, no D1 or public routes.');
+          NODE
+          npx --yes wrangler@4.165.0 deploy --dry-run --experimental-auto-create=false \
+            --config wrangler.chat-journal-staging.generated.jsonc \
+            --outdir .wrangler/closed-do-staging-preview
+
+      - name: GET-only dedicated Cloudflare deploy-token and new-script absence check
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_DEPLOY_TOKEN: ${{ secrets.CLOUDFLARE_BACKUP_DEPLOY_TOKEN }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          const account=process.env.CLOUDFLARE_ACCOUNT_ID;
+          const token=process.env.CLOUDFLARE_DEPLOY_TOKEN;
+          if(account!=='1698b70193eb133044e9fb07e39b7740'||!token||token.length<20)
+            throw Error('journal_staging_deploy_credential_or_account_invalid');
+          const fetchCheck=async url=>{
+            let response;
+            try{response=await fetch(url,{method:'GET',redirect:'error',
+              signal:AbortSignal.timeout(20000),
+              headers:{Authorization:'Bearer '+token,Accept:'application/json'}});}
+            catch{throw Error('journal_staging_cloudflare_preflight_unreachable');}
+            return response;
+          };
+          const verify=await fetchCheck('https://api.cloudflare.com/client/v4/user/tokens/verify');
+          if(!verify.ok||(await verify.json())?.result?.status!=='active')
+            throw Error('journal_staging_deploy_token_not_active');
+          const existing=await fetchCheck('https://api.cloudflare.com/client/v4/accounts/'+
+            account+'/workers/scripts/bor-ai-chat-journal-staging');
+          // Never overwrite a pre-existing script; this scope authorizes only creation.
+          if(existing.status!==404)
+            throw Error('journal_staging_worker_already_exists_or_preflight_failed_'+existing.status);
+          console.log('Scoped deploy token active; new isolated staging Worker name available.');
+          NODE
+
+      - name: Deploy ONLY new closed journal staging Worker and synthetic Workflow
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_BACKUP_DEPLOY_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4.165.0 deploy --experimental-auto-create=false \
+            --config wrangler.chat-journal-staging.generated.jsonc
+          echo 'Isolated staging Worker + SQLite Durable Object class + manual synthetic Workflow deployed. NO main Worker change.'
+
+      - name: Set NEW random internal-only DO secret on isolated staging Worker
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_BACKUP_DEPLOY_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          internal="$(openssl rand -hex 40)"
+          printf '%s' "$internal" | npx --yes wrangler@4.165.0 secret put \
+            CHAT_JOURNAL_INTERNAL_SECRET \
+            --config wrangler.chat-journal-staging.generated.jsonc
+          unset internal
+          echo 'New isolated internal secret installed; value never printed or written to a file.'
+
+      - name: Independently verify both Workers URLs are disabled (GET ONLY)
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_DEPLOY_TOKEN: ${{ secrets.CLOUDFLARE_BACKUP_DEPLOY_TOKEN }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          const account=process.env.CLOUDFLARE_ACCOUNT_ID;
+          const token=process.env.CLOUDFLARE_DEPLOY_TOKEN;
+          const response=await fetch(
+            'https://api.cloudflare.com/client/v4/accounts/'+account+
+            '/workers/scripts/bor-ai-chat-journal-staging/subdomain',{
+              method:'GET',redirect:'error',signal:AbortSignal.timeout(20000),
+              headers:{Authorization:'Bearer '+token,Accept:'application/json'}
+            });
+          if(!response.ok)throw Error('staging_url_readonly_check_http_'+response.status);
+          const value=await response.json();
+          if(value.success!==true||value.result?.enabled!==false||
+             value.result?.previews_enabled!==false)
+            throw Error('staging_worker_public_or_preview_url_not_disabled');
+          console.log('Verified on Cloudflare: workers.dev=false, preview URLs=false.');
+          NODE
+
+      - name: Trigger exactly ONE internal synthetic journal persistence drill
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_BACKUP_DEPLOY_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          instance="bor-journal-synthetic-${GITHUB_RUN_ID}-1"
+          [[ "$GITHUB_RUN_ATTEMPT" == "1" ]] || exit 1
+          npx --yes wrangler@4.165.0 workflows trigger \
+            bor-ai-chat-journal-staging-drill-v1 \
+            '{"purpose":"BOR_SYNTHETIC_CLOSED_JOURNAL_DRILL_V1"}' \
+            --id "$instance" --config wrangler.chat-journal-staging.generated.jsonc
+          echo "ONE closed synthetic journal Workflow started: $instance"
+
+      - name: Verify Cloudflare Workflow result via GET, no content or secrets
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_DEPLOY_TOKEN: ${{ secrets.CLOUDFLARE_BACKUP_DEPLOY_TOKEN }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          const instance='bor-journal-synthetic-'+process.env.GITHUB_RUN_ID+'-1';
+          const url='https://api.cloudflare.com/client/v4/accounts/'+
+            process.env.CLOUDFLARE_ACCOUNT_ID+
+            '/workflows/bor-ai-chat-journal-staging-drill-v1/instances/'+instance;
+          const headers={Authorization:'Bearer '+process.env.CLOUDFLARE_DEPLOY_TOKEN,
+            Accept:'application/json'};
+          let success=false;
+          for(let i=0;i<24;i++){
+            let response;
+            try{response=await fetch(url,{method:'GET',redirect:'error',
+              headers,signal:AbortSignal.timeout(20000)});}
+            catch{throw Error('staging_drill_status_get_unavailable');}
+            if(!response.ok)throw Error('staging_drill_status_http_'+response.status);
+            let json;
+            try{json=await response.json();}catch{throw Error('staging_drill_status_invalid_json');}
+            if(json?.success!==true)throw Error('staging_drill_status_api_rejected');
+            const status=json.result?.status;
+            if(status==='complete'){
+              let output=json.result.output;
+              if(typeof output==='string'){try{output=JSON.parse(output);}catch{}}
+              if(output?.passed!==true||output?.head!==10||
+                output?.erasedPayloadEvents!==9||
+                output?.duplicateDeletionRetriesVerified!==2||
+                output?.productionD1Accessed!==false||
+                output?.customerDataAccessed!==false)
+                throw Error('staging_drill_receipt_incomplete');
+              console.log('CLOUDFLARE CLOSED DO JOURNAL VERIFIED: '+JSON.stringify(output));
+              success=true;break;
+            }
+            if(['errored','terminated'].includes(status))
+              throw Error('staging_drill_remote_instance_'+status);
+            if(!['queued','running','waiting','waitingForPause'].includes(status))
+              throw Error('staging_drill_unexpected_status');
+            await new Promise(r=>setTimeout(r,5000));
+          }
+          if(!success)throw Error('staging_drill_no_verified_receipt');
+          NODE

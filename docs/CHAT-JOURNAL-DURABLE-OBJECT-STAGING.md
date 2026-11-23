@@ -192,3 +192,46 @@ not a full restore or authorization to deploy.
 original integer IDs and dependent table relationships, full D1 schema,
 historic backfill and privacy/retention requirements are independently
 validated and an owner-approved nonproduction disaster drill succeeds.
+
+## 23 Nov 2026 — approved one-shot CLOSED Cloudflare staging release
+
+The owner approved deploying a new **isolated, synthetic-only SQLite Durable
+Object staging Worker** with potential small Cloudflare usage costs. This is
+NOT permission to bind it to `app.getborai.com`, copy actual chat, backfill
+users, deploy a production writer, or lift the third production D1 export lock.
+
+- New Worker: `bor-ai-chat-journal-staging`; no primary D1, R2,
+  Assets, API, scheduled events, or routes. Both `workers_dev:false` and
+  `preview_urls:false` are explicitly required and rechecked with
+  Cloudflare's GET-only API. Public fetch always returns 404.
+- Private SQL Durable Object: `ChatJournalDurableObject` with existing
+  `new_sqlite_classes` migration, stored under the NEW staging script.
+  It receives no live user IDs or user chat.
+- Internal manual Workflow:
+  `bor-ai-chat-journal-staging-drill-v1`, exported as
+  `ChatJournalSyntheticStagingWorkflow`, with no cron and no public
+  trigger. A pinned one-shot owner-approved GitHub Actions deploy invokes
+  exactly one synthetic Workflow instance using Cloudflare's authenticated
+  CLI, not a public chat route.
+- The workflow uses a random 80-hex-character secret generated privately
+  in the GitHub runner and stored ONLY in this isolated Worker's
+  `CHAT_JOURNAL_INTERNAL_SECRET`. It is never output in CI logs/artifacts.
+  Account ID and scoped deploy credential are separately preflighted.
+  The staging Worker can use a dedicated new secret without touching
+  production Google, Midtrans, Tavily, D1 or backup tokens.
+- The drill checks real Cloudflare DO storage: 10 fixed synthetic events,
+  duplicate deletion retry after lost response, rejected stale write after
+  conversation deletion, sequence/head readback, privacy deletion redacting
+  all 9 earlier payloads, and no user content. Only safe counts and flags
+  are reported. The per-instance DO name is synthetic and run-scoped.
+- Each change remains protected by an exact parent SHA, exact squash title,
+  unchanged current main, and exact reviewed file diff. This trigger must
+  be removed immediately after the authorized run, even if the run fails.
+  Any failed or incomplete creation must be diagnosed before separate
+  approval of any further Cloudflare mutations.
+
+**Staging success would NOT yet prove disaster recovery:** the existing
+production chat Worker remains unjournaled, no customer chat is backed up,
+and original integer IDs, full schema, timestamps, Google sessions,
+attachments, privacy/backfill and production SQL export/restore remain open.
+Do not claim production RPO=0 or ready-for-launch on this basis.
