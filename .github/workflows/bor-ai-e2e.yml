@@ -13,7 +13,9 @@ permissions:
 jobs:
   e2e:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+# Full Playwright matrix (~896 browser tests) plus unit tests and Chromium setup
+    # can exceed 15 minutes on private GitHub-hosted runners. Preserve full coverage.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
