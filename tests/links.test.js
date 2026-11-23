@@ -168,3 +168,64 @@ test("IPv6 compressed zero hextets are expanded before special-range checks", ()
   assert.equal(validateUrl("https://[2001::1]/").ok, false);
   assert.equal(validateUrl("https://[3fff::1]/").ok, false);
 });
+
+test("uncooperative fetch ignoring AbortSignal is bounded by a real deadline", async () => {
+  const started = Date.now();
+  const result = await readLink("https://example.com/unresponsive", {
+    timeoutMs: 80,
+    fetcher: async () => new Promise(() => {})
+  });
+  assert.equal(result.ok, false);
+  assert.match(result.reason, /waktu habis/);
+  assert.ok(Date.now() - started < 2500, "uncooperative fetch must not hang worker");
+});
+
+test("stream stalls after partial bytes, and cancellation never settles: link still times out", async () => {
+  let cancelled = false;
+  const stream = new ReadableStream({
+    start(controller) { controller.enqueue(new TextEncoder().encode(LONG)); },
+    pull() { return new Promise(() => {}); },
+    cancel() { cancelled = true; return new Promise(() => {}); }
+  });
+  const started = Date.now();
+  const result = await readLink("https://example.com/unresponsive-stream", {
+    timeoutMs: 80,
+    fetcher: async () => new Response(stream, { headers: { "content-type": "text/plain" } })
+  });
+  assert.equal(result.ok, false);
+  assert.match(result.reason, /waktu habis/);
+  assert.ok(Date.now() - started < 2500, "stalled body must not hang worker");
+  assert.equal(cancelled, true, "abort cleanup must be attempted");
+});
+
+test("uncooperative redirect cancellation is not awaited and cannot block a valid next hop", async () => {
+  let calls = 0, cancelled = false;
+  const responseWithStuckCancel = new ReadableStream({
+    start(controller) { controller.enqueue(new TextEncoder().encode("redirect")); },
+    cancel() { cancelled = true; return new Promise(() => {}); }
+  });
+  const started = Date.now();
+  const result = await readLink("https://example.com/old", { timeoutMs: 180, fetcher: async () => {
+    calls++;
+    return calls === 1
+      ? new Response(responseWithStuckCancel, { status: 302, headers: { location: "/new" } })
+      : respond(html(LONG));
+  } });
+  assert.equal(result.ok, true);
+  assert.equal(result.url, "https://example.com/new");
+  assert.equal(calls, 2);
+  assert.equal(cancelled, true);
+  assert.ok(Date.now() - started < 2500);
+});
+
+test("invalid timeout settings fail closed before contacting external transport", async () => {
+  for (const timeoutMs of [0, -1, 8001, NaN, 1.5, "400", Infinity]) {
+    let calls = 0;
+    const result = await readLink("https://example.com/guide", {
+      timeoutMs, fetcher: async () => { calls++; return respond(html(LONG)); }
+    });
+    assert.equal(result.ok, false);
+    assert.match(result.reason, /batas waktu/i);
+    assert.equal(calls, 0);
+  }
+});
