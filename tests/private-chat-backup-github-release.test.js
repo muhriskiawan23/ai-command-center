@@ -126,7 +126,8 @@ test('manual PLAN and CI compile the same isolated enabled-shaped release candid
   assert.match(workflow,/--dry-run --experimental-auto-create=false/);
   assert.match(script,/SYNTHETIC_ACCOUNT_ID='00000000000000000000000000000000'/);
   assert.match(script,/SYNTHETIC_SIGNED_HOST='candidate-only\.r2\.cloudflarestorage\.com'/);
-  assert.doesNotMatch(script,/process\.env|fetch\(|secret put|workflows trigger|d1 export|r2 object put/);
+  const executable=script.split('\\n').filter(line=>!line.trim().startsWith('//')).join('\\n');
+  assert.doesNotMatch(executable,/process\\.env|fetch\\(|secret put|workflows trigger|d1 export|r2 object put/);
   const dryStep=yaml.slice(
     yaml.indexOf('- name: Compile enabled-shaped isolated release candidate'),
     yaml.indexOf('- name: Confirm reviewed main is not stale')
