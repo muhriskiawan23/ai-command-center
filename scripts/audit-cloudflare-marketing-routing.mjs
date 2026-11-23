@@ -14,7 +14,7 @@ const roots = new Set(["getborai.com", "app.getborai.com", "www.getborai.com"]);
 const headers = { Authorization: "Bearer " + token, Accept: "application/json" };
 let complete = true;
 
-async function request(path, label) {
+async function request(path, label, optionalPhase) {
   try {
     const response = await fetch("https://api.cloudflare.com/client/v4" + path, {
       method: "GET", headers, redirect: "error", signal: AbortSignal.timeout(20000)
@@ -25,6 +25,14 @@ async function request(path, label) {
       let errorCodes = "";
       try {
         const failed = await response.json();
+        // A missing phase is expected on zones/accounts with no such rules.
+        // A generic 404, permission error or mismatched phase stays unverified.
+        if (optionalPhase && response.status === 404 && failed?.success === false &&
+            Array.isArray(failed.errors) && failed.errors.length === 1 &&
+            failed.errors[0]?.code === 10003 &&
+            failed.errors[0]?.message === "could not find entrypoint ruleset in the " + optionalPhase + " phase") {
+          return { result: { phase: optionalPhase, rules: [] } };
+        }
         const codes = [...new Set((Array.isArray(failed?.errors) ? failed.errors : [])
           .map((error) => error?.code)
           .filter((code) => Number.isSafeInteger(code)))];
@@ -137,7 +145,45 @@ if (projects) printList("Pages projects with BOR AI custom domains", projects
   .filter((p) => Array.isArray(p.domains) && p.domains.some((d) => roots.has(hostName(d))))
   .map((p) => String(p.name || "unnamed") + ":" + p.domains.filter((d) => roots.has(hostName(d))).join(","))
 );
-console.log("Zone page/redirect rules: NOT AUDITED; review separately before apex cutover.");
+function reportRedirects(label, count) {
+  console.log(label + ": " + count + " active");
+  if (count > 0) {
+    console.log(label + ": review matching hosts and destinations before apex cutover.");
+    complete = false;
+  }
+}
+
+async function inspectRedirectPhase(scope, phase, label) {
+  const payload = await request(scope + "/rulesets/phases/" + phase + "/entrypoint", label, phase);
+  if (!payload) return;
+  const rules = payload.result?.rules;
+  if (payload.result?.phase !== phase || !Array.isArray(rules) ||
+      rules.some(rule => !rule || typeof rule.action !== "string" ||
+        (rule.enabled !== undefined && typeof rule.enabled !== "boolean"))) {
+    console.log(label + ": UNVERIFIED unexpected ruleset");
+    complete = false;
+    return;
+  }
+  reportRedirects(label, rules.filter(rule => rule.enabled !== false).length);
+}
+
+if (zoneId) {
+  const pageRules = await request("/zones/" + zoneId + "/pagerules?status=active", "Page Rules");
+  if (pageRules) {
+    const rules = pageRules.result;
+    if (!Array.isArray(rules) || rules.some(rule => rule?.status !== "active" ||
+        !Array.isArray(rule.actions) || rule.actions.some(action => typeof action?.id !== "string"))) {
+      console.log("Page Rules: UNVERIFIED unexpected rules");
+      complete = false;
+    } else {
+      const forwarding = rules.filter(rule => rule.actions.some(action =>
+        action.id === "forwarding_url" || action.id === "always_use_https"));
+      reportRedirects("Forwarding or HTTPS Page Rules", forwarding.length);
+    }
+  }
+  await inspectRedirectPhase("/zones/" + zoneId, "http_request_dynamic_redirect", "Single Redirects");
+}
+await inspectRedirectPhase("/accounts/" + encodeURIComponent(account), "http_request_redirect", "Bulk Redirects");
 console.log("Result: " + (complete
   ? "READ INVENTORY COMPLETE for checked APIs; routing conflicts still require human review."
   : "INCOMPLETE — missing access/metadata; DO NOT change apex routes or DNS."));
