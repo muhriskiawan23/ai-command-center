@@ -36,4 +36,8 @@ test("Living B motion is opt-in and respects reduced-motion setting", () => {
   assert.match(css, /prefers-reduced-motion:reduce/);
   assert.match(page, /logo-mark\.svg/);
   assert.match(page, /aria-expanded="false"/);
+  assert.match(page, /role="dialog" aria-modal="true" aria-labelledby="agentActivityTitle"/);
+  assert.match(activity, /event.key === "Tab"/);
+  assert.match(activity, /control.disabled && !control.hidden/);
+  assert.match(css, /width:44px;height:44px/);
 });
