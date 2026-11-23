@@ -40,11 +40,11 @@ async function request(path, label) {
   }
 }
 
-async function collect(path, label) {
+async function collect(path, label, perPage = 100) {
   const all = [];
   for (let page = 1; page <= 10; page++) {
     const sep = path.includes("?") ? "&" : "?";
-    const payload = await request(path + sep + "per_page=100&page=" + page, label);
+    const payload = await request(path + sep + "per_page=" + perPage + "&page=" + page, label);
     if (!payload) return null;
     if (!Array.isArray(payload.result)) {
       console.log(label + ": UNVERIFIED unexpected collection shape");
@@ -63,7 +63,7 @@ async function collect(path, label) {
         return null;
       }
       if (page === total) return all;
-    } else if (payload.result.length < 100) {
+    } else if (payload.result.length < perPage) {
       return all;
     }
   }
@@ -109,7 +109,8 @@ if (domains) printList("Worker custom-domain bindings", domains
   .filter((d) => roots.has(hostName(d.hostname || d.domain)))
   .map((d) => hostName(d.hostname || d.domain) + " -> " + String(d.service || "unknown"))
 );
-const projects = await collect("/accounts/" + encodeURIComponent(account) + "/pages/projects", "Pages projects");
+// Pages projects uses a smaller page size than the other Cloudflare inventory endpoints.
+const projects = await collect("/accounts/" + encodeURIComponent(account) + "/pages/projects", "Pages projects", 20);
 if (projects) printList("Pages projects with BOR AI custom domains", projects
   .filter((p) => Array.isArray(p.domains) && p.domains.some((d) => roots.has(hostName(d))))
   .map((p) => String(p.name || "unnamed") + ":" + p.domains.filter((d) => roots.has(hostName(d))).join(","))
