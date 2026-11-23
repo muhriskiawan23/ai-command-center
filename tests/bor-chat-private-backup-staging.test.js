@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {
   PINNED_D1_ID,MAX_DUMP_BYTES,runPrivateBackup,verifyPrivateBackupPreflight,
-  verifySignedExportUrl,verifyExportEnvelope,createPrivateBackupKey
+  verifySignedExportUrl,verifyExportEnvelope,createPrivateBackupKey,
+  classifyExportHttpFailure
 } from '../src/bor-chat-private-backup-core.js';
 import {makePrivateBackupConfig,PRIVATE_BUCKET,WORKFLOW_NAME}
   from '../scripts/prepare-chat-private-backup-staging.mjs';
@@ -285,6 +286,47 @@ test('Cloudflare API and signed R2 download both reject 3xx redirects without R2
   }
 });
 
+test('non-2xx Cloudflare export HTTP results expose only fixed numeric status categories',()=>{
+  const cases=new Map([
+    [400,'private_backup_export_http_400'],
+    [401,'private_backup_export_http_401'],
+    [403,'private_backup_export_http_403'],
+    [404,'private_backup_export_http_404'],
+    [409,'private_backup_export_http_409'],
+    [413,'private_backup_export_http_413'],
+    [422,'private_backup_export_http_422'],
+    [429,'private_backup_export_http_429'],
+    [418,'private_backup_export_http_4xx'],
+    [500,'private_backup_export_http_5xx'],
+    [503,'private_backup_export_http_5xx'],
+    [599,'private_backup_export_http_5xx']
+  ]);
+  for(const [status,code] of cases)assert.equal(classifyExportHttpFailure(status),code);
+  assert.equal(classifyExportHttpFailure(NaN),'private_backup_export_http_other');
+  assert.equal(classifyExportHttpFailure('403'),'private_backup_export_http_other');
+});
+test('D1 export non-2xx never leaks raw Cloudflare body or writes any R2 object',async()=>{
+  const privateText='PRIVATE SQL TEXT / signed_url?secret=NEVER_SHOW';
+  for(const status of [400,401,403,404,409,413,422,429,500,503]){
+    const h=fixture();
+    let requests=0;
+    h.fetcher=async(url,opts)=>{
+      requests++;
+      assert.ok(url.includes('/d1/database/'));
+      assert.equal(opts.method,'POST');
+      assert.equal(opts.redirect,'manual');
+      return Response.json({success:false,errors:[{code:10000,message:privateText}],
+        signed_url:privateText},{status});
+    };
+    let error;
+    try{await runPrivateBackup(h);}catch(e){error=e;}
+    assert.ok(error);
+    assert.equal(error.message,classifyExportHttpFailure(status));
+    assert.ok(!error.message.includes(privateText));
+    assert.equal(requests,1);
+    assert.equal(h.written.size,0);
+  }
+});
 test('oversized response, empty response, invalid R2 receipt and head mismatch all fail closed',async()=>{
   const h=fixture();
   h.fetcher=async(url,opts)=>url.includes('api.cloudflare.com')?

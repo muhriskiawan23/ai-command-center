@@ -86,6 +86,20 @@ export function createPrivateBackupKey(instanceId,date){
   return 'private/bor-ai-chat/'+date.toISOString().slice(0,10)+'/'+instanceId+'.sql';
 }
 
+// Only a fixed, allowlisted HTTP status category is carried to Cloudflare
+// Workflow errors. Never include response text, headers, token, bookmark or URL.
+// This allows distinguishing missing D1 Write scope from rate/service errors
+// on any FUTURE separately approved attempt, without leaking private data.
+export function classifyExportHttpFailure(status){
+  if([400,401,403,404,409,413,422,429].includes(status))
+    return 'private_backup_export_http_'+status;
+  if(Number.isInteger(status)&&status>=500&&status<=599)
+    return 'private_backup_export_http_5xx';
+  if(Number.isInteger(status)&&status>=400&&status<=499)
+    return 'private_backup_export_http_4xx';
+  return 'private_backup_export_http_other';
+}
+
 async function callExport(fetcher,api,token,body){
   let response;
   try{
@@ -100,7 +114,7 @@ async function callExport(fetcher,api,token,body){
   // without following Location (which could leak the export bearer token).
   if(response.status>=300&&response.status<400)
     throw Error('private_backup_export_redirect_blocked');
-  if(!response.ok)throw Error('private_backup_export_api_unavailable');
+  if(!response.ok)throw Error(classifyExportHttpFailure(response.status));
   let data;
   try{data=await response.json();}catch{throw Error('private_backup_export_invalid_json');}
   return data;
