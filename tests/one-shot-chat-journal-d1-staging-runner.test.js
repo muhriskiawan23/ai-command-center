@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 import {
  ACCOUNT_PIN,PROD_D1_PIN,REVIEWED_PR_SHA,OWNER_APPROVAL,COST_APPROVAL,
  identity,safePreflight,validateCreatedD1
@@ -38,4 +39,16 @@ test('no production D1 or provider-created name mismatch is accepted',()=>{
   for(const x of [{name:'bor-ai-chat',uuid},{name:identity(runId).db,uuid:PROD_D1_PIN},
     {name:identity(runId).db,uuid:'bad'}])
     assert.throws(()=>validateCreatedD1(x,identity(runId).db),/unexpected_disposable_d1_identity/);
+});
+
+test('only exact main push carrying the one-shot workflow can cause live mutation',()=>{
+  const wf=readFileSync('.github/workflows/bor-ai-closed-do-d1-staging-one-shot.yml','utf8');
+  assert.match(wf,/branches: \[main\]/);
+  assert.match(wf,/paths:/);
+  assert.match(wf,/startsWith\(github\.event\.head_commit\.message/);
+  assert.match(wf,/github\.run_attempt == 1/);
+  assert.match(wf,/ref: b7e8b97f8fd68c4cf0e3aa8b84e2ff988146e657/);
+  assert.match(wf,/environment: production/);
+  assert.doesNotMatch(wf,/^  pull_request:|^  schedule:|^  workflow_run:/m);
+  assert.doesNotMatch(wf,/npx.+wrangler.+deploy.+--config wrangler\.jsonc/);
 });
