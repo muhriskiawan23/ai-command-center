@@ -11,7 +11,8 @@ const OWNER={id:'synthetic-user',email:'synthetic@example.invalid',name:'Synthet
 const EPOCH=1763890800;
 function setup(){
   const storageDb=new DatabaseSync(':memory:');
-  const storage={sql:{exec(sql,...args){return {toArray:()=>storageDb.prepare(sql).all(...args)};}},
+  const storage={sql:{exec(sql,...args){const data=storageDb.prepare(sql).all(...args);
+    return {toArray:()=>data};}},
     transactionSync(action){storageDb.exec('BEGIN IMMEDIATE');
       try{const result=action();storageDb.exec('COMMIT');return result;}
       catch(e){storageDb.exec('ROLLBACK');throw e;}}};
