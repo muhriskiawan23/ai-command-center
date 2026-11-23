@@ -1429,7 +1429,7 @@ async function persistConversation(env, user, conversationId, message, response,
     batchResults = await env.DB.batch(statements);
   } catch (error) {
     // Keep chat writes available during a rolling release if the additive migration has not landed yet.
-    if (!requestId || !/no such column/i.test(String(error?.message))) throw error;
+    if (!requestId || !/(?:no such column:\s*(?:messages\.)?|has no column named\s+)idempotency_key\b/i.test(String(error?.message))) throw error;
     const legacyStatements = statements.slice(0, -2);
     legacyStatements.push(
       env.DB.prepare("INSERT INTO messages (conversation_id, user_id, role, content, created_at) VALUES (?, ?, 'user', ?, ?)").bind(id, user.id, message, now),
