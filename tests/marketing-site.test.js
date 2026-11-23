@@ -59,3 +59,10 @@ test("unknown URL fallback is an explicit non-indexable 404 page", () => {
   assert.match(missing, /href="https:\/\/app\.getborai\.com\//);
   assert.doesNotMatch(missing, /<script\b/i);
 });
+
+
+test("all external marketing links go only to the existing BOR AI chat application", () => {
+  const outbound = [...html.matchAll(/<a\b[^>]*\bhref="(https?:\/\/[^"]+)"/g)].map(([, url]) => new URL(url));
+  assert.ok(outbound.length > 0, "marketing site must link to the app");
+  for (const url of outbound) assert.equal(url.origin, "https://app.getborai.com");
+});
