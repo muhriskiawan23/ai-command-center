@@ -330,7 +330,7 @@ is a regression gate **against silent drift**, not proof of a journal.
 The excluded `billing-staging-worker` records are explicitly counted
 separately because that Worker has its own isolated D1.
 
-The current reviewed inventory contains **54 primary application SQL
+The current reviewed inventory contains **58 primary application SQL
 mutation literals**, with **0 currently connected to a production journal**,
 plus **2 isolated billing-staging source literals**. These numbers are counts
 of source SQL expressions, **not runtime queries, customer records or
