@@ -57,6 +57,13 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$GITHUB_REF" == "refs/heads/main" ]] || { echo "::error::Use main only"; exit 1; }
+          # Both prior one-time export approvals were consumed by errored runs.
+          # A new separately owner-approved code change must unlock this phase;
+          # knowing the old confirmation strings must NEVER authorize attempt #3.
+          if [[ "$PHASE" == "trigger" ]]; then
+            echo "::error::THIRD PRODUCTION D1 EXPORT LOCKED: prior approvals exhausted; requires separately approved code change."
+            exit 1
+          fi
           if [[ "$PHASE" == "plan" || "$PHASE" == "preflight" ]]; then
             [[ -z "$SHA_APPROVED" && -z "$APPROVAL" && -z "$HOST" && -z "$TRAFFIC_ACK" ]] || {
               echo "::error::PLAN/PREFLIGHT must not receive mutation or export confirmations"; exit 1;
