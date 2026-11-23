@@ -9,7 +9,7 @@ const runId='45125376134',uuid='8c5f0ad6-b892-48c7-b4c3-5c6e2a890ef0',
   secret='ONLY_SYNTHETIC_STAGING_TEST_PRIVATE_SECRET_12345678',payload={purpose:PURPOSE};
 function mock(){
   const journal=new DatabaseSync(':memory:'),d1=new DatabaseSync(':memory:'),names=[];
-  const storage={sql:{exec(sql,...args){return {toArray:()=>journal.prepare(sql).all(...args)};}},
+  const storage={sql:{exec(sql,...args){const rows=journal.prepare(sql).all(...args);return {toArray:()=>rows};}},
     transactionSync(fn){journal.exec('BEGIN IMMEDIATE');
       try{const r=fn();journal.exec('COMMIT');return r;}
       catch(e){journal.exec('ROLLBACK');throw e;}}};
