@@ -89,7 +89,7 @@ test('manual metadata workflow and backup release both block any unapproved thir
   assert.match(gate,/\$PHASE" == "trigger"/);
   assert.match(gate,/THIRD PRODUCTION D1 EXPORT LOCKED/);
   assert.match(gate,/exit 1/);
-  assert.ok(gate.indexOf('THIRD PRODUCTION D1 EXPORT LOCKED')<
+  assert.ok(release.indexOf('THIRD PRODUCTION D1 EXPORT LOCKED')<
             release.indexOf('secrets.CLOUDFLARE_BACKUP_DEPLOY_TOKEN'));
   assert.match(audit,/workflow_dispatch:/);
   assert.match(audit,/environment: production/);
