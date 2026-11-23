@@ -1,10 +1,13 @@
 # BOR AI — manual private chat backup release (GitHub Actions / phone only)
 
-**Status as of 2026-11-23:** an earlier isolated backup Worker was deployed
-successfully (GitHub run #45093244298), but the later polling payload fix
-in merged PR #415 has **NOT** been verified as deployed. This runbook describes
-future *separately approved* releases, not authorization to export or share
-any real users' private chat SQL.
+**Status as of 2026-11-23 10:14 WIB:** the independently reviewed
+isolated backup Worker was redeployed successfully from main commit
+`b6e7618e787dd68e35adb25911a34abffcacbafc` after PR #415 (polling fix).
+The restricted Worker secret was installed successfully. A GET-only Cloudflare
+audit confirmed the new active version at 100%. **This proves an isolated
+release, NOT a completed SQL backup, recovery test, or zero-loss guarantee.**
+The third production D1 export is still hard locked and requires separate
+explicit owner approval and a distinct code change.
 
 Workflow: `.github/workflows/bor-ai-private-chat-backup-release.yml`.
 Available inputs on `main`:
@@ -171,3 +174,46 @@ not called a successful backup.
 
 Cloudflare API reference:
 https://developers.cloudflare.com/api/resources/workers/subresources/scripts/subresources/deployments/methods/list/
+
+## 23 Nov 2026 — completed isolated Worker upgrade and post-release audit
+
+**Scope:** owner approved deploying only `bor-ai-chat-backup-isolated`.
+No `phase=trigger` call, D1 export POST, R2 data write, D1 SQL query, restore,
+production chat Worker deploy or application migration was executed.
+
+- Source: exact reviewed main commit
+  `b6e7618e787dd68e35adb25911a34abffcacbafc` (includes the merged
+  `output_format:'polling'` continuation fix from PR #415).
+- One-time GitHub dispatch bridge [PR #419](https://github.com/muhriskiawan23/ai-command-center/pull/419)
+  requested only the original protected `phase=deploy` after strict
+  reviewed-parent/diff/new-main gates.
+- Protected live release
+  [run #45104287121](https://github.com/muhriskiawan23/ai-command-center/actions/runs/45104287121)
+  **SUCCESS**: private R2 GET-only checks, dedicated token status and pinned D1
+  metadata preflight passed; Wrangler deployed the isolated Worker and Workflow;
+  `BOR_D1_EXPORT_TOKEN` secret put succeeded. Wrangler reported initial version
+  `95c8b44e-646a-45bd-b531-d088021850bf`. The export-trigger step was SKIPPED.
+- [PR #420](https://github.com/muhriskiawan23/ai-command-center/pull/420)
+  retired the one-shot deploy dispatcher and requested a fresh GET-only audit
+  using the exact updated main commit.
+- The GET-only post-release
+  [audit #45104721436](https://github.com/muhriskiawan23/ai-command-center/actions/runs/45104721436)
+  **SUCCESS**: isolated Worker deployment UUID
+  `2bc8a8b2-8527-408c-9adb-a2c5475ce076`,
+  created `2026-11-23T03:10:15.935382Z`, active version ID
+  `23536b1e-03d9-493b-aec2-18dba2dae5f9` at **100%**. The version ID
+  differs from the initial Wrangler one because of the later Worker secret
+  installation; the audit proves current active deployment, while its
+  `sourceCodeVerified:false` explicitly means it does NOT inspect deployed
+  source bytes.
+- The temporary one-shot **audit** dispatcher and its test are removed in the
+  final cleanup PR. The original protected manual release and hard third-export
+  lock are retained.
+
+**Still OPEN:** the Cloudflare D1 API only returns the actual generated
+`signed_url` after a successful export. Reusing the previously owner-approved
+account R2 hostname does NOT prove this future URL matches that pinned host.
+Any third live export needs a separate authorization, explicit low-traffic
+window, and source review. There is **no proven completed private SQL backup,
+isolated restore drill, or independent post-checkpoint journal/replay**;
+Issue #382 remains open and any zero-loss claim would be premature.
