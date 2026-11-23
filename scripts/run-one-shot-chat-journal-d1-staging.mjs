@@ -122,7 +122,9 @@ export async function runOnce(env,{request=fetch,cli=spawnSync,log=console.log}=
       try{
         validateCreatedD1(item,names.db);
         await cf(d1Token,'DELETE',d1Base+'/'+item.uuid);
-        log('STAGING_D1_CLEANUP_DELETED',JSON.stringify({name:names.db,uuid:item.uuid}));
+        const gone=await cf(d1Token,'GET',d1Base+'/'+item.uuid,undefined,{notFound:true});
+        if(!gone.missing)fail('staging_runner_d1_still_exists_after_delete');
+        log('STAGING_D1_CLEANUP_VERIFIED',JSON.stringify({name:names.db,uuid:item.uuid}));
       }catch{errors.push('d1_cleanup_failed_'+item.uuid);}
     }
     if(dbCreateAttempted&&!ids.length)errors.push('d1_create_unconfirmed_no_cleanup_receipt');
@@ -135,7 +137,7 @@ export async function runOnce(env,{request=fetch,cli=spawnSync,log=console.log}=
       }
       log('STAGING_CLEANUP_ABSENT',label);
       return true;
-    }catch{errors.push(label+'_cleanup_failed');return false;}
+    }catch{return false;}
   }
   let receipt=null;
   try{
@@ -216,8 +218,10 @@ export async function runOnce(env,{request=fetch,cli=spawnSync,log=console.log}=
       // Deleting a Workflow also deletes its instances. It is never shared.
       const wfDeleted=await deleteIfPresent(workerToken,wfBase,'workflow');
       const workerDeleted=await deleteIfPresent(workerToken,workerBase,'worker');
-      if(!wfDeleted)await deleteIfPresent(workerToken,wfBase,'workflow_retry');
-      if(!workerDeleted)await deleteIfPresent(workerToken,workerBase,'worker_retry');
+      if(!wfDeleted && !await deleteIfPresent(workerToken,wfBase,'workflow_retry'))
+        errors.push('workflow_cleanup_failed');
+      if(!workerDeleted && !await deleteIfPresent(workerToken,workerBase,'worker_retry'))
+        errors.push('worker_cleanup_failed');
     }
     if(dbCreateAttempted)await deleteCreatedDb();
     if(errors.length)log('STAGING_CLEANUP_BLOCKERS',JSON.stringify(errors));
