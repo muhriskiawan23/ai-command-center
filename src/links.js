@@ -170,10 +170,11 @@ async function readBody(response, withinDeadline) {
   const parts = [];
   let total = 0;
   let cut = false;
+  let reachedEnd = false;
   try {
     for (;;) {
       const { done, value } = await withinDeadline(reader.read());
-      if (done) break;
+      if (done) { reachedEnd = true; break; }
       total += value.byteLength;
       if (total > MAX_DOWNLOAD_BYTES) {
         parts.push(value.subarray(0, value.byteLength - (total - MAX_DOWNLOAD_BYTES)));
@@ -187,6 +188,13 @@ async function readBody(response, withinDeadline) {
       parts.push(value);
     }
   } finally {
+    if (!reachedEnd && !cut) {
+      // Timeout mid-stream: initiate best-effort cancellation, never await it.
+      try {
+        const pending = reader.cancel();
+        if (pending && typeof pending.catch === "function") void pending.catch(() => {});
+      } catch { /* ignore */ }
+    }
     // A timed-out read might still be unresolved; releaseLock may reject.
     try { reader.releaseLock(); } catch { /* ignore */ }
   }
