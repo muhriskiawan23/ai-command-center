@@ -122,3 +122,37 @@ backup restore or RPO guarantee is created by these tests. Before activation
 we must additionally establish complete real production D1 mutation mapping,
 chat backfill, independent storage costs/retention, exactly-once delivery,
 session ownership, and a witnessed nonproduction recovery drill.
+
+## 23 Nov 2026 — write-time message integrity and real-D1 ID mismatch
+
+New source-only SQLite journal constraints reject invalid events **before**
+acknowledging an append:
+
+- Every string journal message ID is single-use, even after a replacement,
+  conversation deletion, delete-all, or account deletion. Its relational
+  admission ledger is written in the same DO SQLite transaction as the
+  event and its durable sequence receipt.
+- Feedback must reference an **active assistant** message in the same
+  verified owner's conversation; missing, user-role or cross-conversation
+  message IDs return a 409 with no journal row.
+- Regeneration/replacement requires the two newest active messages to be
+  the stated user/assistant pair, in that order. New IDs must never have
+  been admitted before. A retry of an identical event ID uses the original
+  durable receipt, not a second model invocation. Duplicate/reused IDs and
+  stale replacements fail closed.
+- Delete-one, delete-all and account deletion mark affected message IDs
+  inactive while retaining minimal identity markers to block stale reuse.
+  Sensitive earlier payloads are still redacted by the existing deletion
+  transactions. These ID markers require separate metadata retention/privacy
+  policy and replication/deletion review.
+
+**Critical production compatibility gap:** actual
+`migrations/0001_auth_and_chat.sql` stores `messages.id` as an
+`INTEGER PRIMARY KEY AUTOINCREMENT`, while this journal uses stable string
+message IDs. Real `answer_feedback.message_id` (migration 0007) and
+`image_jobs`/conversation associations refer to actual D1 integer IDs,
+and `messages.links_json` plus idempotency keys need preservation.
+This source-only DO fix **does not map** those IDs or implement read-through,
+D1 reconciliation, account/session history recovery, or historical backfill.
+It is NOT wired into the live BOR AI Worker and cannot be deployed or used
+to claim production zero-loss without explicit independent approval.

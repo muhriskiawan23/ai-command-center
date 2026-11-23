@@ -76,6 +76,8 @@ function validateEvent(event){
       'new_user_message_id','new_assistant_message_id','user_content','assistant_content'])||
       !isId(p.conversation_id)||!['old_user_message_id','old_assistant_message_id',
         'new_user_message_id','new_assistant_message_id'].every(key=>isId(p[key]))||
+      new Set(['old_user_message_id','old_assistant_message_id',
+        'new_user_message_id','new_assistant_message_id'].map(key=>p[key])).size!==4||
       !validText(p.user_content)||!validText(p.assistant_content))
       throw Error('invalid_event');
   }else if(k==='feedback.set'){
@@ -102,6 +104,12 @@ function init(storage){
   sql.exec('CREATE TABLE IF NOT EXISTS journal_events (seq INTEGER PRIMARY KEY AUTOINCREMENT,event_id TEXT NOT NULL UNIQUE,user_id TEXT NOT NULL,kind TEXT NOT NULL,conversation_id TEXT,payload_json TEXT NOT NULL,redacted INTEGER NOT NULL DEFAULT 0 CHECK(redacted IN (0,1)))');
   sql.exec('CREATE INDEX IF NOT EXISTS journal_events_conversation ON journal_events(conversation_id,seq)');
   sql.exec('CREATE TABLE IF NOT EXISTS conversation_tombstones (conversation_id TEXT PRIMARY KEY)');
+  // Per-owner relational admission index: journal events are NOT durable/replayable
+  // merely because their JSON shape is valid. Track actual live message IDs,
+  // roles and latest turn order in the same SQLite transaction as event append.
+  // Never let retries reissue a payment/model call or create duplicate IDs.
+  sql.exec("CREATE TABLE IF NOT EXISTS journal_message_ids (message_id TEXT PRIMARY KEY,conversation_id TEXT NOT NULL,role TEXT NOT NULL CHECK(role IN ('user','assistant')),seq INTEGER NOT NULL,ordinal INTEGER NOT NULL DEFAULT 0,active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0,1)))");
+  sql.exec('CREATE INDEX IF NOT EXISTS journal_live_message_order ON journal_message_ids(conversation_id,active,seq DESC,ordinal DESC)');
 }
 const first=(sql,query,...args)=>sql.exec(query,...args).toArray()[0]||null;
 const list=(sql,query,...args)=>sql.exec(query,...args).toArray();
@@ -135,18 +143,51 @@ function append(storage,event){
         if(created)throw Error('conversation_id_reused');
       }else if(!created)throw Error('conversation_missing');
     }
+    // Validate references and D1-compatible message lifetimes before admitting
+    // an acknowledged event. Mutations after this point are atomic with it.
+    const p=JSON.parse(event.payload_json);
+    if(event.kind==='message.saved'){
+      if(first(sql,'SELECT 1 AS found FROM journal_message_ids WHERE message_id=?',p.message_id))
+        throw Error('journal_message_id_reused');
+    }else if(event.kind==='feedback.set'){
+      const target=first(sql,'SELECT conversation_id,role FROM journal_message_ids WHERE message_id=? AND active=1',p.message_id);
+      if(!target||target.conversation_id!==p.conversation_id||target.role!=='assistant')
+        throw Error('journal_feedback_target_invalid');
+    }else if(event.kind==='turn.replaced'){
+      const latest=list(sql,'SELECT message_id,role FROM journal_message_ids WHERE conversation_id=? AND active=1 ORDER BY seq DESC,ordinal DESC LIMIT 2',p.conversation_id);
+      if(latest.length!==2||latest[0].role!=='assistant'||latest[1].role!=='user'||
+         latest[0].message_id!==p.old_assistant_message_id||
+         latest[1].message_id!==p.old_user_message_id)
+        throw Error('journal_stale_turn_replacement');
+      if(first(sql,'SELECT 1 AS found FROM journal_message_ids WHERE message_id IN (?,?) LIMIT 1',
+        p.new_user_message_id,p.new_assistant_message_id))
+        throw Error('journal_message_id_reused');
+    }
     sql.exec(
       'INSERT INTO journal_events(event_id,user_id,kind,conversation_id,payload_json) VALUES(?,?,?,?,?)',
       event.event_id,event.user_id,event.kind,event.conversation_id,event.payload_json
     );
     const inserted=first(sql,'SELECT seq FROM journal_events WHERE event_id=?',event.event_id);
     if(!inserted)throw Error('journal_write_not_verified');
+    if(event.kind==='message.saved'){
+      sql.exec('INSERT INTO journal_message_ids(message_id,conversation_id,role,seq,ordinal) VALUES(?,?,?,?,0)',
+        p.message_id,p.conversation_id,p.role,inserted.seq);
+    }else if(event.kind==='turn.replaced'){
+      sql.exec('UPDATE journal_message_ids SET active=0 WHERE message_id IN (?,?) AND active=1',
+        p.old_user_message_id,p.old_assistant_message_id);
+      sql.exec('INSERT INTO journal_message_ids(message_id,conversation_id,role,seq,ordinal) VALUES(?,?,?,?,0)',
+        p.new_user_message_id,p.conversation_id,'user',inserted.seq);
+      sql.exec('INSERT INTO journal_message_ids(message_id,conversation_id,role,seq,ordinal) VALUES(?,?,?,?,1)',
+        p.new_assistant_message_id,p.conversation_id,'assistant',inserted.seq);
+    }
     if(event.kind==='conversation.deleted'){
+      sql.exec('UPDATE journal_message_ids SET active=0 WHERE conversation_id=?',event.conversation_id);
       // Scrub the actual source payload in the same commit as its tombstone.
       sql.exec('INSERT INTO conversation_tombstones(conversation_id) VALUES(?)',event.conversation_id);
       sql.exec("UPDATE journal_events SET payload_json='{}',redacted=1 WHERE conversation_id=? AND seq<? AND kind NOT IN ('conversation.deleted')",
         event.conversation_id,inserted.seq);
     }else if(event.kind==='conversations.deleted_all'){
+      sql.exec('UPDATE journal_message_ids SET active=0 WHERE active=1');
       sql.exec("INSERT OR IGNORE INTO conversation_tombstones(conversation_id) SELECT DISTINCT conversation_id FROM journal_events WHERE kind='conversation.created' AND conversation_id IS NOT NULL");
       // A prior conversation.deleted event already has only the stable ID:
       // keep its tombstone payload so offline replay can prove deletion order.
@@ -154,6 +195,7 @@ function append(storage,event){
       sql.exec("UPDATE journal_events SET payload_json='{}',redacted=1 WHERE seq<? AND conversation_id IS NOT NULL AND kind!='conversation.deleted'",
         inserted.seq);
     }else if(event.kind==='account.deleted'){
+      sql.exec('UPDATE journal_message_ids SET active=0 WHERE active=1');
       sql.exec("UPDATE journal_events SET payload_json='{}',redacted=1 WHERE seq<?",inserted.seq);
       sql.exec('UPDATE journal_owner SET deleted=1 WHERE singleton=1');
     }
@@ -182,7 +224,8 @@ export class ChatJournalDurableObject {
         return respond({ok:true,...result});
       }catch(error){
         const known=['invalid_event','account_not_initialized','owner_mismatch','deleted_account',
-          'deleted_event','event_id_conflict','deleted_conversation','conversation_id_reused','conversation_missing'];
+          'deleted_event','event_id_conflict','deleted_conversation','conversation_id_reused','conversation_missing',
+          'journal_message_id_reused','journal_feedback_target_invalid','journal_stale_turn_replacement'];
         return err(known.includes(error?.message)?error.message:'journal_storage_unavailable',
           !known.includes(error?.message)?503:error?.message==='invalid_event'?400:error?.message==='owner_mismatch'?403:409);
       }
