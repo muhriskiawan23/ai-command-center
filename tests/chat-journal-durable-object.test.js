@@ -196,7 +196,8 @@ test('delete-all retains minimal prior conversation-deletion tombstone and scrub
     assert.equal((await h.post({event_id:'erase-all',user_id:'user-one',
       kind:'conversations.deleted_all',payload:{}})).status,200);
     const deleted=h.db.prepare("SELECT payload_json,redacted FROM journal_events WHERE kind='conversation.deleted'").get();
-    assert.deepEqual(deleted,{payload_json:'{"conversation_id":"conversation-one"}',redacted:0});
+    assert.equal(deleted.payload_json,'{"conversation_id":"conversation-one"}');
+    assert.equal(deleted.redacted,0);
     const raw=JSON.stringify((await h.read()).body.events);
     assert.equal(raw.includes('PRIVATE_PROMPT'),false);
     assert.equal(raw.includes('Private title'),false);
