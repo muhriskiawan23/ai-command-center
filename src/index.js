@@ -1424,8 +1424,9 @@ async function persistConversation(env, user, conversationId, message, response,
     statements.push(env.DB.prepare("INSERT INTO messages (conversation_id, user_id, role, content, created_at) VALUES (?, ?, 'user', ?, ?)").bind(id, user.id, message, now));
   }
   statements.push(env.DB.prepare("INSERT INTO messages (conversation_id, user_id, role, content, created_at, links_json) VALUES (?, ?, 'assistant', ?, ?, ?)").bind(id, user.id, response, now, persistedLinks.length ? JSON.stringify(persistedLinks) : null));
+  let batchResults;
   try {
-    await env.DB.batch(statements);
+    batchResults = await env.DB.batch(statements);
   } catch (error) {
     // Keep chat writes available during a rolling release if the additive migration has not landed yet.
     if (!requestId || !/no such column/i.test(String(error?.message))) throw error;
@@ -1434,11 +1435,14 @@ async function persistConversation(env, user, conversationId, message, response,
       env.DB.prepare("INSERT INTO messages (conversation_id, user_id, role, content, created_at) VALUES (?, ?, 'user', ?, ?)").bind(id, user.id, message, now),
       env.DB.prepare("INSERT INTO messages (conversation_id, user_id, role, content, created_at, links_json) VALUES (?, ?, 'assistant', ?, ?, ?)").bind(id, user.id, response, now, persistedLinks.length ? JSON.stringify(persistedLinks) : null)
     );
-    await env.DB.batch(legacyStatements);
+    batchResults = await env.DB.batch(legacyStatements);
   }
-  const saved = await env.DB.prepare("SELECT id FROM messages WHERE conversation_id = ? AND user_id = ? AND role = 'assistant' ORDER BY id DESC LIMIT 1").bind(id, user.id).first();
-  if (!saved) throw new Error("Jawaban tersimpan tidak dapat ditemukan.");
-  return { conversationId: id, responseId: Number(saved.id) };
+  // Use the receipt from this write. A concurrent turn may already have appended another reply.
+  const responseId = batchResults.at(-1)?.meta?.last_row_id;
+  if (!Number.isSafeInteger(responseId) || responseId <= 0) {
+    throw new Error("Jawaban tersimpan tidak dapat ditemukan.");
+  }
+  return { conversationId: id, responseId };
 }
 
 async function handleFeedbackRoute(request, env, url) {
