@@ -28,7 +28,7 @@ test("Free mode: model quota outage preserves existing account chat and refunds 
   const cookie="__Host-borai_session="+token;
   const headers={"Content-Type":"application/json",Origin:app.url,Cookie:cookie};
   const requestId=crypto.randomUUID();
-  const body=JSON.stringify({message:"Simple synthetic capacity test",agent:"writer",
+  const body=JSON.stringify({message:"Simple synthetic capacity test",agent:"coordinator",
     conversationId,requestId,language:"en"});
   const send=()=>fetch(app.url+"/api/chat",{method:"POST",headers,body});
   const count=()=>app.db.sqlite.prepare("SELECT COUNT(*) AS n FROM messages WHERE conversation_id=?").get(conversationId).n;
