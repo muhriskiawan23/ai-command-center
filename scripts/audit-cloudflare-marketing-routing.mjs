@@ -1,5 +1,9 @@
 // Manual read-only routing inventory for BOR AI. Never mutates Cloudflare resources.
 // Uses existing GitHub Actions secrets, with all response bodies kept out of logs.
+// Required read-only Cloudflare scopes for the full inventory:
+// Zone > Zone Read, DNS Read, Workers Routes Read (getborai.com zone);
+// Account > Workers Scripts Read (or Workers Metadata Read-Only), Pages Read.
+// A 403 or missing zone visibility is NOT proof of safe DNS/Worker routing.
 const token = process.env.CLOUDFLARE_AUDIT_API_TOKEN || process.env.CLOUDFLARE_API_TOKEN;
 const account = process.env.CLOUDFLARE_ACCOUNT_ID;
 if (!token || !account) {
@@ -16,7 +20,9 @@ async function request(path, label) {
       method: "GET", headers, redirect: "error", signal: AbortSignal.timeout(20000)
     });
     if (!response.ok) {
-      console.log(label + ": UNVERIFIED HTTP " + response.status + " (no response body logged)");
+      console.log(label + ": UNVERIFIED HTTP " + response.status +
+        (response.status === 403 ? " (check token permissions, scope and account)" : "") +
+        " (no response body logged)");
       complete = false;
       return null;
     }
@@ -48,6 +54,9 @@ async function collect(path, label) {
     all.push(...payload.result);
     const total = payload.result_info?.total_pages;
     if (Number.isInteger(total)) {
+      // Cloudflare can report zero pages for an empty first response.
+      // Treat that as empty, not malformed, so missing zone visibility is explicit.
+      if (total === 0 && page === 1 && payload.result.length === 0) return all;
       if (total < page || total > 10) {
         console.log(label + ": UNVERIFIED inconsistent/large pagination");
         complete = false;
@@ -75,7 +84,7 @@ let zoneId = null;
 if (zones) {
   const selected = zones.filter((z) => z?.name === "getborai.com");
   if (selected.length !== 1 || typeof selected[0]?.id !== "string") {
-    console.log("Zone lookup: UNVERIFIED (one matching zone not established)");
+    console.log("Zone lookup: UNVERIFIED (getborai.com not visible under token scope/account or no unique matching zone)");
     complete = false;
   } else {
     zoneId = encodeURIComponent(selected[0].id);
