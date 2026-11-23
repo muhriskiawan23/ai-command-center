@@ -29,6 +29,20 @@ Use a dedicated non-production instance and controlled test DNS/TLS fixtures. Ke
 | Timeout, oversized body, abort, proxy outage | Bounded failure; no direct-fetch fallback |
 | Missing/invalid proxy authentication | Denied; private ingress cannot be used as open proxy |
 
+The manual [BOR AI Sandbox egress proof](../../.github/workflows/sandbox-egress-proof.yml)
+workflow runs the existing fixed fixtures using a temporary Worker. Configure the GitHub
+environment `egress-proof-sandbox` with a dedicated non-production proxy and VPC Service:
+
+- Variable `SANDBOX_EGRESS_VPC_SERVICE_ID` for the dedicated VPC Service.
+- Secrets `SANDBOX_EGRESS_CF_ACCOUNT_ID`, `SANDBOX_EGRESS_CF_API_TOKEN`, and
+  `SANDBOX_EGRESS_PROXY_TOKEN` for the sandbox resources.
+
+The runner rejects the production VPC Service ID. Sandbox mode skips all operations
+against the application Worker and verifies cleanup of the run-specific probe.
+Dispatch from `main` once the workflow and sandbox resources are available.
+A passing run covers only the fixtures it executes. External DNS cases and
+independent privacy review still require their own evidence.
+
 Require reviewer to link exact hosted evidence and independently check that the observed peer was captured **at the origin socket**, not inferred from DNS or a Gateway log.
 
 ## Gate C — independent privacy and retention review (OPEN)
