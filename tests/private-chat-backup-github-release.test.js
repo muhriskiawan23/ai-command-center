@@ -111,3 +111,27 @@ test('manual PREFLIGHT uses scoped read-only API checks without deployment or ex
   assert.ok(yaml.slice(report).includes("if: ${{ inputs.phase == 'preflight' }}"));
   assert.ok(yaml.slice(report).includes('no D1 export, no R2 writes, no restore'));
 });
+
+test('manual PLAN and CI compile the same isolated enabled-shaped release candidate with fake-only inputs',()=>{
+  const workflow=readFileSync('.github/workflows/bor-ai-preview-build.yml','utf8');
+  const script=readFileSync('scripts/verify-private-chat-backup-release-candidate.mjs','utf8');
+  const candidate='node scripts/verify-private-chat-backup-release-candidate.mjs';
+  const dry='--config wrangler.chat-private-backup.candidate.generated.jsonc';
+  assert.match(yaml,/Compile enabled-shaped isolated release candidate using SYNTHETIC inputs only/);
+  assert.ok(yaml.includes(candidate));
+  assert.ok(yaml.includes(dry));
+  assert.ok(workflow.includes(candidate));
+  assert.ok(workflow.includes(dry));
+  assert.match(yaml,/--dry-run --experimental-auto-create=false/);
+  assert.match(workflow,/--dry-run --experimental-auto-create=false/);
+  assert.match(script,/SYNTHETIC_ACCOUNT_ID='00000000000000000000000000000000'/);
+  assert.match(script,/SYNTHETIC_SIGNED_HOST='candidate-only\.r2\.cloudflarestorage\.com'/);
+  const executable=script.split('\n').filter(line=>!line.trim().startsWith('//')).join('\n');
+  assert.doesNotMatch(executable,/process\.env|fetch\(|secret put|workflows trigger|d1 export|r2 object put/);
+  const dryStep=yaml.slice(
+    yaml.indexOf('- name: Compile enabled-shaped isolated release candidate'),
+    yaml.indexOf('- name: Confirm reviewed main is not stale')
+  );
+  assert.doesNotMatch(dryStep,/\$\{\{ secrets\.|workflows trigger|wrangler@4\.165\.0 deploy --config/);
+  assert.match(dryStep,/wrangler@4\.165\.0 deploy --dry-run/);
+});

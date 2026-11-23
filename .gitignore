@@ -31,3 +31,8 @@ wrangler.duitku-sandbox.generated.jsonc
 
 # Dedicated billing staging binding and test origin (operator-generated; never commit).
 wrangler.billing-staging.generated.jsonc
+
+# Isolated private chat backup: generated configs stay local to CI/runner.
+# The enabled-shaped candidate contains FAKE identifiers only and is never deployed.
+wrangler.chat-private-backup.generated.jsonc
+wrangler.chat-private-backup.candidate.generated.jsonc
