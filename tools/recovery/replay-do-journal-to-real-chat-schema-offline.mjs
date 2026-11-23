@@ -11,10 +11,10 @@ const MIGRATIONS=[
   '0005_conversation_archive.sql','0006_chat_request_idempotency.sql',
   '0007_answer_feedback.sql','0008_message_link_sources.sql'
 ];
-const KINDS=new Set(['account.created','conversation.created','message.saved',
+const KINDS=new Set(['account.created','conversation.created','message.saved','turn.saved',
   'conversation.updated','turn.replaced','feedback.set','conversation.deleted',
   'conversations.deleted_all','account.deleted']);
-const CONTENT_KINDS=new Set(['conversation.created','message.saved','conversation.updated',
+const CONTENT_KINDS=new Set(['conversation.created','message.saved','turn.saved','conversation.updated',
   'turn.replaced','feedback.set']);
 const idOk=x=>typeof x==='string'&&/^[A-Za-z0-9_-]{2,160}$/.test(x);
 const fail=code=>{throw Error(code);};
@@ -84,13 +84,14 @@ const mapped=(db,id,conversationId,role)=>{
     fail('offline_actual_d1_message_mapping_missing');
   return row.d1_message_id;
 };
-const addMessage=(db,userId,conversationId,stable,role,content,stamp)=>{
+const addMessage=(db,userId,conversationId,stable,role,content,stamp,{requestId=null,linksJson=null}={})=>{
   if(!idOk(stable)||!['user','assistant'].includes(role)||typeof content!=='string'||!content.length)
     fail('offline_actual_d1_message_invalid');
   if(has(db,'SELECT 1 FROM offline_recovery_messages WHERE stable_message_id=?',stable))
     fail('offline_actual_d1_message_id_reused');
-  const info=run(db,'INSERT INTO messages(conversation_id,user_id,role,content,created_at) VALUES(?,?,?,?,?)',
-    conversationId,userId,role,content,stamp);
+  const info=run(db,
+    'INSERT INTO messages(conversation_id,user_id,role,content,created_at,idempotency_key,links_json) VALUES(?,?,?,?,?,?,?)',
+    conversationId,userId,role,content,stamp,requestId,linksJson);
   run(db,'INSERT INTO offline_recovery_messages(stable_message_id,d1_message_id,conversation_id,role) VALUES(?,?,?,?)',
     stable,Number(info.lastInsertRowid),conversationId,role);
 };
@@ -109,6 +110,30 @@ function project(db,e,user,stamp){
   }else if(kind==='message.saved'){
     owned(db,id,p.conversation_id);
     addMessage(db,id,p.conversation_id,p.message_id,p.role,p.content,stamp);
+  }else if(kind==='turn.saved'){
+    // One journal event -> two PRIMARY D1 rows in one checkpoint transaction.
+    // A crash after the first insert rolls back BOTH rows and the cursor.
+    owned(db,id,p.conversation_id);
+    if(!idOk(p.user_message_id)||!idOk(p.assistant_message_id)||
+      p.user_message_id===p.assistant_message_id||!idOk(p.request_id)||
+      typeof p.user_content!=='string'||!p.user_content.length||
+      typeof p.assistant_content!=='string'||!p.assistant_content.length||
+      !Number.isSafeInteger(p.created_at)||p.created_at<1||
+      !(p.links_json===null||typeof p.links_json==='string'))
+      fail('offline_actual_d1_turn_invalid');
+    // Defensive snapshot validation is separate from the DO admission.
+    if(p.links_json!==null){
+      let links;
+      try{links=JSON.parse(p.links_json);}catch{fail('offline_actual_d1_turn_invalid');}
+      if(!Array.isArray(links)||links.length>8||
+        links.some(link=>!link||typeof link.url!=='string'||
+          !/^https:\/\//i.test(link.url)||typeof link.title!=='string'))
+        fail('offline_actual_d1_turn_invalid');
+    }
+    addMessage(db,id,p.conversation_id,p.user_message_id,'user',p.user_content,p.created_at,
+      {requestId:p.request_id});
+    addMessage(db,id,p.conversation_id,p.assistant_message_id,'assistant',p.assistant_content,p.created_at,
+      {linksJson:p.links_json});
   }else if(kind==='conversation.updated'){
     owned(db,id,p.conversation_id);
     const updates=[],values=[];

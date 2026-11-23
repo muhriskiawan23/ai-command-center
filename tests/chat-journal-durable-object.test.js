@@ -296,3 +296,108 @@ test('deleting a conversation or all chats inactivates message IDs; no prior ID 
     assert.equal(h.db.prepare('SELECT COUNT(*) AS n FROM journal_events').get().n,7);
   }finally{h.close();}
 });
+
+const SYNTHETIC_ATOMIC_TURN=Object.freeze({
+  conversation_id:'conversation-one',
+  user_message_id:'synthetic-question-a',
+  assistant_message_id:'synthetic-answer-a',
+  user_content:'SYNTHETIC_PROMPT_ATOMIC',
+  assistant_content:'SYNTHETIC_RESPONSE_ATOMIC',
+  request_id:'synthetic-request-a',
+  created_at:1763890800,
+  links_json:JSON.stringify([{url:'https://example.invalid/synthetic',title:'Synthetic source'}])
+});
+const atomicEvent=(event_id='atomic-first',payload=SYNTHETIC_ATOMIC_TURN)=>({
+  event_id,user_id:'user-one',kind:'turn.saved',payload
+});
+
+test('atomic journal turn stores two message identities with one durable seq and deduplicates identical retries',async()=>{
+  const h=fixture();try{
+    await h.created();await h.chat();
+    const first=await h.post(atomicEvent());
+    assert.deepEqual(first,{status:200,body:{ok:true,seq:3,duplicate:false}});
+    const same=await h.post(atomicEvent('atomic-first',{
+      ...SYNTHETIC_ATOMIC_TURN,conversation_id:'conversation-one'
+    }));
+    assert.deepEqual(same,{status:200,body:{ok:true,seq:3,duplicate:true}});
+    assert.deepEqual(h.db.prepare(
+      'SELECT message_id,role,seq,ordinal,active FROM journal_message_ids ORDER BY ordinal').all()
+      .map(x=>({...x})),[
+        {message_id:'synthetic-question-a',role:'user',seq:3,ordinal:0,active:1},
+        {message_id:'synthetic-answer-a',role:'assistant',seq:3,ordinal:1,active:1}
+      ]);
+    assert.equal(h.db.prepare("SELECT COUNT(*) AS n FROM journal_events WHERE kind='turn.saved'").get().n,1);
+    assert.deepEqual(h.db.prepare('SELECT request_id,conversation_id,seq FROM journal_turn_requests').all()
+      .map(x=>({...x})),[{request_id:'synthetic-request-a',conversation_id:'conversation-one',seq:3}]);
+    const goodFeedback=await h.post({event_id:'feedback-atomic',user_id:'user-one',kind:'feedback.set',
+      payload:{conversation_id:'conversation-one',message_id:'synthetic-answer-a',
+        rating:'helpful',reason:'synthetic only'}});
+    assert.equal(goodFeedback.status,200);
+  }finally{h.close();}
+});
+
+test('atomic request deduplicates across event IDs and rejects identity reuse, malformed link and half-turn',async()=>{
+  const h=fixture();try{
+    await h.created();await h.chat();
+    assert.equal((await h.post(atomicEvent())).status,200);
+    const sameRequest=await h.post(atomicEvent('other-event',{
+      ...SYNTHETIC_ATOMIC_TURN,user_message_id:'different-question',
+      assistant_message_id:'different-answer'
+    }));
+    assert.deepEqual([sameRequest.status,sameRequest.body.code],[409,'journal_request_id_reused']);
+    const sameUserId=await h.post(atomicEvent('other-event',{
+      ...SYNTHETIC_ATOMIC_TURN,request_id:'synthetic-new-request',
+      assistant_message_id:'different-answer'
+    }));
+    assert.deepEqual([sameUserId.status,sameUserId.body.code],[409,'journal_message_id_reused']);
+    const invalid=[
+      {assistant_message_id:'synthetic-question-a'},
+      {links_json:'[{"url":"javascript:bad","title":"Synthetic"}]'},
+      {links_json:'not-json'},
+      {created_at:0},
+      {assistant_content:''},
+      {request_id:'x'},
+      {user_message_id:undefined}
+    ];
+    for(let i=0;i<invalid.length;i++){
+      const payload={...SYNTHETIC_ATOMIC_TURN,
+        request_id:'invalid-request-'+i,user_message_id:'invalid-user-'+i,
+        assistant_message_id:'invalid-answer-'+i,...invalid[i]};
+      // Explicit collision must survive the extra synthetic IDs.
+      if(i===0)payload.assistant_message_id=payload.user_message_id;
+      const res=await h.post(atomicEvent('invalid-event-'+i,payload));
+      assert.equal(res.status,400,JSON.stringify(res));
+      assert.equal(res.body.code,'invalid_event');
+    }
+    const altered=await h.post(atomicEvent('atomic-first',{
+      ...SYNTHETIC_ATOMIC_TURN,assistant_content:'DIFFERENT_PRIVATE_TEXT'
+    }));
+    assert.equal(altered.body.code,'event_id_conflict');
+    assert.equal(h.db.prepare('SELECT COUNT(*) AS n FROM journal_turn_requests').get().n,1);
+    assert.equal(h.db.prepare("SELECT COUNT(*) AS n FROM journal_events WHERE kind='turn.saved'").get().n,1);
+    assert.equal(h.db.prepare('SELECT COUNT(*) AS n FROM journal_message_ids').get().n,2);
+  }finally{h.close();}
+});
+
+test('atomic turn is redacted by delete and cannot resurrect old message identities',async()=>{
+  const h=fixture();try{
+    await h.created();await h.chat();await h.post(atomicEvent());
+    const deleted=await h.post({event_id:'delete-atomic-chat',user_id:'user-one',
+      kind:'conversation.deleted',payload:{conversation_id:'conversation-one'}});
+    assert.equal(deleted.status,200);
+    const record=h.db.prepare("SELECT payload_json,redacted FROM journal_events WHERE kind='turn.saved'").get();
+    assert.equal(record.payload_json,'{}');
+    assert.equal(record.redacted,1);
+    const asText=JSON.stringify((await h.read()).body.events);
+    assert.equal(asText.includes('SYNTHETIC_PROMPT_ATOMIC'),false);
+    assert.equal(asText.includes('SYNTHETIC_RESPONSE_ATOMIC'),false);
+    assert.equal(asText.includes('https://example.invalid/synthetic'),false);
+    assert.equal(h.db.prepare('SELECT COUNT(*) AS n FROM journal_message_ids WHERE active=1').get().n,0);
+    await h.chat('create-chat-after-deletion','user-one','fresh-conversation');
+    const reuse=await h.post(atomicEvent('reuse-atomic',{
+      ...SYNTHETIC_ATOMIC_TURN,conversation_id:'fresh-conversation',
+      request_id:'different-request-after-delete'
+    }));
+    assert.equal(reuse.body.code,'journal_message_id_reused');
+  }finally{h.close();}
+});

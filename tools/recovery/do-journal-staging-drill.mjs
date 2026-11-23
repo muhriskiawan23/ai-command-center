@@ -7,10 +7,10 @@ import {initSyntheticJournal,initSyntheticProjection,replaySyntheticJournal}
   from './chat-journal-prototype.mjs';
 
 const USER=/^[A-Za-z0-9_-]{2,160}$/;
-const EVENTS=new Set(['account.created','conversation.created','message.saved',
+const EVENTS=new Set(['account.created','conversation.created','message.saved','turn.saved',
   'conversation.updated','turn.replaced','feedback.set','conversation.deleted',
   'conversations.deleted_all','account.deleted']);
-const CONTENT_EVENTS=new Set(['conversation.created','message.saved','conversation.updated',
+const CONTENT_EVENTS=new Set(['conversation.created','message.saved','turn.saved','conversation.updated',
   'turn.replaced','feedback.set']);
 const MAX_EVENTS=5000;
 const fail=(message)=>{throw Error(message);};
@@ -102,6 +102,11 @@ export function replayDoSnapshotOffline(snapshot,{maxReplayEvents=MAX_EVENTS,bef
      !Number.isSafeInteger(snapshot.head)||snapshot.head<0||
      !Array.isArray(snapshot.events)||snapshot.events.length!==snapshot.head)
     fail('journal_snapshot_incomplete');
+  // The legacy toy replayer has no atomic-turn or real integer-FK support.
+  // Never silently downgrade an atomic two-message event into half a turn.
+  // Use replayVerifiedDoSnapshotIntoActualChatSchemaOffline() instead.
+  if(snapshot.events.some(e=>e.kind==='turn.saved'))
+    fail('journal_snapshot_atomic_turn_requires_real_schema_replay');
   const journal=new DatabaseSync(':memory:');
   const projection=new DatabaseSync(':memory:');
   try{

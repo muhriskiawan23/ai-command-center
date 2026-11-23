@@ -5,7 +5,7 @@
 const ID = /^[A-Za-z0-9_-]{2,160}$/;
 const isId = value => typeof value === 'string' && ID.test(value);
 const CHAT_EVENTS = new Set([
-  'conversation.created', 'message.saved', 'conversation.updated',
+  'conversation.created', 'message.saved', 'turn.saved', 'conversation.updated',
   'turn.replaced', 'feedback.set'
 ]);
 const DELETIONS = new Set(['conversation.deleted', 'conversations.deleted_all', 'account.deleted']);
@@ -64,6 +64,29 @@ function validateEvent(event){
     if(!shape(p,['conversation_id','message_id','role','content'])||!isId(p.conversation_id)||
       !isId(p.message_id)||!['user','assistant'].includes(p.role)||!validText(p.content))
       throw Error('invalid_event');
+  }else if(k==='turn.saved'){
+    // A complete user+assistant pair must be journaled as ONE durable event,
+    // before any D1 mutation. Never persist a half-turn or a raw API token.
+    const fields=['conversation_id','user_message_id','assistant_message_id',
+      'user_content','assistant_content','request_id','created_at','links_json'];
+    if(!shape(p,fields)||!isId(p.conversation_id)||!isId(p.user_message_id)||
+      !isId(p.assistant_message_id)||p.user_message_id===p.assistant_message_id||
+      !isId(p.request_id)||!validText(p.user_content,8000)||
+      !validText(p.assistant_content,8000)||
+      !Number.isSafeInteger(p.created_at)||p.created_at<1||
+      !(p.links_json===null||(typeof p.links_json==='string'&&p.links_json.length<=4096)))
+      throw Error('invalid_event');
+    if(p.links_json!==null){
+      let links;
+      try{links=JSON.parse(p.links_json);}catch{throw Error('invalid_event');}
+      if(!Array.isArray(links)||links.length>8||
+        links.some(link=>!link||typeof link!=='object'||Array.isArray(link)||
+          !Object.keys(link).every(key=>['url','title'].includes(key))||
+          typeof link.url!=='string'||link.url.length>2048||
+          !/^https:\/\//i.test(link.url)||
+          typeof link.title!=='string'||link.title.length>180))
+        throw Error('invalid_event');
+    }
   }else if(k==='conversation.updated'){
     if(!shape(p,['conversation_id'],['title','pinned','archived'])||!isId(p.conversation_id)||
       Object.keys(p).length<2||
@@ -110,6 +133,9 @@ function init(storage){
   // Never let retries reissue a payment/model call or create duplicate IDs.
   sql.exec("CREATE TABLE IF NOT EXISTS journal_message_ids (message_id TEXT PRIMARY KEY,conversation_id TEXT NOT NULL,role TEXT NOT NULL CHECK(role IN ('user','assistant')),seq INTEGER NOT NULL,ordinal INTEGER NOT NULL DEFAULT 0,active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0,1)))");
   sql.exec('CREATE INDEX IF NOT EXISTS journal_live_message_order ON journal_message_ids(conversation_id,active,seq DESC,ordinal DESC)');
+  // Cross-event request deduplication is independent of event_id. The request
+  // is opaque, non-secret, per-owner, and never copied from an unverified browser.
+  sql.exec('CREATE TABLE IF NOT EXISTS journal_turn_requests(request_id TEXT PRIMARY KEY,conversation_id TEXT NOT NULL,seq INTEGER NOT NULL)');
 }
 const first=(sql,query,...args)=>sql.exec(query,...args).toArray()[0]||null;
 const list=(sql,query,...args)=>sql.exec(query,...args).toArray();
@@ -149,6 +175,12 @@ function append(storage,event){
     if(event.kind==='message.saved'){
       if(first(sql,'SELECT 1 AS found FROM journal_message_ids WHERE message_id=?',p.message_id))
         throw Error('journal_message_id_reused');
+    }else if(event.kind==='turn.saved'){
+      if(first(sql,'SELECT 1 AS found FROM journal_turn_requests WHERE request_id=?',p.request_id))
+        throw Error('journal_request_id_reused');
+      if(first(sql,'SELECT 1 AS found FROM journal_message_ids WHERE message_id IN (?,?) LIMIT 1',
+        p.user_message_id,p.assistant_message_id))
+        throw Error('journal_message_id_reused');
     }else if(event.kind==='feedback.set'){
       const target=first(sql,'SELECT conversation_id,role FROM journal_message_ids WHERE message_id=? AND active=1',p.message_id);
       if(!target||target.conversation_id!==p.conversation_id||target.role!=='assistant')
@@ -172,6 +204,13 @@ function append(storage,event){
     if(event.kind==='message.saved'){
       sql.exec('INSERT INTO journal_message_ids(message_id,conversation_id,role,seq,ordinal) VALUES(?,?,?,?,0)',
         p.message_id,p.conversation_id,p.role,inserted.seq);
+    }else if(event.kind==='turn.saved'){
+      sql.exec('INSERT INTO journal_message_ids(message_id,conversation_id,role,seq,ordinal) VALUES(?,?,?,?,0)',
+        p.user_message_id,p.conversation_id,'user',inserted.seq);
+      sql.exec('INSERT INTO journal_message_ids(message_id,conversation_id,role,seq,ordinal) VALUES(?,?,?,?,1)',
+        p.assistant_message_id,p.conversation_id,'assistant',inserted.seq);
+      sql.exec('INSERT INTO journal_turn_requests(request_id,conversation_id,seq) VALUES(?,?,?)',
+        p.request_id,p.conversation_id,inserted.seq);
     }else if(event.kind==='turn.replaced'){
       sql.exec('UPDATE journal_message_ids SET active=0 WHERE message_id IN (?,?) AND active=1',
         p.old_user_message_id,p.old_assistant_message_id);
@@ -225,7 +264,8 @@ export class ChatJournalDurableObject {
       }catch(error){
         const known=['invalid_event','account_not_initialized','owner_mismatch','deleted_account',
           'deleted_event','event_id_conflict','deleted_conversation','conversation_id_reused','conversation_missing',
-          'journal_message_id_reused','journal_feedback_target_invalid','journal_stale_turn_replacement'];
+          'journal_message_id_reused','journal_request_id_reused',
+          'journal_feedback_target_invalid','journal_stale_turn_replacement'];
         return err(known.includes(error?.message)?error.message:'journal_storage_unavailable',
           !known.includes(error?.message)?503:error?.message==='invalid_event'?400:error?.message==='owner_mismatch'?403:409);
       }

@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import {ChatJournalDurableObject} from '../src/chat-journal-do.js';
-import {collectPrivateDoSnapshot} from '../tools/recovery/do-journal-staging-drill.mjs';
+import {collectPrivateDoSnapshot,replayDoSnapshotOffline}
+  from '../tools/recovery/do-journal-staging-drill.mjs';
 import {createIsolatedActualChatSchemaOffline,replayVerifiedDoSnapshotIntoActualChatSchemaOffline}
   from '../tools/recovery/replay-do-journal-to-real-chat-schema-offline.mjs';
 
@@ -211,5 +212,123 @@ test('untrusted user identity, forged snapshot and bounded partial replay fail c
     });
     assert.equal(done.head,4);
     assert.equal(done.messages,2);
+  }finally{h.close();}
+});
+
+const ATOMIC_TURN={
+  conversation_id:'chat-actual-one',
+  user_message_id:'atomic-user-one',
+  assistant_message_id:'atomic-assistant-one',
+  user_content:'SYNTHETIC_ATOMIC_USER_PROMPT',
+  assistant_content:'SYNTHETIC_ATOMIC_ASSISTANT_RESPONSE',
+  request_id:'synthetic-request-atomic-one',
+  created_at:1780001234,
+  links_json:JSON.stringify([{url:'https://example.invalid/synthetic',title:'Synthetic source'}])
+};
+
+test('one durable turn.saved projects BOTH real SQLite messages atomically with idempotency key, original timestamp and citation links',async()=>{
+  const h=setup();try{
+    await h.push('init-account','account.created');
+    await h.push('init-conversation','conversation.created',{
+      conversation_id:'chat-actual-one',title:'SYNTHETIC_NEW_CHAT'
+    });
+    const accepted=await h.push('atomic-single-turn','turn.saved',ATOMIC_TURN);
+    assert.equal(accepted.seq,3);
+    assert.equal(accepted.duplicate,false);
+    const snapshot=await h.snapshot(3);
+    assert.equal(snapshot.events[2].kind,'turn.saved');
+    assert.equal(snapshot.events.length,3);
+    assert.throws(()=>replayDoSnapshotOffline(snapshot),
+      /journal_snapshot_atomic_turn_requires_real_schema_replay/);
+    const result=replayVerifiedDoSnapshotIntoActualChatSchemaOffline(h.target,snapshot,{
+      owner:OWNER,syntheticTimestamp:EPOCH
+    });
+    assert.equal(result.head,3);
+    assert.equal(result.messages,2);
+    const msgs=rows(h.target,
+      'SELECT id,role,content,created_at,idempotency_key,links_json FROM messages ORDER BY id');
+    assert.equal(msgs.length,2);
+    assert.ok(msgs.every(x=>Number.isSafeInteger(x.id)&&x.id>0));
+    assert.deepEqual(msgs.map(x=>x.role),['user','assistant']);
+    assert.equal(msgs[0].idempotency_key,'synthetic-request-atomic-one');
+    assert.equal(msgs[1].idempotency_key,null);
+    assert.equal(msgs[0].created_at,1780001234);
+    assert.equal(msgs[1].created_at,1780001234);
+    assert.equal(msgs[1].links_json,ATOMIC_TURN.links_json);
+    assert.equal(msgs[0].links_json,null);
+    assert.equal(h.target.prepare('PRAGMA foreign_key_check').all().length,0);
+    const duplicate=await h.push('atomic-single-turn','turn.saved',{...ATOMIC_TURN});
+    assert.equal(duplicate.seq,3);
+    assert.equal(duplicate.duplicate,true);
+    const repeat=await h.replay(3);
+    assert.equal(repeat.applied,0);
+    assert.equal(repeat.messages,2);
+    await h.push('feedback-atomic','feedback.set',{
+      conversation_id:'chat-actual-one',message_id:'atomic-assistant-one',
+      rating:'helpful',reason:'synthetic'
+    });
+    const feedback=await h.replay(4);
+    assert.equal(feedback.feedback,1);
+    assert.equal(h.target.prepare('SELECT message_id FROM answer_feedback').get().message_id,msgs[1].id);
+  }finally{h.close();}
+});
+
+test('journal-first crash before D1 commit rolls back WHOLE pair and checkpoint, then retry applies exactly once',async()=>{
+  const h=setup();try{
+    await h.push('init-account','account.created');
+    await h.push('init-conversation','conversation.created',{
+      conversation_id:'chat-actual-one',title:'SYNTHETIC_NEW_CHAT'
+    });
+    await h.push('atomic-single-turn','turn.saved',ATOMIC_TURN);
+    // Lost client acknowledgement immediately after durable journal commit:
+    // the primary D1 has not yet accepted anything.
+    assert.equal(h.target.prepare('SELECT COUNT(*) AS n FROM messages').get().n,0);
+    let injected=0;
+    await assert.rejects(h.replay(3,{beforeCheckpoint:e=>{
+      if(e.event_id==='atomic-single-turn'){
+        injected++;
+        throw Error('synthetic_failure_between_d1_projection_and_checkpoint');
+      }
+    }}),/synthetic_failure_between_d1_projection_and_checkpoint/);
+    assert.equal(injected,1);
+    assert.equal(h.target.prepare('SELECT seq FROM offline_recovery_guard').get().seq,2);
+    assert.equal(h.target.prepare('SELECT COUNT(*) AS n FROM messages').get().n,0);
+    assert.equal(h.target.prepare('SELECT COUNT(*) AS n FROM offline_recovery_messages').get().n,0);
+    const same=await h.push('atomic-single-turn','turn.saved',ATOMIC_TURN);
+    assert.equal(same.duplicate,true);
+    assert.equal(same.seq,3);
+    const completed=await h.replay(3);
+    assert.equal(completed.applied,1);
+    assert.equal(completed.messages,2);
+    assert.equal((await h.replay(3)).applied,0);
+    assert.equal(h.target.prepare('SELECT COUNT(*) AS n FROM messages').get().n,2);
+    assert.equal(h.target.prepare('PRAGMA foreign_key_check').all().length,0);
+  }finally{h.close();}
+});
+
+test('conversation deletion redacts BOTH atomic-turn payloads before offline replay and forbids resurrection',async()=>{
+  const h=setup();try{
+    await h.push('init-account','account.created');
+    await h.push('init-conversation','conversation.created',{
+      conversation_id:'chat-actual-one',title:'SYNTHETIC_CONFIDENTIAL_TITLE'
+    });
+    await h.push('atomic-single-turn','turn.saved',ATOMIC_TURN);
+    await h.push('erase-conversation','conversation.deleted',{conversation_id:'chat-actual-one'});
+    const snapshot=await h.snapshot(4);
+    assert.equal(snapshot.events[2].payload_json,'{}');
+    assert.equal(snapshot.events[2].redacted,1);
+    const serialized=JSON.stringify(snapshot);
+    for(const text of ['SYNTHETIC_ATOMIC_USER_PROMPT','SYNTHETIC_ATOMIC_ASSISTANT_RESPONSE',
+      'SYNTHETIC_CONFIDENTIAL_TITLE','https://example.invalid/synthetic']){
+      assert.equal(serialized.includes(text),false);
+    }
+    const receipt=replayVerifiedDoSnapshotIntoActualChatSchemaOffline(h.target,snapshot,{
+      owner:OWNER,syntheticTimestamp:EPOCH
+    });
+    assert.equal(receipt.head,4);
+    assert.equal(receipt.messages,0);
+    assert.equal(receipt.conversations,0);
+    assert.equal(receipt.conversationTombstones,1);
+    assert.equal(h.target.prepare('PRAGMA foreign_key_check').all().length,0);
   }finally{h.close();}
 });

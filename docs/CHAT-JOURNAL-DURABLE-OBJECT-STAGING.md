@@ -377,3 +377,48 @@ and post-checkpoint event idempotently; prove read-your-writes behavior;
 and demonstrate a successful secure production D1 export to separate
 nonproduction recovery **without** jeopardizing the real chat database.
 This source inventory **does not authorize** any of those operations.
+
+## 23 Nov 2026 — atomic full-turn event (STAGING SOURCE AND OFFLINE ONLY)
+
+The earlier prototype admitted two independent `message.saved` events for
+a user/assistant pair. A crash between their durable acknowledgements
+could leave a half-turn, although the real chat D1 saves the pair
+atomically with `env.DB.batch`. The new **`turn.saved`** event closes
+that **synthetic admission window** by committing the question and answer
+as **ONE SQLite Durable Object transaction** and **ONE sequence number**.
+
+The event requires an owner-scoped conversation, distinct stable message
+IDs, a unique `request_id`, fixed `created_at`, text and bounded
+`links_json` metadata. The private DO validates both IDs and the request
+against transactionally persisted admission tables, rejecting reuse even
+under a different `event_id`. Retrying the exact original event ID and
+canonical body returns the original sequence without adding data.
+Invalid URLs, missing values and conflicting payloads fail closed.
+
+The private snapshot collector recognizes `turn.saved` and validates its
+redaction, but the legacy toy-schema replay explicitly rejects this new event
+rather than silently reconstructing only half a turn. Use the real D1 core
+schema replayer for this synthetic proof.
+
+The **offline-only** real-schema replayer now projects that one event into
+two `messages` records in **one SQLite transaction** with the replay
+checkpoint. It retains the synthetic chat's original timestamp,
+`idempotency_key` on the user row, assistant `links_json`, integer
+message mapping, and `answer_feedback.message_id` for a follow-up
+feedback event. Tests force a crash after both inserts but before the
+checkpoint and prove that **both** message rows roll back, while a retry
+replays the complete turn only once. Conversation deletion redacts the
+entire original turn payload, including links.
+
+**Not accomplished:** The archived production D1 integer primary keys
+cannot be known before an autoincrement insert, so this adapter assigns
+NEW IDs in an isolated restored SQLite instance, and returns
+`originalMessageIdsPreserved:false`. The test is not a real-time
+cross-Cloudflare-DO/D1 transaction, and does not supply reliable
+acknowledgement/read-your-writes, token/session replay, historical
+backfill, lost model-call recovery, image R2 reconstruction, or
+ongoing usage cost proof. The currently deployed Cloudflare staging
+Worker still runs its last verified image of the DO code; merging this
+source does not upgrade that deployed image. **Production app and
+production journal remain unchanged/OFF** and no production D1 export
+or future deploy is authorized by this source-only PR.
