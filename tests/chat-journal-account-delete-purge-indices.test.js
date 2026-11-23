@@ -25,7 +25,10 @@ function fixture({failOnSql=''}={}){
   const db=new DatabaseSync(':memory:');
   const sql={exec(query,...params){
     if(failOnSql&&query.includes(failOnSql))throw Error('synthetic_scrub_io_failure');
-    return {toArray:()=>db.prepare(query).all(...params)};
+    // Durable Object SQL executes eagerly, including schema writes where
+    // the caller does not inspect .toArray(). Match that runtime behavior.
+    const rows=db.prepare(query).all(...params);
+    return {toArray:()=>rows};
   }};
   const storage={sql,transactionSync(action){
     db.exec('BEGIN IMMEDIATE');
