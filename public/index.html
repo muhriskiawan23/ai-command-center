@@ -13,6 +13,7 @@
 <script src="/workspace-theme.js"></script>
 <link rel="stylesheet" href="/app.css">
 <link rel="stylesheet" href="/workspace.css">
+<link rel="stylesheet" href="/agent-activity.css">
 </head>
 <body data-state="initializing">
 <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -80,7 +81,19 @@
 </div>
 </aside>
 <main class="workspace" id="workspace">
-<header class="topbar"><div class="topbar-left"><button class="mobile-menu" id="menuBtn" type="button" aria-label="Buka menu" aria-controls="sidebar" aria-expanded="false"><svg class="ui-icon" width="20" height="20" aria-hidden="true"><use href="/workspace-icons.svg#menu"></use></svg></button><div class="model-label"><img src="/logo-mark.svg" alt="" width="24" height="24"><span>BOR AI</span></div></div><div class="topbar-actions"><button class="export-chat" id="exportConversation" type="button" hidden disabled>⇩ Ekspor chat</button><button class="export-chat print-chat" id="printConversation" type="button" hidden disabled>▤ Cetak PDF</button><div class="health"><span class="dot" id="healthDot"></span><span id="healthText">Memeriksa layanan…</span></div></div></header>
+<header class="topbar"><div class="topbar-left"><button class="mobile-menu" id="menuBtn" type="button" aria-label="Buka menu" aria-controls="sidebar" aria-expanded="false"><svg class="ui-icon" width="20" height="20" aria-hidden="true"><use href="/workspace-icons.svg#menu"></use></svg></button><div class="model-label"><button class="living-b-button" id="agentActivityTrigger" type="button" aria-label="Buka Agent Activity" aria-controls="agentActivityPanel" aria-expanded="false"><img src="/logo-mark.svg" alt="" width="24" height="24"></button><span>BOR AI</span></div></div><div class="topbar-actions"><button class="export-chat" id="exportConversation" type="button" hidden disabled>⇩ Ekspor chat</button><button class="export-chat print-chat" id="printConversation" type="button" hidden disabled>▤ Cetak PDF</button><div class="health"><span class="dot" id="healthDot"></span><span id="healthText">Memeriksa layanan…</span></div></div></header>
+<div class="agent-activity-backdrop" id="agentActivityBackdrop" hidden></div>
+<section class="agent-activity-panel" id="agentActivityPanel" role="region" aria-label="Agent Activity" hidden>
+  <div class="agent-activity-head"><h2>Agent Activity</h2><button class="agent-activity-close" id="agentActivityClose" type="button" aria-label="Tutup Agent Activity">×</button></div>
+  <p class="agent-activity-agent" id="agentActivityAgent">Aktivitas chat saat ini</p>
+  <p class="agent-activity-status" id="agentActivityStatus" role="status" aria-live="polite">Belum ada aktivitas dalam tab ini.</p>
+  <p class="agent-activity-task" id="agentActivityTask">Kirim pesan untuk memulai tugas.</p>
+  <ul class="agent-activity-tools" id="agentActivityTools" aria-label="Aktivitas tool yang dilaporkan backend" hidden></ul>
+  <p class="agent-activity-details" id="agentActivityDetails">Panel ini menampilkan aktivitas tab ini.</p>
+  <button class="agent-activity-stop" id="agentActivityStop" type="button" disabled>Hentikan permintaan</button>
+  <label class="agent-activity-motion-row" for="agentActivityMotion"><span>Animasi logo B (opsional)</span><input id="agentActivityMotion" type="checkbox"></label>
+  <p class="agent-activity-footnote">Mode animasi mati secara default. Panel ini belum menjalankan tugas background atau menampilkan kemajuan server secara langsung.</p>
+</section>
 <section class="conversation" id="conversation" aria-live="polite">
 <div class="welcome" id="welcome"><img class="welcome-logo-img" src="/logo-mark.svg" alt="" width="56" height="56"><h1>Apa yang ingin kamu kerjakan?</h1><p>Mulai dari ide, lanjutkan jadi langkah nyata.</p><div class="suggestions"><button class="suggestion" type="button" data-prompt="Bantu saya mengembangkan ide konten yang relevan, mudah dieksekusi, dan terukur."><svg class="ui-icon" width="20" height="20" aria-hidden="true"><use href="/workspace-icons.svg#write"></use></svg><strong>Menulis</strong><span>Kembangkan ide dan tulisan</span></button><button class="suggestion" type="button" data-prompt="Analisis masalah ini secara kritis, pisahkan fakta dan asumsi, lalu berikan rekomendasi."><svg class="ui-icon" width="20" height="20" aria-hidden="true"><use href="/workspace-icons.svg#chart"></use></svg><strong>Analisis</strong><span>Pahami masalah lebih dalam</span></button><button class="suggestion" type="button" data-prompt="Tinjau kode atau arsitektur aplikasi ini, identifikasi potensi bug, lalu susun rekomendasi perbaikan."><svg class="ui-icon" width="20" height="20" aria-hidden="true"><use href="/workspace-icons.svg#code"></use></svg><strong>Coding</strong><span>Tinjau dan perbaiki kode</span></button><button class="suggestion" type="button" data-prompt="Bantu saya menyusun rencana kerja yang realistis berdasarkan tujuan dan sumber daya yang tersedia."><svg class="ui-icon" width="20" height="20" aria-hidden="true"><use href="/workspace-icons.svg#calendar"></use></svg><strong>Rencana</strong><span>Susun langkah selanjutnya</span></button></div></div>
 <div class="messages" id="messages" hidden></div><section class="workflow" id="workflow" hidden><details><summary>Lihat proses multi-agent</summary><div id="workflowItems"></div></details></section>
@@ -302,6 +315,7 @@
 <script src="/markdown-renderer.js" defer></script>
 <script src="/google-forms.js" defer></script>
 <script src="/app.js" defer></script>
+<script src="/agent-activity.js" defer></script>
 <script src="/billing-account-status.js" defer></script>
 <script src="/workspace.js" defer></script>
 </body>
