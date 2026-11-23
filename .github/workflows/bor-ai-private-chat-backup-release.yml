@@ -101,6 +101,18 @@ jobs:
             --config wrangler.chat-private-backup.generated.jsonc \
             --outdir .wrangler/private-chat-backup-release-plan
 
+      - name: Compile enabled-shaped isolated release candidate using SYNTHETIC inputs only (dry-run)
+        shell: bash
+        run: |
+          set -euo pipefail
+          # No live token or account ID is used. This is NOT a real Worker deploy.
+          # Compile the exact enabled-shaped Workflow path as well as safe-OFF PLAN.
+          node scripts/verify-private-chat-backup-release-candidate.mjs
+          npx --yes wrangler@4.165.0 deploy --dry-run --experimental-auto-create=false \
+            --config wrangler.chat-private-backup.candidate.generated.jsonc \
+            --outdir .wrangler/private-chat-backup-release-candidate
+          echo 'Synthetic enabled-shaped release artifact compiled; no Cloudflare deploy, export or R2 write.'
+
       - name: Confirm reviewed main is not stale before external operations
         if: ${{ inputs.phase != 'plan' }}
         shell: bash
