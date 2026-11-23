@@ -115,14 +115,18 @@ function append(storage,event){
       owner={user_id:event.user_id,deleted:0};
     }
     if(owner.user_id!==event.user_id)throw Error('owner_mismatch');
-    if(owner.deleted)throw Error('deleted_account');
     const existing=first(sql,'SELECT seq,kind,payload_json,redacted,conversation_id FROM journal_events WHERE event_id=?',event.event_id);
     if(existing){
+      // Account erasure is a durable idempotent command: a lost 200 response
+      // must be safely retryable without allowing any pre-erasure content to
+      // return. All earlier events are redacted by the account tombstone.
+      if(owner.deleted&&existing.kind!=='account.deleted')throw Error('deleted_account');
       if(existing.redacted)throw Error('deleted_event');
       if(existing.kind!==event.kind||existing.payload_json!==event.payload_json||
         existing.conversation_id!==event.conversation_id)throw Error('event_id_conflict');
       return {seq:existing.seq,duplicate:true};
     }
+    if(owner.deleted)throw Error('deleted_account');
     if(event.conversation_id){
       const tombstone=first(sql,'SELECT 1 AS found FROM conversation_tombstones WHERE conversation_id=?',event.conversation_id);
       if(tombstone)throw Error('deleted_conversation');
@@ -144,7 +148,10 @@ function append(storage,event){
         event.conversation_id,inserted.seq);
     }else if(event.kind==='conversations.deleted_all'){
       sql.exec("INSERT OR IGNORE INTO conversation_tombstones(conversation_id) SELECT DISTINCT conversation_id FROM journal_events WHERE kind='conversation.created' AND conversation_id IS NOT NULL");
-      sql.exec("UPDATE journal_events SET payload_json='{}',redacted=1 WHERE seq<? AND conversation_id IS NOT NULL",
+      // A prior conversation.deleted event already has only the stable ID:
+      // keep its tombstone payload so offline replay can prove deletion order.
+      // Redact titles, prompts, assistant text, edits and feedback instead.
+      sql.exec("UPDATE journal_events SET payload_json='{}',redacted=1 WHERE seq<? AND conversation_id IS NOT NULL AND kind!='conversation.deleted'",
         inserted.seq);
     }else if(event.kind==='account.deleted'){
       sql.exec("UPDATE journal_events SET payload_json='{}',redacted=1 WHERE seq<?",inserted.seq);
