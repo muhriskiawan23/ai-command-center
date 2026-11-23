@@ -73,3 +73,24 @@ jobs:
 
       - name: Prove rollback, deterministic retry and FK integrity (synthetic only)
         run: node --test tests/chat-journal-cloudflare-staging-atomic.test.js
+
+  cloudflare_d1_staging_recovery_contract:
+    name: DO to D1 staging recovery (offline contract, no Cloudflare)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Validate safe synthetic DO-to-D1 rollback and replay
+        run: node --test tests/chat-journal-staging-d1-recovery-contract.test.js
+      - name: Generate inert D1 staging config and syntax-check separate Worker
+        run: |
+          node --check src/chat-journal-staging-d1-worker.js
+          node --check src/chat-journal-staging-d1-recovery-drill.js
+          node scripts/prepare-chat-journal-d1-recovery-staging.mjs 45125376134 8c5f0ad6-b892-48c7-b4c3-5c6e2a890ef0
+      - name: Dry-run bundle only (never deploy)
+        run: npx --yes wrangler@4 deploy --dry-run --config wrangler.chat-journal-d1-recovery.generated.jsonc
