@@ -163,3 +163,47 @@ test('malformed and oversized internal journal requests fail before any source w
     assert.equal(h.db.prepare('SELECT COUNT(*) n FROM journal_events').get().n,0);
   }finally{h.close();}
 });
+
+test('lost account-deletion acknowledgement is idempotently retryable after restart without resurrection',async()=>{
+  const h=fixture();try{
+    await h.created();await h.chat();await h.msg();
+    const deletion={event_id:'erase-account-once',user_id:'user-one',kind:'account.deleted',payload:{}};
+    const initial=await h.post(deletion);
+    assert.deepEqual(initial,{status:200,body:{ok:true,seq:4,duplicate:false}});
+    const duplicate=await h.post(deletion);
+    assert.deepEqual(duplicate,{status:200,body:{ok:true,seq:4,duplicate:true}});
+    const restarted=new ChatJournalDurableObject({storage:h.storage},{CHAT_JOURNAL_INTERNAL_SECRET:SECRET});
+    const afterRestart=await restarted.fetch(new Request('https://journal.internal/append',{
+      method:'POST',headers:{'X-BOR-Journal-Token':SECRET},body:JSON.stringify(deletion)
+    }));
+    assert.deepEqual(await afterRestart.json(),{ok:true,seq:4,duplicate:true});
+    const reuse=await h.post({...deletion,event_id:'erase-account-again'});
+    assert.equal(reuse.body.code,'deleted_account');
+    const stale=await h.msg('stale-message-after-erasure');
+    assert.equal(stale.body.code,'deleted_account');
+    const colliding=await h.post({...deletion,kind:'account.created'});
+    assert.equal(colliding.body.code,'event_id_conflict');
+    assert.equal(h.db.prepare('SELECT COUNT(*) AS n FROM journal_events').get().n,4);
+    assert.equal(h.db.prepare("SELECT COUNT(*) AS n FROM journal_events WHERE redacted=1 AND payload_json='{}'").get().n,3);
+  }finally{h.close();}
+});
+
+test('delete-all retains minimal prior conversation-deletion tombstone and scrubs all sensitive payloads',async()=>{
+  const h=fixture();try{
+    await h.created();await h.chat();await h.msg();
+    assert.equal((await h.post({event_id:'erase-chat',user_id:'user-one',
+      kind:'conversation.deleted',payload:{conversation_id:'conversation-one'}})).status,200);
+    assert.equal((await h.post({event_id:'erase-all',user_id:'user-one',
+      kind:'conversations.deleted_all',payload:{}})).status,200);
+    const deleted=h.db.prepare("SELECT payload_json,redacted FROM journal_events WHERE kind='conversation.deleted'").get();
+    assert.deepEqual(deleted,{payload_json:'{"conversation_id":"conversation-one"}',redacted:0});
+    const raw=JSON.stringify((await h.read()).body.events);
+    assert.equal(raw.includes('PRIVATE_PROMPT'),false);
+    assert.equal(raw.includes('Private title'),false);
+    const retry=await h.post({event_id:'erase-chat',user_id:'user-one',
+      kind:'conversation.deleted',payload:{conversation_id:'conversation-one'}});
+    assert.deepEqual(retry,{status:200,body:{ok:true,seq:4,duplicate:true}});
+    assert.equal((await h.chat('reuse-after-delete-all')).body.code,'deleted_conversation');
+    assert.equal((await h.chat('fresh-chat','user-one','fresh-conversation')).status,200);
+  }finally{h.close();}
+});
