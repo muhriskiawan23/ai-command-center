@@ -1,0 +1,90 @@
+name: BOR AI private chat backup instance receipt audit (GET-only)
+# NO exports, R2 object downloads, D1 reads, Worker deploys or migrations.
+# This only checks exact already-triggered instance + expected private R2 object metadata.
+on:
+  workflow_dispatch:
+    inputs:
+      phase:
+        type: choice
+        options: [plan, audit]
+        required: true
+        default: plan
+      reviewed_main_sha:
+        description: "AUDIT only: current reviewed main SHA; keep blank for PLAN"
+        type: string
+        required: false
+        default: ''
+      owner_confirmation:
+        description: "AUDIT only: AUDIT_ONLY_NO_EXPORT; keep blank for PLAN"
+        type: string
+        required: false
+        default: ''
+permissions:
+  contents: read
+concurrency:
+  group: bor-ai-private-chat-receipt-get-only
+  cancel-in-progress: false
+
+jobs:
+  read_only_receipt:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    environment: production
+    steps:
+      - name: Check main branch and approval inputs before secrets or API calls
+        shell: bash
+        env:
+          PHASE: ${{ inputs.phase }}
+          SHA_APPROVED: ${{ inputs.reviewed_main_sha }}
+          OWNER: ${{ inputs.owner_confirmation }}
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REF" == "refs/heads/main" ]] || { echo "::error::main-only audit"; exit 1; }
+          if [[ "$PHASE" == "plan" ]]; then
+            [[ -z "$SHA_APPROVED" && -z "$OWNER" ]] || { echo "::error::PLAN must not receive audit approvals"; exit 1; }
+          elif [[ "$PHASE" == "audit" ]]; then
+            [[ "$SHA_APPROVED" == "$GITHUB_SHA" &&
+              "$OWNER" == "AUDIT_ONLY_NO_EXPORT" ]] || {
+              echo "::error::Audit requires reviewed exact main SHA and GET-only approval"; exit 1;
+            }
+          else
+            echo "::error::Unrecognized phase"; exit 1
+          fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 22
+
+      - name: Test synthetic receipt/status/permissions with ZERO Cloudflare calls
+        run: |
+          node --check scripts/audit-private-chat-backup-instance-readonly.mjs
+          node --test tests/private-chat-backup-instance-receipt-audit.test.js
+
+      - name: Verify approved main SHA still matches remote before reading Cloudflare
+        if: ${{ inputs.phase == 'audit' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="$(git ls-remote origin refs/heads/main | cut -f1)"
+          [[ "$sha" == "$GITHUB_SHA" ]] || {
+            echo "::error::Main moved; review SHA before another GET-only audit"; exit 1;
+          }
+
+      - name: GET status of exact owner-triggered Workflow + exact R2 object metadata (NO SQL)
+        if: ${{ inputs.phase == 'audit' }}
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_BACKUP_DEPLOY_TOKEN: ${{ secrets.CLOUDFLARE_BACKUP_DEPLOY_TOKEN }}
+          CLOUDFLARE_R2_AUDIT_TOKEN: ${{ secrets.CLOUDFLARE_R2_AUDIT_TOKEN }}
+          BOR_BACKUP_RECEIPT_AUDIT_APPROVED: ${{ inputs.owner_confirmation }}
+        run: |
+          set -euo pipefail
+          node scripts/audit-private-chat-backup-instance-readonly.mjs
+
+      - name: PLAN passed; no Cloudflare operations performed
+        if: ${{ inputs.phase == 'plan' }}
+        run: echo 'Backup receipt PLAN passed. No Cloudflare API calls, SQL, D1 export, R2 content read or writes.'
