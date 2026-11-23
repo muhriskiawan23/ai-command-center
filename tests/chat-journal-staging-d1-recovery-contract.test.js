@@ -64,6 +64,8 @@ test('isolated config does not expose production D1 or public Worker',()=>{
   assert.throws(()=>createConfig('../../bad',uuid),/staging_recovery_invalid_identity/);
   const c=createConfig(runId,uuid);
   assert.equal(c.d1_databases[0].database_id,uuid);
+  assert.equal(c.name,'bor-ai-chat-recovery-d1-'+runId);
+  assert.equal(c.workflows[0].name,'bor-ai-chat-recovery-d1-drill-'+runId);
   assert.equal(c.workers_dev,false);
   assert.equal(c.preview_urls,false);
   assert.ok(!('routes' in c)&&!('r2_buckets' in c)&&!('assets' in c));
