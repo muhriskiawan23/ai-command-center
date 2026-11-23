@@ -5,6 +5,7 @@ import {spawnSync} from 'node:child_process';
 import {randomBytes} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import {join,resolve} from 'node:path';
+import {fileURLToPath} from 'node:url';
 import {setTimeout as sleep} from 'node:timers/promises';
 
 export const ACCOUNT_PIN='1698b70193eb133044e9fb07e39b7740';
@@ -88,7 +89,15 @@ export async function runOnce(env,{request=fetch,cli=spawnSync,log=console.log}=
       fail('staging_runner_wrangler_failed_'+args[0]+'_exit_'+String(result.status??'unknown'));
   }
   async function readExists(path,token){
-    return !(await cf(token,'GET',path,undefined,{notFound:true})).missing;
+    if(!verifiedPath(path))fail('staging_runner_api_path_denied');
+    let response;
+    try{
+      response=await request(cfBase+path,{method:'GET',redirect:'error',
+        headers:headers(token),signal:AbortSignal.timeout(25000)});
+    }catch{fail('staging_runner_presence_check_unavailable');}
+    if(response.status===404)return false;
+    if(response.status===200)return true;
+    fail('staging_runner_presence_check_http_'+response.status);
   }
   async function listExactRunD1(){
     // This fallback is only for an ambiguous create response. Never delete
@@ -173,7 +182,6 @@ export async function runOnce(env,{request=fetch,cli=spawnSync,log=console.log}=
     // New per-run secret, never print or reuse existing journal secret.
     const secret=randomBytes(40).toString('hex');
     wrangler(['secret','put','CHAT_JOURNAL_INTERNAL_SECRET','--config',cfg],{input:secret+'\n'});
-    secret.replace(/./g,''); // no secret is ever persisted or logged
     const inst=await cf(workerToken,'POST',wfBase+'/instances',{
       instance_id:names.instance,
       params:JSON.stringify({purpose:'BOR_SYNTHETIC_CLOSED_DO_D1_RECOVERY_V1'})
@@ -220,6 +228,6 @@ export async function runOnce(env,{request=fetch,cli=spawnSync,log=console.log}=
   if(!passed)fail('staging_runner_drill_failed_or_not_run');
   return receipt;
 }
-if(import.meta.url===new URL('file://'+process.argv[1]).href){
+if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
   runOnce(process.env).catch(e=>{console.error('CLOSED_STAGING_DRILL_FAILED',e.message);process.exitCode=1;});
 }
