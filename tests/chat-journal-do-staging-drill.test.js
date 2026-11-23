@@ -169,3 +169,58 @@ test('simulated primary projection crash cannot produce success; a clean restart
     assert.throws(()=>replayDoSnapshotOffline(snapshot,{maxReplayEvents:2}),/journal_replay_incomplete/);
   }finally{h.close();}
 });
+
+test('delete-one then delete-all then new chat replays without deleted data resurrection',async()=>{
+  const h=setup();try{
+    await seed(h);
+    await h.push('erase-chat','conversation.deleted',{conversation_id:'conversation-one'});
+    await h.push('erase-all','conversations.deleted_all',{});
+    await h.push('new-conversation','conversation.created',
+      {conversation_id:'conversation-after-erasure',title:'New safe title'});
+    await h.push('new-user-message','message.saved',
+      {conversation_id:'conversation-after-erasure',message_id:'new-message-after-erasure',
+       role:'user',content:'NEW_MESSAGE_AFTER_DELETION'});
+    const snapshot=await collectPrivateDoSnapshot(h.object,{
+      ...h.auth,expectedMinimumHead:8,pageLimit:1
+    });
+    assert.equal(snapshot.events[4].kind,'conversation.deleted');
+    assert.equal(snapshot.events[4].redacted,0);
+    assert.equal(snapshot.events[4].payload_json,'{"conversation_id":"conversation-one"}');
+    assert.ok(snapshot.events.slice(1,4).every(e=>e.redacted===1&&e.payload_json==='{}'));
+    for(const privateValue of ['SECRET_USER_PROMPT','SECRET_ASSISTANT_REPLY','Sensitive chat title']){
+      assert.equal(JSON.stringify(snapshot).includes(privateValue),false);
+    }
+    const report=replayDoSnapshotOffline(snapshot);
+    assert.equal(report.fullyReplayed,true);
+    assert.equal(report.lastSeq,8);
+    assert.equal(report.accounts,1);
+    assert.equal(report.conversations,1);
+    assert.equal(report.messages,1);
+    assert.equal(report.conversationTombstones,1);
+  }finally{h.close();}
+});
+
+test('account erasure after prior delete-one and delete-all cannot resurrect any conversation or message',async()=>{
+  const h=setup();try{
+    await seed(h);
+    await h.push('erase-chat','conversation.deleted',{conversation_id:'conversation-one'});
+    await h.push('erase-all','conversations.deleted_all',{});
+    await h.push('new-conversation','conversation.created',
+      {conversation_id:'conversation-after-erasure',title:'SECOND_PRIVATE_TITLE'});
+    await h.push('new-user-message','message.saved',
+      {conversation_id:'conversation-after-erasure',message_id:'new-message-after-erasure',
+       role:'user',content:'SECOND_PRIVATE_PROMPT'});
+    await h.push('erase-account','account.deleted',{});
+    const snapshot=await collectPrivateDoSnapshot(h.object,{
+      ...h.auth,expectedMinimumHead:9,pageLimit:2
+    });
+    assert.ok(snapshot.events.slice(0,-1).every(e=>e.redacted===1&&e.payload_json==='{}'));
+    assert.equal(JSON.stringify(snapshot).includes('SECOND_PRIVATE_PROMPT'),false);
+    const result=replayDoSnapshotOffline(snapshot);
+    assert.equal(result.fullyReplayed,true);
+    assert.equal(result.accounts,0);
+    assert.equal(result.conversations,0);
+    assert.equal(result.messages,0);
+    assert.equal(result.accountTombstones,1);
+  }finally{h.close();}
+});
