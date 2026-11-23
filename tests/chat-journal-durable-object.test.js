@@ -360,9 +360,9 @@ test('atomic request deduplicates across event IDs and rejects identity reuse, m
       {user_message_id:undefined}
     ];
     for(let i=0;i<invalid.length;i++){
-      const payload={...SYNTHETIC_ATOMIC_TURN,...invalid[i],
+      const payload={...SYNTHETIC_ATOMIC_TURN,
         request_id:'invalid-request-'+i,user_message_id:'invalid-user-'+i,
-        assistant_message_id:'invalid-answer-'+i};
+        assistant_message_id:'invalid-answer-'+i,...invalid[i]};
       // Explicit collision must survive the extra synthetic IDs.
       if(i===0)payload.assistant_message_id=payload.user_message_id;
       const res=await h.post(atomicEvent('invalid-event-'+i,payload));
