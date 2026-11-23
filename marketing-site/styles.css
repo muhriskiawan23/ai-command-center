@@ -139,3 +139,6 @@ a:focus-visible, summary:focus-visible { outline: 3px solid var(--focus); outlin
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
 }
+
+.error-layout { max-width: 720px; }
+.hero .error-title { font-size: clamp(2.7rem, 7vw, 4.7rem); line-height: 1.12; letter-spacing: -.05em; }
