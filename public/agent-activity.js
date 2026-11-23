@@ -48,7 +48,24 @@
   close.addEventListener("click", () => setOpen(false, true));
   backdrop.addEventListener("click", () => setOpen(false, true));
   document.addEventListener("keydown", event => {
-    if (isOpen && event.key === "Escape") setOpen(false, true);
+    if (!isOpen) return;
+    if (event.key === "Escape") {
+      event.preventDefault();
+      setOpen(false, true);
+    }
+    if (event.key === "Tab") {
+      // Keep keyboard focus inside the modal panel, including on small screens.
+      const controls = [close, stop, toggle].filter(control => !control.disabled && !control.hidden);
+      const first = controls[0], last = controls[controls.length - 1];
+      if (!first || !last) return;
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
   });
 
   function render() {
