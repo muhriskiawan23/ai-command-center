@@ -24,7 +24,7 @@ function mockAI() {
   };
 }
 
-function mockDB({ user = { id: "google-sub-123", email: "owner@example.com", name: "Owner", picture: "" }, ownedConversation = null } = {}) {
+function mockDB({ user = { id: "google-sub-123", email: "owner@example.com", name: "Owner", picture: "" }, ownedConversation = null, legacySchema = false } = {}) {
   const calls = [];
   return {
     calls,
@@ -38,7 +38,7 @@ function mockDB({ user = { id: "google-sub-123", email: "owner@example.com", nam
           if (sql.includes("FROM sessions JOIN users")) return user;
           if (sql.includes("FROM conversations WHERE id = ? AND user_id = ?")) return ownedConversation;
           if (sql.includes("daily_usage")) return { units: 1 };
-          if (sql.includes("SELECT id FROM messages WHERE conversation_id")) return { id: 123 };
+          if (sql.includes("SELECT id FROM messages WHERE conversation_id")) return { id: 999 };
           return null;
         },
         async all() { calls.push({ type: "all", sql, values: this.values }); return { results: [] }; },
@@ -49,7 +49,13 @@ function mockDB({ user = { id: "google-sub-123", email: "owner@example.com", nam
     },
     async batch(statements) {
       calls.push({ type: "batch", statements: statements.map((item) => ({ sql: item.sql, values: item.values })) });
-      return statements.map(() => ({ success: true }));
+      if (legacySchema && statements.some((statement) => statement.sql.startsWith("INSERT INTO messages") && statement.sql.includes("idempotency_key"))) {
+        throw new Error("table messages has no column named idempotency_key");
+      }
+      return statements.map((statement, index) => ({
+        success: true,
+        meta: { last_row_id: statement.sql.startsWith("INSERT INTO messages") ? 121 + index : 0 }
+      }));
     }
   };
 }
@@ -101,6 +107,7 @@ test("a signed-in chat is stored as one user/assistant pair and returns its conv
   const data = await res.json();
   assert.equal(res.status, 200);
   assert.equal(data.saved, true);
+  assert.equal(data.responseId, 123);
   assert.match(data.conversationId, /^[a-f0-9-]{36}$/i);
   const batch = db.calls.find((call) => call.type === "batch");
   assert.ok(batch);
@@ -108,6 +115,26 @@ test("a signed-in chat is stored as one user/assistant pair and returns its conv
   assert.match(batch.statements[0].sql, /INSERT INTO conversations/);
   assert.match(batch.statements[1].sql, /'user'/);
   assert.match(batch.statements[2].sql, /'assistant'/);
+});
+
+test("signed-in chat uses the successful batch receipt on a legacy schema", async () => {
+  const db = mockDB({ legacySchema: true });
+  const res = await worker.fetch(jsonRequest("/api/chat", {
+    message: "Buat ringkasan.",
+    agent: "coordinator",
+    requestId: crypto.randomUUID()
+  }, { Cookie: SESSION_COOKIE, Origin: "https://example.test" }), {
+    AI: mockAI(),
+    DB: db
+  });
+  const data = await res.json();
+  assert.equal(res.status, 200);
+  assert.equal(data.saved, true);
+  assert.equal(data.responseId, 123);
+  const batches = db.calls.filter((call) => call.type === "batch");
+  assert.equal(batches.length, 2);
+  assert.match(batches[0].statements[1].sql, /idempotency_key/);
+  assert.doesNotMatch(batches[1].statements[1].sql, /idempotency_key/);
 });
 
 test("Google sign-in rejects a missing double-submit nonce before token verification", async () => {

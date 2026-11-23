@@ -29,7 +29,20 @@ export function createD1() {
   return {
     sqlite,
     prepare: (sql) => stmt(sql),
-    batch: async (statements) => { sqlite.exec("BEGIN"); try { statements.forEach((s) => s._run()); sqlite.exec("COMMIT"); } catch (e) { sqlite.exec("ROLLBACK"); throw e; } return []; }
+    batch: async (statements) => {
+      sqlite.exec("BEGIN");
+      try {
+        const results = statements.map((statement) => {
+          const result = statement._run();
+          return { success: true, meta: { changes: Number(result.changes), last_row_id: Number(result.lastInsertRowid) } };
+        });
+        sqlite.exec("COMMIT");
+        return results;
+      } catch (error) {
+        sqlite.exec("ROLLBACK");
+        throw error;
+      }
+    }
   };
 }
 
