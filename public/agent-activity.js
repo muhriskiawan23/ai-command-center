@@ -60,6 +60,7 @@
       cancelled: "Permintaan dihentikan dari perangkat ini.",
       failed: "Permintaan tidak berhasil diselesaikan."
     };
+    trigger.dataset.activityPhase = current.phase;
     status.textContent = labels[current.phase] || labels.idle;
     status.dataset.phase = current.phase;
     task.textContent = current.task || "Kirim pesan untuk memulai tugas.";
