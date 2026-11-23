@@ -14,7 +14,7 @@ test('production chat write surface is exhaustively pinned, source-only and NOT 
   assert.equal(report.productionJournalActive,false);
   assert.equal(report.safeToActivateProduction,false);
   assert.equal(report.productionCutoverBlocked,true);
-  assert.equal(report.reviewedSqlLiterals,54);
+  assert.equal(report.reviewedSqlLiterals,58);
   assert.equal(report.excludedIsolatedStagingSqlLiterals,2);
   assert.equal(report.productionJournalCoveredSqlLiterals,0);
   assert.ok(report.distinctReviewedSites>=30);
