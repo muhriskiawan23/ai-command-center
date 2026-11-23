@@ -157,7 +157,9 @@ export async function runPrivateBackup({env,event,step,fetcher=fetch,now=()=>new
     {retries:{limit:15,delay:'10 seconds',backoff:'constant'},timeout:'7 minutes'},
     async()=>{
       const state=verifyExportEnvelope(await callExport(fetcher,api,env.BOR_D1_EXPORT_TOKEN,
-        {current_bookmark:bookmark}),bookmark);
+        // Cloudflare D1 Export API requires output_format on EVERY POST,
+        // including polling. Wrangler passes this field with current_bookmark.
+        {output_format:'polling',current_bookmark:bookmark}),bookmark);
       if(state.status==='pending')throw Error('private_backup_export_pending');
       const url=verifySignedExportUrl(state.signedUrl,c.host);
       let response;
