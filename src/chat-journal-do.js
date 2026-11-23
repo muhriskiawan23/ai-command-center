@@ -234,8 +234,18 @@ function append(storage,event){
       sql.exec("UPDATE journal_events SET payload_json='{}',redacted=1 WHERE seq<? AND conversation_id IS NOT NULL AND kind!='conversation.deleted'",
         inserted.seq);
     }else if(event.kind==='account.deleted'){
-      sql.exec('UPDATE journal_message_ids SET active=0 WHERE active=1');
-      sql.exec("UPDATE journal_events SET payload_json='{}',redacted=1 WHERE seq<?",inserted.seq);
+      // An irrevocably deleted account cannot issue more events. Preserve
+      // only the ordered redacted rows + final account-deleted receipt for
+      // recovery; remove lookup metadata that would otherwise identify old
+      // conversations, messages and request IDs after erasure.
+      // Randomized opaque event IDs replace caller-provided event IDs, which
+      // may themselves encode a conversation or message identifier. The
+      // account.deleted event ID stays stable for idempotent ACK retries.
+      // Every mutation is in this SAME Durable Object SQLite transaction.
+      sql.exec("UPDATE journal_events SET payload_json='{}',redacted=1,conversation_id=NULL,event_id=lower(hex(randomblob(32))) WHERE seq<?",inserted.seq);
+      sql.exec('DELETE FROM journal_message_ids');
+      sql.exec('DELETE FROM journal_turn_requests');
+      sql.exec('DELETE FROM conversation_tombstones');
       sql.exec('UPDATE journal_owner SET deleted=1 WHERE singleton=1');
     }
     return {seq:inserted.seq,duplicate:false};
