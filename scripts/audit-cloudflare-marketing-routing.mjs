@@ -20,9 +20,19 @@ async function request(path, label) {
       method: "GET", headers, redirect: "error", signal: AbortSignal.timeout(20000)
     });
     if (!response.ok) {
-      console.log(label + ": UNVERIFIED HTTP " + response.status +
+      // Log numeric Cloudflare error codes only; never log response text,
+      // token values, headers or any arbitrary server-provided messages.
+      let errorCodes = "";
+      try {
+        const failed = await response.json();
+        const codes = [...new Set((Array.isArray(failed?.errors) ? failed.errors : [])
+          .map((error) => error?.code)
+          .filter((code) => Number.isSafeInteger(code)))];
+        if (codes.length) errorCodes = " API error codes=" + codes.join(",");
+      } catch { /* Response body intentionally suppressed. */ }
+      console.log(label + ": UNVERIFIED HTTP " + response.status + errorCodes +
         (response.status === 403 ? " (check token permissions, scope and account)" : "") +
-        " (no response body logged)");
+        " (response body suppressed)");
       complete = false;
       return null;
     }
@@ -40,11 +50,16 @@ async function request(path, label) {
   }
 }
 
-async function collect(path, label, perPage = 100) {
+async function collect(path, label, perPage = 100, useDefaultPageSize = false) {
   const all = [];
   for (let page = 1; page <= 10; page++) {
     const sep = path.includes("?") ? "&" : "?";
-    const payload = await request(path + sep + "per_page=" + perPage + "&page=" + page, label);
+    // Pages API documents page and per_page as optional. Start with its
+    // documented bare GET, and preserve its own default page size for page 2+.
+    const query = useDefaultPageSize
+      ? (page === 1 ? "" : sep + "page=" + page)
+      : sep + "per_page=" + perPage + "&page=" + page;
+    const payload = await request(path + query, label);
     if (!payload) return null;
     if (!Array.isArray(payload.result)) {
       console.log(label + ": UNVERIFIED unexpected collection shape");
@@ -55,7 +70,6 @@ async function collect(path, label, perPage = 100) {
     const total = payload.result_info?.total_pages;
     if (Number.isInteger(total)) {
       // Cloudflare can report zero pages for an empty first response.
-      // Treat that as empty, not malformed, so missing zone visibility is explicit.
       if (total === 0 && page === 1 && payload.result.length === 0) return all;
       if (total < page || total > 10) {
         console.log(label + ": UNVERIFIED inconsistent/large pagination");
@@ -63,8 +77,15 @@ async function collect(path, label, perPage = 100) {
         return null;
       }
       if (page === total) return all;
-    } else if (payload.result.length < perPage) {
-      return all;
+    } else {
+      const expectedPageSize = useDefaultPageSize
+        ? payload.result_info?.per_page : perPage;
+      if (!Number.isInteger(expectedPageSize) || expectedPageSize < 1) {
+        console.log(label + ": UNVERIFIED missing pagination metadata");
+        complete = false;
+        return null;
+      }
+      if (payload.result.length < expectedPageSize) return all;
     }
   }
   console.log(label + ": UNVERIFIED pagination limit reached");
@@ -109,8 +130,9 @@ if (domains) printList("Worker custom-domain bindings", domains
   .filter((d) => roots.has(hostName(d.hostname || d.domain)))
   .map((d) => hostName(d.hostname || d.domain) + " -> " + String(d.service || "unknown"))
 );
-// Pages projects uses a smaller page size than the other Cloudflare inventory endpoints.
-const projects = await collect("/accounts/" + encodeURIComponent(account) + "/pages/projects", "Pages projects", 20);
+// Start Pages inventory with no optional query parameters; Pages API can
+// reject paging combinations. Fail closed if its own pagination is incomplete.
+const projects = await collect("/accounts/" + encodeURIComponent(account) + "/pages/projects", "Pages projects", 100, true);
 if (projects) printList("Pages projects with BOR AI custom domains", projects
   .filter((p) => Array.isArray(p.domains) && p.domains.some((d) => roots.has(hostName(d))))
   .map((p) => String(p.name || "unnamed") + ":" + p.domains.filter((d) => roots.has(hostName(d))).join(","))
