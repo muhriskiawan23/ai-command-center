@@ -48,3 +48,28 @@ jobs:
         run: npx --yes wrangler@4 deploy --dry-run --config wrangler.duitku-sandbox.jsonc
       - name: Build isolated billing staging preview (no deployment, disabled template)
         run: npx --yes wrangler@4 deploy --dry-run --config wrangler.billing-staging.jsonc
+
+  synthetic_chat_recovery:
+    name: Synthetic journal rollback and replay (offline, no Cloudflare)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Verify isolated staging worker and offline replay syntax
+        run: |
+          node --check src/chat-journal-staging-worker.js
+          node --check tools/recovery/replay-do-journal-to-real-chat-schema-offline.mjs
+
+      - name: Prove rollback, deterministic retry and FK integrity (synthetic only)
+        run: node --test tests/chat-journal-cloudflare-staging-atomic.test.js
