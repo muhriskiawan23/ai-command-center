@@ -13,14 +13,14 @@ export function createConfig(runId,uuid){
   const name='bor-ai-journal-recovery-'+runId;
   return {
     $schema:'node_modules/wrangler/config-schema.json',
-    name:'bor-ai-chat-recovery-d1-staging',
+    name:'bor-ai-chat-recovery-d1-'+runId,
     main:'src/chat-journal-staging-d1-worker.js',
     compatibility_date:'2026-11-23',
     workers_dev:false,preview_urls:false,
     durable_objects:{bindings:[{name:'CHAT_JOURNAL',class_name:'ChatJournalDurableObject'}]},
     migrations:[{tag:'staging-d1-recovery-v1',new_sqlite_classes:['ChatJournalDurableObject']}],
     d1_databases:[{binding:'RECOVERY_D1',database_name:name,database_id:uuid}],
-    workflows:[{name:'bor-ai-chat-recovery-d1-drill-v1',binding:'CLOSED_RECOVERY',class_name:'ClosedJournalD1RecoveryWorkflow'}],
+    workflows:[{name:'bor-ai-chat-recovery-d1-drill-'+runId,binding:'CLOSED_RECOVERY',class_name:'ClosedJournalD1RecoveryWorkflow'}],
     vars:{CHAT_JOURNAL_ACTIVE:'false',RECOVERY_SYNTHETIC_ONLY:'true',RECOVERY_RUN_ID:runId,
       RECOVERY_D1_NAME:name,RECOVERY_D1_UUID:uuid}
   };
