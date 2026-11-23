@@ -1,0 +1,26 @@
+/* Agent Activity / Living B: lightweight, opt-in motion, no third-party graphics. */
+.model-label .living-b-button{display:grid;place-items:center;flex:0 0 auto;width:35px;height:35px;padding:5px;border:1px solid transparent;border-radius:11px;background:transparent;color:var(--text);cursor:pointer}
+.model-label .living-b-button:hover,.model-label .living-b-button[aria-expanded="true"]{background:var(--hover);border-color:var(--line)}
+.model-label .living-b-button img{display:block;width:24px;height:24px;object-fit:contain}
+.bor-living-b-motion .living-b-button[aria-expanded="true"] img{animation:bor-living-b-pulse 1.8s ease-in-out infinite}
+@keyframes bor-living-b-pulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.09);opacity:.72}}
+.agent-activity-backdrop[hidden],.agent-activity-panel[hidden],.agent-activity-tools[hidden]{display:none!important}
+.agent-activity-backdrop{position:fixed;inset:0;background:#10151e66;z-index:70}
+.agent-activity-panel{position:fixed;z-index:71;top:72px;right:22px;width:min(385px,calc(100vw - 28px));max-height:min(72dvh,670px);overflow-y:auto;overscroll-behavior:contain;padding:20px;border:1px solid var(--line);border-radius:18px;background:var(--surface);color:var(--text);box-shadow:0 18px 55px #0004;display:flex;flex-direction:column;gap:15px}
+.agent-activity-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.agent-activity-head h2{font-size:16px;font-weight:700;line-height:1.3;margin:0}
+.agent-activity-close{border:1px solid var(--line);background:transparent;color:var(--text);font-size:22px;border-radius:9px;min-width:40px;min-height:40px}
+.agent-activity-agent{color:var(--muted);font-size:12px;margin:0}
+.agent-activity-status{font-size:13px;font-weight:650;margin:0}
+.agent-activity-status[data-phase="running"],.agent-activity-status[data-phase="stopping"]{color:var(--accent)}
+.agent-activity-status[data-phase="failed"]{color:var(--danger)}
+.agent-activity-task{font-size:13px;line-height:1.55;overflow-wrap:anywhere;border:1px solid var(--line);border-radius:12px;padding:12px;margin:0}
+.agent-activity-details{color:var(--muted);font-size:12px;line-height:1.55;margin:0}
+.agent-activity-tools{list-style:disc;padding-inline-start:21px;margin:0;font-size:12px;line-height:1.7}
+.agent-activity-stop{border:1px solid var(--line);background:transparent;color:var(--text);border-radius:10px;min-height:44px;font-weight:600}
+.agent-activity-stop:disabled{opacity:.45;cursor:not-allowed}
+.agent-activity-motion-row{display:flex;align-items:center;justify-content:space-between;gap:16px;border-top:1px solid var(--line);padding-top:15px;font-size:12px}
+.agent-activity-motion-row input{width:18px;height:18px;accent-color:var(--accent)}
+.agent-activity-footnote{font-size:11px;color:var(--muted);line-height:1.5;margin:0}
+@media(max-width:760px){.agent-activity-panel{top:auto;right:0;left:0;bottom:0;width:100%;max-height:min(75dvh,620px);border-radius:20px 20px 0 0;padding:20px 18px calc(18px + env(safe-area-inset-bottom,0px));border-bottom:0}.model-label .living-b-button{width:36px;height:36px}}
+@media(prefers-reduced-motion:reduce){.bor-living-b-motion .living-b-button img{animation:none!important}}
