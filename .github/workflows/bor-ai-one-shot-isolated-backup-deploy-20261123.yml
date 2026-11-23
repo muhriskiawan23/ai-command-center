@@ -1,0 +1,79 @@
+name: BOR AI owner-approved isolated backup Worker deploy request (ONE SHOT)
+
+# One-use, owner-authorized bridge to the existing reviewed manual release.
+# This workflow itself holds NO Cloudflare secrets. No D1 export is allowed.
+# The sole action it can dispatch is phase=deploy on the existing isolated
+# backup Worker release workflow. Delete this file after one successful run.
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/bor-ai-one-shot-isolated-backup-deploy-20261123.yml'
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: bor-ai-one-shot-isolated-backup-dispatch-20261123
+  cancel-in-progress: false
+
+jobs:
+  dispatch_one_reviewed_isolated_backup_deploy:
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && github.run_attempt == 1 }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+
+      - name: Hard-gate exact reviewed parent, one-shot source change, and current main
+        shell: bash
+        env:
+          REVIEWED_PARENT: 72ab4b4d198eb66d07df493568278fa83017dd1c
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REPOSITORY" == "muhriskiawan23/ai-command-center" ]] || {
+            echo "::error::Wrong repository"; exit 1;
+          }
+          [[ "$GITHUB_REF" == "refs/heads/main" && "$GITHUB_RUN_ATTEMPT" == "1" ]] || {
+            echo "::error::Only the first main push may dispatch"; exit 1;
+          }
+          [[ "$(git rev-parse HEAD^)" == "$REVIEWED_PARENT" ]] || {
+            echo "::error::Unexpected parent, no owner approval for this release"; exit 1;
+          }
+          [[ "$(git show -s --format=%s HEAD)" == "release(backup): one-time isolated Worker deploy approval" ]] || {
+            echo "::error::Unexpected commit title, no deploy"; exit 1;
+          }
+          expected="$(printf '%s\n%s'             '.github/workflows/bor-ai-one-shot-isolated-backup-deploy-20261123.yml'             'tests/bor-ai-one-shot-isolated-backup-deploy.test.js')"
+          actual="$(git diff --name-only "$REVIEWED_PARENT" HEAD | LC_ALL=C sort)"
+          [[ "$actual" == "$expected" ]] || {
+            echo "::error::Only the reviewed dispatch workflow + safety test may change"; exit 1;
+          }
+          latest="$(git ls-remote origin refs/heads/main | cut -f1)"
+          [[ "$latest" == "$GITHUB_SHA" ]] || {
+            echo "::error::Main moved before one-shot deploy request"; exit 1;
+          }
+          # Explicitly recheck the target release contains its hard third-export lock.
+          grep -q 'THIRD PRODUCTION D1 EXPORT LOCKED'             .github/workflows/bor-ai-private-chat-backup-release.yml
+          echo 'Gated one-shot parent, exact diff and current main verified.'
+
+      - name: Dispatch existing audited release — ISOLATED WORKER DEPLOY ONLY
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # Reuse the exact R2 S3 hostname from the prior owner-approved
+          # isolated Worker deployment. No production D1 export is authorized.
+          readonly SIGNED_HOST="1ad59b064bfa3690063414a9906129e4.r2.cloudflarestorage.com"
+          [[ "$SIGNED_HOST" =~ ^[0-9a-f]{32}\.r2\.cloudflarestorage\.com$ ]] || {
+            echo "::error::Unexpected signed host shape"; exit 1;
+          }
+          # The existing release workflow performs all independent protected
+          # environment preflight checks, deploys only backup-isolated, and
+          # writes its D1 token as a Worker secret. 'trigger' is unreachable.
+          gh api --method POST             "repos/$GITHUB_REPOSITORY/actions/workflows/bor-ai-private-chat-backup-release.yml/dispatches"             -f 'ref=main'             -f 'inputs[phase]=deploy'             -f "inputs[reviewed_main_sha]=$GITHUB_SHA"             -f 'inputs[owner_confirmation]=DEPLOY_BOR_PRIVATE_CHAT_BACKUP'             -f "inputs[signed_host]=$SIGNED_HOST"             -f 'inputs[low_traffic_confirmation]='
+          echo 'ONE approved isolated Worker deployment requested; no D1 export/trigger, no active app change.'
