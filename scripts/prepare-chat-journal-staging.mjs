@@ -13,6 +13,7 @@ export function makeJournalStagingConfig(){
     main:'src/chat-journal-staging-worker.js',
     compatibility_date:'2026-11-23',
     workers_dev:false,
+    preview_urls:false,
     durable_objects:{bindings:[{name:'CHAT_JOURNAL',class_name:'ChatJournalDurableObject'}]},
     migrations:[{tag:'journal-staging-v1',new_sqlite_classes:['ChatJournalDurableObject']}],
     workflows:[{name:'bor-ai-chat-journal-staging-drill-v1',
@@ -24,7 +25,7 @@ export function makeJournalStagingConfig(){
     throw Error('journal_staging_must_be_isolated');
   if('d1_databases' in config || 'r2_buckets' in config || 'queues' in config ||
     'ai' in config || 'assets' in config || 'routes' in config || 'triggers' in config ||
-    'route' in config || config.workers_dev!==false ||
+    'route' in config || config.workers_dev!==false || config.preview_urls!==false ||
     config.vars.CHAT_JOURNAL_ACTIVE!=='false' ||
     config.vars.CHAT_JOURNAL_STAGING_SYNTHETIC_ONLY!=='true' ||
     config.workflows?.length!==1 || config.workflows[0].schedules)
