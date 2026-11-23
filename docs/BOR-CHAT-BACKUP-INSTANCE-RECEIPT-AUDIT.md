@@ -44,3 +44,26 @@ no Workflow trigger, no deploy and no database restore.
 A failed Workflow may have partially exported D1 or partially uploaded to R2.
 An errored status is NOT proof that no R2 object exists; investigate exact
 private bucket metadata separately before any additional export request.
+
+## Read-only partial-object check before considering a second backup
+
+A failed Workflows instance might still have produced an R2 object. To avoid
+blindly exporting production D1 a second time, the manual audit workflow
+offers `phase=partial-r2`. It uses the same exact `main` SHA and
+`AUDIT_ONLY_NO_EXPORT` string, but checks only the existing instance's
+known deterministic R2 key (run `45090501363`). This step sends **one**
+authenticated REST `GET` with the exact object prefix and produces only a
+sanitized summary of object presence, size and metadata match.
+
+`exactExpectedObjectPresent=false` means no object appeared **at that
+specific key** in the completed Cloudflare REST listing; it does not prove
+no other backup or partial result exists elsewhere. An errored Workflows
+instance stays errored even if an object is present. The audit never
+downloads the SQL and **does not** prove backup data can be restored.
+A 401/403 or ambiguous listing means **no conclusion**, never absence.
+
+Cloudflare notes that bucket-scoped R2 object API tokens do not authenticate
+against `api.cloudflare.com` object endpoints. If this audit returns 401 or
+403, do not automatically broaden privileges: investigate using an
+independently reviewed Cloudflare dashboard read-only or S3-compatible path.
+No permissions or secrets are changed by the workflow.
