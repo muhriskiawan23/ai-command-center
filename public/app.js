@@ -205,6 +205,7 @@ function writeGuestFlag(on){try{if(on)sessionStorage.setItem(GUEST_FLAG,"1");els
 function inChatView(){return state===AppState.GUEST||state===AppState.AUTH}
 function setState(next,notice=""){
   state=next;document.body.dataset.state=next;
+  window.dispatchEvent(new CustomEvent("bor:session-state",{detail:{state:next}}));
   $("boot").hidden=next!==AppState.INIT;
   $("gate").hidden=!(next===AppState.UNAUTH||next===AppState.EXPIRED||next===AppState.ERROR);
   $("app").hidden=!inChatView();
