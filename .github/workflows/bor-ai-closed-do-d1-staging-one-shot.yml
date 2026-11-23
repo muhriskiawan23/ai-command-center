@@ -1,0 +1,17 @@
+name: BOR AI one-shot isolated DO-to-D1 staging recovery
+# Source-only until reviewed. The ONLY eventual live trigger will be a single
+# specifically titled merge commit adding this path to main.
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: bor-ai-production-deploy
+  cancel-in-progress: false
+jobs:
+  plan:
+    name: Inert source preview - no Cloudflare operations
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo "This dispatcher is not active. No Cloudflare requests, resources or costs."
