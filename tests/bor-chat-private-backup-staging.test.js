@@ -50,14 +50,14 @@ function fixture(){
     calls++;
     if(url.includes('api.cloudflare.com')){
       assert.equal(opts.method,'POST');
-      assert.equal(opts.redirect,'error');
+      assert.equal(opts.redirect,'manual');
       assert.ok(opts.headers.Authorization.includes('SYNTHETIC'));
       assert.ok(!opts.body.includes('PRIVATE_FAKE'));
       exportCalls++;
       return exportCalls===1?start():poll();
     }
     downloadCalls++;
-    assert.equal(opts.redirect,'error');
+    assert.equal(opts.redirect,'manual');
     assert.equal(new URL(url).hostname,hostname);
     return dump();
   };
@@ -252,6 +252,39 @@ test('signed URL host mismatch and a HTML response fail without writing to R2',a
     assert.equal(h.written.size,0);
   }
 });
+test('Workers runtime rejects redirect:error; both export POST and signed GET require supported manual mode',async()=>{
+  const h=fixture();
+  const base=h.fetcher;
+  const observed=[];
+  h.fetcher=async(url,options)=>{
+    observed.push({urlHost:new URL(url).hostname,redirect:options?.redirect});
+    // Cloudflare Workers throws TypeError for unsupported 'error' redirect
+    // before sending any network request.
+    if(options?.redirect==='error')throw new TypeError('Invalid redirect mode: error');
+    return base(url,options);
+  };
+  const receipt=await runPrivateBackup(h);
+  assert.equal(receipt.ok,true);
+  assert.deepEqual(observed.map(x=>x.redirect),['manual','manual','manual']);
+  assert.ok(!observed.some(x=>x.urlHost.includes('example.org')));
+});
+
+test('Cloudflare API and signed R2 download both reject 3xx redirects without R2 writes',async()=>{
+  for(const target of ['api','signed']){
+    const h=fixture();
+    const orig=h.fetcher;
+    h.fetcher=async(url,opts)=>{
+      if((target==='api'&&url.includes('api.cloudflare.com'))||
+         (target==='signed'&&!url.includes('api.cloudflare.com')))
+        return new Response(null,{status:302,headers:{Location:'https://attacker.example.org/secret'}});
+      return orig(url,opts);
+    };
+    await assert.rejects(runPrivateBackup(h),target==='api'?
+      /private_backup_export_redirect_blocked/:/private_backup_dump_redirect_blocked/);
+    assert.equal(h.written.size,0);
+  }
+});
+
 test('oversized response, empty response, invalid R2 receipt and head mismatch all fail closed',async()=>{
   const h=fixture();
   h.fetcher=async(url,opts)=>url.includes('api.cloudflare.com')?
