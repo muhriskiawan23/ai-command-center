@@ -83,8 +83,8 @@
 <main class="workspace" id="workspace">
 <header class="topbar"><div class="topbar-left"><button class="mobile-menu" id="menuBtn" type="button" aria-label="Buka menu" aria-controls="sidebar" aria-expanded="false"><svg class="ui-icon" width="20" height="20" aria-hidden="true"><use href="/workspace-icons.svg#menu"></use></svg></button><div class="model-label"><button class="living-b-button" id="agentActivityTrigger" type="button" aria-label="Buka Agent Activity" aria-controls="agentActivityPanel" aria-expanded="false"><img src="/logo-mark.svg" alt="" width="24" height="24"></button><span>BOR AI</span></div></div><div class="topbar-actions"><button class="export-chat" id="exportConversation" type="button" hidden disabled>⇩ Ekspor chat</button><button class="export-chat print-chat" id="printConversation" type="button" hidden disabled>▤ Cetak PDF</button><div class="health"><span class="dot" id="healthDot"></span><span id="healthText">Memeriksa layanan…</span></div></div></header>
 <div class="agent-activity-backdrop" id="agentActivityBackdrop" hidden></div>
-<section class="agent-activity-panel" id="agentActivityPanel" role="region" aria-label="Agent Activity" hidden>
-  <div class="agent-activity-head"><h2>Agent Activity</h2><button class="agent-activity-close" id="agentActivityClose" type="button" aria-label="Tutup Agent Activity">×</button></div>
+<section class="agent-activity-panel" id="agentActivityPanel" role="dialog" aria-modal="true" aria-labelledby="agentActivityTitle" hidden>
+  <div class="agent-activity-head"><h2 id="agentActivityTitle">Agent Activity</h2><button class="agent-activity-close" id="agentActivityClose" type="button" aria-label="Tutup Agent Activity">×</button></div>
   <p class="agent-activity-agent" id="agentActivityAgent">Aktivitas chat saat ini</p>
   <p class="agent-activity-status" id="agentActivityStatus" role="status" aria-live="polite">Belum ada aktivitas dalam tab ini.</p>
   <p class="agent-activity-task" id="agentActivityTask">Kirim pesan untuk memulai tugas.</p>
