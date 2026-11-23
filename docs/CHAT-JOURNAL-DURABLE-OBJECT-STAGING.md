@@ -156,3 +156,39 @@ This source-only DO fix **does not map** those IDs or implement read-through,
 D1 reconciliation, account/session history recovery, or historical backfill.
 It is NOT wired into the live BOR AI Worker and cannot be deployed or used
 to claim production zero-loss without explicit independent approval.
+
+## 23 Nov 2026 — REAL core D1 schema replay proof, isolated in memory
+
+`tools/recovery/replay-do-journal-to-real-chat-schema-offline.mjs`
+now exercises private DO journal snapshots against **actual checked-in BOR AI
+core chat migrations** `0001`, `0004`, `0005`, `0006`, `0007` and `0008`
+in a brand-new, ephemeral SQLite database. It never has a Cloudflare D1
+binding, production credentials, public API, storage cost, or access to real
+users' data.
+
+The offline projection maps each journal's stable string `message_id`
+to the new SQLite `messages.id INTEGER PRIMARY KEY AUTOINCREMENT` using a
+transactional private mapping table. It maps assistant-only feedback to the
+correct new integer message ID, verifies foreign keys, replays chat create,
+post-checkpoint turns, updates, replacement, deletion and account tombstones,
+and writes its replay checkpoint in the **same** transaction as the projected
+rows. A synthetic fault between message insert and checkpoint is rolled back
+and a restart replays it only once. A shorter replay batch fails closed
+instead of saying recovery is complete; a verified new journal head can be
+applied on restart.
+
+**Known limitations are encoded in the test receipt as false**:
+`originalMessageIdsPreserved`, `originalTimestampsPreserved`,
+`originalSessionsPreserved`, `originalLinksPreserved` and
+`independentStorageBackfillProven`. Production links/idempotency keys,
+Google sessions, memory, image foreign keys, complete schema drift and
+historical data cannot be safely reconstructed from the existing minimal
+journal schema. The user identity (including email/name) and synthetic
+timestamp are supplied as **explicit offline test fixtures**, never
+recovered or guessed for live users. This is a compatibility/failure proof,
+not a full restore or authorization to deploy.
+
+**Do not promote the projection into production** before real metadata,
+original integer IDs and dependent table relationships, full D1 schema,
+historic backfill and privacy/retention requirements are independently
+validated and an owner-approved nonproduction disaster drill succeeds.
