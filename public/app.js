@@ -1267,6 +1267,7 @@ async function submit(options={}){
   const replacing=options.replaceLastTurn===true;const previousTurn=options.previousTurn||null;
   const requestId=options.requestId||(pendingRetryRequest?.text===text&&pendingRetryRequest.conversationId===activeId?pendingRetryRequest.requestId:crypto.randomUUID());
   busy=true;activeChatController=new AbortController();lockComposer();const agent=$("agent").value;
+  const publishActivity=(phase,extra={})=>window.dispatchEvent(new CustomEvent("bor:agent-activity",{detail:{phase,requestId,...extra}}));
   let createdNew=false;
   if(!activeId){activeId=id();createdNew=true;conversations.push({id:activeId,serverId:null,title:text.replace(/\s+/g," ").slice(0,72),messages:[],updated:Date.now(),loaded:true})}
   const chat=conversations.find(c=>c.id===activeId);$("exportConversation").hidden=false;$("printConversation").hidden=false;const startId=chat.id;
@@ -1276,11 +1277,13 @@ async function submit(options={}){
   const userEntry={role:"user",content:savedText,previewUrl:sentPreviewUrl||null};chat.messages.push(userEntry);chat.updated=Date.now();
   welcomeEl.hidden=true;messagesEl.hidden=false;appendMessage("user",savedText,true,{previewUrl:sentPreviewUrl});promptEl.value="";resizePrompt();clearSelectedAttachment();showTyping();renderHistory();
   if(createdNew)replaceRoute({name:"chat",id:chat.id});
+  publishActivity("started",{agent,task:text});
   const stillActive=()=>activeId===startId;const start=Date.now();
   try{
     const payload={message:savedText,agent,requestId,imageMode:$("imageTask").value,language:window.BORLocale?.current||"en"};const customization=readCustomization();if(customization)payload.customization=customization;if(selectedPdf)payload.document={name:selectedPdf.name,content:selectedPdf.content,truncated:selectedPdf.truncated};if(selectedCsv?.kind==="image-vision")payload.imageVision={name:selectedCsv.name,dataUrl:selectedCsv.dataUrl};else if(selectedCsv?.kind==="image-ocr")payload.imageOcr={name:selectedCsv.name,content:selectedCsv.content,truncated:selectedCsv.truncated};else if(selectedCsv?.kind==="word-document")payload.wordDocument={name:selectedCsv.name,content:selectedCsv.content,paragraphCount:selectedCsv.paragraphCount,truncated:selectedCsv.truncated};else if(selectedCsv?.kind==="presentation")payload.presentation={name:selectedCsv.name,content:selectedCsv.content,slideCount:selectedCsv.slideCount,truncated:selectedCsv.truncated};else if(selectedCsv)payload.spreadsheet={name:selectedCsv.name,content:selectedCsv.content,rowCount:selectedCsv.rowCount,columnCount:selectedCsv.columnCount,truncated:selectedCsv.truncated};if(history.length)payload.history=history;if(state===AppState.AUTH&&chat.serverId)payload.conversationId=chat.serverId;if(replacing&&state===AppState.AUTH&&chat.serverId)payload.replaceLastTurn=true;
     const data=await postJson("/api/chat",payload,CHAT_TIMEOUT_MS,activeChatController.signal,selectedCsv?.kind==="image-vision");
     if(typeof data.response!=="string"||!data.response.trim())throw new Error("AI tidak menghasilkan jawaban.");
+    publishActivity("completed",{toolActivity:data.toolActivity});
     if(pendingRetryRequest?.requestId===requestId)pendingRetryRequest=null;
     chat.messages.push({role:"assistant",content:data.response,id:data.responseId||null,feedback:null,links:data.links||[],pdf:data.pdf||null,spreadsheet:data.spreadsheet||null,wordDocument:selectedCsv?.kind==="word-document"?{name:selectedCsv.name,paragraphCount:selectedCsv.paragraphCount,truncated:selectedCsv.truncated}:null});chat.updated=Date.now();
     if(stillActive()){$("typing")?.remove();appendMessage("assistant",data.response,true,{regenerate:true,responseId:data.saved?data.responseId:null,conversationId:data.saved?data.conversationId:null});addEditActionToLastUser();appendSources(data.links);appendToolActivity(data.toolActivity);appendFormDraft(data.formDraft);if(data.pdf)appendPdfSource(data.pdf);if(data.spreadsheet)appendSpreadsheetSource(data.spreadsheet);if(data.presentation)appendPresentationSource(data.presentation);if(selectedCsv?.kind==="word-document")appendWordDocumentSource(selectedCsv);if(selectedCsv?.kind==="image-ocr")appendImageOcrSource(selectedCsv);renderWorkflow(data.steps)}
@@ -1295,6 +1298,7 @@ async function submit(options={}){
     if(state===AppState.AUTH&&!data.saved&&!data.saveWarning)verifySession();
   }catch(e){
     if(e.cancelled||e.name==="AbortError"){
+      publishActivity("cancelled");
       const at=chat.messages.indexOf(userEntry);if(at>=0)chat.messages.splice(at,1);
       if(replacing&&previousTurn){chat.messages.push(previousTurn.user,previousTurn.assistant);if(stillActive()){$("typing")?.remove();messagesEl.lastElementChild?.remove();appendMessage("user",previousTurn.user.content,true,{edit:true});appendMessage("assistant",previousTurn.assistant.content,true,{regenerate:true})}}
       else if(stillActive()){$("typing")?.remove();messagesEl.lastElementChild?.remove()}
@@ -1302,6 +1306,7 @@ async function submit(options={}){
       toast("Generasi dihentikan.");
       return;
     }
+    publishActivity("failed");
     const message="Maaf, permintaan gagal diproses. "+(e.message||"Periksa koneksi lalu coba lagi.");
     const at=chat.messages.indexOf(userEntry);if(at>=0)chat.messages.splice(at,1); /* giliran gagal tidak disimpan */
     if(replacing&&previousTurn){
