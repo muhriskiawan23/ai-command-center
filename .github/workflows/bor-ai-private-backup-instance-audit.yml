@@ -6,16 +6,16 @@ on:
     inputs:
       phase:
         type: choice
-        options: [plan, audit, diagnose]
+        options: [plan, audit, diagnose, partial-r2]
         required: true
         default: plan
       reviewed_main_sha:
-        description: "AUDIT/DIAGNOSE: current reviewed main SHA; keep blank for PLAN"
+        description: "AUDIT/DIAGNOSE/PARTIAL-R2: reviewed main SHA; blank for PLAN"
         type: string
         required: false
         default: ''
       owner_confirmation:
-        description: "AUDIT/DIAGNOSE: AUDIT_ONLY_NO_EXPORT; keep blank for PLAN"
+        description: "GET-only phase: AUDIT_ONLY_NO_EXPORT; blank for PLAN"
         type: string
         required: false
         default: ''
@@ -42,7 +42,7 @@ jobs:
           [[ "$GITHUB_REF" == "refs/heads/main" ]] || { echo "::error::main-only audit"; exit 1; }
           if [[ "$PHASE" == "plan" ]]; then
             [[ -z "$SHA_APPROVED" && -z "$OWNER" ]] || { echo "::error::PLAN must not receive audit approvals"; exit 1; }
-          elif [[ "$PHASE" == "audit" || "$PHASE" == "diagnose" ]]; then
+          elif [[ "$PHASE" == "audit" || "$PHASE" == "diagnose" || "$PHASE" == "partial-r2" ]]; then
             [[ "$SHA_APPROVED" == "$GITHUB_SHA" &&
               "$OWNER" == "AUDIT_ONLY_NO_EXPORT" ]] || {
               echo "::error::Audit requires reviewed exact main SHA and GET-only approval"; exit 1;
@@ -64,7 +64,7 @@ jobs:
           node --test tests/private-chat-backup-instance-receipt-audit.test.js
 
       - name: Verify approved main SHA still matches remote before reading Cloudflare
-        if: ${{ inputs.phase == 'audit' || inputs.phase == 'diagnose' }}
+        if: ${{ inputs.phase == 'audit' || inputs.phase == 'diagnose' || inputs.phase == 'partial-r2' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -97,6 +97,19 @@ jobs:
           node --check scripts/diagnose-private-chat-backup-instance-readonly.mjs
           node --test tests/private-chat-backup-instance-diagnostics.test.js
           node scripts/diagnose-private-chat-backup-instance-readonly.mjs
+
+      - name: GET exact failed-instance R2 metadata ONLY even if Workflow errored (NO SQL or trigger)
+        if: ${{ inputs.phase == 'partial-r2' }}
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_R2_AUDIT_TOKEN: ${{ secrets.CLOUDFLARE_R2_AUDIT_TOKEN }}
+          BOR_BACKUP_RECEIPT_AUDIT_APPROVED: ${{ inputs.owner_confirmation }}
+        run: |
+          set -euo pipefail
+          node --check scripts/audit-failed-chat-backup-partial-r2.mjs
+          node --test tests/failed-chat-backup-partial-r2-audit.test.js
+          node scripts/audit-failed-chat-backup-partial-r2.mjs
 
       - name: PLAN passed; no Cloudflare operations performed
         if: ${{ inputs.phase == 'plan' }}
