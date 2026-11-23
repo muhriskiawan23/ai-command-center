@@ -1,17 +1,110 @@
-name: BOR AI one-shot isolated DO-to-D1 staging recovery
-# Source-only until reviewed. The ONLY eventual live trigger will be a single
-# specifically titled merge commit adding this path to main.
+name: BOR AI approved single-use isolated DO to D1 recovery
+
+# Exactly one owner-approved push of this new dispatcher on main. No schedule,
+# PR, workflow_run, arbitrary-branch or user-controlled DB identifiers.
 on:
-  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/bor-ai-closed-do-d1-staging-one-shot.yml
+
 permissions:
   contents: read
   actions: read
+
 concurrency:
   group: bor-ai-production-deploy
   cancel-in-progress: false
+
 jobs:
-  plan:
-    name: Inert source preview - no Cloudflare operations
+  closed_staging_d1:
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && github.run_attempt == 1 && startsWith(github.event.head_commit.message, 'BOR_AI_APPROVED_ONE_SHOT_DO_D1_STAGING') }}
+    name: Owner-approved one-shot synthetic D1 + DO recovery, then cleanup
+    environment: production
     runs-on: ubuntu-24.04
+    timeout-minutes: 16
     steps:
-      - run: echo "This dispatcher is not active. No Cloudflare requests, resources or costs."
+      - name: Fetch exact GitHub main commit containing audited dispatcher
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Checkout pinned, unmerged PR 435 code separately
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: muhriskiawan23/ai-command-center
+          ref: b7e8b97f8fd68c4cf0e3aa8b84e2ff988146e657
+          path: reviewed-recovery-pr
+          persist-credentials: false
+
+      - name: Set up pinned Node runtime
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 22
+
+      - name: Fail closed unless reviewed PR commit and four CI workflows are green
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import {execFileSync} from 'node:child_process';
+          const owner='muhriskiawan23',repo='ai-command-center';
+          const sha='b7e8b97f8fd68c4cf0e3aa8b84e2ff988146e657';
+          const actual=execFileSync('git',['-C','reviewed-recovery-pr','rev-parse','HEAD'],{encoding:'utf8'}).trim();
+          if(actual!==sha)throw Error('Reviewed PR checkout not pinned');
+          const headers={Accept:'application/vnd.github+json',
+            Authorization:'Bearer '+process.env.GH_TOKEN};
+          const pr=await fetch('https://api.github.com/repos/'+owner+'/'+repo+'/pulls/435',
+            {headers,signal:AbortSignal.timeout(18000)});
+          if(!pr.ok)throw Error('Cannot independently verify PR head');
+          const p=await pr.json();
+          if(p.state!=='open'||p.head?.sha!==sha||p.base?.ref!=='main')
+            throw Error('PR #435 moved or was already merged');
+          const rs=await fetch('https://api.github.com/repos/'+owner+'/'+repo+
+            '/actions/runs?head_sha='+sha+'&per_page=100',
+            {headers,signal:AbortSignal.timeout(18000)});
+          if(!rs.ok)throw Error('Cannot independently verify exact-head CI');
+          const data=await rs.json();
+          for(const name of ['BOR AI tests','BOR AI preview build','BOR AI e2e',
+            'BOR AI workspace redesign (NO SECRETS)']){
+            const matches=(data.workflow_runs||[]).filter(x=>x.name===name&&x.head_sha===sha);
+            if(!matches.some(x=>x.status==='completed'&&x.conclusion==='success'))
+              throw Error('Exact-head CI not yet successful: '+name);
+          }
+          console.log('SAFE PREFLIGHT: PR 435 head and all four workflows verified green.');
+          NODE
+
+      - name: Verify synthetic contract against local mock, without Cloudflare
+        working-directory: reviewed-recovery-pr
+        run: |
+          npm ci
+          node --test tests/chat-journal-staging-d1-recovery-contract.test.js
+          node --check src/chat-journal-staging-d1-worker.js
+          node --check src/chat-journal-staging-d1-recovery-drill.js
+
+      - name: Install and version-check Wrangler BEFORE cloud credentials are available
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/bor-d1-wrangler"
+          npm install --prefix "$RUNNER_TEMP/bor-d1-wrangler" \
+            --no-save --no-audit --no-fund wrangler@4.165.0
+          "$RUNNER_TEMP/bor-d1-wrangler/node_modules/.bin/wrangler" --version
+
+      - name: Execute exactly one live synthetic D1 recovery and clean up
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          BOR_PRIVATE_D1_EXPORT_TOKEN: ${{ secrets.BOR_PRIVATE_D1_EXPORT_TOKEN }}
+          BOR_OWNER_APPROVAL: I_APPROVE_ONE_SYNTHETIC_DO_D1_WORKER_WORKFLOW_CLEANUP
+          BOR_COST_APPROVAL: I_APPROVE_TEMP_CLOUDFLARE_STAGING_USAGE
+          BOR_REVIEWED_PR_SHA: b7e8b97f8fd68c4cf0e3aa8b84e2ff988146e657
+          BOR_PR_DIR: ${{ github.workspace }}/reviewed-recovery-pr
+          BOR_WRANGLER_BIN: ${{ runner.temp }}/bor-d1-wrangler/node_modules/.bin/wrangler
+          CLOUDFLARE_SEND_METRICS: 'false'
+        run: |
+          set -euo pipefail
+          node scripts/run-one-shot-chat-journal-d1-staging.mjs
