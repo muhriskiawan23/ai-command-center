@@ -153,27 +153,42 @@ export function htmlToText(html) {
 
 const failure = (url, reason) => ({ ok: false, url, requested: url, reason });
 
-async function cancelResponseBody(response) {
-  try { await response.body?.cancel(); } catch { /* ignore cancellation errors */ }
+// Never await a broken remote stream's cancellation: cancellation is only
+// best-effort cleanup. A malformed stream can ignore cancellation forever.
+function cancelResponseBody(response) {
+  try {
+    const pending = response.body?.cancel();
+    if (pending && typeof pending.catch === "function") void pending.catch(() => {});
+  } catch { /* ignore cancellation errors */ }
 }
 
-async function readBody(response) {
+// Every read uses the SAME per-link deadline, shared across redirect hops,
+// HTTP headers and streamed bytes. Do not rely on AbortSignal cooperation.
+async function readBody(response, withinDeadline) {
   const reader = response.body?.getReader();
   if (!reader) return { bytes: new Uint8Array(0), cut: false };
   const parts = [];
   let total = 0;
   let cut = false;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.byteLength;
-    if (total > MAX_DOWNLOAD_BYTES) {
-      parts.push(value.subarray(0, value.byteLength - (total - MAX_DOWNLOAD_BYTES)));
-      cut = true;
-      try { await reader.cancel(); } catch { /* ignore */ }
-      break;
+  try {
+    for (;;) {
+      const { done, value } = await withinDeadline(reader.read());
+      if (done) break;
+      total += value.byteLength;
+      if (total > MAX_DOWNLOAD_BYTES) {
+        parts.push(value.subarray(0, value.byteLength - (total - MAX_DOWNLOAD_BYTES)));
+        cut = true;
+        try {
+          const pending = reader.cancel();
+          if (pending && typeof pending.catch === "function") void pending.catch(() => {});
+        } catch { /* ignore */ }
+        break;
+      }
+      parts.push(value);
     }
-    parts.push(value);
+  } finally {
+    // A timed-out read might still be unresolved; releaseLock may reject.
+    try { reader.releaseLock(); } catch { /* ignore */ }
   }
   const bytes = new Uint8Array(parts.reduce((n, p) => n + p.byteLength, 0));
   let offset = 0;
@@ -191,52 +206,69 @@ export async function readLink(rawUrl, { fetcher = null, ownHost = "", timeoutMs
   if (typeof fetcher !== "function") {
     return failure(rawUrl, "pembacaan link dinonaktifkan: transport egress dengan DNS pinning belum dikonfigurasi");
   }
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > FETCH_TIMEOUT_MS) {
+    return failure(rawUrl, "batas waktu pembacaan link tidak valid");
+  }
+
+  // One deadline for the entire operation (all redirects and streamed body).
+  // Races protect against transport/reader stubs which ignore AbortSignal.
+  const controller = new AbortController();
+  let timedOut = false;
+  let rejectDeadline;
+  const deadline = new Promise((_, reject) => { rejectDeadline = reject; });
+  // There may be a fast validation failure before the first race is attached.
+  void deadline.catch(() => {});
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+    rejectDeadline(new Error("reader_deadline"));
+  }, timeoutMs);
+  const withinDeadline = promise => Promise.race([promise, deadline]);
   let current = rawUrl;
-  for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
-    const check = validateUrl(current, ownHost);
-    if (!check.ok) return failure(rawUrl, hop === 0 ? check.reason : `pengalihan ke alamat yang tidak diizinkan (${check.reason})`);
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    try {
+  try {
+    for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+      const check = validateUrl(current, ownHost);
+      if (!check.ok) return failure(rawUrl, hop === 0 ? check.reason : `pengalihan ke alamat yang tidak diizinkan (${check.reason})`);
       let response;
       try {
-        response = await fetcher(check.url.toString(), {
+        response = await withinDeadline(fetcher(check.url.toString(), {
           redirect: "manual",
           signal: controller.signal,
           headers: { "User-Agent": USER_AGENT, Accept: "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.1", "Accept-Language": "id,en;q=0.8" }
-        });
+        }));
       } catch {
-        return failure(rawUrl, controller.signal.aborted ? `waktu habis (${Math.round(timeoutMs / 1000)} detik)` : "tidak dapat terhubung ke situs");
+        return failure(rawUrl, timedOut ? `waktu habis (${Math.round(timeoutMs / 1000)} detik)` : "tidak dapat terhubung ke situs");
       }
       if ([301, 302, 303, 307, 308].includes(response.status)) {
         const location = response.headers.get("location");
-        try { await response.body?.cancel(); } catch { /* ignore */ }
+        cancelResponseBody(response);
         if (!location) return failure(rawUrl, "pengalihan tanpa tujuan");
         try { current = new URL(location, check.url).toString(); } catch { return failure(rawUrl, "pengalihan ke alamat tidak valid"); }
         continue;
       }
       if (!response.ok) {
-        await cancelResponseBody(response);
+        cancelResponseBody(response);
         return failure(rawUrl, `situs membalas ${response.status}`);
       }
       const type = response.headers.get("content-type") || "";
       if (!READABLE_TYPE.test(type)) {
-        await cancelResponseBody(response);
+        cancelResponseBody(response);
         return failure(rawUrl, `jenis konten belum didukung (${type.split(";")[0] || "tidak diketahui"})`);
       }
-      const { bytes, cut } = await readBody(response);
+      const { bytes, cut } = await readBody(response, withinDeadline);
       const raw = decode(bytes, type);
       const { title, text } = /html/i.test(type) ? htmlToText(raw) : { title: "", text: raw.replace(/\r/g, "").trim() };
       if (text.length < MIN_USEFUL_CHARS) return failure(rawUrl, "halaman tidak berisi teks yang bisa dibaca (mungkin butuh JavaScript, login, atau kosong)");
       const truncated = cut || text.length > MAX_PAGE_CHARS;
       return { ok: true, url: check.url.toString(), requested: rawUrl, title, text: text.slice(0, MAX_PAGE_CHARS), chars: Math.min(text.length, MAX_PAGE_CHARS), truncated };
-    } catch {
-      return failure(rawUrl, controller.signal.aborted ? `waktu habis (${Math.round(timeoutMs / 1000)} detik)` : "gagal membaca halaman");
-    } finally {
-      clearTimeout(timer);
     }
+    return failure(rawUrl, "terlalu banyak pengalihan");
+  } catch {
+    return failure(rawUrl, timedOut ? `waktu habis (${Math.round(timeoutMs / 1000)} detik)` : "gagal membaca halaman");
+  } finally {
+    clearTimeout(timer);
+    controller.abort(); // best effort: do not leave incomplete requests running
   }
-  return failure(rawUrl, "terlalu banyak pengalihan");
 }
 
 export function readLinks(urls, options) {
