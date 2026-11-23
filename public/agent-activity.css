@@ -2,7 +2,11 @@
 .model-label .living-b-button{display:grid;place-items:center;flex:0 0 auto;width:35px;height:35px;padding:5px;border:1px solid transparent;border-radius:11px;background:transparent;color:var(--text);cursor:pointer}
 .model-label .living-b-button:hover,.model-label .living-b-button[aria-expanded="true"]{background:var(--hover);border-color:var(--line)}
 .model-label .living-b-button img{display:block;width:24px;height:24px;object-fit:contain}
-.bor-living-b-motion .living-b-button[aria-expanded="true"] img{animation:bor-living-b-pulse 1.8s ease-in-out infinite}
+.living-b-button{position:relative}
+.living-b-button[data-activity-phase="running"]::after,.living-b-button[data-activity-phase="stopping"]::after{content:"";position:absolute;right:1px;top:1px;width:7px;height:7px;border-radius:50%;background:var(--accent);border:1px solid var(--bg)}
+.bor-living-b-motion .living-b-button[data-activity-phase="running"] img,.bor-living-b-motion .living-b-button[data-activity-phase="stopping"] img{animation:bor-living-b-pulse 1.8s ease-in-out infinite}
+.bor-living-b-motion .living-b-button[data-activity-phase="completed"] img{animation:bor-living-b-finish .5s ease-out both}
+@keyframes bor-living-b-finish{0%{transform:scale(.96)}55%{transform:scale(1.1)}100%{transform:scale(1)}}
 @keyframes bor-living-b-pulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.09);opacity:.72}}
 .agent-activity-backdrop[hidden],.agent-activity-panel[hidden],.agent-activity-tools[hidden]{display:none!important}
 .agent-activity-backdrop{position:fixed;inset:0;background:#10151e66;z-index:70}
