@@ -395,6 +395,11 @@ under a different `event_id`. Retrying the exact original event ID and
 canonical body returns the original sequence without adding data.
 Invalid URLs, missing values and conflicting payloads fail closed.
 
+The private snapshot collector recognizes `turn.saved` and validates its
+redaction, but the legacy toy-schema replay explicitly rejects this new event
+rather than silently reconstructing only half a turn. Use the real D1 core
+schema replayer for this synthetic proof.
+
 The **offline-only** real-schema replayer now projects that one event into
 two `messages` records in **one SQLite transaction** with the replay
 checkpoint. It retains the synthetic chat's original timestamp,
