@@ -13,6 +13,11 @@ on:
         required: true
         type: boolean
         default: false
+      allow_luna_with_preserved_reader:
+        description: "Explicitly combine configured Luna primary with the verified, quota-preserved Tavily Reader"
+        required: true
+        type: boolean
+        default: false
       allow_reader_shutdown:
         description: "Explicitly allow disabling an active URL Reader only after separate owner/security review"
         required: true
@@ -148,6 +153,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           ALLOW_READER_SHUTDOWN: ${{ inputs.allow_reader_shutdown && 'true' || 'false' }}
           PRESERVE_ACTIVE_READER: ${{ inputs.preserve_active_tavily_reader && 'true' || 'false' }}
+          ALLOW_LUNA_WITH_PRESERVED_READER: ${{ inputs.allow_luna_with_preserved_reader && 'true' || 'false' }}
           RUN_TAVILY_SMOKE: ${{ inputs.run_tavily_smoke && 'true' || 'false' }}
           APPLY_DB_MIGRATIONS: ${{ inputs.apply_db_migrations && 'true' || 'false' }}
         run: |
@@ -180,13 +186,17 @@ jobs:
           const current=named[0].text;
           console.log("URL Reader active state:",current,"candidate state:",desired);
           if(current==="false"&&desired==="true")throw Error("Do not activate external URL Reader without independent security approval");
-          if (process.env.PRESERVE_ACTIVE_READER==="true") {
+          const preserveReader=process.env.PRESERVE_ACTIVE_READER==="true";
+          const lunaPrimary=process.env.BOR_TEXT_LUNA_PRIMARY==="true";
+          const allowCombined=process.env.ALLOW_LUNA_WITH_PRESERVED_READER==="true";
+          if (allowCombined !== (preserveReader && lunaPrimary))
+            throw Error("Luna with Reader preservation requires both features and explicit combined release approval");
+          if (preserveReader) {
             if(current!=="true" || desired!=="false") throw Error("Preservation requires an already-active Reader and reviewed OFF baseline");
             if(process.env.ALLOW_READER_SHUTDOWN==="true")throw Error("Reader preservation and shutdown approvals are mutually exclusive");
             if(process.env.BOR_IMAGES_ENABLED!=="false" || process.env.BOR_BILLING_SHADOW_ENABLED==="true" ||
-               process.env.BOR_TEXT_LUNA_PRIMARY==="true" ||
                process.env.RUN_TAVILY_SMOKE==="true" || process.env.APPLY_DB_MIGRATIONS==="true")
-              throw Error("Reader-preserving release must disable paid images, Luna, billing, migrations and Tavily smoke");
+              throw Error("Reader-preserving release must disable paid images, billing, migrations and Tavily smoke");
             const {config: preserved, urlBudget}=buildPreservedTavilyReaderConfig(config,bindings);
             const path="wrangler.reader-preserve.generated.jsonc";
             fs.writeFileSync(path,JSON.stringify(preserved,null,2)+"\n");
@@ -409,7 +419,7 @@ jobs:
             curl --fail --silent --show-error --max-time 60 \
               -H 'Content-Type: application/json' \
               --data '{"message":"hi bor","agent":"coordinator","language":"id"}' \
-              "$1/api/chat" | node --input-type=module -e '
+              "$1/api/chat" | REQUIRE_LUNA_SUCCESS="${2:-false}" node --input-type=module -e '
                 let body = "";
                 for await (const chunk of process.stdin) body += chunk;
                 const result = JSON.parse(body);
@@ -432,6 +442,9 @@ jobs:
                   };
                   console.error("Chat smoke response summary:", JSON.stringify(summary));
                   throw Error("Chat smoke test did not receive a model-generated answer");
+                }
+                if (process.env.REQUIRE_LUNA_SUCCESS === "true" && !lunaSucceeded) {
+                  throw Error("Combined release requires a successful Luna coordinator response before promotion");
                 }
                 if (lunaRequired && !lunaSucceeded) {
                   console.warn("Luna primary did not succeed; candidate chat remained available through its configured model failover.");
@@ -517,10 +530,13 @@ jobs:
                    data?.tools?.webActions?.available!==false) {
                   throw Error("Candidate public capabilities do not preserve bounded Reader while Web Actions remain OFF");
                 }
-                console.log("Reader capability preserved (configuration only; no billable Extract call)");
+                if (data?.tools?.webSearch?.available!==true) {
+                  throw Error("Web Search must be configured for a Reader-preserving release");
+                }
+                console.log("Reader and Web Search capabilities verified (no Tavily smoke call)");
               '
           }
-          smoke_chat "$candidate_url"
+          smoke_chat "$candidate_url" "${{ inputs.allow_luna_with_preserved_reader && 'true' || 'false' }}"
           smoke_media "$candidate_url"
           smoke_reader_preservation "$candidate_url"
           if [[ "$BOR_BILLING_SHADOW_ENABLED" == "true" ]]; then
