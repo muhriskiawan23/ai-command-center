@@ -49,7 +49,7 @@ test('readiness workflow never mutates production or calls billable providers', 
 });
 
 test('active image binding is triaged even when Reader state is a release blocker', () => {
-  const readerFailure = workflow.indexOf('if (flag.length !== 1 || flag[0].type !== "plain_text"');
+  const readerFailure = workflow.indexOf('if (!activeReaderSafe) throw new Error("Active Worker URL Reader is not verifiably OFF")');
   const imageInspect = workflow.indexOf('const images = named("BOR_IMAGES_ENABLED")');
   const imageLog = workflow.indexOf('console.log("Active Image Assistant binding state:", imageState)');
   assert.ok(imageInspect > 0 && imageLog > imageInspect, 'image state must be inspected and reported');
