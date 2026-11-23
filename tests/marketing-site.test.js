@@ -48,7 +48,7 @@ test("marketing links target real sections and nowhere in this page runs paid ba
   const ids = [...html.matchAll(/id="([a-z][a-z0-9-]*)"/g)].map(m => m[1]);
   assert.equal(new Set(ids).size, ids.length, "section IDs must be unique");
   for (const target of anchorTargets) assert.ok(ids.includes(target), "missing anchor target: " + target);
-  assert.doesNotMatch(html, /<script\\b|<iframe\\b|<form\\b/i);
+  assert.doesNotMatch(html, /<script\b|<iframe\b|<form\b/i);
   assert.doesNotMatch(html, /https:\/\/[^" ]*(checkout|payment)/i);
 });
 
@@ -57,5 +57,5 @@ test("unknown URL fallback is an explicit non-indexable 404 page", () => {
   assert.match(missing, /<title>Page not found — BOR AI<\/title>/);
   assert.match(missing, /name="robots" content="noindex, nofollow"/);
   assert.match(missing, /href="https:\/\/app\.getborai\.com\//);
-  assert.doesNotMatch(missing, /<script\\b/i);
+  assert.doesNotMatch(missing, /<script\b/i);
 });
