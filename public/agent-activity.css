@@ -1,5 +1,5 @@
 /* Agent Activity / Living B: lightweight, opt-in motion, no third-party graphics. */
-.model-label .living-b-button{display:grid;place-items:center;flex:0 0 auto;width:35px;height:35px;padding:5px;border:1px solid transparent;border-radius:11px;background:transparent;color:var(--text);cursor:pointer}
+.model-label .living-b-button{display:grid;place-items:center;flex:0 0 auto;width:44px;height:44px;padding:7px;border:1px solid transparent;border-radius:11px;background:transparent;color:var(--text);cursor:pointer}
 .model-label .living-b-button:hover,.model-label .living-b-button[aria-expanded="true"]{background:var(--hover);border-color:var(--line)}
 .model-label .living-b-button img{display:block;width:24px;height:24px;object-fit:contain}
 .living-b-button{position:relative}
@@ -26,5 +26,5 @@
 .agent-activity-motion-row{display:flex;align-items:center;justify-content:space-between;gap:16px;border-top:1px solid var(--line);padding-top:15px;font-size:12px}
 .agent-activity-motion-row input{width:18px;height:18px;accent-color:var(--accent)}
 .agent-activity-footnote{font-size:11px;color:var(--muted);line-height:1.5;margin:0}
-@media(max-width:760px){.agent-activity-panel{top:auto;right:0;left:0;bottom:0;width:100%;max-height:min(75dvh,620px);border-radius:20px 20px 0 0;padding:20px 18px calc(18px + env(safe-area-inset-bottom,0px));border-bottom:0}.model-label .living-b-button{width:36px;height:36px}}
+@media(max-width:760px){.agent-activity-panel{top:auto;right:0;left:0;bottom:0;width:100%;max-height:min(75dvh,620px);border-radius:20px 20px 0 0;padding:20px 18px calc(18px + env(safe-area-inset-bottom,0px));border-bottom:0}.model-label .living-b-button{width:44px;height:44px}}
 @media(prefers-reduced-motion:reduce){.bor-living-b-motion .living-b-button img{animation:none!important}}
