@@ -113,3 +113,21 @@ jobs:
           }
           console.log("Binding values and network identifiers were not logged; the API response was processed in memory only.");
           NODE
+
+      # Only run this extra Cloudflare routing inventory on an explicitly
+      # dispatched audit of the marketing PR branch; never on production deploy.
+      - name: Check out marketing audit code (manual dispatch only)
+        if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/feat/global-marketing-site-20261123' }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Check marketing domain audit script syntax
+        if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/feat/global-marketing-site-20261123' }}
+        run: node --check scripts/audit-cloudflare-marketing-routing.mjs
+      - name: Inventory BOR AI DNS, Worker routes, custom domains and Pages (read-only)
+        if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/feat/global-marketing-site-20261123' }}
+        env:
+          CLOUDFLARE_AUDIT_API_TOKEN: ${{ secrets.CLOUDFLARE_AUDIT_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node scripts/audit-cloudflare-marketing-routing.mjs
