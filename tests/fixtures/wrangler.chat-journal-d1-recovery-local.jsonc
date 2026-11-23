@@ -1,0 +1,40 @@
+{
+  "$schema": "../../../node_modules/wrangler/config-schema.json",
+  "name": "bor-ai-journal-local-test-only",
+  "main": "./chat-journal-staging-d1-local-worker.js",
+  "compatibility_date": "2026-11-23",
+  "workers_dev": false,
+  "preview_urls": false,
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "CHAT_JOURNAL",
+        "class_name": "ChatJournalDurableObject"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "local-synthetic-recovery-v1",
+      "new_sqlite_classes": [
+        "ChatJournalDurableObject"
+      ]
+    }
+  ],
+  "d1_databases": [
+    {
+      "binding": "RECOVERY_D1",
+      "database_name": "bor-ai-journal-recovery-45125376134",
+      "database_id": "8c5f0ad6-b892-48c7-b4c3-5c6e2a890ef0"
+    }
+  ],
+  "vars": {
+    "RECOVERY_LOCAL_ONLY": "true",
+    "CHAT_JOURNAL_ACTIVE": "false",
+    "RECOVERY_SYNTHETIC_ONLY": "true",
+    "RECOVERY_RUN_ID": "45125376134",
+    "RECOVERY_D1_NAME": "bor-ai-journal-recovery-45125376134",
+    "RECOVERY_D1_UUID": "8c5f0ad6-b892-48c7-b4c3-5c6e2a890ef0",
+    "CHAT_JOURNAL_INTERNAL_SECRET": "SYNTHETIC_LOCAL_TEST_ONLY_NOT_A_REAL_SECRET_123456789"
+  }
+}

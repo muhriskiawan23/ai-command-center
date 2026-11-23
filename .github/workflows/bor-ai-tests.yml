@@ -48,3 +48,67 @@ jobs:
         run: npx --yes wrangler@4 deploy --dry-run --config wrangler.duitku-sandbox.jsonc
       - name: Build isolated billing staging preview (no deployment, disabled template)
         run: npx --yes wrangler@4 deploy --dry-run --config wrangler.billing-staging.jsonc
+
+  synthetic_chat_recovery:
+    name: Synthetic journal rollback and replay (offline, no Cloudflare)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Verify isolated staging worker and offline replay syntax
+        run: |
+          node --check src/chat-journal-staging-worker.js
+          node --check tools/recovery/replay-do-journal-to-real-chat-schema-offline.mjs
+
+      - name: Prove rollback, deterministic retry and FK integrity (synthetic only)
+        run: node --test tests/chat-journal-cloudflare-staging-atomic.test.js
+
+  cloudflare_d1_staging_recovery_contract:
+    name: DO to D1 staging recovery (offline contract, no Cloudflare)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Validate safe synthetic DO-to-D1 rollback and replay
+        run: node --test tests/chat-journal-staging-d1-recovery-contract.test.js
+      - name: Generate inert D1 staging config and syntax-check separate Worker
+        run: |
+          node --check src/chat-journal-staging-d1-worker.js
+          node --check src/chat-journal-staging-d1-recovery-drill.js
+          node scripts/prepare-chat-journal-d1-recovery-staging.mjs 45125376134 8c5f0ad6-b892-48c7-b4c3-5c6e2a890ef0
+      - name: Dry-run bundle only (never deploy)
+        run: npx --yes wrangler@4 deploy --dry-run --config wrangler.chat-journal-d1-recovery.generated.jsonc
+
+      - name: Exercise local Workerd Durable Object plus D1 (NO remote Cloudflare, NO credentials)
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ""
+          CLOUDFLARE_ACCOUNT_ID: ""
+          WRANGLER_SEND_METRICS: "false"
+        run: |
+          set -euo pipefail
+          node --check tests/fixtures/chat-journal-staging-d1-local-worker.js
+          node --check tests/fixtures/probe-chat-journal-d1-local.mjs
+          npx --yes wrangler@4 dev --local --ip 127.0.0.1 --port 8799 --config tests/fixtures/wrangler.chat-journal-d1-recovery-local.jsonc > /tmp/bor-local-journal-workerd.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          if ! node tests/fixtures/probe-chat-journal-d1-local.mjs; then
+            tail -n 100 /tmp/bor-local-journal-workerd.log
+            exit 1
+          fi

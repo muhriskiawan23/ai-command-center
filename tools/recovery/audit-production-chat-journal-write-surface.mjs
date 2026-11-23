@@ -53,9 +53,15 @@ const MATRIX=Object.freeze([
   // Isolated billing staging has its own D1 and is NOT connected to BOR AI
   // production's DB binding. Explicitly listed to avoid accidental counts.
   ['src/billing-staging-worker.js','INSERT INTO','users',1,'isolated_billing_staging'],
-  ['src/billing-staging-worker.js','INSERT INTO','sessions',1,'isolated_billing_staging']
+  ['src/billing-staging-worker.js','INSERT INTO','sessions',1,'isolated_billing_staging'],
+  // New closed recovery Worker binds only a disposable run-ID D1. It is NOT a
+  // production chat writer. Pin all SQL sites rather than skipping source files.
+  ['src/chat-journal-staging-d1-recovery-drill.js','INSERT INTO','users',1,'isolated_d1_recovery_staging'],
+  ['src/chat-journal-staging-d1-recovery-drill.js','INSERT INTO','conversations',1,'isolated_d1_recovery_staging'],
+  ['src/chat-journal-staging-d1-recovery-drill.js','INSERT INTO','messages',2,'isolated_d1_recovery_staging']
 ].map(([file,verb,table,expected,domain])=>Object.freeze({
-  file,verb,table,expected,domain,production:domain!=='isolated_billing_staging',
+  file,verb,table,expected,domain,
+  production:!['isolated_billing_staging','isolated_d1_recovery_staging'].includes(domain),
   coveredByActiveJournal:false
 })));
 
