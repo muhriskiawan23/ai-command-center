@@ -9,7 +9,7 @@ const html = read("index.html");
 const css = read("styles.css");
 
 test("marketing site ships independently from the authenticated chat app", () => {
-  for (const name of ["index.html", "styles.css", "logo-mark.svg", "_headers", "robots.txt", "sitemap.xml", "README.md"]) {
+  for (const name of ["index.html", "404.html", "styles.css", "logo-mark.svg", "_headers", "robots.txt", "sitemap.xml", "README.md"]) {
     assert.ok(existsSync(root + name), name);
   }
   assert.match(html, /<html lang="en">/);
@@ -41,4 +41,21 @@ test("standalone global marketing site includes accessibility and SEO essentials
   assert.match(css, /focus-visible/);
   assert.match(read("_headers"), /Content-Security-Policy:/);
   assert.match(read("robots.txt"), /Sitemap: https:\/\/getborai\.com\/sitemap\.xml/);
+});
+
+test("marketing links target real sections and nowhere in this page runs paid backend code", () => {
+  const anchorTargets = [...html.matchAll(/href="#([a-z][a-z0-9-]*)"/g)].map(m => m[1]);
+  const ids = [...html.matchAll(/id="([a-z][a-z0-9-]*)"/g)].map(m => m[1]);
+  assert.equal(new Set(ids).size, ids.length, "section IDs must be unique");
+  for (const target of anchorTargets) assert.ok(ids.includes(target), "missing anchor target: " + target);
+  assert.doesNotMatch(html, /<script\\b|<iframe\\b|<form\\b/i);
+  assert.doesNotMatch(html, /https:\/\/[^" ]*(checkout|payment)/i);
+});
+
+test("unknown URL fallback is an explicit non-indexable 404 page", () => {
+  const missing = read("404.html");
+  assert.match(missing, /<title>Page not found — BOR AI<\/title>/);
+  assert.match(missing, /name="robots" content="noindex, nofollow"/);
+  assert.match(missing, /href="https:\/\/app\.getborai\.com\//);
+  assert.doesNotMatch(missing, /<script\\b/i);
 });
