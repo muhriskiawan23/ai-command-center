@@ -1,0 +1,71 @@
+name: BOR AI hosted Pages preview check
+on:
+  push:
+    branches: [qa/pages-live-417-20261123]
+    paths: ['.github/workflows/bor-ai-hosted-pages-preview-check.yml']
+permissions:
+  contents: read
+jobs:
+  browser:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 22
+      - run: npm ci --ignore-scripts
+      - name: Test public Pages site in Chrome
+        run: |
+          mkdir -p preview-evidence
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { chromium } from '@playwright/test';
+          const origin = 'https://bor-ai-marketing-preview.pages.dev';
+          const browser = await chromium.launch({channel:'chrome'});
+          try {
+            for (const [width,height] of [[360,800],[390,844],[768,1024],[1440,900]]) {
+              const context = await browser.newContext({viewport:{width,height},isMobile:width<768,hasTouch:width<1024});
+              const page = await context.newPage();
+              const response = await page.goto(origin, {waitUntil:'load'});
+              assert.equal(response.status(),200);
+              assert.equal(page.url(),origin+'/');
+              assert.equal(await page.getByRole('heading',{level:1}).innerText(),'Big ideas start with one question.');
+              const cta = page.getByRole('link',{name:/Try BOR AI free/});
+              assert.ok(await cta.isVisible());
+              const checks = await page.evaluate(() => ({
+                scrollWidth:document.documentElement.scrollWidth,
+                viewport:innerWidth,
+                allImagesLoaded:[...document.images].every(img=>img.complete && img.naturalWidth>0),
+                validAnchors:[...document.querySelectorAll('a[href^="#"]')].every(a=>document.getElementById(a.hash.slice(1))),
+                canonical:document.querySelector('link[rel="canonical"]').href
+              }));
+              assert.ok(checks.scrollWidth<=width+1 && checks.viewport===width,JSON.stringify(checks));
+              assert.ok(checks.validAnchors && checks.allImagesLoaded);
+              assert.equal(checks.canonical,'https://getborai.com/');
+              const summary=page.locator('details').first().locator('summary');
+              await summary.click();
+              assert.ok(await page.locator('details').first().evaluate(el=>el.open));
+              await page.evaluate(()=>window.scrollTo({top:0,behavior:'instant'}));
+              await page.screenshot({path:'preview-evidence/home-'+width+'.png',animations:'disabled'});
+              assert.equal(await cta.getAttribute('href'),'https://app.getborai.com/');
+              await Promise.all([page.waitForURL('https://app.getborai.com/'),cta.click()]);
+              const missing=await page.goto(origin+'/bor-ai-preview-404-check');
+              assert.equal(missing.status(),404);
+              assert.match(await page.locator('meta[name="robots"]').getAttribute('content'),/noindex/);
+              console.log(width+'x'+height+' passed: layout, image, anchors, FAQ, navigation to app, custom 404.');
+              await context.close();
+            }
+          } finally {
+            await browser.close();
+          }
+          NODE
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: hosted-preview-screenshots
+          path: preview-evidence/
+          if-no-files-found: ignore
+          retention-days: 7
