@@ -88,8 +88,11 @@ test('v2 real SQLite-backed DO exercise proves one-seq atomic turns, idempotency
     assert.ok(eventRows.slice(0,-1).every(x=>x.payload_json==='{}'&&x.redacted===1));
     assert.equal(eventRows[8].kind,'account.deleted');
     assert.equal(eventRows[8].redacted,0);
-    assert.equal(m.db.prepare('SELECT COUNT(*) AS n FROM journal_turn_requests').get().n,2);
-    assert.equal(m.db.prepare('SELECT COUNT(*) AS n FROM journal_message_ids').get().n,4);
+    // Account deletion now atomically purges private message and request ID
+    // indexes (not merely marks their rows inactive); the terminal deletion
+    // tombstone and ordered event counts remain replayable.
+    assert.equal(m.db.prepare('SELECT COUNT(*) AS n FROM journal_turn_requests').get().n,0);
+    assert.equal(m.db.prepare('SELECT COUNT(*) AS n FROM journal_message_ids').get().n,0);
     assert.equal(m.db.prepare('SELECT COUNT(*) AS n FROM journal_message_ids WHERE active=1').get().n,0);
     const text=JSON.stringify(receipt);
     assert.equal(text.includes(secret),false);
