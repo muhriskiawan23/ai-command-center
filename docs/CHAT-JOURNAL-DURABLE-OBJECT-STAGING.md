@@ -422,3 +422,45 @@ Worker still runs its last verified image of the DO code; merging this
 source does not upgrade that deployed image. **Production app and
 production journal remain unchanged/OFF** and no production D1 export
 or future deploy is authorized by this source-only PR.
+
+## 23 Nov 2026 — owner-approved CLOSED staging code upgrade for atomic-turn proof
+
+Scope: redeploy **only** the preexisting `bor-ai-chat-journal-staging`
+Cloudflare Worker using the approved source-only `turn.saved` contract
+from [PR #431](https://github.com/muhriskiawan23/ai-command-center/pull/431).
+The new manual Workflow payload purpose
+`BOR_SYNTHETIC_CLOSED_ATOMIC_TURN_DRILL_V2` runs against a **new,
+run-specific synthetic DO**. It does not touch the earlier V1 synthetic
+instances. The existing v1 purpose remains available but requires a
+separate operator trigger; no cron or public route is added.
+
+The V2 drill creates exactly **nine** synthetic journal events, of which
+two are atomic `turn.saved` events, verifies three identical retries
+(first turn, conversation deletion, account deletion), blocks a changed
+event-ID reusing an old request ID, rejects a half-turn (invalid event),
+rejects a stale turn after chat deletion, and verifies a final nine-event
+read-back where **all eight** pre-account-deletion payloads are redacted.
+All markers, citation URLs and owner IDs are fake. The Cloudflare Workflow
+receipt includes only counts and flags, never chat/SQL contents or the
+internal secret. It validates data durability and deletion on Cloudflare
+SQLite Durable Objects but **not** transactionality with production D1.
+
+Release gates: exact reviewed `main` parent/commit title/diff, first
+GitHub Actions attempt only, source tests and Wrangler dry run, verified
+existing staging Worker (not a new production script), active restricted
+credential, `workers.dev=false`, preview URLs disabled **before and
+after** deployment, and preserved isolated DO+Workflow bindings without
+primary D1/R2/assets/routes/crons. Reuse the existing internal staging
+secret; do not rotate or print it. Trigger exactly one V2 Workflow
+instance after a successful upgrade and inspect only its safe receipt.
+Delete the consumed GitHub deploy workflow in a follow-up cleanup PR.
+
+**Important:** The upgrade may create a new Cloudflare Worker version and
+one synthetic Durable Object with possible Cloudflare usage charges; the
+owner explicitly approved proceeding to this staging test. There is still
+no production journal binding, historical backfill, verified real-user
+backup, server-side D1/DO reconciliation or production RPO=0 guarantee.
+Production export `phase=trigger` remains hard locked and issue #382
+remains OPEN. A source-only build and CI check alone are not proof that
+this specific staging upgrade has run; the GitHub Cloudflare job receipt
+must be checked before marking it complete.
