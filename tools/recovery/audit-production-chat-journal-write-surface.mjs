@@ -36,6 +36,10 @@ const MATRIX=Object.freeze([
   ['src/memory.js','DELETE FROM','user_memories',2,'memory'],
   ['src/widget-api.js','INSERT INTO','public_api_keys',1,'developer_keys'],
   ['src/widget-api.js','UPDATE','public_api_keys',5,'developer_keys'],
+  // API-key usage consumes/refunds primary daily quota independently of the
+  // regular chat route. These counters matter for a safe recovery cutover.
+  ['src/widget-api.js','INSERT INTO','daily_usage',1,'usage_budget'],
+  ['src/widget-api.js','UPDATE','daily_usage',3,'usage_budget'],
   ['src/github-oauth.js','UPDATE','github_connections',1,'github_oauth'],
   ['src/github-oauth.js','DELETE FROM','github_oauth_states',2,'github_oauth'],
   ['src/github-oauth.js','INSERT INTO','github_oauth_states',1,'github_oauth'],
