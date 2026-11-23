@@ -1,10 +1,11 @@
 # BOR AI — independent private chat journal staging (P0 / not live)
 
-**Status: isolated server-side storage implementation and synthetic proof only.**
-The production Worker does not import, bind or invoke this Durable Object.
-No Cloudflare resource was provisioned, no existing D1 chat data was moved, and
-**RPO=0 / zero lost messages is NOT established**. This is a step toward #382,
-not approval for a production restore or public launch.
+**Status as of 2026-11-23: CLOSED Cloudflare staging Worker DEPLOYED and
+one live synthetic Durable Object journal drill PASSED.** The production
+Worker still does not import, bind or invoke this Durable Object. No existing
+production D1 chat data was moved or exported. **RPO=0 / zero lost
+messages is NOT established**; this is an isolated test for #382,
+not approval for production restore, application cutover, or public launch.
 
 ## Design and safety boundary
 
@@ -38,13 +39,15 @@ Local dry-run only:
     node scripts/prepare-chat-journal-staging.mjs
     npx --yes wrangler@4 deploy --dry-run --config wrangler.chat-journal-staging.generated.jsonc
 
-The script only writes a **local** Wrangler config. It never deploys.
-The generated config uses a dedicated bor-ai-chat-journal-staging Worker,
-a new SQLite Durable Object class and a public handler returning 404.
-It excludes primary D1, image R2, Queue, billing, Tavily and production
-Worker name. No secret values or public customer-chat routes are created.
-Never deploy before independent cost/security approval and a separate
-secret provisioning procedure.
+The script itself only writes a **local** Wrangler config and never
+deploys. The owner separately approved and deployed a dedicated staging
+Worker through protected one-shot GitHub Actions on 23 Nov 2026.
+Its public handler returns 404, workers.dev and preview URLs are disabled,
+and its new SQLite DO binding excludes primary D1, image R2, Queue,
+billing, Tavily and the main production Worker. A random internal-only secret
+was installed on this Worker by the deployment action; the value was
+never disclosed in logs. The consumed automatic release trigger has been
+deleted; future deployments require new approval and review.
 
 ## Required before any live cutover or RPO promise
 
@@ -235,3 +238,49 @@ production chat Worker remains unjournaled, no customer chat is backed up,
 and original integer IDs, full schema, timestamps, Google sessions,
 attachments, privacy/backfill and production SQL export/restore remain open.
 Do not claim production RPO=0 or ready-for-launch on this basis.
+
+## Live CLOSED Cloudflare staging deployment result — 23 Nov 2026
+
+**Deployment and tested scope SUCCESS**, original GitHub Actions
+[run #45111777925](https://github.com/muhriskiawan23/ai-command-center/actions/runs/45111777925),
+on exact source commit `7f5b97f37a0a9fdbd0cc20fd3a398a7860375596`.
+Initial Wrangler version ID:
+`a5a3f919-f681-49d5-aea5-e03850ec9815`;
+the subsequent Worker secret-put may have generated a newer active version.
+That initial ID must NOT be represented as the independently rechecked
+post-secret active version.
+
+- Cloudflare independently verified `workers.dev.enabled=false` and
+  `previews_enabled=false`; there were no custom routes or public chat
+  endpoints. Existing `ai-command-center` production Worker, `bor-ai-chat`
+  D1 and backup Worker were unchanged.
+- Separate `bor-ai-chat-journal-staging` Worker deployed using a new
+  SQLite-backed `ChatJournalDurableObject` migration and the explicitly
+  manual `bor-ai-chat-journal-staging-drill-v1` Workflow, without cron.
+- Only one owner-approved internal Workflow instance,
+  `bor-journal-synthetic-45111777925-1`, was triggered. Authenticated
+  GET polling to the Cloudflare Workflow instances API verified status
+  `complete`, returning a safe receipt:
+  `passed:true`, `events:10`, `head:10`,
+  `erasedPayloadEvents:9`, `duplicateDeletionRetriesVerified:2`,
+  `staleMutationBlocked:true`, `independentSQLite:true`,
+  `customerDataAccessed:false`, `productionD1Accessed:false`.
+  Only predetermined fake chat markers were used, then removed from DO
+  event payloads by account deletion; minimal non-content event IDs and
+  tombstones persist in staging storage.
+- Source CI for the reviewed release: 1,050 passed / 0 failed / 1
+  skipped; Workflow gate's focused tests: 33 passed / 0 failed.
+- The one-shot **deployment GitHub workflow** was retired immediately
+  afterward in a cleanup PR. The internal staging Workflow definition
+  remains deployed; it has no timer or publicly reachable route.
+
+**What this proves:** deployed Cloudflare Durable Object storage can safely
+accept/sequence a small synthetic user journal, authenticate internal
+requests, enforce idempotent deletion, reject a stale write and redact
+older message payloads. **What it does NOT prove:** journal-first writes
+from actual BOR AI chat, original production ID retention, historic
+backfill, per-user privacy/retention at scale, independent full-schema
+restore, a successful production SQL export, a zero-loss RPO, or an
+acceptable recurring cost budget. These require separately authorized
+production work; P0 #382 stays OPEN. The third production D1 export
+remains explicitly HARD LOCKED.
