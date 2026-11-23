@@ -315,3 +315,65 @@ earlier minimal journal-only adapter CANNOT. A production full-schema
 restore still requires an owner-approved real export and secure restore
 rehearsal after fresh backfill, privacy/cost review and journal-first write
 coverage. Do not deploy or unlock third production export from this result.
+
+## 23 Nov 2026 — fail-closed live D1 write-surface inventory (source-only)
+
+The **read-only** `node tools/recovery/audit-production-chat-journal-write-surface.mjs`
+command inventories every SQL mutation literal referencing tracked
+conversation-, account-, session-, dependent image-, memory-, developer-key-
+and GitHub-OAuth-related tables across `src/*.js` (excluding any new writer
+until it is deliberately reviewed). A strict manifest pins each known
+`file × SQL action × table` and number of source literals: changing, removing
+or introducing a writer breaks CI via
+`tests/production-chat-journal-write-surface.test.js`. This
+is a regression gate **against silent drift**, not proof of a journal.
+The excluded `billing-staging-worker` records are explicitly counted
+separately because that Worker has its own isolated D1.
+
+The current reviewed inventory contains **58 primary application SQL
+mutation literals**, with **0 currently connected to a production journal**,
+plus **2 isolated billing-staging source literals**. These numbers are counts
+of source SQL expressions, **not runtime queries, customer records or
+unique HTTP endpoints**. Source spans that build SQL dynamically are covered
+by their initial static SQL action; any dynamic SQL not containing the
+tracked table/action text, indirect persistence helper, Workers binding
+created outside `wrangler.jsonc`, or deployment change outside this
+repository can still escape this specific static analysis. It is not a
+formal whole-program proof.
+
+Routes to close before enabling a production journal:
+
+- Auth: verified Google owner creation/upsert, session rotation/cleanup
+  and explicit logout. Never journal bearer cookies, tokens or key hashes
+  into plaintext chat events; design separate session recovery semantics.
+- Chat: create; save pairs of user+assistant messages atomically; safe
+  idempotent request retries; regenerate/edit last pair; rename, pin,
+  archive, delete one/all, feedback create/update and tombstones.
+  Explicitly preserve `messages.id INTEGER AUTOINCREMENT`,
+  `idempotency_key`, `links_json` and `answer_feedback.message_id`
+  for both backfilled and new rows. Current DO `message.saved`
+  only accepts stable string IDs and content, so it cannot do this.
+- Image chat: optional conversation creation/rollback, timestamp update,
+  jobs' conversation association and ON DELETE SET NULL semantics.
+  Operator-owned immutable lifetime image-pilot meter cannot be reset.
+- Dependent private records: opt-in memory, developer API key metadata,
+  GitHub OAuth connection, usage budgets and logs have separate
+  retention, credential handling and legal/privacy requirements; these
+  are deliberately not copied into the existing chat journal.
+
+The CI gate also **rejects adding any active chat-journal binding/enable flag
+to production configuration or journal references to `src/index.js`**
+without first making an explicit, separately authorized review/change to
+this guard. The closed staging Worker remains independent, not connected to
+the BOR AI application; the original production D1 export hard lock remains
+in place.
+
+Before a cutover can even be considered: approve storage cost, privacy and
+retention; establish an ownership-verified and source-complete backfill;
+design a stable integer-ID projection contract across all dependent FKs;
+implement journal-first write receipts on **all** active mutation paths
+with failure/retry handling; replay every in-flight interleaving, redaction
+and post-checkpoint event idempotently; prove read-your-writes behavior;
+and demonstrate a successful secure production D1 export to separate
+nonproduction recovery **without** jeopardizing the real chat database.
+This source inventory **does not authorize** any of those operations.
