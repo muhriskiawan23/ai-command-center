@@ -192,8 +192,10 @@ export async function runSyntheticD1Drill(env,{fetcher=fetch,log=console.log,sle
     let signed=extractSyntheticSignedUrl({success:true,result:exportResponse});
     for(let i=0;!signed&&i<20;i++){
       await sleep(2000);
+      // D1 requires output_format='polling' on EVERY export POST,
+      // including continuation. A missing field previously broke live backup.
       exportResponse=await request('POST','/'+source+'/export',
-        {current_bookmark:bookmark},'export_poll');
+        {output_format:'polling',current_bookmark:bookmark},'export_poll');
       if(exportResponse.at_bookmark!==undefined&&exportResponse.at_bookmark!==bookmark)
         throw Error('synthetic_drill_export_bookmark_changed');
       signed=extractSyntheticSignedUrl({success:true,result:exportResponse});
