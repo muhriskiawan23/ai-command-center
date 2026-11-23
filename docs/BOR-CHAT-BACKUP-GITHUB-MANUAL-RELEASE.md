@@ -1,7 +1,10 @@
 # BOR AI — manual private chat backup release (GitHub Actions / phone only)
 
-**NOT DEPLOYED.** This file describes a **future gated** release workflow.
-It does not authorize the export or sharing of real users' private chat SQL.
+**Status as of 2026-11-23:** an earlier isolated backup Worker was deployed
+successfully (GitHub run #45093244298), but the later polling payload fix
+in merged PR #415 has **NOT** been verified as deployed. This runbook describes
+future *separately approved* releases, not authorization to export or share
+any real users' private chat SQL.
 
 Workflow: `.github/workflows/bor-ai-private-chat-backup-release.yml`.
 Available inputs on `main`:
@@ -98,3 +101,38 @@ low-traffic approval after private R2 partial-state audit and code release.
 
 Reference:
 https://developers.cloudflare.com/workers/runtime-apis/request/#redirect
+
+## 23 Nov 2026 — source-only release candidate gate after PR #415
+
+Before requesting a new isolated Worker deployment, the manual `phase=plan`
+now builds TWO configurations, without real Cloudflare credentials:
+1. The existing disabled/safe-OFF isolated backup Worker.
+2. A **synthetic enabled-shaped** candidate with a literal fake account ID
+   (`00000000000000000000000000000000`) and fake signed R2 host
+   (`candidate-only.r2.cloudflarestorage.com`). This is the code/configuration
+   shape used by the real deploy, but Wrangler is strictly invoked with
+   `--dry-run --experimental-auto-create=false`.
+
+PR preview CI also compiles the synthetic candidate on every pull request.
+The generator reads no `process.env` secrets, cannot fetch production D1,
+and emits no real backup. The synthetic artifact must **NEVER** be deployed.
+The isolated production Worker remains on the previously deployed version
+until a new separately owner-approved `phase=deploy` succeeds, including
+the dedicated export secret put; GitHub source merge or dry-run is NOT deployment.
+
+Operational sequence, each with independent evidence and authorization:
+- Confirm PR checks pass for the exact current `main` SHA, then run manual
+  `phase=plan` (safe source-only).
+- If owner authorizes an isolated Worker upgrade, separately review the
+  expected exact `main` SHA, signed R2 host, limited credentials and private
+  bucket; run **`phase=deploy` only**. Inspect logs for Worker deploy **and**
+  secret install success, then independently verify deployed code/version.
+  This mutates backup infrastructure but must NOT trigger a D1 export.
+- The two prior approved production exports are exhausted and both errored.
+  **Do not run `phase=trigger`** under an old approval. A third export requires
+  new explicit informed consent, a low-traffic window, and separate preflight.
+- Even with a successful R2 metadata receipt, recovery from backups is not
+  proven until a safe isolated nonproduction restore drill and journal/replay
+  consistency checks pass. There is NO production zero-loss guarantee.
+
+Tracking: PR #415 (polling payload correction) and Issue #382 (recovery).
