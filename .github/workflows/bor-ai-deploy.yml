@@ -43,6 +43,11 @@ on:
         required: false
         type: string
         default: ""
+      billing_shadow_confirmation:
+        description: "Only for isolated, read-only shadow rollout: type CONFIRM_BOR_AI_SHADOW_READONLY_RELEASE after reviewing D1, schema and auth risks"
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -105,6 +110,17 @@ jobs:
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: 22
+
+      # This is a purely local consent and combination guard. It runs before
+      # any Cloudflare queries, D1 schema writes or Worker release.
+      - name: Require explicit standalone billing shadow release consent
+        env:
+          BOR_BILLING_SHADOW_CONFIRMATION: ${{ inputs.billing_shadow_confirmation }}
+          BOR_APPLY_DB_MIGRATIONS: ${{ inputs.apply_db_migrations && 'true' || 'false' }}
+          BOR_RUN_TAVILY_SMOKE: ${{ inputs.run_tavily_smoke && 'true' || 'false' }}
+          BOR_PRESERVE_READER: ${{ inputs.preserve_active_tavily_reader && 'true' || 'false' }}
+          BOR_ALLOW_READER_SHUTDOWN: ${{ inputs.allow_reader_shutdown && 'true' || 'false' }}
+        run: node scripts/review-billing-shadow-dispatch.mjs
 
       - name: Validate required credentials
         env:
