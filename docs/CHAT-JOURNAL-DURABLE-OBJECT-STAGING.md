@@ -97,3 +97,28 @@ ID mappings, deletion of earlier replicas/backups, complete receipt-based
 acknowledgement/projection protocol, proof every mutation is covered, full
 staging disaster drill against realistic D1 schema and **explicit owner
 release approval**. No zero-loss claim is justified yet.
+
+## 23 Nov 2026 — delete/replay integrity hardening (source-only)
+
+The independent, **nonproduction** Durable Object journal and offline recovery
+adapter were hardened for two previously uncovered crash/privacy windows:
+
+- When `account.deleted` commits but its HTTP acknowledgement is lost, retrying
+  the **same event_id and canonical empty payload** now returns the original
+  durable sequence with `duplicate:true`, including after Durable Object
+  recreation. All other writes (including stale messages or a second account
+  deletion ID) remain blocked; redacted pre-erasure bodies never return.
+- `conversation.deleted` must retain its **minimal conversation-ID-only
+  tombstone** after a later `conversations.deleted_all`. The delete-all
+  operation still atomically redacts earlier titles, prompts, answers, edits
+  and feedback. Redacting the earlier delete command itself breaks a legitimate
+  delete-one → delete-all → new-chat recovery sequence, because the replayer
+  cannot establish the tombstone or owner. The new offline tests replay this
+  exact sequence and a later account erasure from actual Durable Object pages.
+
+This fixes the **synthetic journal/replay implementation only**. No deployed
+Durable Object, protected production journal, live write path, SQL export,
+backup restore or RPO guarantee is created by these tests. Before activation
+we must additionally establish complete real production D1 mutation mapping,
+chat backfill, independent storage costs/retention, exactly-once delivery,
+session ownership, and a witnessed nonproduction recovery drill.
