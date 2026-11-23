@@ -34,3 +34,17 @@ test("untrusted error objects cannot inject output into safe AI binding diagnost
   });
   assert.deepEqual(safeError({ name: "ProprietaryProviderError", message: "secret" }), { name: "UnknownError" });
 });
+
+test("recognizes exact free-tier allocation wording, never generic 429", () => {
+  const message = "AiError: AiError: you have used up your daily free allocation of 10,000 neurons, please upgrade";
+  for (const err of [new Error(message), { errors: [{ code: 4006, message }] },
+    { cause: { message, status: 429 } }]) {
+    assert.equal(safeAiBindingFailure(err).category, "daily_ai_allocation_exhausted");
+  }
+  assert.equal(safeAiBindingFailure({ code: 4006, status: 429 }).category, "provider_error_unclassified");
+  assert.equal(safeAiBindingFailure({ status: 429, message: "unrelated customer text" }).category, "provider_error_unclassified");
+  assert.equal(safeAiBindingFailure({ code: 3040, status: 429, message }).category, "provider_capacity_exceeded");
+  assert.equal(safeAiBindingFailure({ message: "secret " + message }).category, "provider_error_unclassified");
+  const secret = "SYNTHETIC_FAKE_API_KEY_SECRET";
+  assert.doesNotMatch(JSON.stringify(safeAiBindingFailure({ cause: { message: secret } })), /SYNTHETIC_FAKE_API_KEY_SECRET/);
+});

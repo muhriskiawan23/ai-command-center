@@ -39,9 +39,10 @@ test("Free mode: model quota outage preserves existing account chat and refunds 
     throw Object.assign(new Error("synthetic quota failure"),{code:3036,status:429});
   };
   const failure=await send();
-  assert.equal(failure.status,502);
+  assert.equal(failure.status,503);
+  assert.ok(Number(failure.headers.get("Retry-After")) > 0);
   const failureBody=await failure.json();
-  assert.equal(failureBody.code,"ai_error");
+  assert.equal(failureBody.code,"ai_daily_allocation_exhausted");
   assert.equal(failureBody.stage,"ai_generation");
   assert.notEqual(failureBody.saved,true);
   assert.equal(count(),2,"the failed turn must not create a partial pair");
