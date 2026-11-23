@@ -9,6 +9,9 @@ import {
 import {makePrivateBackupConfig,PRIVATE_BUCKET,WORKFLOW_NAME}
   from '../scripts/prepare-chat-private-backup-staging.mjs';
 
+import {buildPrivateBackupReleaseCandidate,SYNTHETIC_ACCOUNT_ID,SYNTHETIC_SIGNED_HOST}
+  from '../scripts/verify-private-chat-backup-release-candidate.mjs';
+
 const account='1698b70193eb133044e9fb07e39b7740';
 const hostname='synthetic.r2.cloudflarestorage.com';
 const token='SYNTHETIC-NONPRODUCTION-D1-EXPORT-TOKEN-ONLY';
@@ -415,4 +418,28 @@ test('explicit enablement needs independently reviewed bucket, correct account a
   assert.equal(cfg.vars.BOR_BACKUP_ENABLED,'true');
   assert.equal(cfg.vars.BOR_SIGNED_EXPORT_HOST,hostname);
   assert.equal(cfg.workflows[0].schedules,undefined);
+});
+
+test('synthetic deployment-shaped candidate has enabled Workflow but NO production identity, secret or public route',()=>{
+  const root=JSON.parse(readFileSync('wrangler.jsonc','utf8'));
+  const cfg=buildPrivateBackupReleaseCandidate(root);
+  assert.equal(cfg.vars.BOR_BACKUP_ENABLED,'true');
+  assert.equal(cfg.vars.BOR_BACKUP_OWNER_APPROVED,'true');
+  assert.equal(cfg.vars.BOR_BACKUP_ACCOUNT_ID,SYNTHETIC_ACCOUNT_ID);
+  assert.equal(cfg.vars.BOR_SIGNED_EXPORT_HOST,SYNTHETIC_SIGNED_HOST);
+  assert.equal(cfg.name,'bor-ai-chat-backup-isolated');
+  assert.equal(cfg.main,'src/bor-chat-private-backup-worker.js');
+  assert.equal(cfg.workers_dev,false);
+  assert.equal(cfg.workflows.length,1);
+  assert.equal(cfg.workflows[0].name,WORKFLOW_NAME);
+  assert.equal(cfg.workflows[0].schedules,undefined);
+  assert.equal(cfg.r2_buckets[0].bucket_name,PRIVATE_BUCKET);
+  assert.equal(cfg.d1_databases,undefined);
+  assert.equal(cfg.routes,undefined);
+  assert.equal(cfg.triggers,undefined);
+  assert.equal(cfg.assets,undefined);
+  assert.equal(cfg.vars.BOR_D1_EXPORT_TOKEN,undefined);
+  assert.equal(cfg.vars.BOR_PRIVATE_D1_EXPORT_TOKEN,undefined);
+  const core=readFileSync('src/bor-chat-private-backup-core.js','utf8');
+  assert.match(core,/output_format:'polling',current_bookmark:bookmark/);
 });
