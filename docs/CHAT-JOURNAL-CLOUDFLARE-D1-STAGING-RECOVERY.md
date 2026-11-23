@@ -31,3 +31,19 @@ A second replay is a no-op.
   D1 UUID and any production UUID listed in `wrangler.jsonc`.
 - Do not merge PR #435 as a **completed Cloudflare D1 recovery** until the live
   staging receipt is green. Do not run a production export or restore.
+
+## Zero-Cloudflare-charge GitHub Actions path (2026-11-23)
+
+The owner opted out of paid browser automation and cannot fund additional
+Cloudflare consumption at this time. CI therefore has a **local Workerd**
+test in the existing BOR AI tests workflow. It starts \`wrangler dev --local\`
+with an in-repository **test-only** Worker, a synthetic SQLite-backed DO and
+a local D1 binding, then triggers one recovery run and verifies rollback,
+idempotent retry, replay and FK integrity. The second invocation must fail
+closed. The Worker is bound to 127.0.0.1, uses no Cloudflare credentials,
+and neither creates nor deploys remote resources. CI still consumes ordinary
+GitHub Actions minutes, which may be subject to the repository's plan quota.
+
+This is stronger than the pure Node.js mock but **still not a live
+Cloudflare-hosted D1 recovery**, nor a real database outage. Keep the PR merge
+hold for the complete cloud staging recovery receipt until costs are approved.
