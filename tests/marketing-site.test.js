@@ -61,8 +61,11 @@ test("unknown URL fallback is an explicit non-indexable 404 page", () => {
 });
 
 
-test("all external marketing links go only to the existing BOR AI chat application", () => {
-  const outbound = [...html.matchAll(/<a\b[^>]*\bhref="(https?:\/\/[^"]+)"/g)].map(([, url]) => new URL(url));
-  assert.ok(outbound.length > 0, "marketing site must link to the app");
-  for (const url of outbound) assert.equal(url.origin, "https://app.getborai.com");
+test("external marketing links are restricted to the chat app and owner-confirmed official X", () => {
+  const outbound = [...html.matchAll(/<a\b[^>]*\bhref="(https?:\/\/[^"]+)"/g)].map(([, url]) => new URL(url).href);
+  const allowed = new Set(["https://app.getborai.com/", "https://x.com/BORAI_Official"]);
+  assert.ok(outbound.includes("https://app.getborai.com/"), "app CTA must exist");
+  assert.ok(outbound.includes("https://x.com/BORAI_Official"), "owner-confirmed official X link must exist");
+  for (const url of outbound) assert.ok(allowed.has(url), `unexpected external link: ${url}`);
+  assert.match(html, /href="https:\/\/x\.com\/BORAI_Official" rel="noopener noreferrer"/);
 });
