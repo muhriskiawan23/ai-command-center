@@ -25,6 +25,9 @@ test("Activity uses the real chat request lifecycle without fabricated progress"
     assert.ok(app.includes('publishActivity("' + phase + '"'), "missing phase " + phase);
   assert.match(activity, /existingStop\.click\(\)/);
   assert.match(activity, /data\.requestId !== current\.requestId/);
+  assert.match(app, /bor:session-state/);
+  assert.match(activity, /addEventListener\("bor:session-state"/);
+  assert.match(activity, /requestId: null, agent: "", task: ""/);
   assert.doesNotMatch(activity, /setInterval|fetch\(|percentComplete|progress:\s*80/);
 });
 
