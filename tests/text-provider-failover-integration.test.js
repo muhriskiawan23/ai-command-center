@@ -40,8 +40,9 @@ test("chat recovers through backup after both providers fail without double-coun
   const units = subject => app.db.sqlite.prepare("SELECT units FROM daily_usage WHERE subject = ?").get(subject)?.units;
 
   const failed = await post();
-  assert.equal(failed.status, 502);
-  assert.equal((await failed.json()).code, "ai_error");
+  assert.equal(failed.status, 503);
+  assert.equal((await failed.json()).code, "ai_provider_busy");
+  assert.equal(failed.headers.get("Retry-After"), "30");
   assert.equal(units("user:" + user.id), 0);
   assert.equal(units("global"), 0);
   assert.ok(units("provider:openai:backup:text:global:micro-usd") > 0);

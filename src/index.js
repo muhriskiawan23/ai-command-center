@@ -1948,6 +1948,26 @@ export default {
             stage: "ai_generation", links
           }, 503, exhausted ? { "Retry-After": String(secondsUntilNextUtcDay()) } : {});
         }
+        // Known daily provider quota differs from transient provider 429/capacity.
+        // Return fixed public errors only. Never expose provider details.
+        const providerFailure = safeAiBindingFailure(error);
+        if (providerFailure.category === "daily_ai_allocation_exhausted") {
+          return json({
+            error: language === "id"
+              ? "Kuota AI harian sedang habis. Coba lagi setelah reset harian sekitar pukul 07.00 WIB."
+              : "Today's AI allocation is exhausted. Try again after the next daily reset (around 00:00 UTC).",
+            code: "ai_daily_allocation_exhausted", stage: "ai_generation", links
+          }, 503, { "Retry-After": String(secondsUntilNextUtcDay()) });
+        }
+        if (providerFailure.category === "provider_capacity_exceeded" ||
+          providerFailure.httpStatus === 429) {
+          return json({
+            error: language === "id"
+              ? "Layanan AI sedang penuh. Coba lagi beberapa saat tanpa mengirim pesan berulang."
+              : "The AI service is at capacity. Please wait before retrying.",
+            code: "ai_provider_busy", stage: "ai_generation", links
+          }, 503, { "Retry-After": "30" });
+        }
         if (error instanceof AiTimeoutError) return json({ error: "AI terlalu lama merespons. Silakan coba lagi, atau pecah permintaan menjadi lebih singkat.", code: "ai_timeout", stage: "ai_generation", links }, 504);
         return json({ error: "AI gagal memproses permintaan. Silakan coba lagi beberapa saat.", code: "ai_error", stage: "ai_generation", links }, 502);
       }
