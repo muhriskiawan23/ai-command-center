@@ -14,6 +14,7 @@ on:
       - 'src/links.js'
       - 'src/tavily-extract.js'
       - 'src/verified-egress.js'
+      - 'src/plugin-capabilities.js'
       - 'src/image-jobs.js'
       - 'scripts/reader-preserve-guard.mjs'
 permissions:
@@ -76,10 +77,9 @@ jobs:
           const imageState = images.length === 0 ? "absent" :
             images.length === 1 && images[0].type === "plain_text" && images[0].text === "false" ? "off" : "unverifiable-or-on";
           console.log("Active Image Assistant binding state:", imageState);
-          if (imageState !== "absent" && imageState !== "off") throw new Error("Active Worker image generation is not verifiably OFF");
-          if (flag.length !== 1 || flag[0].type !== "plain_text" || flag[0].text !== "false") throw new Error("Active Worker URL Reader is not verifiably OFF");
-
-          if (limit.length && (limit.length !== 1 || limit[0].type !== "plain_text" || !/^(?:0+)$/.test(limit[0].text || ""))) throw new Error("Active Worker Tavily daily extraction quota is not verifiably zero");
+          // Compare the DEPLOYED release annotation before enforcing safe-off
+          // flags. Otherwise a mismatch throws early and conceals whether the
+          // running Worker was built from the commit under audit.
           const releaseMessage = deployment?.annotations?.["workers/message"];
           const expected = "github-sha:" + process.env.EXPECTED_MAIN_SHA;
           if (releaseMessage !== expected) {
@@ -88,6 +88,17 @@ jobs:
           } else {
             console.log("Production release synchronization: MATCHED");
           }
+          const activeReaderSafe = flag.length === 1 && flag[0].type === "plain_text" && flag[0].text === "false";
+          const activeExtractSafe = !limit.length || (limit.length === 1 &&
+            limit[0].type === "plain_text" && /^(?:0+)$/.test(limit[0].text || ""));
+          const activeImagesSafe = imageState === "absent" || imageState === "off";
+          // Emit a finite inventory of safe boolean classes. Never output
+          // binding values other than the previously classified true/false.
+          console.log("Read-only release safe-off checks:",
+            JSON.stringify({reader:activeReaderSafe,extract:activeExtractSafe,images:activeImagesSafe}));
+          if (!activeImagesSafe) throw new Error("Active Worker image generation is not verifiably OFF");
+          if (!activeReaderSafe) throw new Error("Active Worker URL Reader is not verifiably OFF");
+          if (!activeExtractSafe) throw new Error("Active Worker Tavily daily extraction quota is not verifiably zero");
           console.log("Active Worker URL Reader: OFF");
           console.log("Active Worker paid Image Assistant: OFF");
           console.log("Active Worker Tavily Extract daily quota: absent or zero");
@@ -107,6 +118,21 @@ jobs:
                 const data = JSON.parse(body);
                 const reading = data?.tools?.webReading;
                 const actions = data?.tools?.webActions;
+                // Public shape diagnostics deliberately expose ONLY fixed
+                // booleans and count; never log the actual response payload.
+                const toolsRecord = data?.tools !== null && typeof data?.tools === "object" &&
+                  !Array.isArray(data?.tools);
+                const feature = value => value === true ? "true" : value === false ? "false" : "unverifiable";
+                console.log("Public capabilities schema:",
+                  toolsRecord ? "tools-object" : "missing-or-invalid");
+                console.log("Public capability fields:",
+                  JSON.stringify({
+                    webReading: reading === null || reading === undefined ? "absent" : "present",
+                    webActions: actions === null || actions === undefined ? "absent" : "present",
+                    readerEnabled: feature(reading?.enabled),
+                    readerAvailable: feature(reading?.available),
+                    actionsAvailable: feature(actions?.available)
+                  }));
                 if (!reading || !actions) {
                   console.error("::error::Active production capabilities are missing webReading/webActions; cannot verify the safe-off release.");
                   process.exitCode=1;
