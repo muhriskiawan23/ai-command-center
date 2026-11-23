@@ -19,6 +19,7 @@ test('read-only production safety checks run after merge of sensitive Worker and
     'src/links.js',
     'src/tavily-extract.js',
     'src/verified-egress.js',
+    'src/plugin-capabilities.js',
     'src/image-jobs.js',
     'scripts/reader-preserve-guard.mjs'
   ]) {
@@ -55,4 +56,27 @@ test('active image binding is triaged even when Reader state is a release blocke
   assert.ok(readerFailure > imageLog, 'Reader mismatch must not mask paid-image binding status');
   assert.match(workflow, /Active Worker URL Reader is not verifiably OFF/);
   assert.match(workflow, /Active Worker image generation is not verifiably OFF/);
+});
+
+
+test('read-only audit triages deployed release SHA before rejecting active URL Reader divergence', () => {
+  const release = workflow.indexOf('const releaseMessage = deployment?.annotations?.["workers/message"]');
+  const report = workflow.indexOf('console.log("Production release synchronization: PENDING")');
+  const readerFail = workflow.indexOf('if (!activeReaderSafe) throw new Error("Active Worker URL Reader is not verifiably OFF")');
+  assert.ok(release > 0 && report > release && readerFail > report,
+    'Release drift evidence must be emitted even when the active Reader violates baseline');
+  assert.match(workflow, /const activeExtractSafe = !limit\.length/);
+  assert.match(workflow, /const activeImagesSafe = imageState === "absent" \|\| imageState === "off"/);
+  assert.match(workflow, /"Read-only release safe-off checks:"/);
+  assert.doesNotMatch(workflow, /console\.log\(["'].*secret.*(?:token|key|binding)\b/i);
+});
+
+test('public capability schema mismatch is classified without exposing response or relaxing fail-closed gate', () => {
+  assert.match(workflow, /console\.log\("Public capabilities schema:"/);
+  assert.match(workflow, /console\.log\("Public capability fields:"/);
+  assert.match(workflow, /readerEnabled: feature\(reading\?\.enabled\)/);
+  assert.match(workflow, /actionsAvailable: feature\(actions\?\.available\)/);
+  assert.match(workflow, /Active production capabilities are missing webReading\/webActions/);
+  assert.match(workflow, /reading\.enabled !== false \|\| reading\.available !== false \|\| actions\.available !== false/);
+  assert.doesNotMatch(workflow, /console\.log\([^;\n]*(?:JSON\.stringify\(data\)|JSON\.stringify\(body\))/);
 });
