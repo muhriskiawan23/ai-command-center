@@ -29,7 +29,13 @@ export async function drill(env,{payload,runId}={}){
       method:data?'POST':'GET',headers:{'X-BOR-Journal-Token':secret,
       ...(data?{'Content-Type':'application/json'}:{})},...(data?{body:JSON.stringify(data)}:{})
     }));
-    if(response.status!==200)fail('staging_recovery_journal_request_failed');
+    if(response.status!==200){
+      let code='unknown';
+      try{code=(await response.json())?.code||code;}catch{}
+      // Only an allowlisted internal error code is surfaced, never source data.
+      if(!/^[a-z_]{2,60}$/.test(code))code='unknown';
+      fail('staging_recovery_journal_request_failed_'+response.status+'_'+code);
+    }
     const result=await response.json();
     if(result.ok!==true)fail('staging_recovery_journal_invalid');
     return result;
