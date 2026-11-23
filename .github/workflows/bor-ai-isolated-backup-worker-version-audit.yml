@@ -1,0 +1,70 @@
+name: BOR AI isolated private backup deployed-version audit (GET only)
+
+# This workflow reads ONLY version/deployment metadata on the separate backup Worker.
+# Not a release, not a D1 export, not an R2 read, not a restore.
+on:
+  workflow_dispatch:
+    inputs:
+      reviewed_main_sha:
+        type: string
+        required: true
+        description: "Exact current 40-character main SHA"
+      owner_confirmation:
+        type: string
+        required: true
+        description: "AUDIT_ISOLATED_BACKUP_DEPLOYMENT_ONLY"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bor-ai-isolated-backup-deployment-metadata-readonly
+  cancel-in-progress: false
+
+jobs:
+  version_inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    environment: production
+    steps:
+      - name: Reject wrong branch, source SHA or audit confirmation BEFORE secrets
+        shell: bash
+        env:
+          SHA_APPROVED: ${{ inputs.reviewed_main_sha }}
+          OWNER_ACK: ${{ inputs.owner_confirmation }}
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REF" == "refs/heads/main" ]] || { echo "::error::main only"; exit 1; }
+          [[ "$SHA_APPROVED" == "$GITHUB_SHA" && "$OWNER_ACK" == "AUDIT_ISOLATED_BACKUP_DEPLOYMENT_ONLY" ]] || {
+            echo "::error::Wrong reviewed main SHA or read-only audit acknowledgement"; exit 1;
+          }
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 22
+
+      - name: Confirm reviewed main HEAD has not changed
+        shell: bash
+        run: |
+          set -euo pipefail
+          latest="$(git ls-remote origin refs/heads/main | cut -f1)"
+          [[ "$latest" == "$GITHUB_SHA" ]] || {
+            echo "::error::main moved, review latest SHA and restart GET-only audit"; exit 1;
+          }
+
+      - name: Validate read-only audit with synthetic fixtures
+        run: node --test tests/isolated-backup-worker-deployment-readonly.test.js
+
+      - name: GET-only inspect deployed isolated Worker version metadata
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_BACKUP_DEPLOY_TOKEN: ${{ secrets.CLOUDFLARE_BACKUP_DEPLOY_TOKEN }}
+        run: node scripts/audit-isolated-backup-worker-deployment-readonly.mjs
+
+      - name: Explain limits
+        run: |
+          echo "Read-only metadata audit finished. A Worker version ID is NOT proof PR #415 is running."
+          echo "No Worker deployment, export trigger, D1 SQL query, R2 content read, restore or billing operation was authorized."

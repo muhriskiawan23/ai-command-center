@@ -136,3 +136,38 @@ Operational sequence, each with independent evidence and authorization:
   consistency checks pass. There is NO production zero-loss guarantee.
 
 Tracking: PR #415 (polling payload correction) and Issue #382 (recovery).
+
+## 23 Nov 2026 — fail-closed lock and deployed-version metadata inspection
+
+The two earlier one-time production D1 export attempts have both FAILED.
+The backup release workflow now rejects `phase=trigger` at its earliest
+input guard, *before any credentials or Cloudflare calls*, even if old
+confirmation strings are pasted again. Any third export requires a
+separately approved code-change PR that explicitly removes this lock.
+Do not remove it just to troubleshoot an HTTP 4xx.
+
+To read current isolated Worker metadata without changing Cloudflare, use:
+
+- [Manual isolated backup deployed-version audit](https://github.com/muhriskiawan23/ai-command-center/actions/workflows/bor-ai-isolated-backup-worker-version-audit.yml)
+- Branch: `main`
+- `reviewed_main_sha`: exact current 40-character HEAD (re-check it each time).
+- `owner_confirmation`: `AUDIT_ISOLATED_BACKUP_DEPLOYMENT_ONLY`
+
+The new audit calls only Cloudflare
+`GET /accounts/{account}/workers/scripts/bor-ai-chat-backup-isolated/deployments?page=1&per_page=1`
+with the existing protected dedicated Worker deploy token. The result
+contains the latest active deployment UUID, creation timestamp and version ID(s)
+and percentages; this is metadata only. It makes no D1 or R2 calls, no
+workflow trigger, no deploy, and does not download the Worker code.
+An authorization/403 response is a permission blocker, never proof of absence.
+
+**Critical distinction:** a deployed Worker version ID confirms only which
+version is active. It **does not** cryptographically prove PR #415 polling
+source is in that version. For a future authorized `phase=deploy`, compare
+the exact reviewed GitHub SHA, the Wrangler deployment log, the separate
+post-deploy secret install result (which can create a new version) and the
+GET-only active version metadata. Any uncertainty must remain unresolved,
+not called a successful backup.
+
+Cloudflare API reference:
+https://developers.cloudflare.com/api/resources/workers/subresources/scripts/subresources/deployments/methods/list/
