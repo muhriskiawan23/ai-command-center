@@ -180,6 +180,7 @@ jobs:
           node --input-type=module <<'NODE'
           import fs from "node:fs";
           import { buildPreservedTavilyReaderConfig } from "./scripts/reader-preserve-guard.mjs";
+          import { activeTextPolicy, verifyPlannedTextPolicy } from "./scripts/text-release-budget-guard.mjs";
           const config=JSON.parse(fs.readFileSync("wrangler.jsonc","utf8"));
           const desired=config.vars?.URL_READER_ENABLED;
           if (!["true","false"].includes(desired)) throw Error("Candidate URL Reader flag is missing/invalid");
@@ -200,6 +201,10 @@ jobs:
           const version=await get("/versions/"+encodeURIComponent(active[0].version_id));
           const bindings=version?.resources?.bindings;
           if(!Array.isArray(bindings))throw Error("Active Worker bindings unavailable");
+          const textPolicy=activeTextPolicy(bindings);
+          verifyPlannedTextPolicy(config,textPolicy,process.env);
+          fs.appendFileSync(process.env.GITHUB_ENV,"BOR_EXPECTED_TEXT_POLICY="+JSON.stringify(textPolicy)+"\n");
+          console.log("Active text provider mode and spend caps preserved in planned configuration");
           const named=bindings.filter(b=>b.name==="URL_READER_ENABLED");
           if(named.length!==1||named[0].type!=="plain_text"||!["true","false"].includes(named[0].text))
             throw Error("Active URL Reader flag is unverifiable; refuse release");
@@ -439,6 +444,16 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: npx --yes wrangler@4 d1 execute bor-ai-chat --remote --config wrangler.jsonc --command "SELECT name FROM sqlite_master WHERE type='trigger' AND name IN ('image_reserve','image_reserve_debit','image_refund','image_grant')" --json | node --input-type=module -e 'let s="";for await(const c of process.stdin)s+=c;const d=JSON.parse(s);if(d[0]?.results?.length!==4)throw Error("Apply reviewed image D1 migration 0012 before activation.")'
+
+      - name: Verify final generated text policy before version upload
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          import { verifyCandidateTextPolicy } from "./scripts/text-release-budget-guard.mjs";
+          const config=JSON.parse(fs.readFileSync(process.env.BOR_DEPLOY_CONFIG,"utf8"));
+          verifyCandidateTextPolicy(config,JSON.parse(process.env.BOR_EXPECTED_TEXT_POLICY));
+          console.log("Final generated text policy preserves active provider mode and spend caps");
+          NODE
 
       - name: Verify candidate chat before switching production traffic
         env:
