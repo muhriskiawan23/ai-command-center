@@ -109,7 +109,12 @@ jobs:
           } else {
             console.log("Production release synchronization: MATCHED");
           }
+          // Diagnostic baseline only; explicit preserved mode is checked separately below.
+          const activeReaderSafe = readerState === "false";
+          const activeExtractSafe = !limit.length || quotaState === "zero";
           const activeImagesSafe = imageState === "absent" || imageState === "off";
+          console.log("Read-only release safe-off checks:",
+            JSON.stringify({reader:activeReaderSafe,extract:activeExtractSafe,images:activeImagesSafe}));
           if (!activeImagesSafe) throw new Error("Active Worker image generation is not verifiably OFF");
           verifyReaderBindings(bindings,process.env.EXPECTED_READER_STATE,process.env.GITHUB_EVENT_NAME);
           console.log("Active Worker Reader policy verified:",process.env.EXPECTED_READER_STATE);
