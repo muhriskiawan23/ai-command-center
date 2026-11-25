@@ -1,0 +1,35 @@
+{
+  "id": "web-v2-jakarta-20261126-a",
+  "worker": "bor-ai-luna-staging",
+  "baseCommit": "ab65eecbf23efdf95508e6212abc14bdb3788ca3",
+  "runnerCommit": "139311361976263ade7a8cebc1add5ca648b223e",
+  "observedAtUtc": "2026-11-25T18:06:25.538Z",
+  "status": "stopped",
+  "stopped": "router_unverified",
+  "results": [
+    {
+      "scenario": 1,
+      "automaticSearch": false,
+      "plan": null
+    }
+  ],
+  "evidence": [
+    {
+      "phase": "router",
+      "httpStatus": 401,
+      "usage": null,
+      "requestId": "req_0e004328e013458e9df3995af5bbb94a"
+    }
+  ],
+  "searchLedger": [],
+  "cleanup": {
+    "rollbackDeployment": "7f140d7c-d497-4097-bc6a-379dfb13e4f1",
+    "active": [
+      {
+        "version_id": "48c3e307-4c25-47b5-a164-5f2e222ed12e",
+        "percentage": 100
+      }
+    ],
+    "schedules": 0
+  }
+}
