@@ -1,0 +1,53 @@
+{
+  "run": "web-v2-funded-20261126-a",
+  "base": "87276db5923fd9bf5d5659cb6b78cb3313af743e",
+  "at": "2026-11-25T19:39:18.457Z",
+  "status": "stopped",
+  "stopped": "router_unverified",
+  "chargedMicroUsd": 0,
+  "budgetMicroUsd": 500000,
+  "results": [
+    {
+      "scenario": 1,
+      "automaticSearch": false,
+      "plan": null
+    }
+  ],
+  "evidence": [
+    {
+      "phase": "model_access",
+      "httpStatus": 200,
+      "usage": null,
+      "requestId": "5f13ac11-c89f-4d49-9e6b-403bbccfbf5d"
+    },
+    {
+      "phase": "router",
+      "httpStatus": 401,
+      "usage": null,
+      "requestId": "req_1fae48932816474d959c6e359fd800f8",
+      "errorType": "invalid_request_error",
+      "rate": {}
+    }
+  ],
+  "ledger": [],
+  "restored": {
+    "rollback": "f2f9bc9b-93b8-4338-b8ea-f616aca7cedc",
+    "active": [
+      {
+        "version_id": "0ba64284-7281-4f31-a743-9896afc58c29",
+        "percentage": 100
+      }
+    ],
+    "schedules": 0
+  },
+  "dashboard": {
+    "organizationAccessible": true,
+    "project": "BOR AI Staging",
+    "listedKey": "BOR AI Staging - Luna Test",
+    "status": "Active",
+    "mode": "Restricted",
+    "responses": "None",
+    "chatCompletions": "Request",
+    "changeSaved": false
+  }
+}

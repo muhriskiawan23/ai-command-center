@@ -35,3 +35,11 @@ Kualitas, kesegaran, serta validitas sitasi jawaban model belum bisa dinilai. [R
 Cron staging belum tercatat menjalankan evaluasi saat diperiksa. Pemicu HTTP sementara menggunakan challenge satu kali dan klaim D1 yang sama untuk mencegah duplikasi jika cron mulai berjalan. Dua tes tambahan lulus untuk kegagalan billing setelah metadata sukses dan proteksi pemicu sementara. Bukti JSON berisi request ID, status, ledger, dan pemulihan, tanpa key atau challenge. [Bukti terstruktur](evidence/web-search-v2-six-20261126.json).
 
 Versi staging `c760d7a2-40d9-42f8-a1dd-4b737a44b4ae` yang memuat rotasi key kembali menerima 100% trafik. Jadwal sementara sudah dilepas. Untuk melanjutkan tanpa deposit, gunakan key dari project OpenAI yang sudah memiliki billing aktif, saldo yang tersedia, serta izin Responses API dan GPT-6 Luna. Batas kampanye tetap USD 0.50.
+
+## Verifikasi setelah bergabung dengan organisasi bersaldo
+
+Dashboard organisasi dapat dibuka dan menampilkan project aktif BOR AI Staging. Key yang terdaftar sebagai BOR AI Staging - Luna Test berstatus Active dengan izin Restricted. Model capabilities menunjukkan Chat completions = Request dan Responses = None. Secret Cloudflare bersifat tertutup, jadi nilai key Worker tidak dicocokkan dengan daftar dashboard.
+
+Key dari Worker staging berhasil membaca metadata Luna melalui HTTP 200, lalu menerima HTTP 401 pada `POST /v1/responses`. Evaluasi berhenti di router pertama dengan 0 skenario selesai, tanpa token atau panggilan Web Search yang tercatat. Perubahan Responses ke Write disiapkan sebagai draft di UI dan belum disimpan karena memperluas izin key yang ada.
+
+Versi Worker staging sebelumnya dipulihkan ke 100% trafik. Tidak ada pemicu terjadwal aktif. [Bukti API dan status project](evidence/web-search-v2-funded-20261126.json).
