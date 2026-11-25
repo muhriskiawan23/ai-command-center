@@ -36,11 +36,11 @@ apt-get update
   apt-get download \
     libatk1.0-0t64 libatk-bridge2.0-0t64 libatspi2.0-0t64 \
     libxcomposite1 libxdamage1 libxfixes3 libxrandr2 \
-    libxkbcommon0 libasound2t64
+    libxkbcommon0 libasound2t64 libxi6
   for pkg in ./*.deb; do
     dpkg-deb -x "$pkg" "$work/libs"
   done
 )
 export LD_LIBRARY_PATH="$work/libs/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH:-}"
 export CI=1
-exec npx playwright test --config tests/e2e/playwright.config.js "$@"
+npx playwright test --config tests/e2e/playwright.config.js "$@"
