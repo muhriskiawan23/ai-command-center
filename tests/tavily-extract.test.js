@@ -562,3 +562,13 @@ test("An explicitly active Tavily Reader retains successful bounded extraction",
   assert.equal(result[0].ok,true);
   assert.equal(result[0].chars>40,true);
 });
+
+test("Null Extract environment fails without contacting provider", async () => {
+  let calls=0;
+  const result=await extractWithTavily(["https://example.com/public"],null,{
+    fetcher:async()=>{calls++;throw Error("must not call");}
+  });
+  assert.equal(calls,0);
+  assert.equal(result[0].ok,false);
+  assert.match(result[0].reason,/belum diaktifkan/);
+});
