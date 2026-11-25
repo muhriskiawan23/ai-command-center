@@ -1,0 +1,58 @@
+{
+  "environment": "live",
+  "checkoutEnabled": false,
+  "products": [
+    {
+      "key": "basic",
+      "product": {
+        "name": "BOR AI Basic",
+        "description": "Monthly subscription for AI-assisted work. Usage allowances must be finalized before checkout is enabled.",
+        "tax_category": "saas",
+        "type": "standard"
+      },
+      "price": {
+        "name": "Basic monthly",
+        "description": "BOR AI Basic monthly subscription",
+        "billing_cycle": {
+          "interval": "month",
+          "frequency": 1
+        },
+        "unit_price": {
+          "amount": "199",
+          "currency_code": "USD"
+        },
+        "quantity": {
+          "minimum": 1,
+          "maximum": 1
+        },
+        "tax_mode": "account_setting"
+      }
+    },
+    {
+      "key": "pro",
+      "product": {
+        "name": "BOR AI Pro",
+        "description": "Monthly subscription for higher-capacity AI-assisted work. Usage allowances must be finalized before checkout is enabled.",
+        "tax_category": "saas",
+        "type": "standard"
+      },
+      "price": {
+        "name": "Pro monthly",
+        "description": "BOR AI Pro monthly subscription",
+        "billing_cycle": {
+          "interval": "month",
+          "frequency": 1
+        },
+        "unit_price": {
+          "amount": "699",
+          "currency_code": "USD"
+        },
+        "quantity": {
+          "minimum": 1,
+          "maximum": 1
+        },
+        "tax_mode": "account_setting"
+      }
+    }
+  ]
+}
