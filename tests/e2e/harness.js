@@ -111,7 +111,15 @@ export async function startHarness({ port = 0, googleClientId = "test-client.app
       if (!res.writableEnded) res.end("E2E harness request failed");
     }
   });
-  await new Promise((r) => server.listen(port, r));
+  // Test login must never listen on LAN/public interfaces. Preserve localhost URL
+  // semantics (including Chromium's Secure-cookie exception) for browser tests.
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(port, "127.0.0.1", () => {
+      server.off("error", reject);
+      resolve();
+    });
+  });
   server.unref();
   const url = `http://localhost:${server.address().port}`;
   return { url, db, env, aiCalls, aiModelCalls, control, limiterHits, close: () => new Promise((r) => { server.close(r); server.closeAllConnections?.(); }) };
