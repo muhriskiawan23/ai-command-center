@@ -51,6 +51,12 @@ async function capture(response, phase, evidence) {
     const detail = String(data?.error?.message || "");
     if (/insufficient.quota|billing|credit balance|exceeded your current quota/i.test(detail)) record.problem = "quota_or_billing";
     else if (/rate limit|requests per min|tokens per min/i.test(detail)) record.problem = "rate_limit";
+    else if (/missing scopes?|insufficient permissions?/i.test(detail)) {
+      record.problem = "missing_scope";
+      record.responsesWriteMentioned = /api\.responses\.write/.test(detail);
+    } else if (/(organization|project).*(mismatch|not a member|no access|does not match)/i.test(detail)) {
+      record.problem = "project_or_organization_mismatch";
+    } else if (/incorrect API key|invalid API key|expired API key/i.test(detail)) record.problem = "key_rejected";
     record.rate = Object.fromEntries(["retry-after", "x-ratelimit-remaining-requests", "x-ratelimit-remaining-tokens",
       "x-ratelimit-reset-requests", "x-ratelimit-reset-tokens"].flatMap(name => {
       const val = response.headers.get(name);
@@ -77,21 +83,47 @@ export async function runLunaStagingEvaluation(env, fetcher = fetch) {
   const persist = status => env.DB.prepare("UPDATE web_search_v2_live_evaluation SET status = ?, evidence_json = ? WHERE id = ?")
     .bind(status, JSON.stringify({ stopped, chargedMicroUsd: charged, budgetMicroUsd: BUDGET_MICRO_USD, results, evidence }), id).run();
   try {
+    const onlyCase = Number(env.BOR_LUNA_ONLY_CASE || 0);
+    if (env.BOR_LUNA_ONLY_CASE || env.BOR_LUNA_RESUME_ID) {
+      if (!Number.isInteger(onlyCase) || onlyCase < 1 || onlyCase > SCENARIOS.length ||
+          !/^web-v2-[a-z0-9-]{8,60}$/.test(env.BOR_LUNA_RESUME_ID || "") || env.BOR_LUNA_RESUME_ID === id) {
+        stopped = "invalid_resume"; await persist("stopped"); return;
+      }
+      const previous = await env.DB.prepare("SELECT status, evidence_json FROM web_search_v2_live_evaluation WHERE id = ?")
+        .bind(env.BOR_LUNA_RESUME_ID).first();
+      const paid = previous?.status === "completed" ? JSON.parse(previous.evidence_json)?.chargedMicroUsd : null;
+      if (!Number.isInteger(paid) || paid < 0 || paid > BUDGET_MICRO_USD) {
+        stopped = "previous_budget_unverified"; await persist("stopped"); return;
+      }
+      charged = paid;
+      evidence.push({ phase: "resume", previousChargesMicroUsd: paid, case: onlyCase });
+    }
+    const expectedSuffix = env.BOR_LUNA_EXPECTED_KEY_SUFFIX;
+    if (expectedSuffix) {
+      const keyMatches = /^[A-Za-z0-9_-]{4}$/.test(expectedSuffix) && env.BOR_TEXT_BACKUP_API_KEY.endsWith(expectedSuffix);
+      evidence.push({ phase: "key_identity", dashboardSuffixMatches: keyMatches });
+      if (!keyMatches) { stopped = "staging_key_mismatch"; await persist("stopped"); return; }
+    }
+    const routingHeaders = {
+      ...(env.BOR_LUNA_OPENAI_ORG ? { "OpenAI-Organization": env.BOR_LUNA_OPENAI_ORG } : {}),
+      ...(env.BOR_LUNA_OPENAI_PROJECT ? { "OpenAI-Project": env.BOR_LUNA_OPENAI_PROJECT } : {})
+    };
     if (env.BOR_LUNA_VERIFY_MODEL === "true") {
       const metadataResponse = await fetcher("https://api.openai.com/v1/models/" + MODEL, {
         method: "GET", redirect: "manual", signal: AbortSignal.timeout(12000),
-        headers: { Authorization: "Bearer " + env.BOR_TEXT_BACKUP_API_KEY }
+        headers: { ...routingHeaders, Authorization: "Bearer " + env.BOR_TEXT_BACKUP_API_KEY }
       });
       await capture(metadataResponse, "model_access", evidence);
       if (!metadataResponse.ok) { stopped = "model_access_unverified"; await persist("stopped"); return; }
     }
     for (const [index, prompt] of SCENARIOS.entries()) {
+      if (onlyCase && index + 1 !== onlyCase) continue;
       if (charged + RESERVATION_PER_ROUTER > BUDGET_MICRO_USD) { stopped = "budget_limit"; break; }
       const history = index === SCENARIOS.length - 1 ? [{ role: "user", content: SCENARIOS[1] }] : [];
       const ai = { async run(_model, payload) {
         const response = await fetcher(OPENAI, {
           method: "POST", redirect: "manual", signal: AbortSignal.timeout(12000),
-          headers: { "Content-Type": "application/json", Authorization: "Bearer " + env.BOR_TEXT_BACKUP_API_KEY },
+          headers: { ...routingHeaders, "Content-Type": "application/json", Authorization: "Bearer " + env.BOR_TEXT_BACKUP_API_KEY },
           body: JSON.stringify({ model: MODEL, input: payload.messages, service_tier: "default", store: false, reasoning: { effort: "none" }, max_output_tokens: 220 })
         });
         const data = await capture(response, "router", evidence);
@@ -100,7 +132,7 @@ export async function runLunaStagingEvaluation(env, fetcher = fetch) {
         return { response: response.ok ? text || "" : "" };
       } };
       const plan = await planWebSearch(ai, prompt, history);
-      const row = { scenario: results.length + 1, automaticSearch: Boolean(plan), plan: plan || null };
+      const row = { scenario: index + 1, automaticSearch: Boolean(plan), plan: plan || null };
       results.push(row);
       const router = evidence.at(-1);
       if (router?.phase !== "router" || router.httpStatus !== 200 || router.costMicroUsd === undefined) { stopped = "router_unverified"; break; }
@@ -114,7 +146,7 @@ export async function runLunaStagingEvaluation(env, fetcher = fetch) {
         DB: env.DB,
         BOR_WEB_SEARCH_MODE: "v2",
         BOR_WEB_SEARCH_OPENAI_KEY: env.BOR_TEXT_BACKUP_API_KEY,
-        BOR_WEB_SEARCH_DAILY_CALLS: "6",
+        BOR_WEB_SEARCH_DAILY_CALLS: String(SCENARIOS.length + (onlyCase ? 3 : 0)),
         BOR_WEB_SEARCH_OPENAI_CALL_MICRO_USD: String(RESERVATION_PER_SEARCH),
         BOR_WEB_SEARCH_DAILY_MICRO_USD: String(BUDGET_MICRO_USD),
         BOR_WEB_SEARCH_MONTHLY_MICRO_USD: String(BUDGET_MICRO_USD),
@@ -126,7 +158,7 @@ export async function runLunaStagingEvaluation(env, fetcher = fetch) {
           payload.max_output_tokens = 2000;
           payload.service_tier = "default";
           payload.reasoning = { effort: "low" };
-          const response = await fetcher(url, { ...options, signal: AbortSignal.timeout(40000), body: JSON.stringify(payload) });
+          const response = await fetcher(url, { ...options, headers: { ...options.headers, ...routingHeaders }, signal: AbortSignal.timeout(40000), body: JSON.stringify(payload) });
           await capture(response.clone(), "search", evidence);
           return response;
         }

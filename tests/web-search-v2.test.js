@@ -156,3 +156,16 @@ test("Google result content never enters durable chat history", async () => {
   assert.equal(events.at(-1).data.googleGrounding.blocks[0].text, "TRANSIENT GOOGLE CONTENT");
   assert.doesNotMatch(JSON.stringify(env.DB.sqlite.prepare("SELECT content, links_json FROM messages").all()), /TRANSIENT|example.com\/jobs/);
 });
+
+test("an explicit city-only follow-up keeps its boundary even if the classifier drops it", async () => {
+  const ai = { async run() { return { response: '{"search":true,"category":"jobs","query":"Hotel jobs in Doha","queries":[]}' }; } };
+  const plan = await planWebSearch(ai, "Kalau yang di Doha saja, mana yang masih buka?", [{ role: "user", content: "Lowongan hotel di Qatar" }]);
+  assert.equal(plan.cityOnly, "di Doha saja");
+  const env = envFor(async (_url, options) => {
+    const body = JSON.parse(options.body);
+    assert.equal(JSON.parse(body.input).strict_location, "di Doha saja");
+    assert.match(body.instructions, /physical city/);
+    return openAI("Sample Doha job.", ["https://example.com/job"]);
+  });
+  assert.ok(await runWebSearchV2(env, plan, { singleOpenAiAttempt: true }));
+});

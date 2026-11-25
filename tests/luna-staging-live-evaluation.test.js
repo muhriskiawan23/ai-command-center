@@ -96,3 +96,35 @@ test("model metadata success cannot mask a billing rejection from Responses", as
   assert.equal(result().evidence.chargedMicroUsd, 0);
   assert.equal(result().evidence.evidence[1].error, "billing_not_active");
 });
+
+test("a Cloudflare key that differs from the selected project key stops before sending any request", async t => {
+  const { env, result } = fixture(t);
+  env.BOR_LUNA_EXPECTED_KEY_SUFFIX = "ABCD";
+  await runLunaStagingEvaluation(env, async () => assert.fail("mismatched key reached OpenAI"));
+  assert.equal(result().evidence.stopped, "staging_key_mismatch");
+  assert.deepEqual(result().evidence.evidence, [{ phase: "key_identity", dashboardSuffixMatches: false }]);
+});
+
+test("a single-scenario retry imports the prior spend and refuses a search above the campaign cap", async t => {
+  const { env, result } = fixture(t);
+  env.BOR_LUNA_ONLY_CASE = "6";
+  env.BOR_LUNA_RESUME_ID = "web-v2-completed-stage";
+  await env.DB.prepare("INSERT INTO web_search_v2_live_evaluation (id,status,evidence_json) VALUES (?, 'completed', ?)").bind(
+    env.BOR_LUNA_RESUME_ID, '{"chargedMicroUsd":270000}'
+  ).run();
+  let calls = 0;
+  await runLunaStagingEvaluation(env, async (_url, options) => {
+    calls++;
+    const body = JSON.parse(options.body);
+    assert.equal(body.tools, undefined);
+    assert.match(body.input[0].content, /Preserve explicit constraints/);
+    assert.match(body.input[1].content, /Doha saja/);
+    return Response.json({ usage, output: [message('{"search":true,"category":"jobs","query":"Lowongan hotel di Doha saja"}')] });
+  });
+  assert.equal(calls, 1);
+  const retry = await env.DB.prepare("SELECT status,evidence_json FROM web_search_v2_live_evaluation WHERE id = ?").bind(env.BOR_LUNA_LIVE_EVAL_ID).first();
+  const saved = JSON.parse(retry.evidence_json);
+  assert.equal(saved.stopped, "budget_limit");
+  assert.equal(saved.results[0].scenario, 6);
+  assert.ok(saved.chargedMicroUsd > 270000);
+});

@@ -1,0 +1,791 @@
+{
+  "base": "8c98f2166e7e5593579a8b8777244f267114f626",
+  "worker": "bor-ai-luna-staging",
+  "model": "gpt-6-luna",
+  "permission": {
+    "mode": "Restricted",
+    "responses": "Write",
+    "chatCompletions": "Request"
+  },
+  "budgetMicroUsd": 500000,
+  "verifiedResults": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6
+  ],
+  "charges": {
+    "input": 169521,
+    "output": 5574,
+    "cached": 8890,
+    "tool": 21,
+    "cost": 228947
+  },
+  "runs": [
+    {
+      "name": "permission_saved",
+      "observedAtUtc": "2026-11-25T19:48:43.475Z",
+      "status": "stopped",
+      "ledger": [],
+      "stopped": "router_unverified",
+      "chargedMicroUsd": 0,
+      "budgetMicroUsd": 500000,
+      "results": [
+        {
+          "scenario": 1,
+          "automaticSearch": false,
+          "plan": null
+        }
+      ],
+      "evidence": [
+        {
+          "phase": "model_access",
+          "httpStatus": 200,
+          "usage": null,
+          "requestId": "0bc79dd9-c311-4616-85c5-6ad2db55a258"
+        },
+        {
+          "phase": "router",
+          "httpStatus": 401,
+          "usage": null,
+          "requestId": "req_474ab4cda58448c8bda8f147738d104c",
+          "errorType": "invalid_request_error",
+          "rate": {}
+        }
+      ]
+    },
+    {
+      "name": "default_key_identity",
+      "observedAtUtc": "2026-11-25T19:50:09.135Z",
+      "status": "stopped",
+      "ledger": [],
+      "stopped": "staging_key_mismatch",
+      "chargedMicroUsd": 0,
+      "budgetMicroUsd": 500000,
+      "results": [],
+      "evidence": [
+        {
+          "phase": "key_identity",
+          "dashboardSuffixMatches": false
+        }
+      ]
+    },
+    {
+      "name": "six_scenarios",
+      "observedAtUtc": "2026-11-25T19:53:00.855Z",
+      "status": "completed",
+      "ledger": [
+        {
+          "day": "2026-11-25",
+          "calls": 6,
+          "reserved_micro_usd": 142437
+        }
+      ],
+      "stopped": null,
+      "chargedMicroUsd": 142777,
+      "budgetMicroUsd": 500000,
+      "results": [
+        {
+          "scenario": 1,
+          "automaticSearch": true,
+          "plan": {
+            "query": "Agensi perekrutan kerja perhotelan di Timur Tengah yang berlokasi di Jakarta",
+            "queries": [
+              "agen resmi penempatan tenaga kerja hotel Timur Tengah Jakarta",
+              "lowongan kerja hotel Timur Tengah agen rekrutmen Jakarta"
+            ],
+            "category": "jobs"
+          },
+          "answer": "Beberapa **agensi di Jakarta yang relevan untuk pekerjaan hotel/perhotelan di Timur Tengah**:\n\n1. **PT Timuraya Jaya Lestari** — Rukan Jambore Park No. 99, Cibubur, Ciracas, Jakarta Timur. Profil resmi SISKOP2MI menandainya **aktif**. Daftar kuotanya mencakup sejumlah posisi terkait hospitality di negara Timur Tengah—misalnya barista di Arab Saudi dan barback di Qatar. Telepon yang tercantum: **021-87759999**. Kuota pada profil bukan jaminan bahwa lowongan tertentu masih menerima pelamar; cek lowongan aktifnya terlebih dahulu. (siskop2mi.bp2mi.go.id) ⟦1⟧\n\n2. **PT ABP Indonesia** — Situsnya mencantumkan perekrutan/penempatan sektor perhotelan untuk Timur Tengah, Asia Pasifik, dan Eropa; posisi yang disebut meliputi housekeeping, F&B, kitchen/steward, serta front office/guest service. **Saya belum dapat mencocokkan status izin dan alamat kantornya dengan profil resmi SISKOP2MI dari sumber yang ditemukan**, jadi verifikasi dulu sebelum mendaftar. (abpmanpower.com) ⟦2⟧\n\n**Pengecekan penting:** KP2MI menyebut P3MI berizin sebagai badan usaha resmi untuk menempatkan pekerja migran dan mengarahkan masyarakat untuk memeriksa daftar P3MI serta status sanksinya di SISKOP2MI. Pastikan nama perusahaan dan lowongan spesifiknya terdaftar, minta rincian kontrak, negara, pemberi kerja, biaya, dan posisi sebelum menyerahkan dokumen atau membayar apa pun. (siskop2mi.bp2mi.go.id) ⟦3⟧\n\nCatatan: **PT Abul Pratamajaya** juga tercatat aktif dan berkantor di Tebet, Jakarta Selatan, tetapi data yang saya temukan belum cukup untuk memastikan ada lowongan hotel Timur Tengah yang sedang dibuka. (siskop2mi.bp2mi.go.id) ⟦4⟧",
+          "sources": [
+            {
+              "url": "https://siskop2mi.bp2mi.go.id/profil/lembaga/detail/697/p3mi",
+              "host": "siskop2mi.bp2mi.go.id",
+              "title": "SISKOP2MI: Profil - Lembaga - SISKOP2MI",
+              "sourceId": 1,
+              "sourceType": "web_search_v2",
+              "ok": true
+            },
+            {
+              "url": "https://abpmanpower.com/lowongan.php?lang=en?sektor%3Ddomestic",
+              "host": "abpmanpower.com",
+              "title": "Lowongan per Sektor Kerja — PT ABP INDONESIA",
+              "sourceId": 2,
+              "sourceType": "web_search_v2",
+              "ok": true
+            },
+            {
+              "url": "https://siskop2mi.bp2mi.go.id/publik/faq",
+              "host": "siskop2mi.bp2mi.go.id",
+              "title": "SISKOP2MI: Publik - Faq - SISKOP2MI",
+              "sourceId": 3,
+              "sourceType": "web_search_v2",
+              "ok": true
+            },
+            {
+              "url": "https://siskop2mi.bp2mi.go.id/profil/lembaga/detail/848/p3mi",
+              "host": "siskop2mi.bp2mi.go.id",
+              "title": "SISKOP2MI: Profil - Lembaga - SISKOP2MI",
+              "sourceId": 4,
+              "sourceType": "web_search_v2",
+              "ok": true
+            }
+          ],
+          "corroborated": false,
+          "outcome": "cited_answer"
+        },
+        {
+          "scenario": 2,
+          "automaticSearch": true,
+          "plan": {
+            "query": "Lowongan kerja perhotelan terbaru di Qatar yang masih membuka lamaran, cek situs resmi pemberi kerja dan lokasi",
+            "queries": [
+              "Qatar hotel careers official current vacancies hospitality jobs",
+              "lowongan hotel Qatar situs resmi karier masih dibuka"
+            ],
+            "category": "jobs"
+          },
+          "answer": "Berikut lowongan perhotelan Qatar yang tercantum di **situs karier resmi pemberi kerja** dan tampak masih dapat dilamar saat saya cek pada **25 November 2026**. Lowongan dapat ditutup sewaktu-waktu, jadi pastikan tombol **Apply** masih tersedia sebelum mengirimkan lamaran.\n\n| Posisi | Pemberi kerja & lokasi | Cara melamar |\n|---|---|---|\n| **Front Desk Agent** | InterContinental Doha – The City, West Bay, Doha | Cari posisi ini di portal karier resmi IHG. (careers.ihg.com) ⟦1⟧ |\n| **Commis Chef; Laundry Attendant; Housekeeping Supervisor; Bellman; Bartender; Spa Therapist; F&B Host/Hostess** | InterContinental Doha Beach & Spa, Al Dafna, West Bay, Doha | Posisi-posisi ini tercantum di daftar lowongan resmi IHG untuk Doha. (careers.ihg.com) ⟦1⟧ |\n| **Commis 1 – Indian Cuisine** | Kimpton Al Rowda Doha, C-Ring Road, Doha | Halaman resmi IHG menampilkan detail posisi dan tombol **Apply**. (careers.ihg.com) ⟦2⟧ |\n| **Room Attendant; Barista; Host/Hostess; Commis 1 – Pastry; Housekeeping Supervisor** | Raffles Doha, Doha | Posisi tercantum di portal karier resmi Accor dengan tombol **Apply**. (careers.accor.com) ⟦3⟧ |\n| **Spa Therapist; General Technician; Guest Experience Expert (Butler); Commis; Senior Event Sales Executive** | Berbagai hotel Marriott di Doha, termasuk Al Samriya dan Al Messila | Portal resmi Marriott menampilkan lowongan Qatar, lokasi hotel, dan daftar posisi yang tersedia. (careers.marriott.com) ⟦4⟧ |\n\n**Catatan:** Lowongan resmi Marriott berubah jumlahnya selama pengecekan: hasil pencarian awal menampilkan 260 lowongan, sedangkan halaman yang dibuka kemudian menampilkan 238. Karena itu, jumlah agregat bisa berubah dan sebaiknya jangan dijadikan patokan; cek posisi tertentu langsung di portal. (careers.marriott.com) ⟦4⟧\n\nDaftar resmi IHG dan Accor yang saya periksa tidak menampilkan tenggat lamaran yang jelas pada hasil yang tersedia. Saya juga belum dapat mengonfirmasi persyaratan rinci—seperti pengalaman, bahasa, izin kerja, atau akomodasi—untuk setiap posisi; periksa deskripsi lengkap pada halaman lamaran resmi sebelum melamar.",
+          "sources": [
+            {
+              "url": "https://careers.ihg.com/en/search-and-apply/?area=qatar&brand=intercontinental&region=doha",
+              "host": "careers.ihg.com",
+              "title": "careers.ihg.com",
+              "sourceId": 1,
+              "sourceType": "web_search_v2",
+              "ok": true
+            },
+            {
+              "url": "https://careers.ihg.com/en/job-details/?jobref=PR",
+              "host": "careers.ihg.com",
+              "title": "careers.ihg.com",
+              "sourceId": 2,
+              "sourceType": "web_search_v2",
+              "ok": true
+            },
+            {
+              "url": "https://careers.accor.com/global/en/jobs?la=0&li=&ln=&lo=0&lr=1&options=666,234,666,234&page=1&size=24",
+              "host": "careers.accor.com",
+              "title": "Job results | Accor",
+              "sourceId": 3,
+              "sourceType": "web_search_v2",
+              "ok": true
+            },
+            {
+              "url": "https://careers.marriott.com/jobs?location_name=Qatar&location_type=4&utm_source=openai",
+              "host": "careers.marriott.com",
+              "title": "Search Jobs | Marriott International Careers",
+              "sourceId": 4,
+              "sourceType": "web_search_v2",
+              "ok": true
+            }
+          ],
+          "corroborated": false,
+          "outcome": "cited_answer"
+        },
+        {
+          "scenario": 3,
+          "automaticSearch": true,
+          "plan": {
+            "query": "Dua ponsel Android baru terbaik dengan harga maksimal Rp3 juta di Indonesia, beserta harga dan ketersediaan terbaru dari penjual tepercaya",
+            "queries": [
+              "ponsel Android baru harga di bawah Rp3 juta Indonesia toko resmi",
+              "harga dan ketersediaan HP Android baru maksimal Rp3 juta Indonesia"
+            ],
+            "category": "product"
+          },
+          "answer": "Per **25 November 2026**, dua pilihan baru yang paling menarik di bawah Rp3 juta adalah:\n\n1. **Xiaomi REDMI 17 — Rp2.899.000, 4 GB/128 GB.**  \n   Pilihan lebih seimbang untuk pemakaian umum: kapasitas penyimpanan 128 GB, dan harganya tertera di toko resmi Xiaomi Indonesia. Harga bisa berbeda menurut varian; pastikan memilih varian 4/128 GB agar tetap di bawah batas. (mi.co.id) ⟦1⟧\n\n2. **Samsung Galaxy A07s — Rp2.699.000, 4 GB/64 GB.**  \n   Pilih ini kalau prioritasnya dukungan perangkat lunak dan ketahanan dasar: Samsung menjanjikan hingga enam generasi pembaruan OS dan enam tahun pembaruan keamanan; ponsel ini juga punya sertifikasi IP54. Ketersediaan dan harga tercantum di Samsung.com Indonesia; konfigurasi dasarnya hanya 64 GB, jadi ruang penyimpanannya lebih terbatas daripada REDMI 17. (news.samsung.com) ⟦2⟧\n\n**Rekomendasi singkat:** ambil REDMI 17 untuk kapasitas penyimpanan lebih lega; pilih Galaxy A07s bila dukungan pembaruan panjang dan merek Samsung lebih penting. Harga dan stok dapat berubah—cek lagi varian serta ketersediaan pengiriman saat checkout.",
+          "sources": [
+            {
+              "url": "https://www.mi.co.id/id/product-list/phone/?productIds=22265%2C22863%2C19954%2C19917%2C23117%2C23346%2C22260%2C23115%2C19705&utm_source=openai",
+              "host": "www.mi.co.id",
+              "title": "Xiaomi Phone Indonesia – Smartphone Terbaru & Terbaik",
+              "sourceId": 1,
+              "sourceType": "web_search_v2",
+              "ok": true
+            },
+            {
+              "url": "https://news.samsung.com/id/samsung-galaxy-a07s-smartphone-samsung-paling-terjangkau-dengan-performa-responsif-dan-update-hingga-6-tahun?utm_source=openai",
+              "host": "news.samsung.com",
+              "title": "Samsung Galaxy A07s, Smartphone Samsung Paling Terjangkau dengan Performa Responsif dan Update hingga 6 Tahun – Samsung Newsroom Indonesia",
+              "sourceId": 2,
+              "sourceType": "web_search_v2",
+              "ok": true
+            }
+          ],
+          "corroborated": false,
+          "outcome": "cited_answer"
+        },
+        {
+          "scenario": 4,
+          "automaticSearch": true,
+          "plan": {
+            "query": "Apa berita internasional utama terbaru? Sertakan tanggal kejadian dan sumber resmi atau kantor berita.",
+            "queries": [
+              "berita internasional terbaru sumber resmi kantor berita",
+              "latest major international news official sources news agencies"
+            ],
+            "category": "news"
+          },
+          "answer": "Berikut **berita internasional utama yang terpantau pada Rabu, 25 November 2026**. Tanggal di bawah membedakan waktu kejadian dari waktu laporan terbit.\n\n- **Sudan — serangan drone menewaskan warga sipil.** Pada **Selasa, 24 November**, serangan di dua kota di negara bagian Blue Nile menewaskan **19 orang dan melukai 20**, menurut kelompok Emergency Lawyers, sebagaimana dilaporkan Reuters pada 25 November. Angka korban berbeda antar laporan: PBB menyebut 17 korban tewas di Ed Damazin, sementara AP juga melaporkan angka 19 dari kelompok hak asasi. (streetinsider.com) ⟦1⟧\n\n- **Indonesia — longsor/banjir di tambang emas ilegal.** Hujan deras menyebabkan Sungai Ciseureuh meluap ke lubang tambang di Kabupaten Bogor, Jawa Barat, pada **Senin malam, 23 November**. Saat AP menerbitkan laporan pada 25 November, sembilan orang tewas dan 17 lainnya diduga masih tertimbun. (apnews.com) ⟦2⟧\n\n- **Kolombia — semua sandera di supermarket Cartagena dibebaskan.** Penyanderaan berlangsung hampir sehari sejak **Selasa, 24 November**; aparat membebaskan seluruh sandera pada **Rabu, 25 November**, menurut AP. (apnews.com) ⟦3⟧\n\n- **Timur Tengah — dampak serangan drone di Riyadh dan ancaman Houthi.** Pertahanan sipil Saudi mengatakan **11 orang terluka dalam serangan pada Selasa, 24 November** terhadap sebuah gedung di kawasan pusat keuangan Riyadh, yang dituduhkan Saudi kepada Houthi. Pada 25 November, Houthi juga mengancam akan menargetkan pelabuhan-pelabuhan Saudi di Laut Merah jika Saudi menyerang pelabuhan Hodeidah di Yaman. (arabtimesonline.com) ⟦4⟧\n\n**Catatan:** Ini ringkasan berita yang muncul dalam penelusuran, bukan daftar definitif seluruh peristiwa dunia. Rincian beberapa kejadian masih berdasarkan keterangan awal pihak berwenang atau kelompok setempat dan dapat berubah.",
+          "sources": [
+            {
+              "url": "https://www.streetinsider.com/Reuters/Drone%2Bstrikes%2Bkill%2B19%2Bcivilians%2Bin%2Bsoutheastern%2BSudan%2C%2Bsays%2Brights%2Bgroup/27397882.html?utm_source=openai",
+              "host": "www.streetinsider.com",
+              "title": "Drone strikes kill 19 civilians in southeastern Sudan, says rights group",
+              "sourceId": 1,
+              "sourceType": "web_search_v2",
+              "ok": true
+            },
+            {
+              "url": "https://apnews.com/article/f2dd241835ed9a3c2832a5b56fe00c89?utm_source=openai",
+              "host": "apnews.com",
+              "title": "A flood that hit an unauthorized gold mine in Indonesia left 9 dead, 17 believed trapped",
+              "sourceId": 2,
+              "sourceType": "web_search_v2",
+              "ok": true
+            },
+            {
+              "url": "https://apnews.com/article/c6b9c0ca799ff611148fc87d4b323628?utm_source=openai",
+              "host": "apnews.com",
+              "title": "Colombian authorities rescue all hostages held at Cartagena supermarket",
+              "sourceId": 3,
+              "sourceType": "web_search_v2",
+              "ok": true
+            },
+            {
+              "url": "https://www.arabtimesonline.com/arabtimes/uploads/images/2026/11/24/151642.pdf?utm_source=openai",
+              "host": "www.arabtimesonline.com",
+              "title": "185@205391_ARAT_25-11-2026_p01-3.indd",
+              "sourceId": 4,
+              "sourceType": "web_search_v2",
+              "ok": true
+            }
+          ],
+          "corroborated": false,
+          "outcome": "cited_answer"
+        },
+        {
+          "scenario": 5,
+          "automaticSearch": true,
+          "plan": {
+            "query": "Di mana lokasi kantor pusat resmi Qatar Airways di Doha, dan bagaimana alamatnya berbeda dari alamat bandara?",
+            "queries": [
+              "Qatar Airways head office official address Doha",
+              "Qatar Airways headquarters Doha official contact address"
+            ],
+            "category": "company"
+          },
+          "answer": "Kantor pusat resmi Qatar Airways berada di **Qatar Airways Tower 1, Airport Road, Doha, Qatar**. Alamat suratnya: **P.O. Box 22550, Doha, Qatar**. Qatar Airways mencantumkan lokasi ini sebagai tempat usaha utama, dan lembar fakta resminya juga menyebut Qatar Airways Tower sebagai kantor pusat. (qatarairways.com) ⟦1⟧\n\nAlamat itu **bukan alamat terminal bandara**. “Airport Road” adalah nama jalan untuk lokasi kantor pusat; **Hamad International Airport** adalah bandara dan hub operasional maskapai. Jadi, untuk ke kantor pusat, jangan menganggap alamat bandara atau terminal sebagai alamat kantornya. (qatarairways.com) ⟦1⟧",
+          "sources": [
+            {
+              "url": "https://www.qatarairways.com/en-cy/legal/cookie-policy.html?utm_source=openai",
+              "host": "www.qatarairways.com",
+              "title": "Cookie policy | Qatar Airways",
+              "sourceId": 1,
+              "sourceType": "web_search_v2",
+              "ok": true
+            }
+          ],
+          "corroborated": false,
+          "outcome": "cited_answer"
+        },
+        {
+          "scenario": 6,
+          "automaticSearch": true,
+          "plan": {
+            "query": "Lowongan kerja perhotelan di Doha, Qatar yang masih menerima lamaran, berdasarkan situs resmi pemberi kerja",
+            "queries": [
+              "site:careers.* Doha Qatar hotel jobs hospitality",
+              "lowongan kerja hotel Doha Qatar careers apply"
+            ],
+            "category": "jobs"
+          },
+          "answer": "Berikut lowongan perhotelan di Doha dan sekitarnya yang tercantum pada **situs resmi pemberi kerja** saat saya memeriksa pada **25 November 2026**. Tidak terlihat tanggal penutupan yang dapat dipastikan pada hasil yang tersedia; status “masih menerima lamaran” di sini berarti lowongan masih tampil di laman karier resmi dan memiliki tombol atau tautan **Apply/View Job**. Sebaiknya cek kembali laman sebelum mengirim lamaran.\n\n**Marriott International**\n- **Front Desk Agent** — Agora Doha Autograph Collection, Lusail.\n- **Guest Experience Expert (Arabic Speaker)** — Qabila Westbay Hotel, Doha.\n- **Guest Relations Supervisor (Arabic Speaker)** — Qabila Westbay Hotel, Doha.\n- **Housekeeping Intern** — Al Samriya Doha Autograph Collection, Doha.\n- Posisi lain yang juga tercantum: Accounting Clerk, Assistant Manager Housekeeping, General Technician, dan Reservations Agent. (careers.marriott.com) ⟦1⟧\n\n**Accor**\n- **Guest Relations Agent** — Alwadi Hotel Doha – MGallery Collection.\n- **Waiter/Waitress** — Alwadi Hotel Doha – MGallery Collection.\n- **Hostess** — Alwadi Hotel Doha – MGallery Collection.\n- **Receptionist (Arabic Speaker)** dan **Guest Relations Agent (Arabic Speaker)** — Rixos Gulf Hotel Doha.\n- Accor juga mencantumkan posisi kuliner dan operasional lain di Doha. (careers.accor.com) ⟦2⟧\n\n**IHG**\n- **Bellman**, **Housekeeping Attendant**, **Guest Experience Agent**, **Host/Hostess**, **Food & Beverage Service**, dan **Barista** — Doha Central Plaza Hotel.\n- **Stewarding Supervisor** — Doha Beach & Spa.\n- Beberapa posisi dapur dan keuangan juga tercantum untuk Doha Central Plaza Hotel. (careers.ihg.com) ⟦3⟧\n\n**Hilton**\n- **Front Desk Agent**, **Waiter/Waitress (Room Service)**, **Personal Concierge**, dan **Income Audit Supervisor** — Waldorf Astoria Doha Lusail.\n- **Receptionist** — Waldorf Astoria, West Bay Doha.\n- Halaman Hilton juga menampilkan sejumlah posisi lain di Doha. (efet.fa.us2.oraclecloud.com) ⟦4⟧\n\nUntuk melamar, buka laman karier resmi perusahaan yang dirujuk dan cari nama posisi persisnya; pada beberapa daftar, tombol **View Job** atau **Apply** membawa ke rincian serta formulir lamaran. Persyaratan, lokasi kerja, dan ketersediaan posisi dapat berubah, dan tanggal penutupan tidak berhasil saya pastikan dari informasi yang tersedia.",
+          "sources": [
+            {
+              "url": "https://careers.marriott.com/jobs?filter%5Bbrand%5D%5B0%5D=Autograph+Collection&filter%5Bcountry%5D%5B0%5D=Qatar",
+              "host": "careers.marriott.com",
+              "title": "Search Jobs | Marriott International Careers",
+              "sourceId": 1,
+              "sourceType": "web_search_v2",
+              "ok": true
+            },
+            {
+              "url": "https://careers.accor.com/global/en/jobs?la=0&lo=0&lr=1&options=666,666&page=1&size=48",
+              "host": "careers.accor.com",
+              "title": "Job results | Accor",
+              "sourceId": 2,
+              "sourceType": "web_search_v2",
+              "ok": true
+            },
+            {
+              "url": "https://careers.ihg.com/en/search-and-apply/?area=qatar",
+              "host": "careers.ihg.com",
+              "title": "careers.ihg.com",
+              "sourceId": 3,
+              "sourceType": "web_search_v2",
+              "ok": true
+            },
+            {
+              "url": "https://efet.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1009/jobs?lastSelectedFacet=AttributeChar1&location=Qatar&locationId=300000000229032&locationLevel=country&mode=location&selectedFlexFieldsFacets=%22AttributeChar1%7CWaldorf+Astoria+Hotels+%26+Resorts%22&selectedLocationsFacet=100027681973310&utm_source=openai",
+              "host": "efet.fa.us2.oraclecloud.com",
+              "title": "Search Jobs - Hilton Careers",
+              "sourceId": 4,
+              "sourceType": "web_search_v2",
+              "ok": true
+            }
+          ],
+          "corroborated": false,
+          "outcome": "cited_answer"
+        }
+      ],
+      "evidence": [
+        {
+          "phase": "key_identity",
+          "dashboardSuffixMatches": true
+        },
+        {
+          "phase": "router",
+          "httpStatus": 200,
+          "usage": {
+            "input": 236,
+            "output": 60,
+            "cachedInput": 0,
+            "reasoning": 0,
+            "webCalls": 0
+          },
+          "costMicroUsd": 54,
+          "requestId": "req_726e5b975d53461d9f38d86475d0117c"
+        },
+        {
+          "phase": "search",
+          "httpStatus": 200,
+          "usage": {
+            "input": 21073,
+            "output": 575,
+            "cachedInput": 0,
+            "reasoning": 126,
+            "webCalls": 2
+          },
+          "costMicroUsd": 22395,
+          "requestId": "req_448404b8709c468d9fd7874429f0c28f"
+        },
+        {
+          "phase": "router",
+          "httpStatus": 200,
+          "usage": {
+            "input": 250,
+            "output": 64,
+            "cachedInput": 0,
+            "reasoning": 0,
+            "webCalls": 0
+          },
+          "costMicroUsd": 57,
+          "requestId": "req_d743167cdc0143c480e6bb2d3ef793a1"
+        },
+        {
+          "phase": "search",
+          "httpStatus": 200,
+          "usage": {
+            "input": 21394,
+            "output": 733,
+            "cachedInput": 4445,
+            "reasoning": 152,
+            "webCalls": 3
+          },
+          "costMicroUsd": 32106,
+          "requestId": "req_fce2d3e4d4804ac48ef668bbe5c3e54a"
+        },
+        {
+          "phase": "router",
+          "httpStatus": 200,
+          "usage": {
+            "input": 256,
+            "output": 78,
+            "cachedInput": 0,
+            "reasoning": 0,
+            "webCalls": 0
+          },
+          "costMicroUsd": 65,
+          "requestId": "req_6b5a690782fb4babb3afe5b93e10547c"
+        },
+        {
+          "phase": "search",
+          "httpStatus": 200,
+          "usage": {
+            "input": 20806,
+            "output": 525,
+            "cachedInput": 0,
+            "reasoning": 197,
+            "webCalls": 2
+          },
+          "costMicroUsd": 22344,
+          "requestId": "req_a9b9668e16e647d8b6ca1ce1aeb7913a"
+        },
+        {
+          "phase": "router",
+          "httpStatus": 200,
+          "usage": {
+            "input": 241,
+            "output": 56,
+            "cachedInput": 0,
+            "reasoning": 0,
+            "webCalls": 0
+          },
+          "costMicroUsd": 53,
+          "requestId": "req_d60698afb458429ba554d6f7c7b949b4"
+        },
+        {
+          "phase": "search",
+          "httpStatus": 200,
+          "usage": {
+            "input": 21301,
+            "output": 719,
+            "cachedInput": 0,
+            "reasoning": 197,
+            "webCalls": 2
+          },
+          "costMicroUsd": 22490,
+          "requestId": "req_ef170212521c456890a32a1b455cacad"
+        },
+        {
+          "phase": "router",
+          "httpStatus": 200,
+          "usage": {
+            "input": 250,
+            "output": 58,
+            "cachedInput": 0,
+            "reasoning": 0,
+            "webCalls": 0
+          },
+          "costMicroUsd": 54,
+          "requestId": "req_97c6683d4e2e4a9dbefebf564fac6257"
+        },
+        {
+          "phase": "search",
+          "httpStatus": 200,
+          "usage": {
+            "input": 8950,
+            "output": 244,
+            "cachedInput": 0,
+            "reasoning": 59,
+            "webCalls": 1
+          },
+          "costMicroUsd": 11017,
+          "requestId": "req_742ede958cda4d89b947a5bfecbd0beb"
+        },
+        {
+          "phase": "router",
+          "httpStatus": 200,
+          "usage": {
+            "input": 262,
+            "output": 60,
+            "cachedInput": 0,
+            "reasoning": 0,
+            "webCalls": 0
+          },
+          "costMicroUsd": 57,
+          "requestId": "req_dde1d4165fbd4adcaa493cd6f488c8ca"
+        },
+        {
+          "phase": "search",
+          "httpStatus": 200,
+          "usage": {
+            "input": 21242,
+            "output": 720,
+            "cachedInput": 4445,
+            "reasoning": 131,
+            "webCalls": 3
+          },
+          "costMicroUsd": 32085,
+          "requestId": "req_c15a3f4e236d4262837c9f49a725d8d1"
+        }
+      ]
+    },
+    {
+      "name": "doha_retry_1",
+      "observedAtUtc": "2026-11-25T19:55:11.935Z",
+      "status": "completed",
+      "ledger": [
+        {
+          "day": "2026-11-25",
+          "calls": 7,
+          "reserved_micro_usd": 164485
+        }
+      ],
+      "stopped": null,
+      "chargedMicroUsd": 164888,
+      "budgetMicroUsd": 500000,
+      "results": [
+        {
+          "scenario": 6,
+          "automaticSearch": true,
+          "plan": {
+            "query": "Lowongan kerja perhotelan di Doha, Qatar yang masih dibuka; cek situs resmi pemberi kerja dan lokasi.",
+            "queries": [
+              "lowongan kerja perhotelan Doha Qatar masih dibuka situs resmi pemberi kerja",
+              "Doha hotel careers open vacancies official site"
+            ],
+            "category": "jobs"
+          },
+          "answer": "Berikut beberapa **lowongan perhotelan di Doha, Qatar** yang pada **25 November 2026** masih tercantum di situs karier resmi pemberi kerja. Saya mengecualikan posisi yang jelas berlokasi di Lusail.\n\n**Marriott International — Doha**\n- **Guest Experience Expert (Guest Relations Agent)** — Marriott Marquis City Center Doha Hotel. Lokasi: Doha.\n- **Guest Arrival Expert** — Sheraton Grand Doha Resort & Convention Hotel. Lokasi: Doha.\n- **Front Desk Agent** — The St. Regis Doha. Lokasi: Doha.\n- **Guest Experience Expert (Front Office)** — The Ritz-Carlton Doha. Lokasi: West Bay Lagoon, Doha.\n- **Reservations Agent** — Qabila Westbay Hotel. Lokasi: Doha.\n- **Spa Therapist** dan **General Technician** — Al Samriya Doha Autograph Collection. Lokasi: Doha.  \n  Ini contoh dari daftar lowongan aktif Marriott; situsnya memuat posisi lain juga. (careers.marriott.com) ⟦1⟧\n\n**Hilton — Doha**\n- **Front Desk Supervisor** — Hilton Doha; diposting 9 November 2026.\n- **Spa Therapist**, **Executive Chef**, dan **Executive Sous Chef** — Hilton Doha; daftar karier Hilton juga mencantumkan lowongan ini di Doha.\n- **F&B Hostess** dan **Assistant Human Resources Manager** — The Plaza Doha, LXR Hotels & Resorts. (efet.fa.us2.oraclecloud.com) ⟦2⟧\n\n**Wyndham — Doha**\n- **Storekeeper** — Grand Regency Doha Trademark Collection by Wyndham; lokasi yang dicantumkan adalah Jawaan Street, Al Sadd, Doha.\n- **F&B Supervisor** dan **Sales Manager** — Wyndham Grand Doha West Bay Beach.  \n  Ketiganya muncul di halaman lowongan resmi Wyndham sebagai posisi aktif. (wyndhamhotelcareers.com) ⟦3⟧\n\n**Catatan:** lowongan bisa ditutup sewaktu-waktu. Periksa status dan persyaratan di halaman karier resmi sebelum melamar; saya tidak dapat memastikan tenggat lamaran untuk setiap posisi. Saya juga tidak memasukkan posisi **Lusail**, meskipun ada dalam hasil pencarian Qatar.",
+          "sources": [
+            {
+              "url": "https://careers.marriott.com/jobs?filter%5Bcategory%5D%5B0%5D=Rooms+%26+Guest+Services+Operations&filter%5Bcountry%5D%5B0%5D=Qatar&page_number=1&page_size=20&sort_by=external_posting_date&utm_source=openai",
+              "host": "careers.marriott.com",
+              "title": "Search Jobs | Marriott International Careers",
+              "sourceId": 1,
+              "sourceType": "web_search_v2",
+              "ok": true
+            },
+            {
+              "url": "https://efet.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1009/job/230720?utm_source=openai",
+              "host": "efet.fa.us2.oraclecloud.com",
+              "title": "Front Desk Supervisor - Hilton Careers",
+              "sourceId": 2,
+              "sourceType": "web_search_v2",
+              "ok": true
+            },
+            {
+              "url": "https://wyndhamhotelcareers.com/jobs?location%5B%5D=QA&page=1&utm_source=openai",
+              "host": "wyndhamhotelcareers.com",
+              "title": "Jobs - Wyndham Hotel Careers",
+              "sourceId": 3,
+              "sourceType": "web_search_v2",
+              "ok": true
+            }
+          ],
+          "corroborated": false,
+          "outcome": "cited_answer"
+        }
+      ],
+      "evidence": [
+        {
+          "phase": "resume",
+          "previousChargesMicroUsd": 142777,
+          "case": 6
+        },
+        {
+          "phase": "key_identity",
+          "dashboardSuffixMatches": true
+        },
+        {
+          "phase": "router",
+          "httpStatus": 200,
+          "usage": {
+            "input": 285,
+            "output": 68,
+            "cachedInput": 0,
+            "reasoning": 0,
+            "webCalls": 0
+          },
+          "costMicroUsd": 63,
+          "requestId": "req_f9317dfdc43944e499367f9a810ca32c"
+        },
+        {
+          "phase": "search",
+          "httpStatus": 200,
+          "usage": {
+            "input": 17340,
+            "output": 627,
+            "cachedInput": 0,
+            "reasoning": 133,
+            "webCalls": 2
+          },
+          "costMicroUsd": 22048,
+          "requestId": "req_b852408fdf304645a21cfb84f129aa57"
+        }
+      ]
+    },
+    {
+      "name": "doha_retry_2",
+      "observedAtUtc": "2026-11-25T19:57:36.160Z",
+      "status": "completed",
+      "ledger": [
+        {
+          "day": "2026-11-25",
+          "calls": 8,
+          "reserved_micro_usd": 196082
+        }
+      ],
+      "stopped": null,
+      "chargedMicroUsd": 196547,
+      "budgetMicroUsd": 500000,
+      "results": [
+        {
+          "scenario": 6,
+          "automaticSearch": true,
+          "plan": {
+            "query": "Lowongan kerja perhotelan terbaru di Doha, Qatar yang masih buka; cek situs resmi pemberi kerja dan lokasi.",
+            "queries": [
+              "lowongan kerja hotel Doha Qatar masih dibuka situs resmi pemberi kerja",
+              "Doha Qatar hospitality careers open vacancies official"
+            ],
+            "category": "jobs",
+            "cityOnly": "di Doha saja"
+          },
+          "answer": "Saya menemukan beberapa lowongan yang **tercantum di situs karier resmi Hilton** dan berlokasi di properti Doha. Daftar ini diperiksa pada **25 November 2026**; tanggal di bawah adalah tanggal unggah yang ditampilkan, bukan batas akhir lamaran. (efet.fa.us2.oraclecloud.com) ⟦1⟧\n\n- **Income Audit Supervisor** — Waldorf Astoria Doha Lusail; diunggah **25 November 2026**. (efet.fa.us2.oraclecloud.com) ⟦1⟧\n- **Waiter/Waitress (Room Service)** — Waldorf Astoria Doha Lusail; diunggah **25 November 2026**. (efet.fa.us2.oraclecloud.com) ⟦1⟧\n- **Front Desk Supervisor** — Hilton Doha; diunggah **9 November 2026**. (efet.fa.us2.oraclecloud.com) ⟦2⟧\n\nSitus karier Hilton menampilkan lokasi kerja **Doha, Qatar** untuk lowongan tersebut. (efet.fa.us2.oraclecloud.com) ⟦1⟧ Saya tidak dapat memastikan batas waktu penutupan atau persyaratan lengkap dari halaman yang terbaca, jadi cek status dan detail pada halaman resmi Hilton sebelum melamar. Saya mengecualikan lowongan yang lokasinya hanya tercantum sebagai “Qatar” atau beralamat di luar Doha.",
+          "sources": [
+            {
+              "url": "https://efet.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1009/jobs?lastSelectedFacet=AttributeChar1&location=Qatar&locationId=300000000229032&locationLevel=country&mode=location&selectedFlexFieldsFacets=%22AttributeChar1%7CWaldorf+Astoria+Hotels+%26+Resorts%22&selectedLocationsFacet=100027681973310&utm_source=openai",
+              "host": "efet.fa.us2.oraclecloud.com",
+              "title": "Search Jobs - Hilton Careers",
+              "sourceId": 1,
+              "sourceType": "web_search_v2",
+              "ok": true
+            },
+            {
+              "url": "https://efet.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1009/jobs?location=Qatar&locationId=300000000229032&locationLevel=country&mode=location&utm_source=openai",
+              "host": "efet.fa.us2.oraclecloud.com",
+              "title": "Search Jobs - Hilton Careers",
+              "sourceId": 2,
+              "sourceType": "web_search_v2",
+              "ok": true
+            }
+          ],
+          "corroborated": false,
+          "outcome": "cited_answer"
+        }
+      ],
+      "evidence": [
+        {
+          "phase": "resume",
+          "previousChargesMicroUsd": 164888,
+          "case": 6
+        },
+        {
+          "phase": "key_identity",
+          "dashboardSuffixMatches": true
+        },
+        {
+          "phase": "router",
+          "httpStatus": 200,
+          "usage": {
+            "input": 285,
+            "output": 66,
+            "cachedInput": 0,
+            "reasoning": 0,
+            "webCalls": 0
+          },
+          "costMicroUsd": 62,
+          "requestId": "req_7247305e00e648af9de9c9256c756888"
+        },
+        {
+          "phase": "search",
+          "httpStatus": 200,
+          "usage": {
+            "input": 13757,
+            "output": 442,
+            "cachedInput": 0,
+            "reasoning": 120,
+            "webCalls": 3
+          },
+          "costMicroUsd": 31597,
+          "requestId": "req_66d7686d5e964048801818975f05d31a"
+        }
+      ]
+    },
+    {
+      "name": "doha_retry_3",
+      "observedAtUtc": "2026-11-25T19:59:03.520Z",
+      "status": "completed",
+      "ledger": [
+        {
+          "day": "2026-11-25",
+          "calls": 9,
+          "reserved_micro_usd": 228420
+        }
+      ],
+      "stopped": null,
+      "chargedMicroUsd": 228947,
+      "budgetMicroUsd": 500000,
+      "results": [
+        {
+          "scenario": 6,
+          "automaticSearch": true,
+          "plan": {
+            "query": "Lowongan kerja perhotelan terbaru di Doha, Qatar yang masih buka; cek situs resmi pemberi kerja dan lokasi.",
+            "queries": [
+              "lowongan kerja hotel Doha Qatar masih buka situs resmi pemberi kerja",
+              "Doha hospitality jobs vacancies official careers currently open"
+            ],
+            "category": "jobs",
+            "cityOnly": "di Doha saja"
+          },
+          "answer": "Per **25 November 2026**, halaman karier resmi Marriott menampilkan lowongan berikut di **Doha**. Saya mengecualikan posisi di Lusail.\n\n- **Captain** — Sheraton Grand Doha Resort & Convention Hotel; alamat kerja tercantum di Doha. (careers.marriott.com) ⟦1⟧\n- **Demi Chef de Partie** — Sheraton Grand Doha Resort & Convention Hotel; Doha. (careers.marriott.com) ⟦1⟧\n- **Guest Experience Expert (Guest Relations Agent)** — Marriott Marquis City Center Doha Hotel; Doha. (careers.marriott.com) ⟦1⟧\n- **Demi Chef de Partie – Butcher** — The St. Regis Doha; Doha. (careers.marriott.com) ⟦1⟧\n- **Front Desk Agent** — The St. Regis Doha; Doha. (careers.marriott.com) ⟦2⟧\n\nIni adalah posisi yang tercantum di halaman **“Open Careers”** resmi pemberi kerja saat diperiksa; halaman tersebut tidak menyebutkan tanggal penutupan. Jadi, statusnya tampak masih dibuka, tetapi sebaiknya konfirmasikan lagi saat mengajukan lamaran. (careers.marriott.com) ⟦1⟧",
+          "sources": [
+            {
+              "url": "https://careers.marriott.com/jobs?filter%5Bcountry%5D%5B0%5D=Qatar&sort_by=external_posting_date",
+              "host": "careers.marriott.com",
+              "title": "Search Jobs | Marriott International Careers",
+              "sourceId": 1,
+              "sourceType": "web_search_v2",
+              "ok": true
+            },
+            {
+              "url": "https://careers.marriott.com/jobs?filter%5Bcategory%5D%5B0%5D=Rooms+%26+Guest+Services+Operations&filter%5Bcountry%5D%5B0%5D=Qatar&page_number=1&page_size=20&sort_by=external_posting_date",
+              "host": "careers.marriott.com",
+              "title": "Search Jobs | Marriott International Careers",
+              "sourceId": 2,
+              "sourceType": "web_search_v2",
+              "ok": true
+            }
+          ],
+          "corroborated": false,
+          "outcome": "cited_answer"
+        }
+      ],
+      "evidence": [
+        {
+          "phase": "resume",
+          "previousChargesMicroUsd": 196547,
+          "case": 6
+        },
+        {
+          "phase": "key_identity",
+          "dashboardSuffixMatches": true
+        },
+        {
+          "phase": "router",
+          "httpStatus": 200,
+          "usage": {
+            "input": 285,
+            "output": 66,
+            "cachedInput": 0,
+            "reasoning": 0,
+            "webCalls": 0
+          },
+          "costMicroUsd": 62,
+          "requestId": "req_01ef349275f34de0afa1480017f3595a"
+        },
+        {
+          "phase": "search",
+          "httpStatus": 200,
+          "usage": {
+            "input": 21308,
+            "output": 413,
+            "cachedInput": 0,
+            "reasoning": 116,
+            "webCalls": 3
+          },
+          "costMicroUsd": 32338,
+          "requestId": "req_b91b9f1849d645859dfc9b0cf16ff61a"
+        }
+      ]
+    }
+  ],
+  "cleanup": {
+    "rollback": "1c0c503a-7a76-4d4b-88b8-0d3c1b6c4401",
+    "active": [
+      {
+        "version_id": "0ba64284-7281-4f31-a743-9896afc58c29",
+        "percentage": 100
+      }
+    ],
+    "schedules": 0
+  },
+  "productionVersion": "c6dcf354-46c3-4772-9521-55f97cb2fb78"
+}
