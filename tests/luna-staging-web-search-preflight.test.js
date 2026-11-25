@@ -63,3 +63,20 @@ test("staging URL Reader hands fixed checks to the verified binding and exposes 
     authenticationDenied: true, unsafeDestinationsDenied: true, productionAdapterPeerAndTlsVerified: true
   } });
 });
+
+test("the HTTP staging fallback defaults off and refuses wrong one-time codes", async () => {
+  const path = "https://staging.example/__staging-evaluation";
+  const code = "synthetic-code";
+  const digest = [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(code)))]
+    .map(byte => byte.toString(16).padStart(2, "0")).join("");
+  assert.equal((await worker.fetch(new Request(path), {})).status, 404);
+  const env = { BOR_LUNA_LIVE_TRIGGER_DIGEST: digest, BOR_LUNA_LIVE_EVAL_EXPIRES_AT: String(Date.now() + 60000) };
+  const page = await worker.fetch(new Request(path), env);
+  assert.match(await page.text(), /type="password"/);
+  const form = "code=wrong";
+  const rejected = await worker.fetch(new Request(path, {
+    method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded", "Content-Length": String(form.length),
+      Origin: "https://staging.example" }, body: form
+  }), env);
+  assert.equal(rejected.status, 401);
+});

@@ -28,7 +28,9 @@ function metricsOf(data) {
   };
 }
 
-const COST_ERRORS = new Set(["insufficient_quota", "billing_hard_limit_reached", "project_spend_limit_exceeded", "rate_limit_exceeded", "invalid_api_key", "insufficient_permissions"]);
+function safeProviderCode(value) {
+  return typeof value === "string" && /^[a-z][a-z0-9_]{0,60}$/.test(value) ? value : undefined;
+}
 
 async function capture(response, phase, evidence) {
   const record = { phase, httpStatus: response.status, usage: null };
@@ -43,7 +45,18 @@ async function capture(response, phase, evidence) {
     record.costMicroUsd = Math.ceil(inputCost + output * (longContext ? 0.75 : 0.50) + webCalls * 10000);
   }
   record.requestId = response.headers.get("x-request-id") || null;
-  if (COST_ERRORS.has(data?.error?.code)) record.error = data.error.code;
+  record.error = safeProviderCode(data?.error?.code);
+  record.errorType = safeProviderCode(data?.error?.type);
+  if (!response.ok) {
+    const detail = String(data?.error?.message || "");
+    if (/insufficient.quota|billing|credit balance|exceeded your current quota/i.test(detail)) record.problem = "quota_or_billing";
+    else if (/rate limit|requests per min|tokens per min/i.test(detail)) record.problem = "rate_limit";
+    record.rate = Object.fromEntries(["retry-after", "x-ratelimit-remaining-requests", "x-ratelimit-remaining-tokens",
+      "x-ratelimit-reset-requests", "x-ratelimit-reset-tokens"].flatMap(name => {
+      const val = response.headers.get(name);
+      return val && /^[0-9.a-z]{1,30}$/i.test(val) ? [[name, val]] : [];
+    }));
+  }
   if (["max_output_tokens", "content_filter"].includes(data?.incomplete_details?.reason)) record.incomplete = data.incomplete_details.reason;
   return data;
 }
@@ -64,6 +77,14 @@ export async function runLunaStagingEvaluation(env, fetcher = fetch) {
   const persist = status => env.DB.prepare("UPDATE web_search_v2_live_evaluation SET status = ?, evidence_json = ? WHERE id = ?")
     .bind(status, JSON.stringify({ stopped, chargedMicroUsd: charged, budgetMicroUsd: BUDGET_MICRO_USD, results, evidence }), id).run();
   try {
+    if (env.BOR_LUNA_VERIFY_MODEL === "true") {
+      const metadataResponse = await fetcher("https://api.openai.com/v1/models/" + MODEL, {
+        method: "GET", redirect: "manual", signal: AbortSignal.timeout(12000),
+        headers: { Authorization: "Bearer " + env.BOR_TEXT_BACKUP_API_KEY }
+      });
+      await capture(metadataResponse, "model_access", evidence);
+      if (!metadataResponse.ok) { stopped = "model_access_unverified"; await persist("stopped"); return; }
+    }
     for (const [index, prompt] of SCENARIOS.entries()) {
       if (charged + RESERVATION_PER_ROUTER > BUDGET_MICRO_USD) { stopped = "budget_limit"; break; }
       const history = index === SCENARIOS.length - 1 ? [{ role: "user", content: SCENARIOS[1] }] : [];

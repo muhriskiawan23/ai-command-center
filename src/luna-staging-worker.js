@@ -49,10 +49,33 @@ async function authorized(request, secret) {
   return difference === 0;
 }
 
+// One-shot fallback when a staging Cron Trigger has not propagated.
+async function handleLiveEvaluationTrigger(request, env) {
+  const digest = env.BOR_LUNA_LIVE_TRIGGER_DIGEST;
+  if (!/^[0-9a-f]{64}$/.test(digest || "") || Date.now() >= Number(env.BOR_LUNA_LIVE_EVAL_EXPIRES_AT || 0)) {
+    return json({ error: "not_found" }, 404);
+  }
+  if (request.method === "GET") return new Response(
+    '<!doctype html><meta charset="utf-8"><title>Luna staging evaluation</title><h1>Run the staging evaluation</h1><form method="post"><label>One-time run code <input name="code" type="password" required autocomplete="off"></label><button>Run evaluation</button></form>',
+    { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "Content-Security-Policy": "default-src 'none'; form-action 'self'; frame-ancestors 'none'" } }
+  );
+  const length = Number(request.headers.get("Content-Length"));
+  if (request.method !== "POST" || request.headers.get("Origin") !== new URL(request.url).origin || length < 1 || length > 256 ||
+      !request.headers.get("Content-Type")?.startsWith("application/x-www-form-urlencoded")) return json({ error: "not_found" }, 404);
+  const code = new URLSearchParams(await request.text()).get("code") || "";
+  const provided = await sha256Hex(code);
+  let difference = 0;
+  for (let i = 0; i < digest.length; i++) difference |= provided.charCodeAt(i) ^ digest.charCodeAt(i);
+  if (difference !== 0) return json({ error: "operator_auth_required" }, 401);
+  await runLunaStagingEvaluation(env);
+  return json({ accepted: true });
+}
+
 export default {
   async scheduled(_event, env) { await runLunaStagingEvaluation(env); },
   async fetch(request, env) {
     const url = new URL(request.url);
+    if (url.pathname === "/__staging-evaluation") return handleLiveEvaluationTrigger(request, env);
     if (request.method !== "POST" || !ROUTES.has(url.pathname)) {
       return json({ error: "not_found" }, 404);
     }

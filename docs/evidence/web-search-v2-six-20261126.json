@@ -1,0 +1,78 @@
+{
+  "worker": "bor-ai-luna-staging",
+  "budgetUsd": 0.5,
+  "base": "cf18ecc95babd948a8f01132a802548fb831d491",
+  "initialVersion": "a052c7d2-985a-4970-839e-bed7f74479a9",
+  "diagnosticVersion": "2cbe4020-0dfc-4855-b6f4-b4e7448c2718",
+  "prior": "c760d7a2-40d9-42f8-a1dd-4b737a44b4ae",
+  "runs": [
+    {
+      "id": "web-v2-six-20261126-b",
+      "at": "2026-11-25T18:27:36.909Z",
+      "status": "stopped",
+      "stopped": "router_unverified",
+      "chargedMicroUsd": 0,
+      "budgetMicroUsd": 500000,
+      "results": [
+        {
+          "scenario": 1,
+          "automaticSearch": false,
+          "plan": null
+        }
+      ],
+      "evidence": [
+        {
+          "phase": "router",
+          "httpStatus": 429,
+          "usage": null,
+          "requestId": "req_08bfeb4910d244acbada0eb136ccf98a"
+        }
+      ],
+      "ledger": []
+    },
+    {
+      "id": "web-v2-six-20261126-c",
+      "at": "2026-11-25T18:28:46.064Z",
+      "status": "stopped",
+      "stopped": "router_unverified",
+      "chargedMicroUsd": 0,
+      "budgetMicroUsd": 500000,
+      "results": [
+        {
+          "scenario": 1,
+          "automaticSearch": false,
+          "plan": null
+        }
+      ],
+      "evidence": [
+        {
+          "phase": "model_access",
+          "httpStatus": 200,
+          "usage": null,
+          "requestId": "ce223185-5ed2-4a2f-ac47-4b6c1ab7989a"
+        },
+        {
+          "phase": "router",
+          "httpStatus": 429,
+          "usage": null,
+          "requestId": "req_ca940a812a3142278e663024c99cda9f",
+          "error": "billing_not_active",
+          "errorType": "billing_not_active",
+          "problem": "quota_or_billing",
+          "rate": {}
+        }
+      ],
+      "ledger": []
+    }
+  ],
+  "cleanup": {
+    "rollback": "50df3987-fd15-4d12-8d48-8b19d6554817",
+    "active": [
+      {
+        "version_id": "c760d7a2-40d9-42f8-a1dd-4b737a44b4ae",
+        "percentage": 100
+      }
+    ],
+    "schedules": 0
+  }
+}

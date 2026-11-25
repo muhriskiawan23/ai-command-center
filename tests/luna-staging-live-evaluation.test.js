@@ -78,3 +78,21 @@ test("long-context usage settles at premium rates and the next unsafe reservatio
   assert.equal(saved.evidence.stopped, "budget_limit");
   assert.equal(saved.evidence.evidence.find(x => x.phase === "search").costMicroUsd, 190300);
 });
+
+test("model metadata success cannot mask a billing rejection from Responses", async t => {
+  const { env, result } = fixture(t);
+  env.BOR_LUNA_VERIFY_MODEL = "true";
+  const calls = [];
+  await runLunaStagingEvaluation(env, async (url, options) => {
+    calls.push({ url, method: options.method });
+    if (options.method === "GET") return Response.json({ id: "gpt-6-luna" });
+    return Response.json({ error: { code: "billing_not_active", type: "billing_not_active", message: "Billing is not active" } }, { status: 429 });
+  });
+  assert.deepEqual(calls, [
+    { url: "https://api.openai.com/v1/models/gpt-6-luna", method: "GET" },
+    { url: "https://api.openai.com/v1/responses", method: "POST" }
+  ]);
+  assert.equal(result().status, "stopped");
+  assert.equal(result().evidence.chargedMicroUsd, 0);
+  assert.equal(result().evidence.evidence[1].error, "billing_not_active");
+});
