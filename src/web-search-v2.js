@@ -297,14 +297,14 @@ async function callProvider(provider, plan, deeper, fetcher, signal) {
   }
 }
 
-export async function runWebSearchV2(env, plan, { allowGoogle = false, signal, onSearch, now = Date.now() } = {}) {
+export async function runWebSearchV2(env, plan, { allowGoogle = false, signal, onSearch, now = Date.now(), singleOpenAiAttempt = false } = {}) {
   if (!searchV2Configured(env, allowGoogle) || !categories.has(plan?.category) || publicText(plan?.query, 620) !== plan.query) return null;
   const fetcher = env.WEB_SEARCH_V2_FETCHER || fetch;
   const total = AbortSignal.timeout(24000);
   const requestSignal = signal ? AbortSignal.any([total, signal]) : total;
   let best = null;
   for (const provider of providers(env, allowGoogle)) {
-    const maxAttempts = provider.name === "OpenAI" ? 2 : 1;
+    const maxAttempts = provider.name === "OpenAI" && !singleOpenAiAttempt ? 2 : 1;
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       if (requestSignal.aborted || !await reserve(env, provider.cost, now) || requestSignal.aborted) break;
       onSearch?.(provider.name);

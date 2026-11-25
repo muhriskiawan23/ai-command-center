@@ -2,6 +2,7 @@ import worker from "./index.js";
 import { consumeUsage, usageDay } from "./daily-limits.js";
 import { json, sha256Hex } from "./http.js";
 import { runWebSearchV2 } from "./web-search-v2.js";
+import { runLunaStagingEvaluation } from "./luna-staging-live-evaluation.js";
 import { runProof } from "../tools/egress-proxy/runtime/probe-worker.js";
 
 const ROUTES = new Set(["/smoke/luna", "/smoke/cloudflare", "/smoke/web-search", "/smoke/url-reader"]);
@@ -49,6 +50,7 @@ async function authorized(request, secret) {
 }
 
 export default {
+  async scheduled(_event, env) { await runLunaStagingEvaluation(env); },
   async fetch(request, env) {
     const url = new URL(request.url);
     if (request.method !== "POST" || !ROUTES.has(url.pathname)) {
