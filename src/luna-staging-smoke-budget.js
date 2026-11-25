@@ -47,8 +47,9 @@ export async function claimStagingSearchSmoke(env, reservation, now = Date.now()
   } catch { return null; }
 }
 
-export async function finishStagingSearchSmoke(env, claim, ok, providerStatus) {
-  const evidence = { ...claim.evidence, ok: Boolean(ok), providerStatus: Number.isInteger(providerStatus) ? providerStatus : null };
+export async function finishStagingSearchSmoke(env, claim, ok, providerStatus, receipt = null, citationsPresent = false) {
+  const evidence = { ...claim.evidence, ok: Boolean(ok), providerStatus: Number.isInteger(providerStatus) ? providerStatus : null,
+    receipt, citationsPresent: Boolean(citationsPresent), reconciliationRequired: true };
   try {
     // Keep the full reservation and irreversible one-shot marker even after failure or timeout.
     await env.DB.prepare("UPDATE web_search_v2_live_evaluation SET status = ?, evidence_json = ? WHERE id = ? AND status = 'running'")

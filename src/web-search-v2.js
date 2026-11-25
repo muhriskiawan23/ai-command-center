@@ -323,7 +323,7 @@ function parseGoogle(data) {
   return { provider: "Google", googleGrounding: { blocks, suggestions }, links: [], publishers: 0 };
 }
 
-async function callProvider(provider, plan, deeper, fetcher, signal) {
+async function callProvider(provider, plan, deeper, fetcher, signal, onProviderReceipt) {
   const cityOnly = publicText(plan.cityOnly, 160);
   const safety = instructions(plan.category, deeper, cityOnly);
   const variants = Array.isArray(plan.queries)
@@ -353,13 +353,18 @@ async function callProvider(provider, plan, deeper, fetcher, signal) {
       body: JSON.stringify(data)
     });
     const json = await readProviderJson(response);
+    if (openAI && typeof onProviderReceipt === "function") {
+      // Only the bounded, parsed response reaches the internal staging observer.
+      // The caller decides what metadata to retain; do not send it to the chat client.
+      onProviderReceipt(response, json);
+    }
     return openAI ? parseOpenAI(json) : parseGoogle(json);
   } catch {
     return null;
   }
 }
 
-export async function runWebSearchV2(env, plan, { allowGoogle = false, signal, onSearch, now = Date.now(), singleOpenAiAttempt = false } = {}) {
+export async function runWebSearchV2(env, plan, { allowGoogle = false, signal, onSearch, now = Date.now(), singleOpenAiAttempt = false, onProviderReceipt } = {}) {
   if (!searchV2Configured(env, allowGoogle) || !categories.has(plan?.category) || publicText(plan?.query, 620) !== plan.query) return null;
   const fetcher = env.WEB_SEARCH_V2_FETCHER || fetch;
   // The successful Luna evaluation used a 40-second request deadline. Keep a bounded
@@ -374,7 +379,7 @@ export async function runWebSearchV2(env, plan, { allowGoogle = false, signal, o
       onSearch?.(provider.name);
       const timeout = provider.name === "OpenAI" && provider.model === LUNA_MODEL ? LUNA_SEARCH_TIMEOUT_MS : 9000;
       const result = await callProvider(provider, plan, attempt > 0, fetcher,
-        AbortSignal.any([requestSignal, AbortSignal.timeout(timeout)]));
+        AbortSignal.any([requestSignal, AbortSignal.timeout(timeout)]), onProviderReceipt);
       if (result && !strictJobEvidenceAllowed(result, plan)) {
         // A bounded second angle may find the missing individual vacancy citation.
         // Every attempt still requires a new atomic reservation.

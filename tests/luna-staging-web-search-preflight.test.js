@@ -25,11 +25,11 @@ test("staging smoke uses the dedicated Web Search binding for one fixed, cited R
   const captured = [];
   t.mock.method(globalThis, "fetch", async (url, options) => {
     captured.push({ url, options });
-    return Response.json({ status: "completed", output: [
+    return Response.json({ status: "completed", model: "gpt-6-luna", usage: { input_tokens: 400, output_tokens: 50 }, output: [
       { type: "web_search_call", status: "completed" },
       { type: "message", role: "assistant", content: [{ type: "output_text", text: "Official site.",
         annotations: [{ type: "url_citation", url: "https://example.org/", start_index: 0, end_index: 14 }] }] }
-    ] });
+    ] }, { headers: { "x-request-id": "req_synthetic" } });
   });
   DB.sqlite.exec("CREATE TABLE IF NOT EXISTS web_search_v2_live_evaluation (id TEXT PRIMARY KEY, status TEXT NOT NULL, evidence_json TEXT)");
   DB.sqlite.prepare("INSERT INTO web_search_v2_live_evaluation VALUES (?,?,?)").run("web-v2-fixture-base", "completed", '{"chargedMicroUsd":0}');
@@ -37,7 +37,7 @@ test("staging smoke uses the dedicated Web Search binding for one fixed, cited R
     BOR_TEXT_BACKUP_API_KEY: "different-text-key", BOR_LUNA_SEARCH_SMOKE_BASE_ID: "web-v2-fixture-base",
     BOR_LUNA_SEARCH_SMOKE_EXPIRES_AT: String(Date.now() + 60000) };
   const response = await invoke("/smoke/web-search", env);
-  assert.deepEqual(await response.json(), { ok: true, providerStatus: 200, citationsPresent: true });
+  assert.deepEqual(await response.json(), { ok: true, providerStatus: 200, citationsPresent: true, usageRecorded: true, reconciliationRequired: true });
   assert.equal(captured.length, 1);
   assert.equal(captured[0].url, "https://api.openai.com/v1/responses");
   assert.equal(captured[0].options.headers.Authorization, "Bearer synthetic-key");
