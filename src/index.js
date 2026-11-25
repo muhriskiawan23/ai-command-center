@@ -1,3 +1,4 @@
+import { costRouteGuard, serverPdfConversionAllowed } from "./runtime-security-policy.js";
 import { BACKUP_MODEL, withTextProviderFailover } from "./text-provider-failover.js";
 import { TextInferenceBudgetError, withTextInferenceBudget } from "./text-inference-budget.js";
 import { handleImageRoute, imageConfig, consumeImageQueue, cleanupImageJobs, listChatImageJobs } from "./image-jobs.js";
@@ -1057,7 +1058,7 @@ async function handlePdfConversionRoute(request, env) {
   try { bytes = new Uint8Array(await file.arrayBuffer()); }
   catch { return json({ error: "File PDF tidak dapat dibaca." }, 400); }
   if (new TextDecoder().decode(bytes.subarray(0, 5)) !== "%PDF-") return json({ error: "File tidak memiliki struktur PDF yang valid." }, 415);
-  if (typeof env.AI?.toMarkdown !== "function") return json({ error: "Layanan pembaca PDF belum tersedia pada konfigurasi AI." }, 503);
+  if (!serverPdfConversionAllowed(env,new URL(request.url))) return json({ error: "Konversi PDF server tidak tersedia. Gunakan ekstraksi teks atau OCR lokal di browser BOR AI.", code: "PDF_LOCAL_ONLY" }, 503);
 
   const usage = await enforceDailyLimits(env, request, user, 1);
   if (!usage.ok) return usage.response;
@@ -1519,6 +1520,8 @@ export default {
   async fetch(request, env) {
     env = withTextProviderFailover(withTextInferenceBudget(env));
     const url = new URL(request.url);
+    const costGuard = costRouteGuard(env,url,request.method);
+    if (costGuard) return json({ error: "Pembatasan penggunaan belum tersedia. Coba lagi nanti.", code: costGuard.code }, costGuard.status);
     if (url.pathname === "/api/billing/account") {
       // Read-only readiness shadow. OFF unless separately enabled and a
       // dedicated HMAC-attested D1 is explicitly bound by an operator.
