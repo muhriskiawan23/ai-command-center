@@ -1,11 +1,10 @@
-import { planWebSearch, runWebSearchV2 } from "./web-search-v2.js";
+import { LUNA_SEARCH_RESERVATION_MICRO_USD, planWebSearch, runWebSearchV2 } from "./web-search-v2.js";
 
 const OPENAI = "https://api.openai.com/v1/responses";
 const MODEL = "gpt-6-luna";
-const MAX_SEARCH_TOOL_CALLS = 2;
 const BUDGET_MICRO_USD = 500000;
 // Luna long-context rates can apply to the full request.
-const RESERVATION_PER_SEARCH = 240000;
+const RESERVATION_PER_SEARCH = LUNA_SEARCH_RESERVATION_MICRO_USD;
 const RESERVATION_PER_ROUTER = 106000;
 const SCENARIOS = [
   "Agensi kerja perhotelan di Timur Tengah yang ada di Jakarta.",
@@ -153,12 +152,8 @@ export async function runLunaStagingEvaluation(env, fetcher = fetch) {
         async WEB_SEARCH_V2_FETCHER(url, options) {
           if (attempted || url !== OPENAI) throw Error("staging_attempt_limit");
           attempted = true;
-          const payload = JSON.parse(options.body);
-          payload.max_tool_calls = MAX_SEARCH_TOOL_CALLS;
-          payload.max_output_tokens = 2000;
-          payload.service_tier = "default";
-          payload.reasoning = { effort: "low" };
-          const response = await fetcher(url, { ...options, headers: { ...options.headers, ...routingHeaders }, signal: AbortSignal.timeout(40000), body: JSON.stringify(payload) });
+          // Use the same request settings and cancellation as the normal Luna search path.
+          const response = await fetcher(url, { ...options, headers: { ...options.headers, ...routingHeaders } });
           await capture(response.clone(), "search", evidence);
           return response;
         }

@@ -18,7 +18,7 @@ test("the staging-only routes require authorization and individual opt-in", asyn
   }
 });
 
-test("staging smoke reuses the staging Luna binding for one fixed, cited Responses request", async (t) => {
+test("staging smoke uses the dedicated Web Search binding for one fixed, cited Responses request", async (t) => {
   const DB = createD1();
   t.after(() => DB.sqlite.close());
   const captured = [];
@@ -30,7 +30,7 @@ test("staging smoke reuses the staging Luna binding for one fixed, cited Respons
         annotations: [{ type: "url_citation", url: "https://example.org/", start_index: 0, end_index: 14 }] }] }
     ] });
   });
-  const env = { DB, BOR_LUNA_STAGING_WEB_SEARCH_ENABLED: "true", BOR_TEXT_BACKUP_API_KEY: "synthetic-key" };
+  const env = { DB, BOR_LUNA_STAGING_WEB_SEARCH_ENABLED: "true", BOR_WEB_SEARCH_OPENAI_KEY: "synthetic-key", BOR_TEXT_BACKUP_API_KEY: "different-text-key" };
   const response = await invoke("/smoke/web-search", env);
   assert.deepEqual(await response.json(), { ok: true, providerStatus: 200, citationsPresent: true });
   assert.equal(captured.length, 1);

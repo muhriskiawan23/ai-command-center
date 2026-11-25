@@ -40,7 +40,7 @@ for (const [message, category, publicQuery, sample] of scenarios) test("Worker s
   const calls = [];
   const env = envFor(async (url, init) => {
     calls.push([url, init]);
-    return openAI(sample, ["https://example.com/primary", "https://example.org/independent"]);
+    return openAI(sample, [message.startsWith("Kalau") ? "https://example.com/jobs/12345" : "https://example.com/primary", "https://example.org/independent"]);
   });
   env.AI = { async run(_model, payload) {
     assert.match(payload.messages[0].content, /public web lookup/);
@@ -165,7 +165,7 @@ test("an explicit city-only follow-up keeps its boundary even if the classifier 
     const body = JSON.parse(options.body);
     assert.equal(JSON.parse(body.input).strict_location, "di Doha saja");
     assert.match(body.instructions, /physical city/);
-    return openAI("Sample Doha job.", ["https://example.com/job"]);
+    return openAI("Sample Doha job.", ["https://example.com/jobs/12345"]);
   });
   assert.ok(await runWebSearchV2(env, plan, { singleOpenAiAttempt: true }));
 });

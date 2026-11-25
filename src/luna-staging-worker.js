@@ -1,23 +1,25 @@
 import worker from "./index.js";
 import { consumeUsage, usageDay } from "./daily-limits.js";
 import { json, sha256Hex } from "./http.js";
-import { runWebSearchV2 } from "./web-search-v2.js";
+import { LUNA_SEARCH_RESERVATION_MICRO_USD, runWebSearchV2 } from "./web-search-v2.js";
 import { runLunaStagingEvaluation } from "./luna-staging-live-evaluation.js";
 import { runProof } from "../tools/egress-proxy/runtime/probe-worker.js";
 
 const ROUTES = new Set(["/smoke/luna", "/smoke/cloudflare", "/smoke/web-search", "/smoke/url-reader"]);
 
 async function smokeWebSearch(request, env) {
-  if (!env.BOR_TEXT_BACKUP_API_KEY || !env.DB?.prepare) return json({ error: "staging_not_configured" }, 503);
+  if (!env.BOR_WEB_SEARCH_OPENAI_KEY || !env.DB?.prepare) return json({ error: "staging_not_configured" }, 503);
   let providerStatus = null;
   const result = await runWebSearchV2({
     DB: env.DB,
     BOR_WEB_SEARCH_MODE: "v2",
-    BOR_WEB_SEARCH_OPENAI_KEY: env.BOR_TEXT_BACKUP_API_KEY,
+    BOR_WEB_SEARCH_OPENAI_KEY: env.BOR_WEB_SEARCH_OPENAI_KEY,
+    BOR_WEB_SEARCH_OPENAI_ORG: env.BOR_WEB_SEARCH_OPENAI_ORG,
+    BOR_WEB_SEARCH_OPENAI_PROJECT: env.BOR_WEB_SEARCH_OPENAI_PROJECT,
     BOR_WEB_SEARCH_DAILY_CALLS: "1",
-    BOR_WEB_SEARCH_OPENAI_CALL_MICRO_USD: "150000",
-    BOR_WEB_SEARCH_DAILY_MICRO_USD: "150000",
-    BOR_WEB_SEARCH_MONTHLY_MICRO_USD: "150000",
+    BOR_WEB_SEARCH_OPENAI_CALL_MICRO_USD: String(LUNA_SEARCH_RESERVATION_MICRO_USD),
+    BOR_WEB_SEARCH_DAILY_MICRO_USD: String(LUNA_SEARCH_RESERVATION_MICRO_USD),
+    BOR_WEB_SEARCH_MONTHLY_MICRO_USD: String(LUNA_SEARCH_RESERVATION_MICRO_USD),
     async WEB_SEARCH_V2_FETCHER(url, options) {
       const response = await fetch(url, options);
       providerStatus = response.status;

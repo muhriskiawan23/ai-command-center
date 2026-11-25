@@ -6,6 +6,12 @@ import { BACKUP_MODEL as LUNA_MODEL } from "./text-provider-failover.js";
 const OPENAI_URL = "https://api.openai.com/v1/responses";
 const GOOGLE_URL = "https://generativelanguage.googleapis.com/v1beta/interactions";
 const SEARCH_OUTPUT_TOKENS = 1200;
+// Luna has a 1.05M context window; long-context input, tool calls and output can exceed ordinary estimates.
+// Conservative admission reservation, not a guarantee of the provider's final invoice.
+export const LUNA_SEARCH_RESERVATION_MICRO_USD = 260000;
+const LUNA_SEARCH_OUTPUT_TOKENS = 2000;
+const LUNA_SEARCH_TOOL_CALLS = 2;
+const LUNA_SEARCH_TIMEOUT_MS = 40000;
 const MAX_PROVIDER_BYTES = 256 * 1024;
 const encoder = new TextEncoder();
 const categories = new Set(["local", "company", "agency", "jobs", "news", "product", "technology", "politics", "health", "education", "general"]);
@@ -30,14 +36,26 @@ function limits(env) {
   };
 }
 
+function openAiRoutingHeaders(env) {
+  const org = env.BOR_WEB_SEARCH_OPENAI_ORG;
+  const project = env.BOR_WEB_SEARCH_OPENAI_PROJECT;
+  if ((org === undefined || org === "") && (project === undefined || project === "")) return {};
+  if (typeof org !== "string" || !/^org-[A-Za-z0-9_-]{3,128}$/.test(org) ||
+      typeof project !== "string" || !/^proj_[A-Za-z0-9_-]{3,128}$/.test(project)) return null;
+  return { "OpenAI-Organization": org, "OpenAI-Project": project };
+}
+
 function providers(env, allowGoogle) {
   const result = [];
   const openAiModel = env.BOR_WEB_SEARCH_OPENAI_MODEL || LUNA_MODEL;
+  const openAiCost = amount(env.BOR_WEB_SEARCH_OPENAI_CALL_MICRO_USD, 1e8);
+  const routingHeaders = openAiRoutingHeaders(env);
   if (typeof env.BOR_WEB_SEARCH_OPENAI_KEY === "string" && env.BOR_WEB_SEARCH_OPENAI_KEY.trim() &&
-      /^[a-zA-Z0-9._-]{1,80}$/.test(openAiModel)) {
+      /^[a-zA-Z0-9._-]{1,80}$/.test(openAiModel) && routingHeaders &&
+      (openAiModel !== LUNA_MODEL || openAiCost >= LUNA_SEARCH_RESERVATION_MICRO_USD)) {
     result.push({
       name: "OpenAI", key: env.BOR_WEB_SEARCH_OPENAI_KEY, model: openAiModel,
-      cost: amount(env.BOR_WEB_SEARCH_OPENAI_CALL_MICRO_USD, 1e8)
+      cost: openAiCost, routingHeaders
     });
   }
   if (allowGoogle && googleEligibleAccounts(env).length && env.BOR_WEB_SEARCH_GOOGLE_ELIGIBILITY_APPROVED === "true" &&
@@ -181,10 +199,46 @@ async function readProviderJson(response) {
   }
 }
 
+// Do not expose signed/credential-bearing links supplied by a model as clickable citations.
+const privateCitationParameter = /^(?:api[-_]?key|access[-_]?token|refresh[-_]?token|id[-_]?token|token|authorization|auth|password|passwd|secret|signature|sig|session(?:[-_]?id)?|x-amz-.+|x-goog-.+)$/i;
+
+function sensitiveCitationUrl(url) {
+  return [...url.searchParams.keys()].some(key => privateCitationParameter.test(key)) ||
+    /(?:^|[#&?])(?:access_token|refresh_token|id_token|token|api_key|password|secret|signature)=/i.test(url.hash);
+}
+
+// A stable ID in an individual vacancy path is only a structural candidate, not proof of
+// an official employer, open application, title, or physical location. Query-only IDs
+// are insufficient because chat-history persistence deliberately removes query strings.
+function individualJobIdentity(link) {
+  const checked = validateUrl(link?.url || "");
+  if (!checked.ok || checked.url.protocol !== "https:") return null;
+  const { url } = checked;
+  const parts = url.pathname.split("/").filter(Boolean);
+  const marker = parts.findIndex(part => /^(?:jobs?|vacanc(?:y|ies)|positions?|job-details?|requisitions?)$/i.test(part));
+  if (marker < 0 || marker >= parts.length - 1) return null;
+  const tail = parts.slice(marker + 1);
+  if (tail.some(part => /^(?:page|search|list|filter|category|country|location|city)(?:[-_]?\d+)?$/i.test(part))) return null;
+  const id = tail.at(-1);
+  if (!/^[a-z0-9][a-z0-9._-]{3,200}$/i.test(id) || !/\d{3,}/.test(id)) return null;
+  return url.origin + url.pathname.replace(/\/+$/, "");
+}
+
+function strictJobEvidenceAllowed(result, plan) {
+  if (plan.category !== "jobs" || !plan.cityOnly) return true;
+  const links = result.provider === "Google"
+    ? result.googleGrounding.blocks.flatMap(block => block.citations)
+    : result.links;
+  const identities = new Set(links.map(individualJobIdentity).filter(Boolean));
+  // The city-only prompt asks for one strongest vacancy. Do not treat a collection-only
+  // answer or multiple distinct individual vacancy links as satisfying that format.
+  return identities.size === 1;
+}
+
 function sourceLink(annotation) {
   if (annotation?.type !== "url_citation" || typeof annotation.url !== "string" || annotation.url.length > 2400) return null;
   const validated = validateUrl(annotation.url);
-  if (!validated.ok || validated.url.protocol !== "https:") return null;
+  if (!validated.ok || validated.url.protocol !== "https:" || sensitiveCitationUrl(validated.url)) return null;
   const { href, hostname } = validated.url;
   return { url: href, host: hostname, title: String(annotation.title || hostname).slice(0, 180) };
 }
@@ -277,9 +331,12 @@ async function callProvider(provider, plan, deeper, fetcher, signal) {
     : [];
   const query = JSON.stringify({ question: plan.query, search_angles: variants, ...(cityOnly ? { strict_location: cityOnly } : {}), current_utc_date: new Date().toISOString().slice(0, 10) });
   const openAI = provider.name === "OpenAI";
+  const luna = openAI && provider.model === LUNA_MODEL;
   const data = openAI ? {
     model: provider.model, input: query, instructions: safety, store: false,
-    max_output_tokens: SEARCH_OUTPUT_TOKENS, max_tool_calls: 3,
+    max_output_tokens: luna ? LUNA_SEARCH_OUTPUT_TOKENS : SEARCH_OUTPUT_TOKENS,
+    max_tool_calls: luna ? LUNA_SEARCH_TOOL_CALLS : 3,
+    ...(luna ? { service_tier: "default", reasoning: { effort: "low" } } : {}),
     tools: [{ type: "web_search", search_context_size: "low", external_web_access: true, user_location: { type: "approximate" } }],
     tool_choice: { type: "web_search" }
   } : {
@@ -291,7 +348,7 @@ async function callProvider(provider, plan, deeper, fetcher, signal) {
       method: "POST", redirect: "manual", signal,
       headers: {
         "Content-Type": "application/json",
-        ...(openAI ? { Authorization: "Bearer " + provider.key } : { "x-goog-api-key": provider.key, "Api-Revision": "2026-05-20" })
+        ...(openAI ? { Authorization: "Bearer " + provider.key, ...provider.routingHeaders } : { "x-goog-api-key": provider.key, "Api-Revision": "2026-05-20" })
       },
       body: JSON.stringify(data)
     });
@@ -305,7 +362,9 @@ async function callProvider(provider, plan, deeper, fetcher, signal) {
 export async function runWebSearchV2(env, plan, { allowGoogle = false, signal, onSearch, now = Date.now(), singleOpenAiAttempt = false } = {}) {
   if (!searchV2Configured(env, allowGoogle) || !categories.has(plan?.category) || publicText(plan?.query, 620) !== plan.query) return null;
   const fetcher = env.WEB_SEARCH_V2_FETCHER || fetch;
-  const total = AbortSignal.timeout(24000);
+  // The successful Luna evaluation used a 40-second request deadline. Keep a bounded
+  // overall search window, also subject to the calling chat's cancellation/deadline.
+  const total = AbortSignal.timeout(50000);
   const requestSignal = signal ? AbortSignal.any([total, signal]) : total;
   let best = null;
   for (const provider of providers(env, allowGoogle)) {
@@ -313,8 +372,14 @@ export async function runWebSearchV2(env, plan, { allowGoogle = false, signal, o
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       if (requestSignal.aborted || !await reserve(env, provider.cost, now) || requestSignal.aborted) break;
       onSearch?.(provider.name);
+      const timeout = provider.name === "OpenAI" && provider.model === LUNA_MODEL ? LUNA_SEARCH_TIMEOUT_MS : 9000;
       const result = await callProvider(provider, plan, attempt > 0, fetcher,
-        AbortSignal.any([requestSignal, AbortSignal.timeout(9000)]));
+        AbortSignal.any([requestSignal, AbortSignal.timeout(timeout)]));
+      if (result && !strictJobEvidenceAllowed(result, plan)) {
+        // A bounded second angle may find the missing individual vacancy citation.
+        // Every attempt still requires a new atomic reservation.
+        continue;
+      }
       if (result?.provider === "Google") return result;
       if (result && (!best || result.corroborated && !best.corroborated ||
           result.corroborated === best.corroborated && result.publishers > best.publishers)) best = result;
