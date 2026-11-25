@@ -36,3 +36,6 @@ wrangler.billing-staging.generated.jsonc
 # The enabled-shaped candidate contains FAKE identifiers only and is never deployed.
 wrangler.chat-private-backup.generated.jsonc
 wrangler.chat-private-backup.candidate.generated.jsonc
+
+# Operator-generated configuration for the isolated Luna and search staging Worker.
+wrangler.luna-staging.generated.jsonc
