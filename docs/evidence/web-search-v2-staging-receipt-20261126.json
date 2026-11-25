@@ -1,0 +1,90 @@
+{
+  "date": "2026-11-26 WIB",
+  "sourceCommit": "328afe7b74c1fd66fac8b6e38aa485f02627695b",
+  "branch": "feature/web-search-v2",
+  "staging": {
+    "version": 29,
+    "versionId": "7f0675f3-ef20-4d16-9fc2-47989e078412",
+    "deploymentId": "3fcf1b1a-d614-4719-9543-eefb657697e5",
+    "traffic": 100,
+    "rollbackVersion": 28,
+    "rollbackVersionId": "a98dea72-e057-4b67-b7cb-c7d112c8e575",
+    "moduleCount": 41,
+    "gitHashesVerified": 41,
+    "sourceBytes": 460554,
+    "manifestSha256": "707240dabe5ea7a1a267de27415d3ba71e7b3415d7ab5532ce048b1f85843381",
+    "flags": [
+      {
+        "name": "BOR_LUNA_STAGING_URL_READER_ENABLED",
+        "value": "false"
+      },
+      {
+        "name": "BOR_LUNA_STAGING_WEB_SEARCH_ENABLED",
+        "value": "false"
+      },
+      {
+        "name": "BOR_WEB_SEARCH_KILL_SWITCH",
+        "value": "true"
+      },
+      {
+        "name": "BOR_WEB_SEARCH_MODE",
+        "value": "off"
+      }
+    ],
+    "cron": 0
+  },
+  "tests": {
+    "receiptUnit": {
+      "passed": 5,
+      "failed": 0
+    },
+    "receiptIntegration": {
+      "passed": 4,
+      "failed": 0,
+      "syntheticProviderRequests": 2
+    },
+    "method": "Cloudflare connector JS runtime with native Response/Request/URL/crypto; synthetic D1/provider, no external inference. Actual deployed Worker HTTP unavailable (curl DNS resolution failure). No rerun of historical six live scenarios."
+  },
+  "budget": {
+    "capMicroUsd": 500000,
+    "priorObservedMicroUsd": 228947,
+    "searchLedgerMicroUsd": 228420,
+    "historicalSearchCalls": 9,
+    "newProviderSpendMicroUsd": 0,
+    "remainingMicroUsd": 271053,
+    "proposedReservationMicroUsd": 260000,
+    "projectedCommittedMicroUsd": 488947,
+    "projectedHeadroomMicroUsd": 11053,
+    "smokeClaimsOrRunning": 0,
+    "providerHardCapGuaranteed": false
+  },
+  "protection": {
+    "production": [
+      {
+        "version_id": "c6dcf354-46c3-4772-9521-55f97cb2fb78",
+        "percentage": 100
+      }
+    ],
+    "tavilyUnchanged": true,
+    "actionsRunsForSourceCommit": 0,
+    "newApiKeys": false,
+    "permissionsExpanded": false,
+    "deposits": false
+  },
+  "blockers": {
+    "http": "No direct staging HTTP invocation available in this chat; local curl failed DNS. Do not use a paid browser service or weaken authentication.",
+    "billing": "Actual provider receipt not yet generated; owner-authorized operator path and provider invoice reconciliation required before live release.",
+    "google": "No Google credential in staging",
+    "egress": {
+      "bindingPresent": false,
+      "tunnel": [
+        {
+          "name": "bor-ai-private-egress",
+          "status": "down",
+          "connections": 0
+        }
+      ]
+    },
+    "fullRelease": "Native application bundle and browser E2E not run; no production approval."
+  }
+}
