@@ -93,7 +93,10 @@ async function handleSearchSmokeBridge(request, env) {
 // One-shot fallback when a staging Cron Trigger has not propagated.
 async function handleLiveEvaluationTrigger(request, env) {
   const digest = env.BOR_LUNA_LIVE_TRIGGER_DIGEST;
-  if (!/^[0-9a-f]{64}$/.test(digest || "") || Date.now() >= Number(env.BOR_LUNA_LIVE_EVAL_EXPIRES_AT || 0)) {
+  const expires = Number(env.BOR_LUNA_LIVE_EVAL_EXPIRES_AT);
+  const now = Date.now();
+  if (env.BOR_WEB_SEARCH_KILL_SWITCH === "true" || !/^[0-9a-f]{64}$/.test(digest || "") ||
+      !Number.isSafeInteger(expires) || expires <= now || expires > now + 300000) {
     return json({ error: "not_found" }, 404);
   }
   if (request.method === "GET") return new Response(

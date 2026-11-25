@@ -70,8 +70,9 @@ export async function runLunaStagingEvaluation(env, fetcher = fetch) {
   if (env.BOR_WEB_SEARCH_KILL_SWITCH === "true") return;
   const id = env.BOR_LUNA_LIVE_EVAL_ID;
   const expires = Number(env.BOR_LUNA_LIVE_EVAL_EXPIRES_AT);
+  const now = Date.now();
   if (!/^web-v2-[a-z0-9-]{8,60}$/.test(id || "") || !Number.isSafeInteger(expires) ||
-      Date.now() >= expires || !env.BOR_TEXT_BACKUP_API_KEY || !env.DB?.prepare) return;
+      expires <= now || expires > now + 300000 || !env.BOR_TEXT_BACKUP_API_KEY || !env.DB?.prepare) return;
 
   const claimed = await env.DB.prepare("INSERT OR IGNORE INTO web_search_v2_live_evaluation (id, status) VALUES (?, 'running') RETURNING id").bind(id).first();
   if (!claimed) return;
