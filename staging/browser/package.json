@@ -1,0 +1,14 @@
+{
+  "name": "bor-ai-browser-staging",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "check": "node --check worker.js",
+    "test": "node --test ../../tests/browser-staging-*.test.js"
+  },
+  "devDependencies": {
+    "@cloudflare/playwright": "^1.3.6",
+    "wrangler": "^4.0.0"
+  }
+}
