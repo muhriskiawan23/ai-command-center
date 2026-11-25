@@ -605,6 +605,11 @@ jobs:
             throw Error("Active Worker version changed after preflight; aborting promotion");
           console.log("Active Worker version remains unchanged since candidate preflight");
           NODE
+          current_main="$(git ls-remote origin refs/heads/main | cut -f1)"
+          if [[ -z "$current_main" || "$current_main" != "$GITHUB_SHA" ]]; then
+            echo "::error::main changed during candidate validation; refuse stale promotion"
+            exit 1
+          fi
           wrangler versions deploy "$version_id@100" --yes --config "$BOR_DEPLOY_CONFIG" \
             --message "github-sha:$GITHUB_SHA"
           wrangler triggers deploy --config "$BOR_DEPLOY_CONFIG"
