@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import worker from "../src/luna-staging-worker.js";
+import { runLunaStagingEvaluation } from "../src/luna-staging-live-evaluation.js";
 import { createD1 } from "./e2e/harness.js";
 
 const operator = "synthetic-operator";
@@ -79,4 +80,23 @@ test("the HTTP staging fallback defaults off and refuses wrong one-time codes", 
       Origin: "https://staging.example" }, body: form
   }), env);
   assert.equal(rejected.status, 401);
+});
+
+test("the staging kill switch overrides an explicitly enabled search smoke and live evaluator", async () => {
+  const env = {
+    BOR_WEB_SEARCH_KILL_SWITCH: "true", BOR_LUNA_STAGING_WEB_SEARCH_ENABLED: "true",
+    BOR_WEB_SEARCH_OPENAI_KEY: "synthetic-search-key", BOR_TEXT_BACKUP_API_KEY: "synthetic-text-key",
+    BOR_LUNA_LIVE_EVAL_ID: "web-v2-synthetic-test", BOR_LUNA_LIVE_EVAL_EXPIRES_AT: String(Date.now() + 60000),
+    DB: { prepare() { assert.fail("disabled search must not access the ledger"); } }
+  };
+  assert.equal((await invoke("/smoke/web-search", env)).status, 503);
+  await runLunaStagingEvaluation(env, () => assert.fail("disabled evaluation must not call provider"));
+});
+
+test("the smoke route does not silently fall back to the text API key", async () => {
+  const env = { BOR_LUNA_STAGING_WEB_SEARCH_ENABLED: "true", BOR_TEXT_BACKUP_API_KEY: "text-only-key",
+    DB: { prepare() { assert.fail("missing dedicated search key must fail before admission"); } } };
+  const response = await invoke("/smoke/web-search", env);
+  assert.equal(response.status, 503);
+  assert.equal((await response.json()).error, "staging_not_configured");
 });

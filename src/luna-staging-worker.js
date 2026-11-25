@@ -8,6 +8,7 @@ import { runProof } from "../tools/egress-proxy/runtime/probe-worker.js";
 const ROUTES = new Set(["/smoke/luna", "/smoke/cloudflare", "/smoke/web-search", "/smoke/url-reader"]);
 
 async function smokeWebSearch(request, env) {
+  if (env.BOR_WEB_SEARCH_KILL_SWITCH === "true") return json({ error: "staging_smoke_disabled" }, 503);
   if (!env.BOR_WEB_SEARCH_OPENAI_KEY || !env.DB?.prepare) return json({ error: "staging_not_configured" }, 503);
   let providerStatus = null;
   const result = await runWebSearchV2({
@@ -25,7 +26,7 @@ async function smokeWebSearch(request, env) {
       providerStatus = response.status;
       return response;
     }
-  }, { category: "company", query: "Find the official website of Hamad International Airport, Doha, and cite it." }, { signal: request.signal });
+  }, { category: "company", query: "Find the official website of Hamad International Airport, Doha, and cite it." }, { signal: request.signal, singleOpenAiAttempt: true });
   const ok = result?.provider === "OpenAI" && result.links.length > 0;
   return json({ ok, providerStatus, citationsPresent: ok }, ok ? 200 : providerStatus === null ? 503 : 502);
 }

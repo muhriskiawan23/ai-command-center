@@ -67,6 +67,7 @@ async function capture(response, phase, evidence) {
 }
 
 export async function runLunaStagingEvaluation(env, fetcher = fetch) {
+  if (env.BOR_WEB_SEARCH_KILL_SWITCH === "true") return;
   const id = env.BOR_LUNA_LIVE_EVAL_ID;
   const expires = Number(env.BOR_LUNA_LIVE_EVAL_EXPIRES_AT);
   if (!/^web-v2-[a-z0-9-]{8,60}$/.test(id || "") || !Number.isSafeInteger(expires) ||

@@ -1,0 +1,60 @@
+{
+  "date": "2026-11-26 WIB",
+  "baseCommit": "9d502eb8fa23140e588b9fd8ddd4f3d4d1db4149",
+  "branch": "feature/web-search-v2",
+  "previousCommitRegression": {
+    "passed": 9,
+    "failed": 0,
+    "execution": [
+      "isolated V8 with mocked platform interfaces",
+      "Cloudflare connector JavaScript runtime with native URL/HTTP/cancellation interfaces"
+    ],
+    "d1": "synthetic admission",
+    "externalProviderRequests": 0
+  },
+  "stagingSafetyRegression": {
+    "passed": [
+      "dedicated binding missing: text key is not reused",
+      "disabled flag prevents search",
+      "operator authorization still required",
+      "global kill switch overrides smoke opt-in",
+      "dedicated search binding smoke path works with native HTTP interfaces and exactly one synthetic request",
+      "staging smoke uses the same evaluated Luna request settings",
+      "staging evaluator cannot run without temporary evaluation bindings",
+      "global kill switch overrides scheduled or manual live evaluation"
+    ],
+    "failed": [],
+    "externalProviderRequests": 0,
+    "syntheticProviderRequests": 1,
+    "realNetworkUsed": false,
+    "execution": "Cloudflare connector JavaScript runtime; actual committed candidate source and native Request/Response/URL/crypto; mock D1/provider. No Worker invocation or external network."
+  },
+  "stagingDeployment": {
+    "version": 26,
+    "versionId": "df3cb51e-8ac6-4a10-8be4-ff75d419485e",
+    "deploymentId": "42ef856b-72fc-42a5-9b7d-58044bf3a635",
+    "rollbackVersion": 18,
+    "searchMode": "off",
+    "killSwitch": true,
+    "cronCount": 0,
+    "sourceDeployment": "new GitHub source not yet deployed"
+  },
+  "campaign": {
+    "limitMicroUsd": 500000,
+    "previousObservedMicroUsd": 228947,
+    "remainingMicroUsd": 271053,
+    "newProviderSpendMicroUsd": 0
+  },
+  "production": {
+    "versionId": "c6dcf354-46c3-4772-9521-55f97cb2fb78",
+    "tavilyRetained": true,
+    "changed": false
+  },
+  "limitations": [
+    "Full native Node repository suite, bundle and browser E2E not run.",
+    "No live inference on new source or active staging version 26.",
+    "No Google live credentials or matching staging egress token.",
+    "Individual URL identifier is structural evidence, not proof of current job or exact location.",
+    "Application reservations are not provider-enforced billing caps."
+  ]
+}
