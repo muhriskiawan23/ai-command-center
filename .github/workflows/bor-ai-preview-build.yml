@@ -1,6 +1,7 @@
 name: BOR AI preview build
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - bor-ai/stage-02-quality-hardening
