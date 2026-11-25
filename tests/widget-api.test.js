@@ -234,3 +234,14 @@ test("widget accounting never repeats a refund after ambiguous commit",async()=>
  assert.equal(res.status,429);assert.equal(refunds,1);
  assert.equal(DB.calls.filter(c=>c.sql.includes("UPDATE public_api_keys SET daily_used = MAX")).length,1);
 });
+
+
+test("widget IP limit blocks unknown keys before D1 and bounds bearer length",async()=>{
+ const headers={Origin:"https://shop.example",Authorization:"Bearer "+secret,"Content-Type":"application/json"};
+ const request=(h=headers)=>new Request("https://api.example/api/public/chat",{method:"POST",headers:h,body:JSON.stringify({message:"Halo"})});
+ const DB=makeDb({key:validKey});const keys=[];
+ const result=await handlePublicChatRoute(request(),{DB},{...deps,CHAT_LIMITER:{limit:async({key})=>{keys.push(key);return {success:false}}}});
+ assert.equal(result.status,429);assert.equal(DB.calls.length,0);assert.deepEqual(keys,["widget-ip:unknown-client"]);
+ const tooLong=await handlePublicChatRoute(request({...headers,Authorization:"Bearer borai_live_"+"a".repeat(100)}),{DB},deps);
+ assert.equal(tooLong.status,401);assert.equal(DB.calls.length,0);
+});

@@ -103,10 +103,18 @@ export async function handlePublicChatRoute(request, env, deps) {
   if (request.method !== "POST") return deps.json({ error: "Metode HTTP tidak didukung." }, 405, { Allow: "POST, OPTIONS" });
   const fail = (message, status, extra = {}) => withCors(deps.json({ error: message }, status, extra), origin || "null");
   if (!validOrigin(origin)) return deps.json({ error: "Origin HTTPS yang valid wajib disertakan." }, 403);
-  const match = (request.headers.get("Authorization") || "").match(/^Bearer (borai_live_[A-Za-z0-9_-]{30,})$/);
+  const match = (request.headers.get("Authorization") || "").match(/^Bearer (borai_live_[A-Za-z0-9_-]{30,64})$/);
   if (!match) return fail("API key tidak valid atau tidak ditemukan.", 401);
   if (!env.DB) return fail("Database tidak tersedia.", 503);
 
+  // Limit before hashing or querying D1, including unknown but well-formed keys.
+  if (deps.CHAT_LIMITER?.limit) {
+    try {
+      const ip = request.headers.get("CF-Connecting-IP") || "unknown-client";
+      const limit = await deps.CHAT_LIMITER.limit({ key: "widget-ip:" + ip });
+      if (!limit?.success) return fail("Terlalu banyak permintaan. Coba lagi dalam satu menit.", 429, { "Retry-After": "60" });
+    } catch { return fail("Pembatasan permintaan sedang bermasalah.", 503); }
+  }
   const keyHash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(match[1]));
   const hash = [...new Uint8Array(keyHash)].map(byte => byte.toString(16).padStart(2, "0")).join("");
   const row = await env.DB.prepare(
@@ -128,9 +136,7 @@ export async function handlePublicChatRoute(request, env, deps) {
 
   if (deps.CHAT_LIMITER?.limit) {
     try {
-      const ip = request.headers.get("CF-Connecting-IP") || "unknown-client";
-      const ipLimit = await deps.CHAT_LIMITER.limit({ key: "widget-ip:" + ip });
-      const keyLimit = ipLimit?.success ? await deps.CHAT_LIMITER.limit({ key: "widget-key:" + row.id }) : ipLimit;
+      const keyLimit = await deps.CHAT_LIMITER.limit({ key: "widget-key:" + row.id });
       if (!keyLimit?.success) return fail("Terlalu banyak permintaan. Coba lagi dalam satu menit.", 429, { "Retry-After": "60" });
     } catch { return fail("Pembatasan permintaan sedang bermasalah.", 503); }
   }

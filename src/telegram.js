@@ -48,9 +48,28 @@ export async function handleTelegramWebhook(request, env, deps) {
 
   const length = Number(request.headers.get("Content-Length") || 0);
   if (Number.isFinite(length) && length > MAX_UPDATE_BYTES) return response({ error: "Update terlalu besar." }, 413);
-  let raw;
-  try { raw = await request.text(); } catch { return response({ error: "Update tidak dapat dibaca." }, 400); }
-  if (new TextEncoder().encode(raw).byteLength > MAX_UPDATE_BYTES) return response({ error: "Update terlalu besar." }, 413);
+  // Content-Length alone is untrusted. Bound the actual stream before allocating
+  // a complete body, including chunked requests with no length header.
+  const reader = request.body?.getReader();
+  if (!reader) return response({ error: "Update tidak dapat dibaca." }, 400);
+  const decoder = new TextDecoder("utf-8", { fatal: true });
+  let raw = "", size = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > MAX_UPDATE_BYTES) {
+        try { await reader.cancel(); } catch {}
+        return response({ error: "Update terlalu besar." }, 413);
+      }
+      raw += decoder.decode(value, { stream: true });
+    }
+    raw += decoder.decode();
+  } catch {
+    try { await reader.cancel(); } catch {}
+    return response({ error: "Update tidak dapat dibaca." }, 400);
+  } finally { reader.releaseLock(); }
   let update;
   try { update = JSON.parse(raw); } catch { return response({ error: "JSON update tidak valid." }, 400); }
 

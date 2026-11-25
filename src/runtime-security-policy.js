@@ -2,7 +2,7 @@
 // Local synthetic harnesses intentionally remain usable without remote bindings.
 const COST_ROUTES=new Set(["/api/chat","/api/public/chat","/api/documents/pdf","/api/integrations/telegram/webhook"]);
 export function productionSecurityRequired(env,url){
- return env.BOR_RUNTIME_SECURITY_REQUIRED==="true"||["getborai.com","app.getborai.com"].includes(url.hostname);
+ return env.BOR_RUNTIME_SECURITY_REQUIRED==="true"||["getborai.com","app.getborai.com","ai-command-center.muhriskiawan23.workers.dev"].includes(url.hostname);
 }
 export function costRouteGuard(env,url,method){
  if(method!=="POST"||!COST_ROUTES.has(url.pathname)||!productionSecurityRequired(env,url))return null;

@@ -29,3 +29,5 @@ Offline E2E and unit evidence are tracked in PR #451 and issue #449. The integra
 - Production cost routes require quota D1 and rate limiter; missing bindings refuse requests before inference. This does not replace WAF, provider budget or measured settlement.
 - Browser PDF local text/OCR stays supported; server conversion deliberately returns PDF_LOCAL_ONLY until separately costed and approved. No new provider spend. Production file-analysis capabilities distinguish local PDF extraction from server conversion.
 - Commercial release remains NO_GO. Existing synthetic quote, ledger, reservation, settlement, FX, fee, margin, refund and failure tests are not real money or entitlement evidence. Merchant/channel approval, verified provider rate card, contractual fees/tax, real settlement and refund evidence require separately authorized live validation. Never mark a synthetic scenario as payment readiness.
+
+- Widget IP limiter runs before any key lookup, key length is bounded, and Telegram request streams are capped before parsing. These controls are application-level safeguards, not proof of infrastructure-level DoS resistance.
