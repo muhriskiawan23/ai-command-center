@@ -38,7 +38,7 @@ while (( $# )); do
   shift
 done
 if (( ${#args[@]} )); then
-  printf 'E2E selection (partial matrix): %s\\n' "${args[*]}"
+  printf 'E2E selection (partial matrix): %s\n' "${args[*]}"
 else
   echo "E2E selection: full configured matrix"
 fi
