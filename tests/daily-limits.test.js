@@ -2,6 +2,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import worker from "../src/index.js";
+import { consumeUsage, dailyLimit } from "../src/daily-limits.js";
 import { startHarness, seedSession } from "./e2e/harness.js";
 
 const ALICE = { id: "sub-alice", email: "alice@example.com" };
@@ -181,3 +182,11 @@ test("error database lain: gagal tertutup (503 tanpa detail internal) dan AI tid
 });
 
 function usageDayUtc(offsetDays = 0) { return new Date(Date.now() + offsetDays * 86400000).toISOString().slice(0, 10); }
+
+
+test("usage counter rejects unsafe and negative inputs before touching storage",async()=>{
+ const env={DB:{prepare(){assert.fail("must not touch storage")}}};
+ for(const [u,l] of [[-1,10],[0,10],[1.5,10],[1,-1],[1,Number.MAX_SAFE_INTEGER+1]])await assert.rejects(consumeUsage(env,"2026-11-25","global",u,l),TypeError);
+ assert.equal(await consumeUsage(env,"2026-11-25","global",2,1),null);
+ assert.equal(dailyLimit({DAILY_LIMIT_GLOBAL:"9007199254740992"},"global"),1500);
+});

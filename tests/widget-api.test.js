@@ -123,7 +123,8 @@ test("developer key creation stores only the hash and returns the secret once", 
     sameOrigin: () => true,
     randomToken: () => "a".repeat(43),
     sha256Hex: async value => "hash:" + value,
-    json: deps.json
+    json: deps.json,
+    readJsonRequest: deps.readJsonRequest
   });
   const data = await response.json();
   assert.equal(response.status, 201);
@@ -196,4 +197,40 @@ test('public widget blocks BOR AI internals after origin/key validation without 
  assert.equal(r.headers.get('Access-Control-Allow-Origin'),'https://shop.example');assert.equal(generated,0);
  assert.equal(DB.calls.some(c=>/UPDATE|INSERT/.test(c.sql)),false);
  const unauthorized=await handlePublicChatRoute(req(),{DB:makeDb()},deps);assert.equal(unauthorized.status,401);
+});
+
+
+test("widget respects shared configured user/global limits and never inserts first over-limit usage", async()=>{
+ const request=()=>new Request("https://api.example/api/public/chat",{method:"POST",headers:{Origin:"https://shop.example",Authorization:"Bearer "+secret,"Content-Type":"application/json"},body:JSON.stringify({message:"Halo"})});
+ for(const config of [{DAILY_LIMIT_USER:"1"},{DAILY_LIMIT_GLOBAL:"1"}]){
+  const DB=makeDb({key:{...validKey,user_id:"user-1"}});
+  const res=await handlePublicChatRoute(request(),{DB,...config},{...deps,runAgent:async()=>assert.fail("must not call AI")});
+  assert.equal(res.status,429);
+  const charges=DB.calls.filter(c=>c.sql.includes("INSERT INTO daily_usage"));
+  assert.equal(charges.some(c=>c.args[4]===1),false);
+  assert.equal(DB.calls.filter(c=>c.sql.includes("UPDATE public_api_keys SET daily_used = MAX")).length,1);
+ }
+ const DB=makeDb({key:{...validKey,user_id:"user-1"}});
+ const res=await handlePublicChatRoute(request(),{DB,DAILY_LIMIT_USER:"9",DAILY_LIMIT_GLOBAL:"13"},deps);
+ assert.equal(res.status,200);
+ assert.deepEqual(DB.calls.filter(c=>c.sql.includes("INSERT INTO daily_usage")).map(c=>c.args[4]),[9,13]);
+});
+test("developer key creation uses bounded JSON decoder before any DB write",async()=>{
+ const DB=makeDb(); const request=new Request("https://app.example/api/developer/keys",{method:"POST",headers:{Origin:"https://app.example","Content-Type":"application/json"},body:"{}"});
+ const res=await handleDeveloperKeysRoute(request,{DB},new URL(request.url),{getSession:async()=>({id:"user-1"}),sameOrigin:()=>true,json:deps.json,readJsonRequest:async(_r,max)=>{assert.equal(max,16384);return {error:Response.json({error:"too large"},{status:413})}}});
+ assert.equal(res.status,413);assert.equal(DB.calls.length,0);
+});
+test("widget preflight rejects opaque and insecure non-local origins",async()=>{
+ for(const origin of ["null","http://shop.example","https://shop.example/path"]){
+  const res=await handlePublicChatRoute(new Request("https://api.example/api/public/chat",{method:"OPTIONS",headers:{Origin:origin}}),{},deps);
+  assert.equal(res.status,403);assert.equal(res.headers.get("Access-Control-Allow-Origin"),null);
+ }
+});
+test("widget accounting never repeats a refund after ambiguous commit",async()=>{
+ const DB=makeDb({key:{...validKey,user_id:"user-1"}});const prepare=DB.prepare.bind(DB);let refunds=0;
+ DB.prepare=sql=>({bind(...args){const s=prepare(sql).bind(...args);if(sql.includes("INSERT INTO daily_usage")&&args[1]==="global")return {...s,first:async()=>null};if(sql.includes("UPDATE daily_usage SET units"))return {...s,run:async()=>{refunds++;throw Error("ambiguous commit")}};return s;}});
+ const request=new Request("https://api.example/api/public/chat",{method:"POST",headers:{Origin:"https://shop.example",Authorization:"Bearer "+secret,"Content-Type":"application/json"},body:JSON.stringify({message:"Halo"})});
+ const res=await handlePublicChatRoute(request,{DB},deps);
+ assert.equal(res.status,429);assert.equal(refunds,1);
+ assert.equal(DB.calls.filter(c=>c.sql.includes("UPDATE public_api_keys SET daily_used = MAX")).length,1);
 });

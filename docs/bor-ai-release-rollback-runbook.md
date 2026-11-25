@@ -1,0 +1,26 @@
+# BOR AI release and rollback — fail-closed operator runbook
+
+Scope: customer app only. No Control Center, payment gateway activation, paid-provider enablement, D1 migration, export or production deployment is authorized by this document.
+
+## Preconditions
+- Keep repository private. Do not merge while required GitHub Actions are red, skipped, queued or have empty steps. GitHub Free private repo cannot enforce native rulesets in the currently observed account. Workflow gate is not a substitute for branch protection or direct Cloudflare access controls.
+- Recover included Actions quota without unapproved spending. Review draft PR #451; compare exact head against main. Run unit/recovery, preview, full E2E (8 viewports, only expected viewport skips), workspace and read-only readiness. Record run IDs, attempts and exact SHA. Check actual required steps. Re-run full workflows on exact current main after an approved merge; do not use older SHA evidence.
+- Cloudflare CI-only is evidence of offline checks, not GitHub Actions, OAuth, live-provider, D1 or production deployment evidence. Never change its no-op deploy or grant production credentials.
+- Confirm active Worker version and traffic allocation, deployment annotation, pinned D1 identity, isolated billing DB, public capabilities, DNS/SSL and authentication. Do not log secrets, session tokens or customer data.
+- Reader is intentionally active via existing Tavily configuration, capped at 8 URLs/day as observed. Preserve only verified current Reader with explicit owner approval; do not silently activate, disable or expand it. Paid image and billing shadow remain OFF. Verify effective text/provider budgets separately; no new paid calls.
+- Review exact pending migrations. No schema changes in normal code-only release. For a dedicated migration require a successful PLAN on exact main, separately reviewed private recovery evidence, current Time Travel bookmark, explicit approval and dedicated credentials. A bookmark fingerprint is not a backup. Third production backup export remains locked; no restore/export from this runbook.
+
+## Release (requires separate owner approval)
+1. Recheck main SHA and all exact-SHA workflow evidence; recheck active production version and preserve current approved feature flags. Abort on drift or unverifiable evidence. Record previous active version and config, not secret values.
+2. Use reviewed manual production workflow from main only, with migrations, billing, paid image and optional Tavily smoke OFF unless separately authorized; note its chat smoke uses live AI and needs explicit budget/owner review. Do not run while spending is prohibited.
+3. Upload candidate version without promotion, verify public health/config, account isolation and approved smoke checks; candidate preview must not expose customer data. Stop if errors or missing Google config. Recheck active version and main before promotion; review traffic plan.
+4. Promote only after approvals and all checks. Verify login/session/logout with owner-controlled test account, health, core chat, Reader capability, and unchanged billing/image state. Monitor errors and spend. Never mark production release complete from dry-run alone.
+
+## Abort and rollback
+- Pre-promotion failure: stop; keep current active version, do not retry paid calls automatically.
+- Post-promotion incident: stop promotion/automation, record version, symptoms and UTC incident time; obtain owner authorization for rollback. Use Cloudflare Workers deployment history to identify last known-good compatible version, verify binding/schema compatibility and current traffic; roll traffic back only via reviewed operation. Verify health/config/session and feature flags again. Worker rollback does not restore D1, R2 or external side effects.
+- D1 incident: freeze writes through separately authorized incident procedure, collect metadata and private recovery evidence; no automatic Time Travel restore. Restore can erase newer chats and has retention limits. Plan recovery of post-checkpoint writes and validate on synthetic/local or isolated recovery DB first. Require independent owner approval before any destructive restore.
+- Backup: do not trigger third export, retry failed exports, expose signed URLs or read customer SQL. Verify privacy, object metadata, checksum/receipt and recovery drill separately. An accepted trigger is not proof of recoverability.
+
+## Audit status
+Offline E2E and unit evidence are tracked in PR #451 and issue #449. The integrated SHA must be validated independently. Source review and synthetic tests do not certify live OAuth, production sessions, real paid credit settlement or all security properties. Any remaining blockers must stay open.

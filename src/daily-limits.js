@@ -9,7 +9,7 @@ export const MULTI_AGENT_UNITS = 3;
 
 export function dailyLimit(env, scope) {
   const configured = Number(env[`DAILY_LIMIT_${scope.toUpperCase()}`]);
-  return Number.isInteger(configured) && configured > 0 ? configured : DAILY_LIMIT_DEFAULTS[scope];
+  return Number.isSafeInteger(configured) && configured > 0 ? configured : DAILY_LIMIT_DEFAULTS[scope];
 }
 export function usageDay(now = new Date()) { return now.toISOString().slice(0, 10); }
 export function secondsUntilNextUtcDay(now = new Date()) {
@@ -19,6 +19,7 @@ export function secondsUntilNextUtcDay(now = new Date()) {
 
 // Atomic check-and-consume: the counter only moves if it stays within the limit. Returns the new total, or null if refused.
 export async function consumeUsage(env, day, subject, units, limit) {
+  if (!Number.isSafeInteger(units) || units <= 0 || !Number.isSafeInteger(limit) || limit < 0) throw new TypeError("Invalid usage units or limit");
   if (units > limit) return null;
   const row = await env.DB.prepare(
     "INSERT INTO daily_usage (day, subject, units, updated_at) VALUES (?, ?, ?, ?) " +

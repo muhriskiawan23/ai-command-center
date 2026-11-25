@@ -1162,7 +1162,11 @@ async function handleAuthRoute(request, env, url) {
     if (!sameOrigin(request)) return json({ error: "Origin tidak valid." }, 403);
     try {
       const token = readCookie(request, SESSION_COOKIE);
-      if (token && env.DB) await env.DB.prepare("DELETE FROM sessions WHERE token_hash = ?").bind(await sha256Hex(token)).run();
+      if (token) {
+        if (!env.DB?.prepare) throw new Error("Session revocation storage unavailable.");
+        const revoked = await env.DB.prepare("DELETE FROM sessions WHERE token_hash = ?").bind(await sha256Hex(token)).run();
+        if (revoked?.success === false) throw new Error("Session revocation failed.");
+      }
       return json({ authenticated: false }, 200, { "Set-Cookie": cookieHeader(SESSION_COOKIE, "", 0) });
     } catch (error) {
       console.error("Logout failed:", safeError(error));
@@ -1554,7 +1558,7 @@ export default {
       }
     }
     if (url.pathname === "/api/developer/keys" || url.pathname.startsWith("/api/developer/keys/")) {
-      try { return await handleDeveloperKeysRoute(request, env, url, { getSession, sameOrigin, randomToken, sha256Hex, json }); }
+      try { return await handleDeveloperKeysRoute(request, env, url, { getSession, sameOrigin, randomToken, sha256Hex, json, readJsonRequest }); }
       catch (error) { console.error("Developer key request failed:", safeError(error)); return json({ error: "Pengelolaan API key gagal diproses." }, 503); }
     }
     if (url.pathname === "/api/public/chat") {
