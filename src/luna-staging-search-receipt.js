@@ -11,6 +11,8 @@ export function stagingSearchReceipt(response, data) {
   const webCalls = Array.isArray(data?.output) ? data.output.filter(item => item?.type === "web_search_call").length : null;
   const usage = [input, output, cached, reasoning, webCalls].every(tokenCount) && cached <= input && reasoning <= output
     ? { input, output, cached, reasoning, webCalls } : null;
+  const billedWebRequests = data?.tool_usage?.web_search?.num_requests;
+  if (usage && tokenCount(billedWebRequests)) usage.billedWebRequests = billedWebRequests;
   return { httpStatus: response.status, requestId, model, usage,
     completed: data?.status === "completed", reconciliationRequired: true };
 }

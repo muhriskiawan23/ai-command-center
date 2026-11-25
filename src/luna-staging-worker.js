@@ -64,6 +64,32 @@ async function authorized(request, secret) {
   return difference === 0;
 }
 
+// Short-lived, staging-only operator bridge. The GET page never directly invokes a provider.
+// A high-entropy one-time header, origin check, expiry, and durable campaign claim gate the POST.
+async function handleSearchSmokeBridge(request, env) {
+  const digest = env.BOR_LUNA_SEARCH_SMOKE_TRIGGER_DIGEST;
+  const expiry = Number(env.BOR_LUNA_SEARCH_SMOKE_EXPIRES_AT);
+  const now = Date.now();
+  if (env.BOR_WEB_SEARCH_KILL_SWITCH === "true" || env.BOR_LUNA_STAGING_WEB_SEARCH_ENABLED !== "true" ||
+      !/^[0-9a-f]{64}$/.test(digest || "") || !Number.isSafeInteger(expiry) ||
+      expiry <= now || expiry > now + 300000) return json({ error: "not_found" }, 404);
+  const token = request.headers.get("X-BOR-Staging-Smoke") || "";
+  if (!/^[0-9a-f]{64}$/.test(token)) return json({ error: "operator_auth_required" }, 401);
+  const actual = await sha256Hex(token);
+  let diff = 0;
+  for (let i = 0; i < digest.length; i++) diff |= actual.charCodeAt(i) ^ digest.charCodeAt(i);
+  if (diff !== 0) return json({ error: "operator_auth_required" }, 401);
+  if (request.method === "GET") {
+    const nonce = Array.from(crypto.getRandomValues(new Uint8Array(16)), n => n.toString(16).padStart(2, "0")).join("");
+    return new Response('<!doctype html><meta charset="utf-8"><title>Staging smoke</title><pre id="result">Pending</pre><script nonce="' + nonce + '">fetch(location.pathname,{method:"POST",credentials:"omit",cache:"no-store",headers:{"X-BOR-Smoke-Intent":"once"}}).then(async r=>{document.getElementById("result").textContent=JSON.stringify({status:r.status,body:await r.json()});}).catch(()=>{document.getElementById("result").textContent="request_failed";}).finally(()=>{document.getElementById("result").id="done";});</script>', {
+      headers: {"Content-Type":"text/html; charset=utf-8","Cache-Control":"no-store","Referrer-Policy":"no-referrer","Content-Security-Policy":"default-src 'none'; script-src 'nonce-" + nonce + "'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'"}
+    });
+  }
+  if (request.method !== "POST" || request.headers.get("Origin") !== new URL(request.url).origin ||
+      request.headers.get("X-BOR-Smoke-Intent") !== "once") return json({ error: "not_found" }, 404);
+  return smokeWebSearch(request, env);
+}
+
 // One-shot fallback when a staging Cron Trigger has not propagated.
 async function handleLiveEvaluationTrigger(request, env) {
   const digest = env.BOR_LUNA_LIVE_TRIGGER_DIGEST;
@@ -91,6 +117,7 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     if (url.pathname === "/__staging-evaluation") return handleLiveEvaluationTrigger(request, env);
+    if (url.pathname === "/__staging-search-smoke") return handleSearchSmokeBridge(request, env);
     if (request.method !== "POST" || !ROUTES.has(url.pathname)) {
       return json({ error: "not_found" }, 404);
     }
