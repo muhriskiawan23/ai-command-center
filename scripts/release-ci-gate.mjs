@@ -77,6 +77,10 @@ export function verifyJobs(payload,expected,run){
  }
  return true;
 }
+export function verifyMainHead(payload,sha){
+ if(payload?.object?.type!=="commit"||payload.object.sha!==sha)throw Error("Main changed or is unverifiable; refuse stale release");
+ return true;
+}
 async function main(){
  const {GITHUB_REPOSITORY:repo,GITHUB_REF:ref,GITHUB_SHA:sha,GH_TOKEN:token}=process.env;
  if(repo?.toLowerCase()!=="muhriskiawan23/ai-command-center"||ref!=="refs/heads/main"||!/^[a-f0-9]{40}$/.test(sha||"")||!token)throw Error("Release CI gate requires exact main and read-only Actions token");
@@ -86,6 +90,7 @@ async function main(){
   if(!response.ok)throw Error("GitHub release evidence unavailable: HTTP "+response.status);
   return response.json();
  }
+ verifyMainHead(await get("/git/ref/heads/main"),sha);
  const params=new URLSearchParams({branch:"main",head_sha:sha,per_page:"100"});
  const runs=await get(`/actions/runs?${params}`);
  for(const [workflow,expected] of Object.entries(REQUIRED)){
@@ -94,6 +99,7 @@ async function main(){
   verifyJobs(jobs,expected,run);
   console.log(`Verified exact-main executed checks: ${workflow}, run ${run.id}, attempt ${run.run_attempt}`);
  }
+ verifyMainHead(await get("/git/ref/heads/main"),sha);
  console.log("Release CI gate passed; separate production safety and approval gates still apply.");
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

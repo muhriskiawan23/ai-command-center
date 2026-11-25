@@ -6,10 +6,10 @@ export function verifyReaderBindings(bindings,mode,event){
  const text=(name,value)=>{const a=named(name);return a.length===1&&a[0].type==="plain_text"&&a[0].text===value;};
  const limit=named("TAVILY_EXTRACT_DAILY_URL_LIMIT");
  if(mode==="off"){
-  if(!text("URL_READER_ENABLED","false")||!(limit.length===0||(limit.length===1&&limit[0].type==="plain_text"&&/^0+$/.test(limit[0].text||""))))throw Error("Reader safe-off binding requirements failed");
+  if(!text("URL_READER_ENABLED","false")||!(limit.length===0||(limit.length===1&&limit[0].type==="plain_text"&&typeof limit[0].text==="string"&&/^0+$/.test(limit[0].text))))throw Error("Reader safe-off binding requirements failed");
  }else{
   const keys=named("TAVILY_API_KEY");
-  if(!text("URL_READER_ENABLED","true")||!text("URL_READER_PROVIDER","tavily")||limit.length!==1||limit[0].type!=="plain_text"||!/^[1-8]$/.test(limit[0].text||"")||keys.length!==1||keys[0].type!=="secret_text")throw Error("Bounded existing Tavily Reader requirements failed");
+  if(!text("URL_READER_ENABLED","true")||!text("URL_READER_PROVIDER","tavily")||limit.length!==1||limit[0].type!=="plain_text"||typeof limit[0].text!=="string"||!/^[1-8]$/.test(limit[0].text)||keys.length!==1||keys[0].type!=="secret_text")throw Error("Bounded existing Tavily Reader requirements failed");
  }
  return true;
 }

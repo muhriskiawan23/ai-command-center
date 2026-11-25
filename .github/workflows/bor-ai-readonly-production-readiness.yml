@@ -26,10 +26,12 @@ on:
       - 'src/plugin-capabilities.js'
       - 'src/image-jobs.js'
       - 'scripts/reader-preserve-guard.mjs'
+      - 'scripts/readiness-reader-policy.mjs'
 permissions:
   contents: read
 jobs:
   verify:
+    if: ${{ github.ref == 'refs/heads/main' }}
     name: Read-only runtime, URL Reader and image gates
     runs-on: ubuntu-24.04
     timeout-minutes: 5
