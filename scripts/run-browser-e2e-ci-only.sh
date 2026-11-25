@@ -8,9 +8,39 @@ if [[ "${BOR_E2E_CI_ONLY:-}" != "1" ]]; then
   echo "E2E runner is opt-in and CI-only." >&2
   exit 1
 fi
-if [[ ! -f tests/e2e/harness.js || ! -f playwright.config.js && ! -f tests/e2e/playwright.config.js ]]; then
+if [[ ! -f tests/e2e/harness.js || ! -f tests/e2e/playwright.config.js || ! -f package-lock.json ]]; then
   echo "Expected offline BOR AI E2E harness missing." >&2
   exit 1
+fi
+
+# Only allow known viewport names and existing E2E spec basenames. No arbitrary
+# Playwright flags (including alternate configs, reporters, or --pass-with-no-tests).
+args=()
+while (( $# )); do
+  case "$1" in
+    --project)
+      if (( $# < 2 )); then echo "Missing project name." >&2; exit 2; fi
+      project="$2"; shift
+      ;;
+    --project=*) project="${1#--project=}" ;;
+    *.spec.js)
+      if [[ ! "$1" =~ ^[a-zA-Z0-9_-]+\.spec\.js$ || ! -f "tests/e2e/$1" ]]; then
+        echo "Invalid E2E spec." >&2; exit 2
+      fi
+      args+=("$1"); shift; continue
+      ;;
+    *) echo "Unsupported E2E runner argument." >&2; exit 2 ;;
+  esac
+  case "$project" in
+    phone-360x800|phone-375x812|phone-390x844|phone-412x915|phone-landscape-915x412|tablet-768x1024|tablet-landscape-1024x768|desktop-1280x800) args+=("--project=$project") ;;
+    *) echo "Unknown E2E viewport." >&2; exit 2 ;;
+  esac
+  shift
+done
+if (( ${#args[@]} )); then
+  printf 'E2E selection (partial matrix): %s\\n' "${args[*]}"
+else
+  echo "E2E selection: full configured matrix"
 fi
 
 npm ci
@@ -43,4 +73,4 @@ apt-get update
 )
 export LD_LIBRARY_PATH="$work/libs/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH:-}"
 export CI=1
-npx playwright test --config tests/e2e/playwright.config.js "$@"
+npx playwright test --config tests/e2e/playwright.config.js "${args[@]}"
