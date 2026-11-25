@@ -42,14 +42,20 @@ test('missing, empty migration directories must fail closed',()=>{
     assert.throws(()=>inspectProductionMigrations(''),/directory_required/);
   }finally{rmSync(root,{recursive:true,force:true})}
 });
-test('production workflow cannot run remote D1 apply without preceding financial scan',()=>{
+test('generic workflow cannot perform production D1 migration; dedicated image workflow retains financial scan and PLAN gate',()=>{
   const workflow=readFileSync(new URL('../.github/workflows/bor-ai-deploy.yml',import.meta.url),'utf8');
-  const scan=workflow.indexOf('node scripts/check-production-migration-isolation.mjs migrations');
-  const apply=workflow.indexOf('d1 migrations apply bor-ai-chat --remote');
-  assert.ok(scan>0&&apply>scan,'block must execute before remote apply');
-  assert.match(workflow,/name: Reject synthetic billing migrations in production D1 directory[\s\S]*?if: \$\{\{ inputs\.apply_db_migrations \}\}/);
-  assert.match(workflow,/name: Apply D1 migrations[\s\S]*?if: \$\{\{ inputs\.apply_db_migrations \}\}/);
+  const refusal=workflow.indexOf('Generic production D1 writes are disabled');
+  const credentials=workflow.indexOf('- name: Validate required credentials');
+  assert.ok(refusal>0&&credentials>refusal);
+  assert.doesNotMatch(workflow,/d1 migrations apply bor-ai-chat/);
   assert.match(workflow,/apply_db_migrations:[\s\S]*?default: false/);
+  const dedicated=readFileSync(new URL('../.github/workflows/bor-ai-image-d1-release.yml',import.meta.url),'utf8');
+  const prior=dedicated.indexOf('node scripts/verify-reviewed-plan-run.mjs');
+  const scan=dedicated.indexOf('node scripts/check-production-migration-isolation.mjs migrations');
+  const apply=dedicated.indexOf('d1 migrations apply bor-ai-chat --remote');
+  assert.ok(prior>0&&scan>prior&&apply>scan);
+  assert.match(dedicated,/PRIVATE_D1_RECOVERY_EVIDENCE_REVIEWED/);
+  assert.match(dedicated,/CLOUDFLARE_D1_MIGRATION_TOKEN/);
 });
 
 test('image migrations can initialize a primary chat D1 with no synthetic billing tables',()=>{
