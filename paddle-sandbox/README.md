@@ -8,7 +8,7 @@ This branch does not connect production, change chat authentication, alter billi
 3. Create a sandbox client-side token (test_ prefix), and configure the sandbox default payment link. Never commit API keys or webhook secrets.
 4. Configure an isolated test endpoint and subscribe to transaction.completed, transaction.payment_failed, subscription lifecycle and adjustment events. Store the endpoint secret as PADDLE_SANDBOX_WEBHOOK_SECRET in the sandbox Worker only.
 5. Set the test token and the two sandbox price IDs as PADDLE_SANDBOX_CLIENT_TOKEN, PADDLE_SANDBOX_BASIC_PRICE_ID and PADDLE_SANDBOX_PRO_PRICE_ID. Set PADDLE_SANDBOX_ENABLED=true only after checking the sandbox dashboard.
-6. Use Paddle.js with Paddle.Environment.set("sandbox") before initialization. A separate test checkout UI is still needed; no link from live BOR AI.
+6. Use Paddle.js with Paddle.Environment.set("sandbox") before initialization. The isolated /checkout page does this when sandbox configuration is present. No link from live BOR AI. Verify the Paddle.js browser checkout and CSP in sandbox before considering this ready.
 7. Run local tests with node --test tests/paddle-sandbox.test.mjs. Use Paddle webhook simulator to verify the real signed requests. Test successful, failed, renewal, cancellation, refund and duplicate deliveries.
 
 ## Remaining safety gates
