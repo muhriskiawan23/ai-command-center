@@ -380,3 +380,7 @@ html[dir="rtl"] .composer-bottom{flex-direction:row}
 .file-picker-label{display:block;cursor:pointer}
 .file-picker-label:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .file-picker-label[aria-disabled="true"]{opacity:.5;cursor:wait}
+
+.web-citation { font-size: .9em; font-weight: 600; white-space: nowrap; }
+.grounded-google-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.grounded-google-widget { display: block; width: 100%; min-height: 7rem; border: 0; }

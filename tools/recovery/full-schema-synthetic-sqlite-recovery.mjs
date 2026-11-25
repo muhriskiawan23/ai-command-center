@@ -17,7 +17,7 @@ export const REVIEWED_MIGRATIONS=Object.freeze([
   '0007_answer_feedback.sql','0008_message_link_sources.sql',
   '0009_public_api_keys.sql','0010_github_connections.sql',
   '0011_search_provider_usage.sql','0012_image_jobs.sql',
-  '0016_image_chat_history.sql'
+  '0016_image_chat_history.sql','0017_web_search_v2_usage.sql'
 ]);
 
 function ensureReviewedMigrations(){
@@ -86,6 +86,8 @@ export function createFullSchemaSyntheticFixture(){
       'SYNTHETIC_CIPHERTEXT_NOT_A_TOKEN',null,t+3600,null,t,t);
     run(db,'INSERT INTO search_provider_usage(day,provider,requests,attempts,successes,failures,rate_limited,last_reason,updated_at) VALUES(?,?,?,?,?,?,?,?,?)',
       '2026-11-23','tavily',4,5,4,1,0,'synthetic_only',t);
+    run(db,'INSERT INTO web_search_v2_usage(day,calls,reserved_micro_usd) VALUES(?,?,?)',
+      '2026-11-23',3,75000);
 
     // Real image triggers reserve credit, append ledger entries and increment
     // the pilot meter. We DO NOT manually duplicate their side effects.

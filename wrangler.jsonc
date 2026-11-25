@@ -42,6 +42,7 @@
     }
   ],
   "vars": {
+    "BOR_WEB_SEARCH_MODE": "legacy",
     "SEARCH_SHARED_BUDGET_ENABLED": "true",
     "URL_READER_ENABLED": "false",
     "SEARCH_PROVIDER": "tavily",

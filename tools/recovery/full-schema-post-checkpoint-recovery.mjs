@@ -1,5 +1,5 @@
 // NONPRODUCTION synthetic-only end-to-end snapshot + post-checkpoint tail drill.
-// Uses all 13 checked-in migrations, in-memory fake source and a disposable
+// Uses all checked-in migrations, in-memory fake source and a disposable
 // TEMP-file SQLite restore. No Cloudflare APIs, secrets, real account data,
 // customer exports, production Worker integration, or automatic release.
 import {DatabaseSync, backup} from 'node:sqlite';
@@ -7,7 +7,7 @@ import {createHash} from 'node:crypto';
 import {mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {createFullSchemaSyntheticFixture,fingerprintFullSyntheticSchema}
+import {REVIEWED_MIGRATIONS,createFullSchemaSyntheticFixture,fingerprintFullSyntheticSchema}
   from './full-schema-synthetic-sqlite-recovery.mjs';
 
 const OWNER='synthetic-owner-only';
@@ -225,7 +225,7 @@ export async function drillFullSchemaPostCheckpointRecovery(){
        count('SELECT COUNT(*) AS n FROM offline_tail_deleted_accounts')!==1)
       fail('result_invariants_failed');
     return Object.freeze({passed:true,syntheticOnly:true,
-      migrationsReplayed:13,tailEventsApplied:5,checkpoint:5,
+      migrationsReplayed:REVIEWED_MIGRATIONS.length,tailEventsApplied:5,checkpoint:5,
       atomicPairRollback:true,postCheckpointTurnPreserved:true,
       originalIntegerIdsPreserved:true,originalSessionPreserved:true,
       sourceAndRestoredFingerprintsMatch:true,deletionTombstonesApplied:true,

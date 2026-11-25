@@ -4,6 +4,8 @@
 //  - ASSETS: menyajikan folder public/.
 // Hanya untuk pengujian; tidak dipakai di production.
 import http from "node:http";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { DatabaseSync } from "node:sqlite";
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { extname, join, relative, isAbsolute, sep } from "node:path";
@@ -104,8 +106,14 @@ export async function startHarness({ port = 0, googleClientId = "test-client.app
       const cookies = response.headers.getSetCookie?.() || [];
       if (cookies.length) headers["set-cookie"] = cookies;
       res.writeHead(response.status, headers);
-      res.end(Buffer.from(await response.arrayBuffer()));
+      if (response.headers.get("content-type")?.startsWith("application/x-ndjson") && response.body) {
+        res.flushHeaders();
+        await pipeline(Readable.fromWeb(response.body), res);
+      } else {
+        res.end(Buffer.from(await response.arrayBuffer()));
+      }
     } catch (error) {
+      if (res.destroyed) return;
       console.error("[E2E HARNESS] Worker request failed:", req.method, req.url, error?.stack || error);
       if (!res.headersSent) res.writeHead(500, { "content-type": "text/plain; charset=utf-8" });
       if (!res.writableEnded) res.end("E2E harness request failed");
