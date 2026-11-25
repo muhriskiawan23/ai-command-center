@@ -158,3 +158,13 @@ test('Telegram blocks internal BOR AI requests without inference or daily usage 
  const r=await handleTelegramWebhook(request(body),env,deps);assert.equal(r.status,200);assert.equal((await r.json()).protected,true);
  assert.equal(calls,0);assert.equal(sent.length,1);assert.match(sent[0].text,/tidak dapat/);
 });
+
+
+test("Telegram stops oversized chunked body before buffering or inference",async()=>{
+ const {env,deps,sent}=setup(); let reads=0,cancelled=false;
+ const body=new ReadableStream({pull(c){reads++;if(reads>16){c.close();return;}c.enqueue(new Uint8Array(16384).fill(65));},cancel(){cancelled=true;}});
+ const req=new Request("https://example.test/api/integrations/telegram/webhook",{method:"POST",headers:{"Content-Type":"application/json","X-Telegram-Bot-Api-Secret-Token":secret},body,duplex:"half"});
+ deps.runAgent=async()=>assert.fail("no inference");
+ const result=await handleTelegramWebhook(req,env,deps);
+ assert.equal(result.status,413);assert.equal(cancelled,true);assert.ok(reads<16);assert.equal(sent.length,0);
+});

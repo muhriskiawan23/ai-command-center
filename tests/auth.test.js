@@ -217,3 +217,23 @@ test("Google authentication fails closed when the rate limiter throws", async ()
   assert.equal(res.status, 503);
   assert.match((await res.json()).error, /pembatasan percobaan login/i);
 });
+
+
+test("logout cannot claim server-side revocation when session storage is absent or reports failure", async () => {
+  for (const env of [{}, {DB:{prepare(){return {bind(){return this},async run(){return {success:false}}}}}}]) {
+    const res=await worker.fetch(request("/api/auth/logout",{method:"POST",headers:{Cookie:SESSION_COOKIE,Origin:"https://example.test"}}),env);
+    assert.equal(res.status,503);
+    assert.equal(res.headers.get("Set-Cookie"),null);
+  }
+  const guest=await worker.fetch(request("/api/auth/logout",{method:"POST",headers:{Origin:"https://example.test"}}),{});
+  assert.equal(guest.status,200);
+});
+test("logout revokes hashed token, not raw cookie, and clears secure cookie",async()=>{
+  const db=mockDB();
+  const res=await worker.fetch(request("/api/auth/logout",{method:"POST",headers:{Cookie:SESSION_COOKIE,Origin:"https://example.test"}}),{DB:db});
+  assert.equal(res.status,200);
+  const call=db.calls.find(x=>x.type==="run"&&x.sql.includes("DELETE FROM sessions WHERE token_hash"));
+  assert.match(call.values[0],/^[a-f0-9]{64}$/);
+  assert.notEqual(call.values[0],"test-session-secret");
+  assert.match(res.headers.get("Set-Cookie"),/Max-Age=0; Secure; HttpOnly; SameSite=Lax/);
+});

@@ -1,3 +1,4 @@
+import { costRouteGuard, serverPdfConversionAllowed } from "./runtime-security-policy.js";
 import { BACKUP_MODEL, withTextProviderFailover } from "./text-provider-failover.js";
 import { TextInferenceBudgetError, withTextInferenceBudget } from "./text-inference-budget.js";
 import { handleImageRoute, imageConfig, consumeImageQueue, cleanupImageJobs, listChatImageJobs } from "./image-jobs.js";
@@ -1057,7 +1058,7 @@ async function handlePdfConversionRoute(request, env) {
   try { bytes = new Uint8Array(await file.arrayBuffer()); }
   catch { return json({ error: "File PDF tidak dapat dibaca." }, 400); }
   if (new TextDecoder().decode(bytes.subarray(0, 5)) !== "%PDF-") return json({ error: "File tidak memiliki struktur PDF yang valid." }, 415);
-  if (typeof env.AI?.toMarkdown !== "function") return json({ error: "Layanan pembaca PDF belum tersedia pada konfigurasi AI." }, 503);
+  if (!serverPdfConversionAllowed(env,new URL(request.url))) return json({ error: "Konversi PDF server tidak tersedia. Gunakan ekstraksi teks atau OCR lokal di browser BOR AI.", code: "PDF_LOCAL_ONLY" }, 503);
 
   const usage = await enforceDailyLimits(env, request, user, 1);
   if (!usage.ok) return usage.response;
@@ -1162,7 +1163,11 @@ async function handleAuthRoute(request, env, url) {
     if (!sameOrigin(request)) return json({ error: "Origin tidak valid." }, 403);
     try {
       const token = readCookie(request, SESSION_COOKIE);
-      if (token && env.DB) await env.DB.prepare("DELETE FROM sessions WHERE token_hash = ?").bind(await sha256Hex(token)).run();
+      if (token) {
+        if (!env.DB?.prepare) throw new Error("Session revocation storage unavailable.");
+        const revoked = await env.DB.prepare("DELETE FROM sessions WHERE token_hash = ?").bind(await sha256Hex(token)).run();
+        if (revoked?.success === false) throw new Error("Session revocation failed.");
+      }
       return json({ authenticated: false }, 200, { "Set-Cookie": cookieHeader(SESSION_COOKIE, "", 0) });
     } catch (error) {
       console.error("Logout failed:", safeError(error));
@@ -1515,6 +1520,8 @@ export default {
   async fetch(request, env) {
     env = withTextProviderFailover(withTextInferenceBudget(env));
     const url = new URL(request.url);
+    const costGuard = costRouteGuard(env,url,request.method);
+    if (costGuard) return json({ error: "Pembatasan penggunaan belum tersedia. Coba lagi nanti.", code: costGuard.code }, costGuard.status);
     if (url.pathname === "/api/billing/account") {
       // Read-only readiness shadow. OFF unless separately enabled and a
       // dedicated HMAC-attested D1 is explicitly bound by an operator.
@@ -1554,7 +1561,7 @@ export default {
       }
     }
     if (url.pathname === "/api/developer/keys" || url.pathname.startsWith("/api/developer/keys/")) {
-      try { return await handleDeveloperKeysRoute(request, env, url, { getSession, sameOrigin, randomToken, sha256Hex, json }); }
+      try { return await handleDeveloperKeysRoute(request, env, url, { getSession, sameOrigin, randomToken, sha256Hex, json, readJsonRequest }); }
       catch (error) { console.error("Developer key request failed:", safeError(error)); return json({ error: "Pengelolaan API key gagal diproses." }, 503); }
     }
     if (url.pathname === "/api/public/chat") {

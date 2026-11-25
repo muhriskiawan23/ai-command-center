@@ -92,12 +92,20 @@ test('the tool fails closed if image SQL or baseline contains billing or unexpec
     assert.throws(()=>prepareImageOnlyMigrationList({root}),/reviewed Reader-OFF repository baseline/);
   });
 });
-test('the ordinary production deployment still rejects mixed billing migrations and defaults to no apply',()=>{
+test('ordinary deployment refuses generic APPLY; dedicated image APPLY uses scanned isolated migrations only',()=>{
   const workflow=fs.readFileSync(path.join(originalRoot,'.github/workflows/bor-ai-deploy.yml'),'utf8');
-  const guard=workflow.indexOf('node scripts/check-production-migration-isolation.mjs migrations');
-  const apply=workflow.indexOf('d1 migrations apply bor-ai-chat --remote');
-  assert.ok(guard>0&&apply>guard);
+  const refusal=workflow.indexOf('Generic production D1 writes are disabled');
+  const creds=workflow.indexOf('- name: Validate required credentials');
+  assert.ok(refusal>0&&creds>refusal);
+  assert.doesNotMatch(workflow,/d1 migrations apply bor-ai-chat/);
   assert.match(workflow,/apply_db_migrations:[\s\S]*?default: false/);
+  const dedicated=fs.readFileSync(path.join(originalRoot,'.github/workflows/bor-ai-image-d1-release.yml'),'utf8');
+  const scan=dedicated.indexOf('node scripts/check-production-migration-isolation.mjs migrations');
+  const prepare=dedicated.indexOf('node scripts/prepare-image-only-migration-list.mjs');
+  const apply=dedicated.indexOf('d1 migrations apply bor-ai-chat --remote --config wrangler.image-only-migrations.generated.jsonc');
+  assert.ok(scan>0&&prepare>scan&&apply>prepare);
+  assert.equal([...dedicated.matchAll(/d1 migrations apply bor-ai-chat/g)].length,1);
+  assert.match(dedicated,/default: plan/);
 });
 
 test('reviewed 0012 then 0016 SQL applies locally with no synthetic billing objects',()=>{

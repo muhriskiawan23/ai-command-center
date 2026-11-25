@@ -34,7 +34,7 @@ on:
         type: string
         default: ""
       apply_db_migrations:
-        description: "Apply pending production D1 migrations (only after reviewing pending changes and confirming the current Time Travel bookmark)"
+        description: "Retired: must remain false. Use separately reviewed schema-specific PLAN/APPLY workflow."
         required: true
         type: boolean
         default: false
@@ -62,7 +62,27 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  release-ci-gate:
+    name: Require exact-main executed CI before production
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 22
+      - name: Verify actual successful workflow attempts and required steps
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/release-ci-gate.mjs
   deploy:
+    needs: release-ci-gate
     name: Provision, migrate, and deploy BOR AI
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -87,6 +107,10 @@ jobs:
           set -euo pipefail
           if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
             echo "::error::Production deployment must be dispatched from the main branch. Selected ref: $GITHUB_REF"
+            exit 1
+          fi
+          if [[ "${{ inputs.apply_db_migrations }}" != "false" ]]; then
+            echo "::error::Generic production D1 writes are disabled; use dedicated reviewed schema PLAN/APPLY workflow."
             exit 1
           fi
           if [[ "$BOR_IMAGES_ENABLED" == "true" ]]; then
@@ -160,6 +184,7 @@ jobs:
           node --input-type=module <<'NODE'
           import fs from "node:fs";
           import { buildPreservedTavilyReaderConfig } from "./scripts/reader-preserve-guard.mjs";
+          import { activeTextPolicy, verifyPlannedTextPolicy } from "./scripts/text-release-budget-guard.mjs";
           const config=JSON.parse(fs.readFileSync("wrangler.jsonc","utf8"));
           const desired=config.vars?.URL_READER_ENABLED;
           if (!["true","false"].includes(desired)) throw Error("Candidate URL Reader flag is missing/invalid");
@@ -180,6 +205,10 @@ jobs:
           const version=await get("/versions/"+encodeURIComponent(active[0].version_id));
           const bindings=version?.resources?.bindings;
           if(!Array.isArray(bindings))throw Error("Active Worker bindings unavailable");
+          const textPolicy=activeTextPolicy(bindings);
+          verifyPlannedTextPolicy(config,textPolicy,process.env);
+          fs.appendFileSync(process.env.GITHUB_ENV,"BOR_EXPECTED_TEXT_POLICY="+JSON.stringify(textPolicy)+"\n");
+          console.log("Active text provider mode and spend caps preserved in planned configuration");
           const named=bindings.filter(b=>b.name==="URL_READER_ENABLED");
           if(named.length!==1||named[0].type!=="plain_text"||!["true","false"].includes(named[0].text))
             throw Error("Active URL Reader flag is unverifiable; refuse release");
@@ -280,32 +309,15 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: npx --yes wrangler@4 d1 migrations list bor-ai-chat --remote --config wrangler.jsonc
 
-      # Synthetic 0013..0015 billing SQL must remain in staging/billing and
-      # must never re-enter the primary production D1 migration directory.
-      - name: Reject synthetic billing migrations in production D1 directory
+      - name: Apply D1 migrations (retired; fail closed)
         if: ${{ inputs.apply_db_migrations }}
-        run: node scripts/check-production-migration-isolation.mjs migrations
-
-      # Cloudflare D1 Time Travel is not a transactional safe-deploy switch.
-      # Verify a valid current bookmark against the pinned primary D1 *before*
-      # any possible schema write. Record only timestamp and hash, not secret.
-      - name: Require production D1 rollback bookmark before migration
-        if: ${{ inputs.apply_db_migrations }}
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: node scripts/verify-d1-image-migration-rollback.mjs
-
-      - name: Apply D1 migrations
-        if: ${{ inputs.apply_db_migrations }}
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: npx --yes wrangler@4 d1 migrations apply bor-ai-chat --remote --config wrangler.jsonc
+        run: |
+          echo "::error::Generic migration path is retired; no schema write performed."
+          exit 1
 
       - name: Explain skipped production migrations
         if: ${{ !inputs.apply_db_migrations }}
-        run: echo "Production D1 migrations were not applied. Review the migration list and explicitly enable apply_db_migrations on a later dispatch if needed."
+        run: echo "Production D1 migrations were not applied. Use a separate reviewed schema-specific PLAN/APPLY workflow if needed."
 
       - name: Prepare reviewed Luna recovery settings
         if: ${{ env.BOR_TEXT_LUNA_PRIMARY == 'true' }}
@@ -419,6 +431,16 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: npx --yes wrangler@4 d1 execute bor-ai-chat --remote --config wrangler.jsonc --command "SELECT name FROM sqlite_master WHERE type='trigger' AND name IN ('image_reserve','image_reserve_debit','image_refund','image_grant')" --json | node --input-type=module -e 'let s="";for await(const c of process.stdin)s+=c;const d=JSON.parse(s);if(d[0]?.results?.length!==4)throw Error("Apply reviewed image D1 migration 0012 before activation.")'
+
+      - name: Verify final generated text policy before version upload
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          import { verifyCandidateTextPolicy } from "./scripts/text-release-budget-guard.mjs";
+          const config=JSON.parse(fs.readFileSync(process.env.BOR_DEPLOY_CONFIG,"utf8"));
+          verifyCandidateTextPolicy(config,JSON.parse(process.env.BOR_EXPECTED_TEXT_POLICY));
+          console.log("Final generated text policy preserves active provider mode and spend caps");
+          NODE
 
       - name: Verify candidate chat before switching production traffic
         env:
@@ -570,6 +592,11 @@ jobs:
             throw Error("Active Worker version changed after preflight; aborting promotion");
           console.log("Active Worker version remains unchanged since candidate preflight");
           NODE
+          current_main="$(git ls-remote origin refs/heads/main | cut -f1)"
+          if [[ -z "$current_main" || "$current_main" != "$GITHUB_SHA" ]]; then
+            echo "::error::main changed during candidate validation; refuse stale promotion"
+            exit 1
+          fi
           wrangler versions deploy "$version_id@100" --yes --config "$BOR_DEPLOY_CONFIG" \
             --message "github-sha:$GITHUB_SHA"
           wrangler triggers deploy --config "$BOR_DEPLOY_CONFIG"

@@ -1,11 +1,10 @@
 import { isConfidentialityRequest, confidentialityReply } from "./confidentiality.js";
 import { safeError } from "./safe-error.js";
+import { dailyLimit, consumeUsage } from "./daily-limits.js";
 const MAX_ORIGINS = 5;
 const DEFAULT_DAILY_LIMIT = 100;
 const MAX_DAILY_LIMIT = 500;
 const PUBLIC_REQUEST_UNITS = 2;
-const PUBLIC_USER_LIMIT = 150;
-const PUBLIC_GLOBAL_LIMIT = 1500;
 const KEY_PREFIX = "borai_live_";
 function secondsUntilNextUtcDay(now = new Date()) {
   const next = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1);
@@ -62,7 +61,9 @@ export async function handleDeveloperKeysRoute(request, env, url, deps) {
   }
 
   if (url.pathname === "/api/developer/keys" && request.method === "POST") {
-    const parsed = await request.json().catch(() => null);
+    const decoded = await deps.readJsonRequest(request, 16 * 1024);
+    if (decoded.error) return decoded.error;
+    const parsed = decoded.body;
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return deps.json({ error: "Body JSON tidak valid." }, 400);
     const label = typeof parsed.label === "string" ? parsed.label.trim().slice(0, 60) : "";
     const origins = parsed.origins;
@@ -96,16 +97,24 @@ export async function handleDeveloperKeysRoute(request, env, url, deps) {
 export async function handlePublicChatRoute(request, env, deps) {
   const origin = request.headers.get("Origin") || "";
   if (request.method === "OPTIONS") {
-    if (!origin || origin.length > 300) return deps.json({ error: "Origin tidak valid." }, 403);
+    if (!validOrigin(origin)) return deps.json({ error: "Origin tidak valid." }, 403);
     return new Response(null, { status: 204, headers: corsHeaders(origin) });
   }
   if (request.method !== "POST") return deps.json({ error: "Metode HTTP tidak didukung." }, 405, { Allow: "POST, OPTIONS" });
   const fail = (message, status, extra = {}) => withCors(deps.json({ error: message }, status, extra), origin || "null");
   if (!validOrigin(origin)) return deps.json({ error: "Origin HTTPS yang valid wajib disertakan." }, 403);
-  const match = (request.headers.get("Authorization") || "").match(/^Bearer (borai_live_[A-Za-z0-9_-]{30,})$/);
+  const match = (request.headers.get("Authorization") || "").match(/^Bearer (borai_live_[A-Za-z0-9_-]{30,64})$/);
   if (!match) return fail("API key tidak valid atau tidak ditemukan.", 401);
   if (!env.DB) return fail("Database tidak tersedia.", 503);
 
+  // Limit before hashing or querying D1, including unknown but well-formed keys.
+  if (deps.CHAT_LIMITER?.limit) {
+    try {
+      const ip = request.headers.get("CF-Connecting-IP") || "unknown-client";
+      const limit = await deps.CHAT_LIMITER.limit({ key: "widget-ip:" + ip });
+      if (!limit?.success) return fail("Terlalu banyak permintaan. Coba lagi dalam satu menit.", 429, { "Retry-After": "60" });
+    } catch { return fail("Pembatasan permintaan sedang bermasalah.", 503); }
+  }
   const keyHash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(match[1]));
   const hash = [...new Uint8Array(keyHash)].map(byte => byte.toString(16).padStart(2, "0")).join("");
   const row = await env.DB.prepare(
@@ -127,9 +136,7 @@ export async function handlePublicChatRoute(request, env, deps) {
 
   if (deps.CHAT_LIMITER?.limit) {
     try {
-      const ip = request.headers.get("CF-Connecting-IP") || "unknown-client";
-      const ipLimit = await deps.CHAT_LIMITER.limit({ key: "widget-ip:" + ip });
-      const keyLimit = ipLimit?.success ? await deps.CHAT_LIMITER.limit({ key: "widget-key:" + row.id }) : ipLimit;
+      const keyLimit = await deps.CHAT_LIMITER.limit({ key: "widget-key:" + row.id });
       if (!keyLimit?.success) return fail("Terlalu banyak permintaan. Coba lagi dalam satu menit.", 429, { "Retry-After": "60" });
     } catch { return fail("Pembatasan permintaan sedang bermasalah.", 503); }
   }
@@ -148,22 +155,28 @@ export async function handlePublicChatRoute(request, env, deps) {
 
   const charged = [];
   const consume = async (subject, limit) => {
-    const usage = await env.DB.prepare(
-      "INSERT INTO daily_usage (day, subject, units, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(day, subject) DO UPDATE SET units = daily_usage.units + excluded.units, updated_at = excluded.updated_at WHERE daily_usage.units + excluded.units <= ? RETURNING units"
-    ).bind(day, subject, PUBLIC_REQUEST_UNITS, now, limit).first();
-    if (!usage) return false;
+    const usage = await consumeUsage(env, day, subject, PUBLIC_REQUEST_UNITS, limit);
+    if (usage === null) return false;
     charged.push(subject);
     return true;
   };
+  // Compensate each successful charge at most once. An uncertain refund must
+  // not be repeated blindly: the database may already have committed it.
+  const refund = async () => {
+    for (const subject of charged.splice(0)) {
+      try { await env.DB.prepare("UPDATE daily_usage SET units = MAX(units - ?, 0) WHERE day = ? AND subject = ?").bind(PUBLIC_REQUEST_UNITS, day, subject).run(); }
+      catch (error) { console.error("Public API usage refund failed:", safeError(error)); }
+    }
+    try { await env.DB.prepare("UPDATE public_api_keys SET daily_used = MAX(daily_used - 1, 0), updated_at = ? WHERE id = ? AND usage_day = ?").bind(now, row.id, day).run(); }
+    catch (error) { console.error("Public API key refund failed:", safeError(error)); }
+  };
   try {
-    if (!await consume("user:" + row.user_id, PUBLIC_USER_LIMIT) || !await consume("global", PUBLIC_GLOBAL_LIMIT)) {
-      for (const subject of charged) await env.DB.prepare("UPDATE daily_usage SET units = MAX(units - ?, 0) WHERE day = ? AND subject = ?").bind(PUBLIC_REQUEST_UNITS, day, subject).run();
-      await env.DB.prepare("UPDATE public_api_keys SET daily_used = MAX(daily_used - 1, 0), updated_at = ? WHERE id = ? AND usage_day = ?").bind(now, row.id, day).run();
+    if (!await consume("user:" + row.user_id, dailyLimit(env, "user")) || !await consume("global", dailyLimit(env, "global"))) {
+      await refund();
       return fail("Batas penggunaan harian BOR AI tercapai.", 429, { "Retry-After": String(secondsUntilNextUtcDay()) });
     }
   } catch (error) {
-    for (const subject of charged) await env.DB.prepare("UPDATE daily_usage SET units = MAX(units - ?, 0) WHERE day = ? AND subject = ?").bind(PUBLIC_REQUEST_UNITS, day, subject).run().catch(() => {});
-    await env.DB.prepare("UPDATE public_api_keys SET daily_used = MAX(daily_used - 1, 0) WHERE id = ? AND usage_day = ?").bind(row.id, day).run().catch(() => {});
+    await refund();
     console.error("Public API usage accounting failed:", safeError(error));
     return fail("Pembatasan penggunaan belum tersedia. Coba lagi nanti.", 503);
   }
@@ -186,8 +199,7 @@ export async function handlePublicChatRoute(request, env, deps) {
       usage: { used: Number(consumed.daily_used), limit: Number(consumed.daily_limit), remaining: Math.max(0, Number(consumed.daily_limit) - Number(consumed.daily_used)), resetsAt: "07:00 WIB" }
     }, 200, { "X-RateLimit-Limit": String(consumed.daily_limit), "X-RateLimit-Remaining": String(Math.max(0, Number(consumed.daily_limit) - Number(consumed.daily_used))) }), origin);
   } catch (error) {
-    await env.DB.prepare("UPDATE public_api_keys SET daily_used = MAX(daily_used - 1, 0), updated_at = ? WHERE id = ? AND usage_day = ?").bind(now, row.id, day).run().catch(() => {});
-    for (const subject of charged) await env.DB.prepare("UPDATE daily_usage SET units = MAX(units - ?, 0) WHERE day = ? AND subject = ?").bind(PUBLIC_REQUEST_UNITS, day, subject).run().catch(() => {});
+    await refund();
     console.error("Widget AI generation failed:", safeError(error));
     return fail("AI gagal memproses permintaan. Silakan coba lagi.", 502);
   }

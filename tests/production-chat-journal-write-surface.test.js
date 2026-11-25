@@ -14,7 +14,7 @@ test('production chat write surface is exhaustively pinned, source-only and NOT 
   assert.equal(report.productionJournalActive,false);
   assert.equal(report.safeToActivateProduction,false);
   assert.equal(report.productionCutoverBlocked,true);
-  assert.equal(report.reviewedSqlLiterals,58);
+  assert.equal(report.reviewedSqlLiterals,53);
   assert.equal(report.excludedIsolatedStagingSqlLiterals,6);
   assert.equal(report.productionJournalCoveredSqlLiterals,0);
   assert.ok(report.distinctReviewedSites>=30);
@@ -83,4 +83,11 @@ test('explicitly document unsupported INTEGER IDs, sessions, sources, image depe
   assert.match(app,/INSERT INTO answer_feedback/);
   assert.match(readFileSync('src/image-jobs.js','utf8'),/INSERT INTO conversations/);
   assert.equal(JOURNAL_WRITE_SURFACE_MATRIX.every(x=>x.coveredByActiveJournal===false),true);
+});
+
+
+test('widget uses shared quota writer and still rejects any reintroduced direct insertion',()=>{
+ const path='src/widget-api.js',source=readFileSync(path,'utf8');
+ assert.match(source,/await consumeUsage\(env, day, subject, PUBLIC_REQUEST_UNITS, limit\)/);
+ assert.throws(()=>auditProductionChatJournalWriteSurface({sourceOverrides:{[path]:source+'\nconst unreviewed = "INSERT INTO daily_usage (day,subject,units) VALUES (?,?,?)";\n'}}),/journal_write_coverage_inventory_drift:.*new_unreviewed_writer:src\/widget-api\.js\/INSERT INTO\/daily_usage/);
 });

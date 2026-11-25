@@ -1,3 +1,4 @@
+import { serverPdfConversionAllowed } from "./runtime-security-policy.js";
 import { imageConfig } from "./image-jobs.js";
 import { isSearchProviderConfigured } from "./research.js";
 
@@ -47,6 +48,8 @@ export function pluginCapabilities(env = {}) {
       fileAnalysis: {
         available: true,
         formats: FILE_FORMATS,
+        pdfLocalExtraction: true,
+        pdfServerConversion: serverPdfConversionAllowed(env,new URL("https://app.getborai.com")),
         imageVision: env.BOR_VISION_ENABLED === "true"
       },
       imageGeneration: {

@@ -52,11 +52,18 @@ test('Time Travel API denial or missing bookmark blocks production migration',as
     return okay({uuid,name:'bor-ai-chat'});
   }}),/bookmark cannot be verified/);
 });
-test('D1 deployment must run the restore-point guard after migration scan but before APPLY',()=>{
- const wf=readFileSync(new URL('../.github/workflows/bor-ai-deploy.yml',import.meta.url),'utf8');
+test('dedicated D1 APPLY requires isolation, exact pending set, restore-point guard and fresh main; ordinary deploy cannot apply',()=>{
+ const generic=readFileSync(new URL('../.github/workflows/bor-ai-deploy.yml',import.meta.url),'utf8');
+ assert.doesNotMatch(generic,/d1 migrations apply bor-ai-chat/);
+ assert.match(generic,/Generic production D1 writes are disabled/);
+ const wf=readFileSync(new URL('../.github/workflows/bor-ai-image-d1-release.yml',import.meta.url),'utf8');
+ const plan=wf.indexOf('node scripts/verify-reviewed-plan-run.mjs');
  const scan=wf.indexOf('node scripts/check-production-migration-isolation.mjs migrations');
+ const pending=wf.indexOf('node scripts/verify-image-schema-pending.mjs');
  const rollback=wf.indexOf('node scripts/verify-d1-image-migration-rollback.mjs');
- const apply=wf.indexOf('d1 migrations apply bor-ai-chat --remote');
- assert.ok(scan>=0&&rollback>scan&&apply>rollback,'migration must be gated by isolation and restore point');
- assert.match(wf,/name: Require production D1 rollback bookmark before migration\n\s+if: \$\{\{ inputs\.apply_db_migrations \}\}/);
+ const fresh=wf.indexOf('git ls-remote origin refs/heads/main');
+ const apply=wf.indexOf('d1 migrations apply bor-ai-chat --remote --config wrangler.image-only-migrations.generated.jsonc');
+ assert.ok(plan>=0&&scan>plan&&pending>scan&&rollback>pending&&fresh>rollback&&apply>fresh,'migration must be gated by PLAN, isolation, inventory, restore point and fresh main');
+ assert.match(wf,/name: Verify pinned production D1 identity and Time Travel restore bookmark \(GET only\)/);
+ assert.match(wf,/id: approved_image_sql_apply[\s\S]*?if: \$\{\{ inputs\.phase == 'apply' \}\}[\s\S]*?CLOUDFLARE_D1_MIGRATION_TOKEN/);
 });
