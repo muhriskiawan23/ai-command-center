@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { extractWithTavily, reserveTavilyExtractBudget } from "../src/tavily-extract.js";
 function testEnv(key = "test", limit = 30) {
   let used = 0;
-  return { TAVILY_API_KEY: key, TAVILY_EXTRACT_DAILY_URL_LIMIT: limit, DB: {
+  return { URL_READER_ENABLED: "true", URL_READER_PROVIDER: "tavily", TAVILY_API_KEY: key, TAVILY_EXTRACT_DAILY_URL_LIMIT: limit, DB: {
     prepare() { return { bind(_day, _subject, units, _timestamp, ceiling) { return {
       async first() { if (used + units > ceiling) return null; used += units; return { units: used }; }
     }; } }; }
@@ -520,4 +520,45 @@ test("public articles with ordinary paths stay eligible after private action pat
   });
   assert.equal(calls, 1);
   assert.equal(result[0].ok, true);
+});
+
+test("Extract itself refuses paid calls and D1 usage when Reader is disabled or provider differs", async () => {
+  for (const changes of [
+    { URL_READER_ENABLED: "false" },
+    { URL_READER_ENABLED: undefined },
+    { URL_READER_ENABLED: true },
+    { URL_READER_PROVIDER: "direct" },
+    { URL_READER_PROVIDER: undefined }
+  ]) {
+    const env={...testEnv("synthetic-test-key",2),...changes};
+    let dbCalls=0, providerCalls=0;
+    const db=env.DB;
+    env.DB={prepare(...args){ dbCalls++;return db.prepare(...args); }};
+    assert.equal(await reserveTavilyExtractBudget(env,1),false);
+    const result=await extractWithTavily(["https://example.com/article"],env,{
+      fetcher:async () => {providerCalls++;throw Error("provider must stay untouched");}
+    });
+    assert.equal(result[0].ok,false);
+    assert.match(result[0].reason,/belum diaktifkan/);
+    assert.equal(dbCalls,0);
+    assert.equal(providerCalls,0);
+  }
+});
+test("An explicitly active Tavily Reader retains successful bounded extraction", async () => {
+  const env=testEnv("synthetic-test-key",1);
+  let calls=0;
+  const result=await extractWithTavily(["https://example.com/public"],env,{
+    fetcher:async (endpoint,opts)=>{
+      calls++;
+      assert.equal(endpoint,"https://api.tavily.com/extract");
+      assert.equal(opts.redirect,"manual");
+      return new Response(JSON.stringify({results:[{
+        url:"https://example.com/public",
+        raw_content:"Safe public sample page: " + "test ".repeat(20)
+      }]}),{headers:{"content-type":"application/json"}});
+    }
+  });
+  assert.equal(calls,1);
+  assert.equal(result[0].ok,true);
+  assert.equal(result[0].chars>40,true);
 });
