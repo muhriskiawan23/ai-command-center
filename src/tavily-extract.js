@@ -43,6 +43,9 @@ function checkPublicUrl(raw, ownHost) {
 }
 
 export async function reserveTavilyExtractBudget(env, urlCount) {
+  // Defense in depth: the spending reservation must not be callable when
+  // Reader consent or provider selection is OFF, even from a new call site.
+  if (env?.URL_READER_ENABLED !== "true" || env?.URL_READER_PROVIDER !== "tavily") return false;
   // A separate atomic global D1 quota: existing chat units are not Tavily provider credits.
   if (!env.DB?.prepare) return false;
   const rawLimit = env.TAVILY_EXTRACT_DAILY_URL_LIMIT;
@@ -61,8 +64,13 @@ const fail = (url, reason) => ({ ok: false, url, requested: url, reason });
 
 export async function extractWithTavily(urls, env = {}, { fetcher = fetch, ownHost = "", timeoutMs = TIMEOUT_MS } = {}) {
   const input = Array.isArray(urls) ? urls.slice(0, MAX_LINKS) : [];
-  const key = typeof env.TAVILY_API_KEY === "string" ? env.TAVILY_API_KEY.trim() : "";
+  const key = typeof env?.TAVILY_API_KEY === "string" ? env.TAVILY_API_KEY.trim() : "";
   const checked = input.map(raw => ({ raw, check: checkPublicUrl(raw, ownHost) }));
+  // The caller must gate the chat/research path, but the adapter itself also
+  // refuses paid provider calls when the independent Reader switch is OFF.
+  // Keep blocked-URL validation messages without ever charging D1 or Tavily.
+  if (env?.URL_READER_ENABLED !== "true" || env?.URL_READER_PROVIDER !== "tavily")
+    return checked.map(x => fail(x.raw, x.check.ok ? "Pembacaan URL belum diaktifkan" : x.check.reason));
   if (!key) return checked.map(x => fail(x.raw, x.check.ok ? "Tavily belum dikonfigurasi" : x.check.reason));
   const eligible = checked.filter(x => x.check.ok);
   if (!eligible.length) return checked.map(x => fail(x.raw, x.check.reason));
