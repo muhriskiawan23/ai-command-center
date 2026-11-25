@@ -64,7 +64,7 @@ const fail = (url, reason) => ({ ok: false, url, requested: url, reason });
 
 export async function extractWithTavily(urls, env = {}, { fetcher = fetch, ownHost = "", timeoutMs = TIMEOUT_MS } = {}) {
   const input = Array.isArray(urls) ? urls.slice(0, MAX_LINKS) : [];
-  const key = typeof env.TAVILY_API_KEY === "string" ? env.TAVILY_API_KEY.trim() : "";
+  const key = typeof env?.TAVILY_API_KEY === "string" ? env.TAVILY_API_KEY.trim() : "";
   const checked = input.map(raw => ({ raw, check: checkPublicUrl(raw, ownHost) }));
   // The caller must gate the chat/research path, but the adapter itself also
   // refuses paid provider calls when the independent Reader switch is OFF.
