@@ -5,6 +5,11 @@ name: BOR AI isolated private chat D1 backup release (manual gated)
 on:
   workflow_dispatch:
     inputs:
+      reviewed_plan_run_id:
+        description: "For DEPLOY only: successful read-only PLAN GitHub Actions run ID for exact main SHA"
+        type: string
+        required: false
+        default: ''
       phase:
         type: choice
         options: [plan, preflight, deploy, trigger]
@@ -33,6 +38,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 # An export may briefly block normal D1 queries. Do not overlap with
 # production image migrations, normal production deploys or other exports.
@@ -88,6 +94,14 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: 22
+
+      - name: Verify actual reviewed PLAN execution before mutation
+        if: ${{ inputs.phase == 'deploy' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BOR_PLAN_RUN_ID: ${{ inputs.reviewed_plan_run_id }}
+          BOR_PLAN_KIND: backup
+        run: node scripts/verify-reviewed-plan-run.mjs
 
       - name: Prove isolated config remains OFF in all PLANs and dry-run it
         shell: bash
