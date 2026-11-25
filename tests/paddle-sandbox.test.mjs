@@ -1,0 +1,17 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import {createHmac} from "node:crypto";
+import worker,{verifySignature,checkoutConfig,catalog} from "../paddle-sandbox/worker.mjs";
+const secret="fixture-secret-not-for-deployment";
+const ts=Math.floor(Date.now()/1000);
+const raw=JSON.stringify({event_id:"evt_test",event_type:"transaction.completed",data:{id:"txn_test"}});
+const sign=(body=raw,time=ts)=>"ts="+time+";h1="+createHmac("sha256",secret).update(time+":"+body).digest("hex");
+const env={PADDLE_SANDBOX_ENABLED:"true",PADDLE_SANDBOX_WEBHOOK_SECRET:secret};
+const req=(body=raw,sig=sign())=>new Request("https://sandbox.invalid/webhook",{method:"POST",headers:{"content-type":"application/json","Paddle-Signature":sig},body});
+test("catalog is USD cents",()=>{assert.equal(catalog.basic.amount,"199");assert.equal(catalog.pro.amount,"699");});
+test("checkout disabled by default and rejects live token",()=>{assert.equal(checkoutConfig({}),null);assert.equal(checkoutConfig({PADDLE_SANDBOX_ENABLED:"true",PADDLE_SANDBOX_CLIENT_TOKEN:"live_abc",PADDLE_SANDBOX_BASIC_PRICE_ID:"pri_abc",PADDLE_SANDBOX_PRO_PRICE_ID:"pri_def"}),null);});
+test("signature accepts exact raw bytes and rejects edits, stale and future timestamps",async()=>{const b=new TextEncoder().encode(raw);assert.equal(await verifySignature(b,sign(),secret,ts),true);assert.equal(await verifySignature(new TextEncoder().encode(raw+" "),sign(),secret,ts),false);assert.equal(await verifySignature(b,sign(raw,ts-6),secret,ts),false);assert.equal(await verifySignature(b,sign(raw,ts+6),secret,ts),false);});
+test("disabled worker refuses webhook",async()=>assert.equal((await worker.fetch(req(),{})).status,503));
+test("valid event is validation only and replay cannot grant credits",async()=>{for(let i=0;i<2;i++){const r=await worker.fetch(req(),env);assert.equal(r.status,200);const b=await r.json();assert.equal(b.recognized,true);assert.equal(b.realCreditsGranted,false);assert.equal(b.realSubscriptionEnabled,false);}});
+test("invalid signature rejected",async()=>assert.equal((await worker.fetch(req(raw,"ts="+ts+";h1="+"0".repeat(64)),env)).status,401));
+test("oversize request rejected",async()=>assert.equal((await worker.fetch(req("x".repeat(65537)),env)).status,413));
