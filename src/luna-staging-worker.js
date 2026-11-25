@@ -3,6 +3,7 @@ import { consumeUsage, usageDay } from "./daily-limits.js";
 import { json, sha256Hex } from "./http.js";
 import { LUNA_SEARCH_RESERVATION_MICRO_USD, runWebSearchV2 } from "./web-search-v2.js";
 import { runLunaStagingEvaluation } from "./luna-staging-live-evaluation.js";
+import { claimStagingSearchSmoke, finishStagingSearchSmoke } from "./luna-staging-smoke-budget.js";
 import { runProof } from "../tools/egress-proxy/runtime/probe-worker.js";
 
 const ROUTES = new Set(["/smoke/luna", "/smoke/cloudflare", "/smoke/web-search", "/smoke/url-reader"]);
@@ -10,24 +11,30 @@ const ROUTES = new Set(["/smoke/luna", "/smoke/cloudflare", "/smoke/web-search",
 async function smokeWebSearch(request, env) {
   if (env.BOR_WEB_SEARCH_KILL_SWITCH === "true") return json({ error: "staging_smoke_disabled" }, 503);
   if (!env.BOR_WEB_SEARCH_OPENAI_KEY || !env.DB?.prepare) return json({ error: "staging_not_configured" }, 503);
+  const claim = await claimStagingSearchSmoke(env, LUNA_SEARCH_RESERVATION_MICRO_USD);
+  if (!claim) return json({ error: "staging_smoke_budget_unavailable" }, 503);
   let providerStatus = null;
-  const result = await runWebSearchV2({
-    DB: env.DB,
-    BOR_WEB_SEARCH_MODE: "v2",
-    BOR_WEB_SEARCH_OPENAI_KEY: env.BOR_WEB_SEARCH_OPENAI_KEY,
-    BOR_WEB_SEARCH_OPENAI_ORG: env.BOR_WEB_SEARCH_OPENAI_ORG,
-    BOR_WEB_SEARCH_OPENAI_PROJECT: env.BOR_WEB_SEARCH_OPENAI_PROJECT,
-    BOR_WEB_SEARCH_DAILY_CALLS: "1",
-    BOR_WEB_SEARCH_OPENAI_CALL_MICRO_USD: String(LUNA_SEARCH_RESERVATION_MICRO_USD),
-    BOR_WEB_SEARCH_DAILY_MICRO_USD: String(LUNA_SEARCH_RESERVATION_MICRO_USD),
-    BOR_WEB_SEARCH_MONTHLY_MICRO_USD: String(LUNA_SEARCH_RESERVATION_MICRO_USD),
-    async WEB_SEARCH_V2_FETCHER(url, options) {
-      const response = await fetch(url, options);
-      providerStatus = response.status;
-      return response;
-    }
-  }, { category: "company", query: "Find the official website of Hamad International Airport, Doha, and cite it." }, { signal: request.signal, singleOpenAiAttempt: true });
-  const ok = result?.provider === "OpenAI" && result.links.length > 0;
+  let ok = false;
+  try {
+    const result = await runWebSearchV2({
+      DB: env.DB,
+      BOR_WEB_SEARCH_MODE: "v2",
+      BOR_WEB_SEARCH_OPENAI_KEY: env.BOR_WEB_SEARCH_OPENAI_KEY,
+      BOR_WEB_SEARCH_OPENAI_ORG: env.BOR_WEB_SEARCH_OPENAI_ORG,
+      BOR_WEB_SEARCH_OPENAI_PROJECT: env.BOR_WEB_SEARCH_OPENAI_PROJECT,
+      BOR_WEB_SEARCH_DAILY_CALLS: "10000",
+      BOR_WEB_SEARCH_OPENAI_CALL_MICRO_USD: String(LUNA_SEARCH_RESERVATION_MICRO_USD),
+      BOR_WEB_SEARCH_DAILY_MICRO_USD: String(claim.ledgerLimit),
+      BOR_WEB_SEARCH_MONTHLY_MICRO_USD: String(claim.ledgerLimit),
+      async WEB_SEARCH_V2_FETCHER(url, options) {
+        const response = await fetch(url, options);
+        providerStatus = response.status;
+        return response;
+      }
+    }, { category: "company", query: "Find the official website of Hamad International Airport, Doha, and cite it." }, { signal: request.signal, singleOpenAiAttempt: true });
+    ok = result?.provider === "OpenAI" && result.links.length > 0;
+  } catch { /* Retain the reservation on ambiguous failure. */ }
+  finally { await finishStagingSearchSmoke(env, claim, ok, providerStatus); }
   return json({ ok, providerStatus, citationsPresent: ok }, ok ? 200 : providerStatus === null ? 503 : 502);
 }
 

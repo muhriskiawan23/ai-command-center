@@ -31,7 +31,11 @@ test("staging smoke uses the dedicated Web Search binding for one fixed, cited R
         annotations: [{ type: "url_citation", url: "https://example.org/", start_index: 0, end_index: 14 }] }] }
     ] });
   });
-  const env = { DB, BOR_LUNA_STAGING_WEB_SEARCH_ENABLED: "true", BOR_WEB_SEARCH_OPENAI_KEY: "synthetic-key", BOR_TEXT_BACKUP_API_KEY: "different-text-key" };
+  DB.sqlite.exec("CREATE TABLE IF NOT EXISTS web_search_v2_live_evaluation (id TEXT PRIMARY KEY, status TEXT NOT NULL, evidence_json TEXT)");
+  DB.sqlite.prepare("INSERT INTO web_search_v2_live_evaluation VALUES (?,?,?)").run("web-v2-fixture-base", "completed", '{"chargedMicroUsd":0}');
+  const env = { DB, BOR_LUNA_STAGING_WEB_SEARCH_ENABLED: "true", BOR_WEB_SEARCH_OPENAI_KEY: "synthetic-key",
+    BOR_TEXT_BACKUP_API_KEY: "different-text-key", BOR_LUNA_SEARCH_SMOKE_BASE_ID: "web-v2-fixture-base",
+    BOR_LUNA_SEARCH_SMOKE_EXPIRES_AT: String(Date.now() + 60000) };
   const response = await invoke("/smoke/web-search", env);
   assert.deepEqual(await response.json(), { ok: true, providerStatus: 200, citationsPresent: true });
   assert.equal(captured.length, 1);
