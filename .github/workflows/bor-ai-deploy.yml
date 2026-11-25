@@ -347,6 +347,19 @@ jobs:
         if: ${{ env.BOR_BILLING_SHADOW_ENABLED == 'true' }}
         run: node scripts/prepare-billing-shadow-config.mjs
 
+      # Reject an invalid candidate Worker config BEFORE any shadow D1 SQL.
+      # Wrangler --dry-run compiles locally and does not deploy or mutate D1.
+      - name: Dry-run generated billing shadow Worker before D1 schema initialization
+        if: ${{ env.BOR_BILLING_SHADOW_ENABLED == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${BOR_DEPLOY_CONFIG:-}" = "wrangler.billing-shadow.generated.jsonc" || {
+            echo "::error::Unexpected billing shadow deployment configuration."
+            exit 1
+          }
+          npx --yes wrangler@4 deploy --dry-run --config "$BOR_DEPLOY_CONFIG"
+
       - name: Verify isolated billing shadow database and secret
         if: ${{ env.BOR_BILLING_SHADOW_ENABLED == 'true' }}
         env:

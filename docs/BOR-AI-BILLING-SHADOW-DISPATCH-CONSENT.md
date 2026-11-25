@@ -39,6 +39,28 @@ be completed and examined before any separate controlled rollout.
 This GET-only check does not inspect table rows or prove the schema,
 session cookie scope, runtime bindings, secret strength or billing readiness.
 
+## Generated candidate build must succeed before shadow D1 schema write
+
+After the four-identity metadata check and production-only shadow config
+generation, the production workflow now executes:
+
+```sh
+npx --yes wrangler@4 deploy --dry-run --config "$BOR_DEPLOY_CONFIG"
+```
+
+It first confirms the expected generated filename. If Worker bundling or
+binding validation fails, the workflow stops **before** `d1 execute --file`
+initializes schema on the isolated remote shadow D1. Dry-run does not
+deploy the Worker or run database SQL. The runtime readiness check, D1
+attestation query, secret-presence check and authenticated endpoint tests
+remain separate gates.
+
+An offline Node test generates the shadow candidate with a fixture UUID,
+verifies that the production `wrangler.jsonc` stays unchanged and the
+pepper never appears in plaintext variables, and asserts the dry-run gate
+is ordered before the remote SQL write. No live Cloudflare metadata,
+schema state or production rollout is implied by these tests.
+
 ## Safety limits and remaining gates
 
 This guard is offline and does not attest real D1 schema, account ownership, secret strength, rate limits, cookie scope, HMAC pepper rotation or remote Cloudflare permissions. The workflow's existing metadata checks, read-only account handling and candidate smoke checks remain required. Running the production workflow with the shadow toggle intentionally ON **can write the shadow-only schema** and roll out a noncommercial read-only status endpoint. Do not dispatch it until an owner has independently reviewed those effects.
