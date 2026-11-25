@@ -31,6 +31,13 @@ export const REQUIRED = {
       "Run npm run test:e2e"
     ]
   },
+  "bor-ai-readonly-production-readiness.yml": {
+    "Read-only runtime, URL Reader and image gates": [
+      "Check production public health and agents without inference",
+      "Check active Cloudflare Worker URL Reader binding values without printing secrets",
+      "Verify public Reader policy and Web Actions remain OFF"
+    ]
+  },
   "workspace-ui-proof.yml": {
     "Workspace regression and dry-run build": [
       "Run npm test",
@@ -79,9 +86,10 @@ async function main(){
   if(!response.ok)throw Error("GitHub release evidence unavailable: HTTP "+response.status);
   return response.json();
  }
+ const params=new URLSearchParams({branch:"main",head_sha:sha,per_page:"100"});
+ const runs=await get(`/actions/runs?${params}`);
  for(const [workflow,expected] of Object.entries(REQUIRED)){
-  const params=new URLSearchParams({branch:"main",head_sha:sha,per_page:"100"});
-  const run=chooseRun(await get(`/actions/workflows/${workflow}/runs?${params}`),sha,repo,workflow);
+  const run=chooseRun(runs,sha,repo,workflow);
   const jobs=await get(`/actions/runs/${run.id}/attempts/${run.run_attempt}/jobs?per_page=100`);
   verifyJobs(jobs,expected,run);
   console.log(`Verified exact-main executed checks: ${workflow}, run ${run.id}, attempt ${run.run_attempt}`);

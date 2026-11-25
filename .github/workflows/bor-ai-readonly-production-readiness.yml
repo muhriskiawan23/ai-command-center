@@ -1,6 +1,15 @@
 name: BOR AI read-only production readiness
 on:
   workflow_dispatch:
+    inputs:
+      expected_reader_state:
+        description: "Read-only audit: safe-off default, or explicitly verify existing bounded Tavily Reader (never activate it)"
+        type: choice
+        required: true
+        default: 'off'
+        options:
+          - 'off'
+          - preserved
   push:
     branches: [main]
     paths:
@@ -25,7 +34,16 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     environment: production
+    env:
+      EXPECTED_READER_STATE: ${{ inputs.expected_reader_state || 'off' }}
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 22
       - name: Check production public health and agents without inference
         shell: bash
         run: |
@@ -42,6 +60,7 @@ jobs:
           EXPECTED_MAIN_SHA: ${{ github.sha }}
         run: |
           node --input-type=module <<'NODE'
+          import {verifyReaderBindings} from './scripts/readiness-reader-policy.mjs';
           const account = process.env.CLOUDFLARE_ACCOUNT_ID;
           const token = process.env.CLOUDFLARE_API_TOKEN;
           if (!account || !token) throw new Error("Cloudflare audit credentials unavailable");
@@ -88,31 +107,23 @@ jobs:
           } else {
             console.log("Production release synchronization: MATCHED");
           }
-          const activeReaderSafe = flag.length === 1 && flag[0].type === "plain_text" && flag[0].text === "false";
-          const activeExtractSafe = !limit.length || (limit.length === 1 &&
-            limit[0].type === "plain_text" && /^(?:0+)$/.test(limit[0].text || ""));
           const activeImagesSafe = imageState === "absent" || imageState === "off";
-          // Emit a finite inventory of safe boolean classes. Never output
-          // binding values other than the previously classified true/false.
-          console.log("Read-only release safe-off checks:",
-            JSON.stringify({reader:activeReaderSafe,extract:activeExtractSafe,images:activeImagesSafe}));
           if (!activeImagesSafe) throw new Error("Active Worker image generation is not verifiably OFF");
-          if (!activeReaderSafe) throw new Error("Active Worker URL Reader is not verifiably OFF");
-          if (!activeExtractSafe) throw new Error("Active Worker Tavily daily extraction quota is not verifiably zero");
-          console.log("Active Worker URL Reader: OFF");
+          verifyReaderBindings(bindings,process.env.EXPECTED_READER_STATE,process.env.GITHUB_EVENT_NAME);
+          console.log("Active Worker Reader policy verified:",process.env.EXPECTED_READER_STATE);
           console.log("Active Worker paid Image Assistant: OFF");
-          console.log("Active Worker Tavily Extract daily quota: absent or zero");
           console.log("Binding names and secret values are not printed");
           NODE
 
-      - name: Verify public URL Reader and Web Actions are safely unavailable
+      - name: Verify public Reader policy and Web Actions remain OFF
         if: ${{ always() }}
         shell: bash
         run: |
           set -euo pipefail
           BASE="https://ai-command-center.muhriskiawan23.workers.dev"
           curl --fail --silent --show-error --retry 2 --max-time 20 "$BASE/api/plugins/capabilities" |
-            node -e '
+            node --input-type=module -e '
+              import {verifyPublicReader} from "./scripts/readiness-reader-policy.mjs";
               let body="";
               process.stdin.on("data", chunk => body += chunk).on("end", () => {
                 const data = JSON.parse(body);
@@ -133,15 +144,6 @@ jobs:
                     readerAvailable: feature(reading?.available),
                     actionsAvailable: feature(actions?.available)
                   }));
-                if (!reading || !actions) {
-                  console.error("::error::Active production capabilities are missing webReading/webActions; cannot verify the safe-off release.");
-                  process.exitCode=1;
-                  return;
-                }
-                if (reading.enabled !== false || reading.available !== false || actions.available !== false) {
-                  console.error("::error::Active production reports external reading or browser actions enabled, or status is unverifiable.");
-                  process.exitCode=1;
-                  return;
-                }
-                console.log("Active public capabilities: external URL Reader OFF; Web Actions OFF");
+                verifyPublicReader(data,process.env.EXPECTED_READER_STATE,process.env.GITHUB_EVENT_NAME);
+                console.log("Public Reader policy verified; Web Actions OFF");
               });'
