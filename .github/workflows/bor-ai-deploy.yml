@@ -62,7 +62,27 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  release-ci-gate:
+    name: Require exact-main executed CI before production
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 22
+      - name: Verify actual successful workflow attempts and required steps
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/release-ci-gate.mjs
   deploy:
+    needs: release-ci-gate
     name: Provision, migrate, and deploy BOR AI
     runs-on: ubuntu-24.04
     timeout-minutes: 15
