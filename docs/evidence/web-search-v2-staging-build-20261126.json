@@ -1,0 +1,303 @@
+{
+  "date": "2026-11-26 WIB",
+  "deployedSource": "f2da89746ad7fae7525f691c9cfed4725657ca61",
+  "branch": "feature/web-search-v2",
+  "method": "Direct Cloudflare ES module version upload from exact GitHub source; not a Wrangler bundled build",
+  "firstCandidate": {
+    "source": "3d9391464dfd972f271e5cc3fa08dfdd94915d7b",
+    "version": 27,
+    "versionId": "dd0203d7-5454-4f2c-bd36-1a237ec22601",
+    "deploymentId": "6c13e6c7-7582-4336-ab6d-36ce2e070cc8",
+    "moduleCount": 39,
+    "sourceBytes": 454781,
+    "manifestSha256": "1e251660b5e5605c438c6ab930d2ae68a4ee191a7ea75748e86aad6d22f5a8b5"
+  },
+  "activeCandidate": {
+    "version": 28,
+    "versionId": "a98dea72-e057-4b67-b7cb-c7d112c8e575",
+    "deploymentId": "bfc0a8be-b6ce-4e3f-8652-422c5392bdb9",
+    "trafficPercent": 100,
+    "moduleCount": 40,
+    "sourceBytes": 458500,
+    "verifiedGitHashes": 40,
+    "manifestSha256": "404304a5f00e44baae7d2e86ade277eab377757e122b676f2f6f379f563cfb98",
+    "manifestDigestAlgorithm": "SHA-256 of JSON array sorted by path; original entries {path,sha,bytes}",
+    "modules": [
+      {
+        "path": "public/image-intent.js",
+        "gitBlobSha": "46877aa8862594a480317140886f1ff9d662a971",
+        "utf8Bytes": 3453
+      },
+      {
+        "path": "public/media-validation.js",
+        "gitBlobSha": "64276083b8fd71228945d8d136131c9a3afc4c91",
+        "utf8Bytes": 6295
+      },
+      {
+        "path": "src/billing-account-shadow.js",
+        "gitBlobSha": "b1a2861aefebd57497415710ce4ec1c05b130026",
+        "utf8Bytes": 5221
+      },
+      {
+        "path": "src/chat-search-progress.js",
+        "gitBlobSha": "d2c0769e2de17e25ad4637580111b2fbd0754400",
+        "utf8Bytes": 1203
+      },
+      {
+        "path": "src/citations.js",
+        "gitBlobSha": "b49ef973825d797f91c22e69acca5fd736b7e110",
+        "utf8Bytes": 3035
+      },
+      {
+        "path": "src/confidentiality.js",
+        "gitBlobSha": "8ff4d570f32f4fba2b06aff340e34c2002feb6d8",
+        "utf8Bytes": 10944
+      },
+      {
+        "path": "src/credit-metering.js",
+        "gitBlobSha": "5c6432c9a99f141b86c6dd48b4952851a4fedcd4",
+        "utf8Bytes": 3184
+      },
+      {
+        "path": "src/customization.js",
+        "gitBlobSha": "a62250f44fa9f13737b33fe0af7810d506a24a27",
+        "utf8Bytes": 1652
+      },
+      {
+        "path": "src/daily-limits.js",
+        "gitBlobSha": "d8666e7e55c016207425f54c4cd6d32962fd2b34",
+        "utf8Bytes": 4871
+      },
+      {
+        "path": "src/documents.js",
+        "gitBlobSha": "a478d00dbd742182154b04c0011a7ad3416a731e",
+        "utf8Bytes": 8713
+      },
+      {
+        "path": "src/first-party-public-pages.js",
+        "gitBlobSha": "1f7f9711f09e20aeed2a1a43332d5bcc53027349",
+        "utf8Bytes": 2553
+      },
+      {
+        "path": "src/form-draft.js",
+        "gitBlobSha": "6aaac0f681134495a1634d1aeb5645ad7508a52a",
+        "utf8Bytes": 4052
+      },
+      {
+        "path": "src/github-oauth.js",
+        "gitBlobSha": "586fde1998fc7ea47eba69803a3cfb1e2fe62564",
+        "utf8Bytes": 25322
+      },
+      {
+        "path": "src/github-reader.js",
+        "gitBlobSha": "d030914d9b6be0491bb0a0eb3d98579cf9aff1b5",
+        "utf8Bytes": 7756
+      },
+      {
+        "path": "src/gpt-oss.js",
+        "gitBlobSha": "d908e5619f32fa06c39bd40d682cfe7db224a7a1",
+        "utf8Bytes": 4079
+      },
+      {
+        "path": "src/http.js",
+        "gitBlobSha": "670a69c2ef55118e9ffddb17470151f66feadd1e",
+        "utf8Bytes": 809
+      },
+      {
+        "path": "src/image-jobs.js",
+        "gitBlobSha": "dd153d4d956933d850eac4ab77e7c837b6cecc45",
+        "utf8Bytes": 25469
+      },
+      {
+        "path": "src/image-vision.js",
+        "gitBlobSha": "3e2bf19ee212cf5f526c203af264cc0e94165ea1",
+        "utf8Bytes": 9725
+      },
+      {
+        "path": "src/index.js",
+        "gitBlobSha": "d9de14ed4232cc703ba626265e325c38851f9def",
+        "utf8Bytes": 122412
+      },
+      {
+        "path": "src/links.js",
+        "gitBlobSha": "c86b4ff7dda46da1cd7744b84d3cf6aa3383292a",
+        "utf8Bytes": 17321
+      },
+      {
+        "path": "src/luna-staging-live-evaluation.js",
+        "gitBlobSha": "be5e261746d19138f3cf8fc7fe8cb7be09486e56",
+        "utf8Bytes": 10508
+      },
+      {
+        "path": "src/luna-staging-smoke-budget.js",
+        "gitBlobSha": "1f2a7720736ecc6c6e9abb70a3b2795b302a7d46",
+        "utf8Bytes": 3284
+      },
+      {
+        "path": "src/luna-staging-worker.js",
+        "gitBlobSha": "d454998b18f349b275942d9d94763236776b5604",
+        "utf8Bytes": 7222
+      },
+      {
+        "path": "src/memory.js",
+        "gitBlobSha": "850c355fb531de9200487ad8973c5d859eac2c3c",
+        "utf8Bytes": 8203
+      },
+      {
+        "path": "src/model-gateway.js",
+        "gitBlobSha": "05d4adbd2113791ea5240c9e1e5c935a18914217",
+        "utf8Bytes": 14396
+      },
+      {
+        "path": "src/plugin-capabilities.js",
+        "gitBlobSha": "baf5758643b027025509424e811e31d6d56cd41f",
+        "utf8Bytes": 3380
+      },
+      {
+        "path": "src/plugin-runtime.js",
+        "gitBlobSha": "f498a5809393d25f854e6d0068e9026668717f82",
+        "utf8Bytes": 7066
+      },
+      {
+        "path": "src/prompts.js",
+        "gitBlobSha": "e3dac4b405f7e4163162e8e29107390a43daf665",
+        "utf8Bytes": 17806
+      },
+      {
+        "path": "src/research.js",
+        "gitBlobSha": "f81e1d6b79274951949df93eada9b808520d7e75",
+        "utf8Bytes": 40948
+      },
+      {
+        "path": "src/safe-error.js",
+        "gitBlobSha": "a76630d7826b0144d6bb94909991160a0e2af406",
+        "utf8Bytes": 2911
+      },
+      {
+        "path": "src/tavily-extract.js",
+        "gitBlobSha": "2833f1e4fbb586e89fd05bdb64979d37ba53e44c",
+        "utf8Bytes": 9122
+      },
+      {
+        "path": "src/telegram.js",
+        "gitBlobSha": "13af21819f74f3b2e36ca7423580e89d7da0c242",
+        "utf8Bytes": 8667
+      },
+      {
+        "path": "src/text-inference-budget.js",
+        "gitBlobSha": "bc6f6f48bc2f2d0ddb72a5ec010a05527c240cdf",
+        "utf8Bytes": 2678
+      },
+      {
+        "path": "src/text-provider-failover.js",
+        "gitBlobSha": "facbc889a72834e01d1a6675cf9ec60c445769fe",
+        "utf8Bytes": 5834
+      },
+      {
+        "path": "src/verified-egress.js",
+        "gitBlobSha": "2a92a6875e82b0a975274e12387ef178b9d6a038",
+        "utf8Bytes": 3101
+      },
+      {
+        "path": "src/web-search-v2.js",
+        "gitBlobSha": "2196e2be3fd482eb2281ad4a5032e5a531e2b4e9",
+        "utf8Bytes": 22098
+      },
+      {
+        "path": "src/widget-api.js",
+        "gitBlobSha": "533d12a6675db3bd143bf619429dd328b551c59c",
+        "utf8Bytes": 12137
+      },
+      {
+        "path": "tools/egress-proxy/runtime/extended-proof.js",
+        "gitBlobSha": "79ccf312c034fa75f4d740a422a87161229ed7e6",
+        "utf8Bytes": 4027
+      },
+      {
+        "path": "tools/egress-proxy/runtime/probe-client.mjs",
+        "gitBlobSha": "80a4db708318c8b0522b446ecd3f69060b62093a",
+        "utf8Bytes": 3428
+      },
+      {
+        "path": "tools/egress-proxy/runtime/probe-worker.js",
+        "gitBlobSha": "aedd41c43776715a4a7889c907d77f563c86259f",
+        "utf8Bytes": 3615
+      }
+    ],
+    "stagingD1": "9a95595b-4e69-422f-89f5-58fed3a4e07f",
+    "rollbackVersion": 27,
+    "rollbackVersionId": "dd0203d7-5454-4f2c-bd36-1a237ec22601",
+    "searchMode": "off",
+    "killSwitch": true,
+    "searchSmokeEnabled": false,
+    "urlReaderSmokeEnabled": false,
+    "temporaryEvaluationBindingsAbsent": true,
+    "explicitOrganizationProjectRouting": true,
+    "cronCount": 0
+  },
+  "tests": {
+    "nativeSQLite": {
+      "passed": 7,
+      "failed": 0,
+      "node": "22.16.0",
+      "sqlite": "3.49.1",
+      "helperSha256": "acf499d0ab090550259d01c28167e38d583bddc7c7b240ca2097d3c6c0ac3e2a",
+      "testSha256": "fc0b8fcf3d949d27c1c4468b1501e77c259250e33f27509388f4fca302039a02",
+      "cases": [
+        "historical spend and 8 concurrent admissions: exactly one accepted",
+        "persistent one-shot lock after failure and month rollover",
+        "prior or ledger over campaign cap refused",
+        "older evidence cannot evade newer spend",
+        "running evaluation refused",
+        "invalid prior evidence refused",
+        "expiry, opt-in, kill switch, overlapping eval configuration refused"
+      ]
+    },
+    "syntheticIntegration": {
+      "passed": 5,
+      "failed": 0,
+      "syntheticProviderRequests": 2,
+      "externalProviderRequests": 0,
+      "cases": [
+        "missing marker denied before provider",
+        "one request with dedicated binding and cumulative cap",
+        "success records committed reservation",
+        "repeat denied",
+        "429 retains stopped record and lock"
+      ]
+    },
+    "historicalSixLive": "Not rerun",
+    "fullRepositoryNodeSuite": "Not rerun",
+    "nativeWorkerHTTP": "Blocked by DNS in local container and web fetch inaccessible; no runtime success claimed"
+  },
+  "budget": {
+    "campaignCapMicroUsd": 500000,
+    "priorMeasuredMicroUsd": 228947,
+    "ledgerMicroUsd": 228420,
+    "ledgerRequests": 9,
+    "remainingMicroUsd": 271053,
+    "newProviderSpendMicroUsd": 0,
+    "smokeClaims": 0,
+    "runningEvaluations": 0,
+    "proposedOneShotReservationMicroUsd": 260000,
+    "proposedCommittedMicroUsd": 488947,
+    "proposedHeadroomMicroUsd": 11053,
+    "providerHardCapGuaranteed": false
+  },
+  "blockers": {
+    "googleGrounding": "No existing Gemini credential bound to staging; no new keys or paid service.",
+    "egress": "Tunnel bor-ai-private-egress down, zero connections; staging EGRESS_PROXY and EGRESS_PROXY_TOKEN absent.",
+    "http": "Direct curl could not resolve hostname, public web fetch unavailable. Cloudflare subscription inspection returned 403; Browser Run not used because current no-cost entitlement could not be independently verified.",
+    "live": "New source not verified by actual Responses inference. Remain disabled until safe one-shot test and actual billed usage reconciliation are possible."
+  },
+  "protection": {
+    "productionVersionId": "c6dcf354-46c3-4772-9521-55f97cb2fb78",
+    "productionDeploymentId": "2fe985c2-356d-457c-b829-268cfb38df4c",
+    "productionTrafficPercent": 100,
+    "tavilyChanged": false,
+    "githubActionsForDeployedSource": 0,
+    "newKeys": false,
+    "permissionsExpanded": false,
+    "deposits": false
+  }
+}
