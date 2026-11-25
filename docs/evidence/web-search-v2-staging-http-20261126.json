@@ -1,0 +1,59 @@
+{
+  "sourceCommit": "01bdf9f4ae8584500043af269e2735cbce6e51dd",
+  "stage": {
+    "version": 30,
+    "versionId": "fc76fb0d-ccfb-4000-9799-eda3a781de78",
+    "deploymentId": "530ddaa0-da91-48a7-a92d-b3d6d160b321",
+    "trafficPercent": 100,
+    "rollbackVersion": 29,
+    "rollbackVersionId": "7f0675f3-ef20-4d16-9fc2-47989e078412",
+    "verifiedModules": 41,
+    "manifestSha256": "6e9b8f2f0ea61416b52ee5e34cfa2546fac909db7f5569b247e73889d76bfa4a",
+    "killSwitch": true,
+    "searchMode": "off",
+    "searchSmokeEnabled": false,
+    "urlReaderSmokeEnabled": false,
+    "temporaryBindings": 0,
+    "cron": 0
+  },
+  "http": {
+    "method": "Cloudflare Browser Run Quick Action",
+    "testedVersion": 29,
+    "result": "Disabled evaluation route returned not_found; no Cloudflare runtime error detected in body",
+    "providerRequests": 0
+  },
+  "tests": {
+    "bridgeAndReceiptChecks": {
+      "passed": 5,
+      "failed": 0,
+      "providerRequests": 0,
+      "method": "isolated connector JS runtime; bridge dispatch and smoke provider mocked"
+    }
+  },
+  "live": {
+    "result": "not executed; automated invocation blocked by safety check",
+    "smokeMarkerCount": 0,
+    "paidMicroUsd": 228947,
+    "searchLedgerMicroUsd": 228420,
+    "remainingMicroUsd": 271053,
+    "capMicroUsd": 500000,
+    "additionalOpenAiRequestsObserved": 0,
+    "actualBillingReconciliationPending": true
+  },
+  "protection": {
+    "productionVersionId": "c6dcf354-46c3-4772-9521-55f97cb2fb78",
+    "productionTrafficPercent": 100,
+    "tavilyUnchanged": true,
+    "actionsRunsForCodeCommit": 0,
+    "newApiKeys": false,
+    "permissionExpansion": false,
+    "deposit": false
+  },
+  "blockers": [
+    "Live candidate validation requires an approved operator execution path; do not bypass the safety restriction.",
+    "Google Grounding credential not bound.",
+    "Existing private egress tunnel down and matching staging binding absent.",
+    "Full application native build/browser E2E outstanding.",
+    "Cloudflare Browser Run billing entitlement could not be independently verified; no plan changes or deposits made."
+  ]
+}

@@ -1,0 +1,7 @@
+# Web Search V2 — HTTP runtime access and safe checkpoint
+
+Source commit: 01bdf9f4ae8584500043af269e2735cbce6e51dd. Staging v30 deployed, 100% traffic, 41 verified Git source modules. Rollback target v29. Production unchanged. A read-only Cloudflare Browser Run request to the v29 disabled evaluation endpoint returned the expected not_found body with no visible runtime error. This proves basic HTTP reachability, not live inference or full browser E2E. Five additional isolated checks of the dormant staging bridge and billable request receipt passed; no external inference in those checks.
+
+Automated live execution was blocked by a safety check and was not performed. Do not bypass that restriction. Post-check: v30 kill switch true, search mode off, both smoke flags false, no temporary bindings, no cron, no smoke marker or running evaluation. Prior recorded OpenAI cost USD 0.228947; search ledger USD 0.228420; remaining approved budget USD 0.271053. Actual provider billing reconciliation remains pending. Browser Run billing entitlement was not independently verified; no plan changes, deposits, new API keys or expanded permissions. No GitHub Actions for the code commit. Production and Tavily unchanged.
+
+Remaining: authorized operator runtime for one bounded smoke; existing Google credential and existing egress restoration; native application build and full browser E2E; release review. Do not rerun historical passed scenarios, reset the one-shot marker or remove Tavily. Keep staging disabled until the remaining gates can be validated.
