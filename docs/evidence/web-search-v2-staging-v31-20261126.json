@@ -1,0 +1,165 @@
+{
+  "dateWib": "2026-11-26",
+  "sourceCommit": "96781b665a5bc49637f83ffdaefe708ce91465cb",
+  "stage": {
+    "version": 31,
+    "versionId": "6107421e-6721-425c-8f4b-8555330ec3d3",
+    "deploymentId": "fbc6a8fa-3b39-443f-aceb-458666b9672f",
+    "trafficPercent": 100,
+    "rollbackVersion": 30,
+    "rollbackVersionId": "fc76fb0d-ccfb-4000-9799-eda3a781de78",
+    "verifiedSourceModules": 41,
+    "gitBlobManifestSha256": "0a20c58f3bd222c34726f8249ac22cbac88377d6e0614a1b707a997354e1724d",
+    "bindingsPreserved": true,
+    "killSwitch": true,
+    "searchMode": "off",
+    "webSearchSmokeEnabled": false,
+    "urlReaderSmokeEnabled": false,
+    "temporaryBindings": 0,
+    "cron": 0
+  },
+  "build": {
+    "tool": "Wrangler",
+    "version": "4.160.0",
+    "dryRun": true,
+    "passed": true,
+    "bundleKiB": 424.94,
+    "gzipKiB": 119.27
+  },
+  "http": [
+    {
+      "method": "GET",
+      "path": "/__staging-evaluation",
+      "status": 404,
+      "error": "not_found"
+    },
+    {
+      "method": "GET",
+      "path": "/__staging-search-smoke",
+      "status": 404,
+      "error": "not_found"
+    },
+    {
+      "method": "POST",
+      "path": "/smoke/web-search",
+      "authorization": "omitted",
+      "status": 401,
+      "error": "operator_auth_required"
+    }
+  ],
+  "live": {
+    "model": "gpt-6-luna",
+    "candidateStatus": "blocked_pending_authorized_operator",
+    "historicalPassedScenarios": 6,
+    "priorBatchId": "web-v2-responses-20261126-f",
+    "priorBatchStatus": "completed",
+    "ledgerSearchCalls": 9,
+    "ledgerReservedMicroUsd": 228420,
+    "priorUsageBasedCostMicroUsd": 228947,
+    "capMicroUsd": 500000,
+    "remainingMicroUsd": 271053,
+    "additionalOpenAiRequests": 0,
+    "additionalOpenAiSpendMicroUsd": 0,
+    "smokeMarkers": 0,
+    "runningEvaluations": 0,
+    "futureOneShotReservationMicroUsd": 260000,
+    "remainingAfterReservationMicroUsd": 11053,
+    "providerBillingReconciled": false
+  },
+  "protection": {
+    "productionUnchanged": true,
+    "productionVersionId": "c6dcf354-46c3-4772-9521-55f97cb2fb78",
+    "tavilyChanged": false,
+    "apiKeysCreated": false,
+    "permissionsExpanded": false,
+    "deposit": false,
+    "actionsDispatched": false,
+    "googleGroundingLive": "blocked_missing_existing_staging_credential",
+    "urlReaderLive": "blocked_missing_healthy_existing_egress_and_staging_binding"
+  },
+  "tests": {
+    "integration": {
+      "mode": "local Node, mocked provider",
+      "files": [
+        "tests/luna-staging-web-search-preflight.test.js",
+        "tests/luna-staging-live-evaluation.test.js",
+        "tests/web-search-v2.test.js"
+      ],
+      "passed": 24,
+      "failed": 0,
+      "skipped": 0,
+      "cases": [
+        "the isolated staging runner admits exactly one evaluation and reports usage for all six searches",
+        "an insufficient-quota response stops before any additional API call",
+        "long-context usage settles at premium rates and the next unsafe reservation is denied",
+        "model metadata success cannot mask a billing rejection from Responses",
+        "a Cloudflare key that differs from the selected project key stops before sending any request",
+        "a single-scenario retry imports the prior spend and refuses a search above the campaign cap",
+        "the staging-only routes require authorization and individual opt-in",
+        "staging smoke uses the dedicated Web Search binding for one fixed, cited Responses request",
+        "staging URL Reader hands fixed checks to the verified binding and exposes booleans only",
+        "the HTTP staging fallback defaults off and refuses wrong one-time codes",
+        "the staging kill switch overrides an explicitly enabled search smoke and live evaluator",
+        "the smoke route does not silently fall back to the text API key",
+        "Worker search answers mock scenario: Agensi kerja perhotelan di Timur Tengah yang ada di Jakarta",
+        "Worker search answers mock scenario: Ada kerja hotel di Qatar?",
+        "Worker search answers mock scenario: Quel téléphone Android à moins de 250 euros ?",
+        "Worker search answers mock scenario: What's happening in world news?",
+        "Worker search answers mock scenario: Dónde queda la sede de esta empresa en Yakarta, Hotel Contoh?",
+        "Worker search answers mock scenario: Kalau yang di Doha saja?",
+        "deeper search is bounded and counts publishers independently of subdomains",
+        "provider failover uses Google only for an opted-in browser and preserves the suggestion widget",
+        "daily call and spend ceilings, monthly ceiling and kill switch deny additional requests",
+        "private data, model-authored links, fabricated markers and private source URLs do not become citations",
+        "Google result content never enters durable chat history",
+        "an explicit city-only follow-up keeps its boundary even if the classifier drops it"
+      ]
+    },
+    "browser": {
+      "mode": "local Chromium, real chat UI, mocked provider",
+      "file": "tests/e2e/web-search-v2.spec.js",
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0,
+      "cases": [
+        {
+          "title": "actual provider activity appears before the response and inline sources are clickable",
+          "project": "phone-360x800",
+          "status": "expected",
+          "result": "passed"
+        },
+        {
+          "title": "Google failover displays citations and the original suggestions in an opaque sandbox",
+          "project": "phone-360x800",
+          "status": "expected",
+          "result": "passed"
+        },
+        {
+          "title": "unsafe Google suggestion gets rejected before any Grounding result is displayed",
+          "project": "phone-360x800",
+          "status": "expected",
+          "result": "passed"
+        },
+        {
+          "title": "actual provider activity appears before the response and inline sources are clickable",
+          "project": "desktop-1280x800",
+          "status": "expected",
+          "result": "passed"
+        },
+        {
+          "title": "Google failover displays citations and the original suggestions in an opaque sandbox",
+          "project": "desktop-1280x800",
+          "status": "expected",
+          "result": "passed"
+        },
+        {
+          "title": "unsafe Google suggestion gets rejected before any Grounding result is displayed",
+          "project": "desktop-1280x800",
+          "status": "expected",
+          "result": "passed"
+        }
+      ]
+    },
+    "priorExpiryRegressionsReused": 4
+  }
+}
