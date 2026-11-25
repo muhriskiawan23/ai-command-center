@@ -4,7 +4,8 @@ const OPENAI = "https://api.openai.com/v1/responses";
 const MODEL = "gpt-6-luna";
 const MAX_SEARCH_TOOL_CALLS = 2;
 const BUDGET_MICRO_USD = 500000;
-const RESERVATION_PER_SEARCH = 130000;
+// Luna long-context rates can apply to the full request.
+const RESERVATION_PER_SEARCH = 240000;
 const RESERVATION_PER_ROUTER = 106000;
 const SCENARIOS = [
   "Agensi kerja perhotelan di Timur Tengah yang ada di Jakarta.",
@@ -37,7 +38,9 @@ async function capture(response, phase, evidence) {
   record.usage = metricsOf(data);
   if (record.usage) {
     const { input, cachedInput, output, webCalls } = record.usage;
-    record.costMicroUsd = Math.ceil((input - cachedInput) * 0.10 + cachedInput * 0.01 + output * 0.50 + webCalls * 10000);
+    const longContext = input > 272000;
+    const inputCost = ((input - cachedInput) * 0.10 + cachedInput * 0.01) * (longContext ? 2 : 1);
+    record.costMicroUsd = Math.ceil(inputCost + output * (longContext ? 0.75 : 0.50) + webCalls * 10000);
   }
   record.requestId = response.headers.get("x-request-id") || null;
   if (COST_ERRORS.has(data?.error?.code)) record.error = data.error.code;

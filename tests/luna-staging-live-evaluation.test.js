@@ -59,3 +59,22 @@ test("an insufficient-quota response stops before any additional API call", asyn
   assert.equal(result().evidence.evidence[0].error, "insufficient_quota");
   assert.doesNotMatch(JSON.stringify(result()), /omitted/);
 });
+
+test("long-context usage settles at premium rates and the next unsafe reservation is denied", async t => {
+  const { env, result } = fixture(t);
+  let searchCalls = 0;
+  await runLunaStagingEvaluation(env, async (_url, options) => {
+    const body = JSON.parse(options.body);
+    if (!body.tools) return Response.json({ usage, output: [message('{"search":true,"category":"agency","query":"Agensi perhotelan Jakarta"}')] });
+    searchCalls++;
+    return Response.json({ status: "completed", usage: { input_tokens: 900000, output_tokens: 400 },
+      output: [{ type: "web_search_call", status: "completed" }, message("Hasil uji.", [
+        { type: "url_citation", url: "https://example.com/agency", start_index: 0, end_index: 10 }
+      ])] });
+  });
+  const saved = result();
+  assert.equal(searchCalls, 2);
+  assert.equal(saved.status, "stopped");
+  assert.equal(saved.evidence.stopped, "budget_limit");
+  assert.equal(saved.evidence.evidence.find(x => x.phase === "search").costMicroUsd, 190300);
+});
