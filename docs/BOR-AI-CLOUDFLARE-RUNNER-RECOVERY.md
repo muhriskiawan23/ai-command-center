@@ -11,3 +11,7 @@
 **Title:** Workers error 10057 with strict inheritance when active and latest versions differ
 
 **Body:** A staging Worker has a deployed version with a required secret binding. A newer, undeployed version of the same Worker lacks the binding. Uploading a new version with strict binding inheritance returns error 10057. The official error guide distinguishes the standard upload endpoint from a version endpoint that can reference a specific source version. What supported workflow is recommended for verifying the source version and all required bindings before creating a candidate with no traffic change, without retrieving or re-entering secret values? We want to keep strict inheritance enabled and leave the active deployment in place during verification.
+
+## Subsequent owner-authorized sign-in
+
+The owner expressly authorized the saved Google account for Cloudflare Community. Selection proceeded through Google and returned to the Cloudflare sign-in page with “Unable to sign in. Try again or use your email and password.” The site did not give a specific cause. The browser login issue was recorded. No session, topic, or public disclosure was created. The scheduled task must not replay this failed Google flow. Resume posting only with a verified, authorized forum session or when the owner chooses another official sign-in method. Keep checking official guidance and independent release work on the existing hourly task. No stage/prod changes or live benchmark spend.
