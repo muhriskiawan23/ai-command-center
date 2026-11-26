@@ -1,0 +1,124 @@
+{
+  "dateWib": "2026-11-26",
+  "previousCheckpoint": "5600464e3e92b7aeb735a8af592ab11412f90b2c",
+  "staging": {
+    "previousVersion": 31,
+    "rotationVersion": 32,
+    "rotationDeployment": "95836382-7335-4052-a8cb-e22582ca7024",
+    "temporaryVersion": {
+      "version": 33,
+      "id": "9a819692-df14-473f-a238-e3ef2962d978",
+      "expiresUtc": "2026-11-26T01:46:26.469Z",
+      "deployment": {
+        "id": "ddb99eba-0a5c-4fd1-af8d-7ea0a7c4e0b1",
+        "version": 33,
+        "activated": "2026-11-26T01:43:05.845Z"
+      }
+    },
+    "restored": {
+      "version": 32,
+      "active": {
+        "version_id": "0e7ba8cf-5cb9-4715-94db-f9a7797304b6",
+        "percentage": 100
+      },
+      "deployment": "2c8ed9ce-82a3-4350-9a61-b02b6c4325e7",
+      "changed": true,
+      "killSwitch": true,
+      "cron": 0,
+      "production": [
+        {
+          "version_id": "c6dcf354-46c3-4772-9521-55f97cb2fb78",
+          "percentage": 100
+        }
+      ]
+    }
+  },
+  "operator": {
+    "binding": "BOR_LUNA_STAGING_TOKEN",
+    "rotated": true,
+    "transport": "ephemeral RSA-OAEP envelope to staging runner; runner files removed",
+    "preflight": {
+      "status": 503,
+      "error": "staging_smoke_disabled"
+    }
+  },
+  "live": {
+    "providerRequests": 1,
+    "endpoint": "POST /smoke/web-search",
+    "response": {
+      "status": 200,
+      "ok": true,
+      "citationsPresent": true,
+      "usageRecorded": true,
+      "reconciliationRequired": true,
+      "providerStatus": 200
+    },
+    "d1": {
+      "id": "web-v2-smoke-responses-20261126-f",
+      "status": "completed",
+      "evidence": {
+        "baseId": "web-v2-responses-20261126-f",
+        "priorMicroUsd": 228947,
+        "ledgerMicroUsd": 228420,
+        "reservedMicroUsd": 260000,
+        "budgetMicroUsd": 500000,
+        "budgetCommittedMicroUsd": 488947,
+        "ok": true,
+        "providerStatus": 200,
+        "receipt": {
+          "httpStatus": 200,
+          "requestId": "req_0189c3bc8b4e4fc9acb38215d9d24137",
+          "model": "gpt-6-luna",
+          "usage": {
+            "input": 8960,
+            "output": 86,
+            "cached": 0,
+            "reasoning": 30,
+            "webCalls": 1,
+            "billedWebRequests": 1
+          },
+          "completed": true,
+          "reconciliationRequired": true
+        },
+        "citationsPresent": true,
+        "reconciliationRequired": true
+      }
+    }
+  },
+  "billing": {
+    "currency": "USD",
+    "priorEstimatedMicroUsd": 228947,
+    "smokeEstimatedMicroUsd": 10939,
+    "totalEstimatedMicroUsd": 239886,
+    "approvedCapMicroUsd": 500000,
+    "admittedTotalMicroUsd": 488947,
+    "admissionHeadroomMicroUsd": 11053,
+    "ledgerAfter": {
+      "calls": 10,
+      "reserved": 488420
+    },
+    "reservationRetained": true,
+    "ratesPerMillionTokens": {
+      "inputUsd": 0.1,
+      "cachedInputUsd": 0.01,
+      "outputUsd": 0.5
+    },
+    "toolUsdPerRequest": 0.01,
+    "cacheWriteTokenCountAvailable": false,
+    "analytics": {
+      "project": "BOR AI Staging",
+      "matchingCredentialsLabel": "BOR AI Staging - Luna Test",
+      "lastSevenDaysUsdDisplayed": 0.13,
+      "november26UsdDisplayed": 0,
+      "smokeBillingMatched": false,
+      "url": "https://platform.openai.com/analytics/spend?range=today"
+    }
+  },
+  "protection": {
+    "productionChanged": false,
+    "tavilyChanged": false,
+    "newOpenAiKeys": false,
+    "permissionsExpanded": false,
+    "previousTestsRerun": false
+  }
+}
