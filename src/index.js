@@ -1,3 +1,5 @@
+import { googleGroundingAllowed, planWebSearch, runWebSearchV2, searchMode, searchV2Configured, webSearchUserAllowed } from "./web-search-v2.js";
+import { streamChatSearch } from "./chat-search-progress.js";
 import { BACKUP_MODEL, withTextProviderFailover } from "./text-provider-failover.js";
 import { TextInferenceBudgetError, withTextInferenceBudget } from "./text-inference-budget.js";
 import { handleImageRoute, imageConfig, consumeImageQueue, cleanupImageJobs } from "./image-jobs.js";
@@ -262,7 +264,7 @@ async function serveAsset(request, env) {
   if (/^text\/html(?:;|$)/i.test(headers.get("Content-Type") || "")) {
     headers.set(
       "Content-Security-Policy",
-      "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; connect-src 'self' https://accounts.google.com https://forms.googleapis.com https://cdn.jsdelivr.net https://tessdata.projectnaptha.com; script-src 'self' https://accounts.google.com/gsi/client https://cdn.jsdelivr.net https://cdn.sheetjs.com; worker-src 'self' blob: https://cdn.jsdelivr.net; style-src 'self' https://accounts.google.com/gsi/style; style-src-attr 'unsafe-inline'; img-src 'self' data: blob: https://*.googleusercontent.com; frame-src https://accounts.google.com/gsi/; upgrade-insecure-requests"
+      "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; connect-src 'self' https://accounts.google.com https://forms.googleapis.com https://cdn.jsdelivr.net https://tessdata.projectnaptha.com; script-src 'self' https://accounts.google.com/gsi/client https://cdn.jsdelivr.net https://cdn.sheetjs.com; worker-src 'self' blob: https://cdn.jsdelivr.net; style-src 'self' https://accounts.google.com/gsi/style; style-src-attr 'unsafe-inline'; img-src 'self' data: blob: https://*.googleusercontent.com; media-src 'self' blob:; frame-src " + new URL("/api/web-search/grounding-frame", request.url).href + " https://accounts.google.com/gsi/; upgrade-insecure-requests"
     );
   }
 
@@ -1461,8 +1463,25 @@ export default {
   async queue(batch, env) { await consumeImageQueue(batch, env); },
   async scheduled(event, env, ctx) { ctx.waitUntil(cleanupImageJobs(env)); },
   async fetch(request, env) {
+    if (request.method === "POST" && new URL(request.url).pathname === "/api/chat" &&
+        request.headers.get("X-BOR-Chat-Progress") === "1" && searchMode(env) === "v2") {
+      return streamChatSearch(request, (streamRequest, onSearch) => handleWorkerRequest(streamRequest, env, onSearch));
+    }
+    return handleWorkerRequest(request, env);
+  }
+};
+
+async function handleWorkerRequest(request, env, onSearch) {
+    const searchClassifierAI = env.AI;
     env = withTextProviderFailover(withTextInferenceBudget(env));
     const url = new URL(request.url);
+    if (url.pathname === "/api/web-search/grounding-frame" && request.method === "GET" && env.BOR_WEB_SEARCH_GOOGLE_ELIGIBILITY_APPROVED === "true" && searchV2Configured(env)) {
+      return new Response('<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Google Search</title><script defer src="/google-grounding.js"></script><main></main>', { headers: {
+        "Content-Type": "text/html; charset=utf-8", "X-Content-Type-Options": "nosniff", "X-Frame-Options": "SAMEORIGIN",
+        "Referrer-Policy": "no-referrer", "Cache-Control": "no-store",
+        "Content-Security-Policy": "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'self'; sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox"
+      } });
+    }
     if (url.pathname.startsWith("/api/images/") || url.pathname.startsWith("/api/files/")) {
       try { return await handleImageRoute(request, env, url, { getSession, sameOrigin, readJsonRequest }); }
       catch { return json({ error: "Layanan gambar belum siap. Coba lagi nanti.", code: "image_service_error" }, 503); }
@@ -1648,7 +1667,10 @@ export default {
       const githubToolRequest = shouldOfferGitHubTools(message, user, env.BOR_GITHUB_CHAT_TOOLS_ENABLED === "true");
       const useMultiAgent = !imageVision && !githubToolRequest && agentId === "coordinator" && shouldUseMultiAgent(message);
       const found = extractUrls(message);
-      const researchMode = detectResearchMode(message);
+      const configuredSearchMode = searchMode(env);
+      const useSearchV2 = configuredSearchMode === "v2" &&
+        typeof env.BOR_WEB_SEARCH_PILOT_USER_IDS === "string" && webSearchUserAllowed(env, user?.id);
+      const researchMode = configuredSearchMode !== "off" && !useSearchV2 ? detectResearchMode(message) : null;
       // External link reading and live search consume extra provider/network budget.
       const researchCharge = researchMode && isSearchProviderConfigured(env) ? 1 : 0;
       const linkCharge = found.urls.length && env.URL_READER_ENABLED === "true" ? 1 : 0;
@@ -1775,6 +1797,27 @@ export default {
       }
       if (pdfContext || spreadsheetContext || presentationContext || wordDocumentContext || imageOcrContext) pages = [pages, pdfContext, spreadsheetContext, presentationContext, wordDocumentContext, imageOcrContext].filter(Boolean).join("\n\n");
       try {
+        let grounded;
+        let searchRequired = false;
+        const allowGoogle = Boolean(onSearch && sameOrigin(request) && googleGroundingAllowed(env, user));
+        if (agentId === "coordinator" && !githubToolRequest && !found.urls.length &&
+            !document && !spreadsheet && !presentation && !wordDocument && !imageOcr && !imageVision &&
+            rememberText === null && useSearchV2) {
+          pages = [pages, "Web search has not supplied evidence to this model. If the request depends on live facts, explain that those facts could not be checked. Do not invent recent names, prices, events, citations or availability."].filter(Boolean).join("\n\n");
+          const routerSignal = AbortSignal.any([request.signal, AbortSignal.timeout(5000)]);
+          // Keep classification on Workers AI; it must never fall through to billed OpenAI text inference.
+          const router = withAiDeadline({ AI: searchClassifierAI }, Math.min(deadline, Date.now() + 5000), routerSignal).AI;
+          const plan = searchV2Configured(env, allowGoogle) ? await planWebSearch(router, message, history, routerSignal) : null;
+          if (plan) {
+            searchRequired = true;
+            const searchSignal = AbortSignal.any([request.signal, AbortSignal.timeout(Math.max(1, deadline - Date.now()))]);
+            grounded = await runWebSearchV2(env, plan, { allowGoogle, signal: searchSignal, onSearch, userId: user?.id });
+            if (grounded?.links.length) links = grounded.links;
+            toolActivity.push({ tool: "web_search", status: grounded ? "completed" : "unavailable",
+              provider: grounded?.provider, count: grounded?.links.length || 0, version: 2,
+              corroboration: grounded?.provider === "OpenAI" && !grounded.corroborated ? "limited" : undefined });
+          }
+        }
         if (imageVision) {
           // Vision uses the bounded AI binding directly, not the text-only message wrappers.
           // Only model-produced observations enter the text-agent context, never raw pixels.
@@ -1789,7 +1832,15 @@ export default {
           toolActivity.push({ tool: "image_vision", status: "completed" });
         }
         let result;
-        if (useMultiAgent) result = { ...await runMultiAgent(aiEnv, message, history, pages) };
+        if (searchRequired) {
+          const response = grounded?.text || (grounded?.googleGrounding
+            ? (language === "id" ? "Hasil Google ditampilkan untuk giliran ini." : "Google results are displayed for this turn.")
+            : (language === "id" ? "Pencarian web belum menemukan sumber yang dapat dikutip. Coba lagi atau tambahkan lokasi, rentang tanggal, atau nama yang lebih spesifik."
+              : "Web search could not find a citable answer. Try again or add a more specific location, date range, or name."));
+          result = { agent: AGENTS[agentId].name, workflow: "web-search-v2", response };
+          // Grounding stays in the initiating browser response and never enters stored history.
+          if (grounded?.googleGrounding) result.googleGrounding = grounded.googleGrounding;
+        } else if (useMultiAgent) result = { ...await runMultiAgent(aiEnv, message, history, pages) };
         else if (agentId === "coordinator") {
           const response = await runAgent(aiEnv, "coordinator", message, "", history, pages, { user });
           result = { agent: AGENTS.coordinator.name, workflow: "single-agent", agentsUsed: [AGENTS.coordinator.name], response };
@@ -1896,5 +1947,4 @@ export default {
     if (url.pathname.startsWith("/api/")) return json({ error: "Endpoint tidak ditemukan." }, 404);
     if (request.method === "GET" || request.method === "HEAD") return serveAsset(request, env);
     return json({ error: "Endpoint tidak ditemukan." }, 404);
-  }
-};
+}

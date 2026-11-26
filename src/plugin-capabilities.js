@@ -1,3 +1,4 @@
+import { searchMode, searchV2Configured } from "./web-search-v2.js";
 import { imageConfig } from "./image-jobs.js";
 import { isSearchProviderConfigured } from "./research.js";
 
@@ -10,11 +11,12 @@ export function pluginCapabilities(env = {}) {
   const githubConfigured = Boolean(env.DB && env.GITHUB_APP_CLIENT_ID && env.GITHUB_APP_CLIENT_SECRET &&
     env.GITHUB_APP_REDIRECT_URI && env.GITHUB_TOKEN_ENCRYPTION_KEY);
   const githubChatEnabled = githubConfigured && env.BOR_GITHUB_CHAT_TOOLS_ENABLED === "true";
+  const mode = searchMode(env);
   return {
     version: 1,
     tools: {
       webSearch: {
-        available: isSearchProviderConfigured(env),
+        available: mode !== "off" && (isSearchProviderConfigured(env) || searchV2Configured(env, false)),
         invocation: "automatic"
       },
       fileAnalysis: {

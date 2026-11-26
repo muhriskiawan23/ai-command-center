@@ -369,3 +369,7 @@ html[dir="rtl"] .composer-bottom{flex-direction:row}
 .profile-save,.profile-remove-photo{min-height:38px;padding:8px 13px;border:1px solid var(--line);border-radius:10px;background:var(--accent);color:var(--accentText);font:inherit;font-size:12px;font-weight:650}
 .profile-remove-photo{background:transparent;color:var(--text)}
 .profile-save:hover,.profile-remove-photo:hover{filter:brightness(.97)}
+
+.web-citation { font-size: .9em; font-weight: 600; white-space: nowrap; }
+.grounded-google-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.grounded-google-widget { display: block; width: 100%; min-height: 7rem; border: 0; }
