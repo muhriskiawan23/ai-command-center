@@ -373,3 +373,6 @@ html[dir="rtl"] .composer-bottom{flex-direction:row}
 .web-citation { font-size: .9em; font-weight: 600; white-space: nowrap; }
 .grounded-google-text { white-space: pre-wrap; overflow-wrap: anywhere; }
 .grounded-google-widget { display: block; width: 100%; min-height: 7rem; border: 0; }
+
+/* Compact source titles on narrow screens; full destination remains in the link. */
+.message-link-sources .web-source-domain{display:block;color:var(--muted);font-size:.9em;margin:2px 0 6px 1.4em;overflow-wrap:anywhere}

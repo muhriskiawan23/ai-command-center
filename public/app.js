@@ -902,19 +902,29 @@ function buildHistory(chat){
 /* Menunjukkan link mana yang benar-benar terbaca (atau gagal dan kenapa) di bawah jawaban; teks diisi lewat textContent. */
 function appendSources(links){
   const row=messagesEl.lastElementChild;const body=row&&row.querySelector(".message-body");if(!body||!links||!links.length)return;
-  const box=document.createElement("div");box.className="sources";
-  const grounded=links.filter(link=>link.sourceType==="web_search_v2");
+  const box=document.createElement("div");box.className="sources message-link-sources";
+  // Re-render only this message's link panel; leave attachment/tool panels untouched.
+  const grounded=links.filter(link=>link?.sourceType==="web_search_v2");
   if(grounded.length)renderInlineWebCitations(body.querySelector(".message-text"),grounded);
   const head=document.createElement("strong");
   head.textContent=grounded.length?(window.BORLocale?.current==="id"?"Sumber web":"Web sources"):"Sumber yang dibaca:";
   box.append(head);
+  const displayed=new Set();
   for(const l of links){
+    if(!l)continue;
+    const key=JSON.stringify([l.sourceId,l.url,l.ok]);
+    if(displayed.has(key))continue;displayed.add(key);
     const item=document.createElement("div");item.className="source "+(l.ok?"ok":"fail");
     if(l.ok){
       item.append(document.createTextNode("✓ ["+l.sourceId+"] "));
       if(typeof l.url==="string"&&/^https?:\/\//i.test(l.url)){
         const link=document.createElement("a");link.href=l.url;link.target="_blank";link.rel="noopener noreferrer";
-        link.textContent=l.url+(l.title?" — "+l.title:"");item.append(link);
+        if(l.sourceType==="web_search_v2"){
+          let host=l.host||"";try{host=new URL(link.href).hostname}catch{}
+          link.textContent=l.title||host;link.title=link.href;
+          const domain=document.createElement("small");domain.className="web-source-domain";domain.textContent=host;
+          item.append(link,domain);
+        }else{link.textContent=l.url+(l.title?" — "+l.title:"");item.append(link);}
         if(l.resolvedUrl&&l.resolvedUrl!==l.url){const redirect=document.createElement("small");redirect.textContent="Dialihkan ke "+l.resolvedUrl;item.append(redirect);}
       }else item.append(document.createTextNode(l.host+(l.title?" — "+l.title:"")));
       if(l.sourceType==="news")item.append(document.createTextNode(" · Berita"));
@@ -932,6 +942,7 @@ function appendSources(links){
     }else item.textContent="✗ "+(l.host||"sumber")+" — "+(l.reason||"tidak tersedia");
     box.append(item);
   }
+  for(const previous of body.querySelectorAll(":scope > .message-link-sources"))previous.remove();
   body.append(box);
 }
 function clickableWebCitation(source,label){

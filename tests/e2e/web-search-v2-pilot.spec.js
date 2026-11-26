@@ -34,6 +34,11 @@ test("the signed-in pilot streams a cited Luna answer and the next search hits t
   const first = page.locator(".message.assistant .message-text").last();
   await expect(first).toContainText(answer);
   await expect(first.getByRole("link", { name: "[1]", exact: true })).toHaveAttribute("href", "https://example.com/release");
+  const reply = page.locator(".message.assistant").last();
+  await expect(reply.locator(".message-link-sources")).toHaveCount(1);
+  await expect(reply.locator(".message-link-sources .source")).toHaveCount(2);
+  await expect(reply.locator(".message-link-sources .source").first()).toContainText("Synthetic release");
+  await expect(reply.locator(".message-link-sources .source").first()).toContainText("example.com");
   expect(calls).toBe(1);
   await page.locator("#prompt").fill("What was added to the next public release?");
   await page.locator("#send").click();
