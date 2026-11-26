@@ -2,6 +2,7 @@ import { validateUrl } from "./links.js";
 import { DEFAULT_MODEL_ID } from "./model-gateway.js";
 import { extractModelAnswer } from "./gpt-oss.js";
 import { BACKUP_MODEL as LUNA_MODEL } from "./text-provider-failover.js";
+import { sha256Hex } from "./http.js";
 
 const OPENAI_URL = "https://api.openai.com/v1/responses";
 const GOOGLE_URL = "https://generativelanguage.googleapis.com/v1beta/interactions";
@@ -34,6 +35,15 @@ function limits(env) {
     daily: amount(env.BOR_WEB_SEARCH_DAILY_MICRO_USD, 1e9),
     monthly: amount(env.BOR_WEB_SEARCH_MONTHLY_MICRO_USD, 1e10)
   };
+}
+
+export function webSearchUserAllowed(env, userId) {
+  const pilot = env.BOR_WEB_SEARCH_PILOT_USER_IDS;
+  const perUser = env.BOR_WEB_SEARCH_USER_DAILY_CALLS;
+  if (pilot === undefined && perUser === undefined) return true;
+  if (typeof userId !== "string" || !userId || !amount(perUser, 1000)) return false;
+  return pilot === undefined ||
+    (typeof pilot === "string" && pilot.split(",").some(id => id.trim() === userId));
 }
 
 function openAiRoutingHeaders(env) {
@@ -128,10 +138,31 @@ export async function planWebSearch(ai, message, history = [], signal) {
   }
 }
 
-async function reserve(env, cost, now) {
+async function reserve(env, cost, now, userId) {
   const { calls, daily, monthly } = limits(env);
   const day = new Date(now).toISOString().slice(0, 10);
+  const monthStart = day.slice(0, 7) + "-01";
+  const monthEnd = day.slice(0, 7) + "-32";
   try {
+    const userCalls = amount(env.BOR_WEB_SEARCH_USER_DAILY_CALLS, 1000);
+    if (userCalls) {
+      const subject = await sha256Hex(JSON.stringify(["bor-web-search-quota-v1", day, userId]));
+      // The admission write and its global-ledger trigger are one atomic statement.
+      const row = await env.DB.prepare(`
+        INSERT INTO web_search_v2_user_usage (day, subject, calls, reserved_micro_usd)
+        SELECT ?1, ?2, 1, ?3
+        WHERE COALESCE((SELECT calls FROM web_search_v2_usage WHERE day = ?1), 0) < ?4
+          AND ?3 + COALESCE((SELECT reserved_micro_usd FROM web_search_v2_usage WHERE day = ?1), 0) <= ?5
+          AND ?3 + COALESCE((SELECT SUM(reserved_micro_usd)
+                           FROM web_search_v2_usage WHERE day >= ?6 AND day < ?7), 0) <= ?8
+        ON CONFLICT(day, subject) DO UPDATE SET
+          calls = calls + 1,
+          reserved_micro_usd = reserved_micro_usd + excluded.reserved_micro_usd
+        WHERE calls < ?9
+        RETURNING calls
+      `).bind(day, subject, cost, calls, daily, monthStart, monthEnd, monthly, userCalls).first();
+      return Boolean(row);
+    }
     // One write admits the initial row and concurrent increments under the same cap.
     const row = await env.DB.prepare(`
       INSERT INTO web_search_v2_usage (day, calls, reserved_micro_usd)
@@ -143,7 +174,7 @@ async function reserve(env, cost, now) {
         calls = calls + 1, reserved_micro_usd = reserved_micro_usd + excluded.reserved_micro_usd
       WHERE calls < ?3 AND reserved_micro_usd + excluded.reserved_micro_usd <= ?4
       RETURNING calls
-    `).bind(day, cost, calls, daily, day.slice(0, 7) + "-01", day.slice(0, 7) + "-32", monthly).first();
+    `).bind(day, cost, calls, daily, monthStart, monthEnd, monthly).first();
     return Boolean(row);
   } catch {
     return false;
@@ -364,8 +395,9 @@ async function callProvider(provider, plan, deeper, fetcher, signal, onProviderR
   }
 }
 
-export async function runWebSearchV2(env, plan, { allowGoogle = false, signal, onSearch, now = Date.now(), singleOpenAiAttempt = false, onProviderReceipt } = {}) {
-  if (!searchV2Configured(env, allowGoogle) || !categories.has(plan?.category) || publicText(plan?.query, 620) !== plan.query) return null;
+export async function runWebSearchV2(env, plan, { allowGoogle = false, signal, onSearch, now = Date.now(), singleOpenAiAttempt = false, onProviderReceipt, userId } = {}) {
+  if (!webSearchUserAllowed(env, userId) || !searchV2Configured(env, allowGoogle) ||
+      !categories.has(plan?.category) || publicText(plan?.query, 620) !== plan.query) return null;
   const fetcher = env.WEB_SEARCH_V2_FETCHER || fetch;
   // The successful Luna evaluation used a 40-second request deadline. Keep a bounded
   // overall search window, also subject to the calling chat's cancellation/deadline.
@@ -375,7 +407,7 @@ export async function runWebSearchV2(env, plan, { allowGoogle = false, signal, o
   for (const provider of providers(env, allowGoogle)) {
     const maxAttempts = provider.name === "OpenAI" && !singleOpenAiAttempt ? 2 : 1;
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      if (requestSignal.aborted || !await reserve(env, provider.cost, now) || requestSignal.aborted) break;
+      if (requestSignal.aborted || !await reserve(env, provider.cost, now, userId) || requestSignal.aborted) break;
       onSearch?.(provider.name);
       const timeout = provider.name === "OpenAI" && provider.model === LUNA_MODEL ? LUNA_SEARCH_TIMEOUT_MS : 9000;
       const result = await callProvider(provider, plan, attempt > 0, fetcher,

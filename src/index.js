@@ -1,4 +1,4 @@
-import { googleGroundingAllowed, planWebSearch, runWebSearchV2, searchMode, searchV2Configured } from "./web-search-v2.js";
+import { googleGroundingAllowed, planWebSearch, runWebSearchV2, searchMode, searchV2Configured, webSearchUserAllowed } from "./web-search-v2.js";
 import { streamChatSearch } from "./chat-search-progress.js";
 import { BACKUP_MODEL, withTextProviderFailover } from "./text-provider-failover.js";
 import { TextInferenceBudgetError, withTextInferenceBudget } from "./text-inference-budget.js";
@@ -285,7 +285,7 @@ async function readChatLinks(urls, env, ownHost) {
   const externalUrls = externalIndexes.map(index => urls[index]);
   let externalResults = [];
   if (externalUrls.length && env.URL_READER_ENABLED === "true") {
-    externalResults = searchMode(env) === "legacy" && env.URL_READER_PROVIDER === "tavily"
+    externalResults = env.URL_READER_PROVIDER === "tavily"
       ? await extractWithTavily(externalUrls, env, { ownHost, fetcher: env.TAVILY_EXTRACT_FETCHER || fetch })
       : await readLinks(externalUrls, {
         fetcher: createVerifiedLinkFetcher(env) || env.LINK_FETCHER || null,
@@ -1524,9 +1524,11 @@ export default {
 };
 
 async function handleWorkerRequest(request, env, onSearch) {
+    const searchClassifierAI = env.AI;
     env = withTextProviderFailover(withTextInferenceBudget(env));
     const url = new URL(request.url);
-    if (url.pathname === "/api/web-search/grounding-frame" && request.method === "GET" && searchV2Configured(env)) {
+    if (url.pathname === "/api/web-search/grounding-frame" && request.method === "GET" &&
+        env.BOR_WEB_SEARCH_GOOGLE_ELIGIBILITY_APPROVED === "true" && searchV2Configured(env)) {
       return new Response('<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Google Search</title><script defer src="/google-grounding.js"></script><main></main>', { headers: {
         "Content-Type": "text/html; charset=utf-8", "X-Content-Type-Options": "nosniff", "X-Frame-Options": "SAMEORIGIN",
         "Referrer-Policy": "no-referrer", "Cache-Control": "no-store",
@@ -1733,7 +1735,9 @@ async function handleWorkerRequest(request, env, onSearch) {
       const githubToolRequest = shouldOfferGitHubTools(message, user, env.BOR_GITHUB_CHAT_TOOLS_ENABLED === "true");
       const useMultiAgent = !imageVision && !githubToolRequest && agentId === "coordinator" && shouldUseMultiAgent(message);
       const found = extractUrls(message);
-      const researchMode = searchMode(env) === "legacy" ? detectResearchMode(message) : null;
+      const configuredSearchMode = searchMode(env);
+      const useSearchV2 = configuredSearchMode === "v2" && webSearchUserAllowed(env, user?.id);
+      const researchMode = configuredSearchMode !== "off" && !useSearchV2 ? detectResearchMode(message) : null;
       // External link reading and live search consume extra provider/network budget.
       const researchCharge = researchMode && isSearchProviderConfigured(env) ? 1 : 0;
       const linkCharge = env.URL_READER_ENABLED === "true" && found.urls.some(raw => !isFirstPartyHost(raw, url.hostname)) ? 1 : 0;
@@ -1861,15 +1865,16 @@ async function handleWorkerRequest(request, env, onSearch) {
         const allowGoogle = Boolean(onSearch && sameOrigin(request) && googleGroundingAllowed(env, user));
         if (agentId === "coordinator" && !githubToolRequest && !found.urls.length &&
             !document && !spreadsheet && !presentation && !wordDocument && !imageOcr && !imageVision &&
-            rememberText === null && searchMode(env) === "v2") {
+            rememberText === null && useSearchV2) {
           pages = [pages, "Web search has not supplied evidence to this model. If the request depends on live facts, explain that those facts could not be checked. Do not invent recent names, prices, events, citations or availability."].filter(Boolean).join("\n\n");
           const routerSignal = AbortSignal.any([request.signal, AbortSignal.timeout(5000)]);
-          const router = withAiDeadline(env, Math.min(deadline, Date.now() + 5000), routerSignal).AI;
+          // Keep classification on Workers AI; it must never fall through to billed OpenAI text inference.
+          const router = withAiDeadline({ AI: searchClassifierAI }, Math.min(deadline, Date.now() + 5000), routerSignal).AI;
           const plan = searchV2Configured(env, allowGoogle) ? await planWebSearch(router, message, history, routerSignal) : null;
           if (plan) {
             searchRequired = true;
             const searchSignal = AbortSignal.any([request.signal, AbortSignal.timeout(Math.max(1, deadline - Date.now()))]);
-            grounded = await runWebSearchV2(env, plan, { allowGoogle, signal: searchSignal, onSearch });
+            grounded = await runWebSearchV2(env, plan, { allowGoogle, signal: searchSignal, onSearch, userId: user?.id });
             if (grounded?.links.length) links = grounded.links;
             toolActivity.push({ tool: "web_search", status: grounded ? "completed" : "unavailable",
               provider: grounded?.provider, count: grounded?.links.length || 0, version: 2,

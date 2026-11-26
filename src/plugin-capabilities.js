@@ -18,17 +18,17 @@ export function pluginCapabilities(env = {}) {
   const extractLimit = env.TAVILY_EXTRACT_DAILY_URL_LIMIT;
   const validExtractLimit = (typeof extractLimit === "string" && /^[0-9]+$/.test(extractLimit.trim())) || Number.isSafeInteger(extractLimit);
   const extractBudgetReady = validExtractLimit && Number(extractLimit) >= 1 && Number(extractLimit) <= 10000;
-  const managedReaderReady = readerEnabled && mode === "legacy" && env.URL_READER_PROVIDER === "tavily" &&
+  const managedReaderReady = readerEnabled && env.URL_READER_PROVIDER === "tavily" &&
     typeof env.TAVILY_API_KEY === "string" && Boolean(env.TAVILY_API_KEY.trim()) &&
     Boolean(env.DB?.prepare) && extractBudgetReady;
-  const pinnedProxyReady = readerEnabled && (mode !== "legacy" || env.URL_READER_PROVIDER !== "tavily") &&
+  const pinnedProxyReady = readerEnabled && env.URL_READER_PROVIDER !== "tavily" &&
     typeof env.EGRESS_PROXY?.fetch === "function" &&
     typeof env.EGRESS_PROXY_TOKEN === "string" && env.EGRESS_PROXY_TOKEN.length >= 32;
   return {
     version: 1,
     tools: {
       webSearch: {
-        available: mode === "legacy" ? isSearchProviderConfigured(env) : searchV2Configured(env),
+        available: mode !== "off" && (isSearchProviderConfigured(env) || searchV2Configured(env)),
         invocation: "automatic",
         scope: mode === "v2" ? "grounded_public_web" : "search_result_snippets"
       },
