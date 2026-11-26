@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createD1 } from "./e2e/harness.js";
-import { createAnswerQualityBenchmarkWorker } from "../src/luna-answer-quality-benchmark-worker.js";
+import { createAnswerQualityBenchmarkWorker, createBenchmarkDatabase, MAX_BENCHMARK_D1_QUERIES } from "../src/luna-answer-quality-benchmark-worker.js";
 
 const campaign = "answer-quality-af5dd9b-v1";
 const exactCommit = "af5dd9b473576affbcc269b90b28e852d506ca82";
@@ -21,6 +21,22 @@ function setup(t, options = {}) {
     DB.sqlite.prepare("INSERT INTO web_search_v2_live_evaluation VALUES (?, 'approved', ?)")
       .run(campaign, JSON.stringify(approved));
   }
+  let queries = 0;
+  const prepare = DB.prepare;
+  function metered(statement) {
+    const execute = (method, args) => {
+      queries++;
+      if (queries > 50 || queries === options.d1FailureAt) throw new Error("synthetic D1 failure");
+      return statement[method](...args);
+    };
+    return {
+      bind: (...args) => metered(statement.bind(...args)),
+      first: (...args) => execute("first", args),
+      all: (...args) => execute("all", args),
+      run: (...args) => execute("run", args)
+    };
+  }
+  DB.prepare = (...args) => metered(prepare(...args));
   const env = { DB, BOR_LUNA_STAGING_TOKEN: operator, BOR_WEB_SEARCH_OPENAI_KEY: key,
     BOR_WEB_SEARCH_OPENAI_ORG: "org-test", BOR_WEB_SEARCH_OPENAI_PROJECT: "proj_test",
     BOR_LUNA_ANSWER_BENCHMARK_ENABLED: "true", BOR_LUNA_ANSWER_BENCHMARK_EXPIRES_AT: String(expiresAt),
@@ -39,6 +55,7 @@ function setup(t, options = {}) {
     assert.equal(JSON.parse(row.evidence_json).reservationMicroUsd, 500_000);
     assert.equal(JSON.parse(row.evidence_json).receipts.length, i);
     if (options.failAt === i) throw new Error("synthetic provider uncertainty");
+    if (options.largeResponseAt === i) return new Response("x".repeat(256 * 1024 + 1));
     const text = i === 1 ? "323" : body.input?.[0]?.content?.startsWith("Decide if the latest message")
       ? JSON.stringify({ search: true, category: "education", query: "Find NASA's Bennu sample mass and the TAGSAM technical obstacle." })
       : "The synthetic answer gives enough detail to exercise the real coordinator without making any external request.\nThe next paragraph gives the candidate enough material to validate a meaningful multi-agent result locally.";
@@ -56,7 +73,7 @@ function setup(t, options = {}) {
     ...("body" in overrides ? { body: overrides.body } : {})
   }), { ...env, ...overrides.env });
   const ledger = () => DB.sqlite.prepare("SELECT status, evidence_json FROM web_search_v2_live_evaluation WHERE id=?").get(campaign);
-  return { run, calls, DB, ledger };
+  return { run, calls, DB, ledger, queries: () => queries };
 }
 
 test("real candidate executes the fixed suite once with the atomic ledger, bounded search and follow-up context", async t => {
@@ -134,4 +151,71 @@ test("unrecognized provider receipts halt the fixed suite and hold the full rese
   assert.equal(row.status, "stopped");
   assert.equal(JSON.parse(row.evidence_json).reservationMicroUsd, 500_000);
   assert.equal((await f.run()).status, 409);
+});
+
+test("the full fixture fits the D1 Free limit with at least ten operations to spare", async t => {
+  const f = setup(t);
+  const response = await f.run();
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).evidence.completedTurns.length, 7);
+  assert.equal(f.calls.length, 14);
+  assert.equal(f.queries(), 30);
+  assert.equal(f.ledger().status, "completed");
+});
+
+test("individual D1 errors at every execution position preserve the one-shot cap", async t => {
+  for (let d1FailureAt = 1; d1FailureAt <= 30; d1FailureAt++) {
+    const f = setup(t, { d1FailureAt });
+    const response = await f.run();
+    const count = f.calls.length;
+    assert.ok(f.queries() <= 40, "D1 failure at operation " + d1FailureAt);
+    if (d1FailureAt === 1) {
+      assert.equal(response.status, 503);
+      assert.equal(count, 0);
+      assert.equal(f.ledger().status, "approved");
+      continue;
+    }
+    // Optional retention cleanup is allowed to fail without stopping.
+    assert.equal(f.ledger().status, response.ok ? "completed" : "stopped");
+    assert.equal((await f.run()).status, 409);
+    assert.equal(f.calls.length, count);
+  }
+});
+
+test("provider errors at every dispatch position and an oversized response stay bounded", async t => {
+  const failures = Array.from({ length: 14 }, (_, i) => ({ failAt: i + 1 }));
+  failures.push({ largeResponseAt: 1 });
+  for (const options of failures) {
+    const f = setup(t, options);
+    assert.equal((await f.run()).status, 502);
+    const count = f.calls.length;
+    assert.ok(count > 0 && count <= 14);
+    assert.ok(f.queries() <= 40);
+    assert.equal(f.ledger().status, "stopped");
+    assert.equal(JSON.parse(f.ledger().evidence_json).reservationMicroUsd, 500_000);
+    assert.equal((await f.run()).status, 409);
+    assert.equal(f.calls.length, count);
+  }
+});
+
+test("the D1 guard caps failing operations and reserves two terminal attempts", () => {
+  let executions = 0;
+  const denied = new Error("D1 unavailable");
+  const stmt = {
+    bind() { return this; },
+    first() { executions++; throw denied; },
+    all() { executions++; },
+    run() { executions++; }
+  };
+  const db = createBenchmarkDatabase({ prepare: () => stmt });
+  assert.equal(db.running.batch, undefined);
+  const query = db.running.prepare("SELECT ?").bind(1);
+  for (let i = 0; i < MAX_BENCHMARK_D1_QUERIES - 2; i++) assert.throws(() => query.first(), denied);
+  assert.throws(() => query.all(), /benchmark_d1_limit/);
+  assert.equal(db.exhausted, true);
+  const terminal = db.terminal.prepare("UPDATE ledger");
+  assert.throws(() => terminal.first(), denied);
+  terminal.run();
+  assert.throws(() => terminal.run(), /benchmark_d1_limit/);
+  assert.equal(executions, 40);
 });

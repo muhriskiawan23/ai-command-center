@@ -16,6 +16,9 @@ const maxBodyBytes = 256 * 1024;
 const maxTextInputBytes = 32_000;
 // Allow core multi-agent stages, one paid inference per distinct agent per turn.
 const maxTextCalls = 24;
+export const MAX_BENCHMARK_D1_QUERIES = 40;
+// Keep two operations available for completion and a terminal failure write.
+const maxRunningD1Queries = MAX_BENCHMARK_D1_QUERIES - 2;
 const textTurnCostCeilingMicroUsd = 7_500;
 if (maxTextCalls * textTurnCostCeilingMicroUsd > textBudget) throw new Error("Benchmark text ceiling exceeds reservation");
 const stagingHost = "bor-ai-luna-staging.muhriskiawan23.workers.dev";
@@ -67,6 +70,35 @@ function persist(db, status, evidence) {
     UPDATE web_search_v2_live_evaluation SET status = ?, evidence_json = ?
     WHERE id = ? AND status = 'running' RETURNING id
   `).bind(status, JSON.stringify(evidence), campaign).first();
+}
+
+export function createBenchmarkDatabase(binding) {
+  let queries = 0;
+  let exhausted = false;
+  function wrap(statement, limit) {
+    function execute(method, args) {
+      if (queries >= limit) {
+        exhausted = true;
+        throw new Error("benchmark_d1_limit");
+      }
+      queries++;
+      return statement[method](...args);
+    }
+    return {
+      bind: (...args) => wrap(statement.bind(...args), limit),
+      first: (...args) => execute("first", args),
+      all: (...args) => execute("all", args),
+      run: (...args) => execute("run", args)
+    };
+  }
+  // The pinned guest-chat and search routes use individual statements only.
+  // Do not expose unmetered methods such as batch or exec to either route.
+  const scoped = limit => ({ prepare: sql => wrap(binding.prepare(sql), limit) });
+  return {
+    running: scoped(maxRunningD1Queries),
+    terminal: scoped(MAX_BENCHMARK_D1_QUERIES),
+    get exhausted() { return exhausted; }
+  };
 }
 
 async function readProvider(response) {
@@ -173,8 +205,9 @@ export function createAnswerQualityBenchmarkWorker(fetcher = (...args) => fetch(
     }
     const evidence = { candidate: commit, reservationMicroUsd: totalBudget, textBudget, searchBudget,
       route: "integrated-staging", receipts: [], completedTurns: [], reconciliationRequired: true };
+    const db = createBenchmarkDatabase(env.DB);
     try {
-      if (!await claim(env.DB, expiry, evidence)) return json({ error: "campaign_not_admitted" }, 409);
+      if (!await claim(db.running, expiry, evidence)) return json({ error: "campaign_not_admitted" }, 409);
     } catch {
       return json({ error: "campaign_ledger_unavailable" }, 503);
     }
@@ -184,11 +217,12 @@ export function createAnswerQualityBenchmarkWorker(fetcher = (...args) => fetch(
     let textCalls = 0;
     let searchCalls = 0;
     let providerFailed = false;
+    let journal = Promise.resolve();
     async function send(body, kind, stage = kind, upstreamSignal) {
       signal.throwIfAborted();
       upstreamSignal?.throwIfAborted();
       const serialized = JSON.stringify(body);
-      if (providerFailed || encoder.encode(serialized).length > maxTextInputBytes ||
+      if (providerFailed || db.exhausted || encoder.encode(serialized).length > maxTextInputBytes ||
           body.model !== model || body.store !== false || body.service_tier !== "default" ||
           !Number.isSafeInteger(body.max_output_tokens) || body.max_output_tokens < 1 || body.max_output_tokens > 2200 ||
           (kind === "search" ? searchCalls !== 0 : textCalls >= maxTextCalls || body.tools !== undefined)) {
@@ -198,10 +232,21 @@ export function createAnswerQualityBenchmarkWorker(fetcher = (...args) => fetch(
       else textCalls++;
       // Journal admission before dispatch. Any uncertain outcome keeps the entire reservation.
       const attempt = { turn: current, kind, stage, dispatchAdmitted: true };
-      evidence.receipts.push(attempt);
       try {
-        if (!await persist(env.DB, "running", evidence)) throw new Error("campaign_ledger_lost");
+        // Each write also checkpoints receipts and turns already available in memory.
+        // Serialize admissions so parallel agents cannot overwrite a newer journal.
+        const admission = journal.then(async () => {
+          if (providerFailed || db.exhausted) throw new Error("benchmark_provider_stopped");
+          signal.throwIfAborted();
+          upstreamSignal?.throwIfAborted();
+          evidence.receipts.push(attempt);
+          if (!await persist(db.running, "running", evidence)) throw new Error("campaign_ledger_lost");
+        });
+        journal = admission.catch(() => { providerFailed = true; });
+        await admission;
         signal.throwIfAborted();
+        upstreamSignal?.throwIfAborted();
+        if (providerFailed || db.exhausted) throw new Error("benchmark_provider_stopped");
         const timeout = AbortSignal.timeout(kind === "search" ? 40_000 : 20_000);
         const deadline = AbortSignal.any(upstreamSignal ? [signal, upstreamSignal, timeout] : [signal, timeout]);
         const response = await fetcher(endpoint, { method: "POST", redirect: "error", signal: deadline,
@@ -211,7 +256,6 @@ export function createAnswerQualityBenchmarkWorker(fetcher = (...args) => fetch(
         const phaseSpend = evidence.receipts.filter(item => (item.kind === "search") === (kind === "search"))
           .reduce((sum, item) => sum + (item.estimatedMicroUsd ?? 0), 0);
         if (phaseSpend > (kind === "search" ? searchBudget : textBudget)) throw new Error("reservation_overrun");
-        if (!await persist(env.DB, "running", evidence)) throw new Error("campaign_ledger_lost");
         return data;
       } catch (error) {
         providerFailed = true;
@@ -232,7 +276,7 @@ export function createAnswerQualityBenchmarkWorker(fetcher = (...args) => fetch(
             const response = await candidate.fetch(new Request(url.origin + "/api/chat", { signal, method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ message: prompt, history, language: test.id.endsWith("-en") ? "en" : "id" }) }),
-            { DB: env.DB, AI: ai, BOR_WEB_SEARCH_MODE: "off", BOR_ANSWER_QUALITY_PROFILE: "enhanced" });
+            { DB: db.running, AI: ai, BOR_WEB_SEARCH_MODE: "off", BOR_ANSWER_QUALITY_PROFILE: "enhanced" });
             const data = await response.json();
             if (ai.denied || !response.ok || data.saved || typeof data.response !== "string" || !data.response.trim()) {
               throw new Error("candidate_chat_unverified");
@@ -243,7 +287,7 @@ export function createAnswerQualityBenchmarkWorker(fetcher = (...args) => fetch(
             const plan = await planWebSearch(classifier, prompt, history, signal);
             if (classifier.denied || !plan) throw new Error("candidate_router_unverified");
             const result = await runWebSearchV2({
-              DB: env.DB, BOR_WEB_SEARCH_MODE: "v2",
+              DB: db.running, BOR_WEB_SEARCH_MODE: "v2",
               BOR_WEB_SEARCH_OPENAI_KEY: key, BOR_WEB_SEARCH_OPENAI_ORG: env.BOR_WEB_SEARCH_OPENAI_ORG,
               BOR_WEB_SEARCH_OPENAI_PROJECT: env.BOR_WEB_SEARCH_OPENAI_PROJECT,
               BOR_WEB_SEARCH_DAILY_CALLS: "1", BOR_WEB_SEARCH_OPENAI_CALL_MICRO_USD: String(searchBudget),
@@ -264,22 +308,23 @@ export function createAnswerQualityBenchmarkWorker(fetcher = (...args) => fetch(
             links = result.links;
           }
           const receipts = evidence.receipts.slice(receiptCount);
-          if (providerFailed || (test.route === "chat" ? receipts.length < 1 || receipts.length > 4 : receipts.length !== 2) || receipts.some(item => !item.requestId)) {
+          if (providerFailed || db.exhausted || (test.route === "chat" ? receipts.length < 1 || receipts.length > 4 : receipts.length !== 2) || receipts.some(item => !item.requestId)) {
             throw new Error("benchmark_turn_unverified");
           }
           if (test.id === "compact-id" && answer.trim() !== "323") throw new Error("compact_answer_failed");
           answers.push({ id: current, answer, links });
           history.push({ role: "user", content: prompt }, { role: "assistant", content: answer });
           evidence.completedTurns.push(current);
-          if (!await persist(env.DB, "running", evidence)) throw new Error("campaign_ledger_lost");
         }
       }
-      if (!await persist(env.DB, "completed", evidence)) throw new Error("campaign_ledger_lost");
+      if (!await persist(db.terminal, "completed", evidence)) throw new Error("campaign_ledger_lost");
       return json({ ok: true, campaign, answers, evidence });
     } catch {
       evidence.stoppedAt = current;
       // Do not refund, reopen, or retry a campaign with an uncertain provider outcome.
-      try { await persist(env.DB, "stopped", evidence); } catch { /* running still blocks replay */ }
+      providerFailed = true;
+      await journal;
+      try { await persist(db.terminal, "stopped", evidence); } catch { /* running still blocks replay */ }
       return json({ error: "benchmark_stopped", campaign, answers, evidence }, 502);
     }
   } };

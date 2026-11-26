@@ -18,3 +18,11 @@ The adapter imports the unchanged BOR AI core from `af5dd9b473576affbcc269b90b28
 - Existing Cloudflare Browser Run REST script capability is a possible official browser execution surface after a permitted test target is available. Full local Chrome regression remains blocked by denied Unix sockets. Neither path was counted as a full browser pass.
 
 Continue from the existing [review baseline](./BOR-AI-STAGING-MANUAL-REVIEW.md) only after a platform-approved, staged execution version is available. It must preserve the existing bindings and staging isolation. Keep all production release gates in place.
+
+## Workers Free capacity check
+
+- With real candidate handlers and synthetic provider responses, the seven-turn fixture completed with 30 individual D1 operations and 14 provider dispatches. Nine focused tests passed, including injected faults at all 30 D1 positions and all 14 dispatch positions, a response above 256 KiB, and the hard ceiling of 40 D1 operations. The full Node regression exited successfully with 775 test entries.
+- The runner allows 38 D1 operations in flight before reserving two operation slots for completion or failure recording. Each dispatch is journaled before it leaves the Worker. Subsequent admission writes also checkpoint known receipts and completed turns. A crash can leave pending receipts in the ledger, which must be reconciled before any further use of the reservation.
+- Free permits 50 D1 queries per invocation, 50 external subrequests, six outgoing connections awaiting headers, 10 ms CPU per HTTP request and 128 MB memory per isolate. The runner permits up to 25 provider dispatches with redirects denied and up to four distinct agent calls per turn. Outbound bodies are capped at 32,000 bytes and provider responses at 256 KiB each. Check remaining account request and D1 row quotas before activation. Local fixture results do not establish edge CPU, memory or end-to-end duration. Before billable execution, validate on an approved isolated runtime with synthetic responses and confirm the operator can sustain the connection throughout the approved window.
+
+Limits: [Workers](https://developers.cloudflare.com/workers/platform/limits/), [D1](https://developers.cloudflare.com/d1/platform/limits/), [D1 pricing and daily quotas](https://developers.cloudflare.com/d1/platform/pricing/).
