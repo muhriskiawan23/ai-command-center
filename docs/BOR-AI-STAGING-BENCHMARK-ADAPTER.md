@@ -1,0 +1,20 @@
+# Staging-only Luna answer-quality benchmark adapter
+
+The adapter imports the unchanged BOR AI core from `af5dd9b473576affbcc269b90b28e852d506ca82`. Its only route is an operator-authenticated POST to `/__staging/answer-quality-benchmark` on the existing staging workers.dev hostname. No public chat route or cron trigger is exposed by this adapter. Submitted request bodies are ignored. The six fixtures run in the existing suite order across seven turns. The follow-up retains only the synthetic conversation within its case.
+
+## Admission and evidence
+
+- The adapter uses the existing managed operator, OpenAI, project and D1 bindings. Activation requires a five-minute-or-shorter expiry, an explicit benchmark enable flag, the staging kill switch set to false for this operator window, and ordinary search and URL Reader disabled. The deployment review configuration remains dormant, with the kill switch true.
+- Use the existing isolated D1 table `web_search_v2_live_evaluation`. The fixed ID `answer-quality-af5dd9b-v1` needs a preapproved row on that DB after independent review confirms no equivalent campaign has run on any route. Its initial status is `approved`. The evidence object must specify `candidate` (full SHA above), `expiresAt` (epoch ms, same as the runtime approval expiry), `scope` (`bor-ai-luna-staging`), `reservationMicroUsd` (500000), and `route` (`integrated-staging`). Never seed or reopen an approval automatically. The same campaign ID is required for any alternative runner to prevent double authorization.
+- A single guarded UPDATE both claims the campaign and records US$0.50 reserved. US$0.24 is reserved for text and classifier, US$0.26 for one search request. The adapter admits at most 24 text/classifier requests total with at most four distinct core agents per chat turn. It refuses repeated calls for the same agent, extra provider attempts, redirects and open-ended tools. The provider path is pinned to GPT-6 Luna and OpenAI Responses. Search is restricted to one tool call. The reservation survives ambiguous or stopped runs.
+- Durable evidence holds request IDs, usage, estimated costs and admitted request metadata. Synthetic answers and citations are returned to the authenticated operator for off-run scoring. Provider invoices still require reconciliation. A stopped campaign cannot be retried.
+- Chat turns use the real candidate chat handler in guest mode through the capped Responses adapter. The Bennu turn exercises the candidate classifier, search provider parser, and existing D1 search reservation. The adapter does not verify real Google login, persisted user history, or the production text transport. These remain separate release gates. The search usage caps preserve existing ledger limits, so outstanding staging reservations may safely refuse this attempt.
+
+## Verification
+
+- Node: 771 tests, 770 passed, 0 failed, 1 skipped. The five new tests use real SQLite schema and mocked OpenAI, including concurrent claim, the six scenarios, history context, citations, replay refusal, missing approval, and uncertain provider responses.
+- Wrangler 4.160.0 dry run built the staging-only module with benchmark disabled, kill switch on and no secret bindings. Bundle SHA-256: `d7efb042ae9753392859174f8e60b5059b6776826ccb2ae70eb69545edbd3925`.
+- Cloudflare read-back confirmed staging uses a D1 target different from production. Its existing evaluation table has the fields needed by the approval row. No D1 write, Cloudflare upload, traffic change or live provider request occurred.
+- Existing Cloudflare Browser Run REST script capability is a possible official browser execution surface after a permitted test target is available. Full local Chrome regression remains blocked by denied Unix sockets. Neither path was counted as a full browser pass.
+
+Continue from the existing [review baseline](./BOR-AI-STAGING-MANUAL-REVIEW.md) only after a platform-approved, staged execution version is available. It must preserve the existing bindings and staging isolation. Keep all production release gates in place.
