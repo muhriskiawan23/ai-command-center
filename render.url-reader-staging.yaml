@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: bor-ai-url-reader-staging
+    runtime: docker
+    plan: free
+    branch: feature/web-search-v2
+    dockerfilePath: ./tools/egress-proxy/cloud/Dockerfile
+    healthCheckPath: /health
+    autoDeployTrigger: off
+    numInstances: 1
+    maxShutdownDelaySeconds: 15
+    envVars:
+      - key: TUNNEL_TOKEN
+        sync: false
+      - key: EGRESS_PROXY_TOKEN
+        sync: false
