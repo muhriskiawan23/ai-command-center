@@ -15,3 +15,7 @@
 ## Subsequent owner-authorized sign-in
 
 The owner expressly authorized the saved Google account for Cloudflare Community. Selection proceeded through Google and returned to the Cloudflare sign-in page with “Unable to sign in. Try again or use your email and password.” The site did not give a specific cause. The browser login issue was recorded. No session, topic, or public disclosure was created. The scheduled task must not replay this failed Google flow. Resume posting only with a verified, authorized forum session or when the owner chooses another official sign-in method. Keep checking official guidance and independent release work on the existing hourly task. No stage/prod changes or live benchmark spend.
+
+## Google-only account recovery
+
+The owner confirmed Google Riskiawan is the only account and method authorized. The previously selected GitHub option reached its credential form, with no credentials submitted, and was discontinued. Official Cloudflare documentation limits social login to accounts that signed up socially or have verified email. The dashboard did not expose a precise cause for the Google return failure. The official forum login landing page was reopened for a manual Google sign-in, with no account or credential changes. The hourly task retains all release gates and continues independent checks while sign-in is pending.
