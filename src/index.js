@@ -21,7 +21,7 @@ import { handleGitHubOAuthRoute } from "./github-oauth.js";
 import { pluginCapabilities } from "./plugin-capabilities.js";
 import { availableGitHubTools, executeGitHubChatTool, extractGitHubToolCalls, pluginBudgetMessage, reserveGitHubToolInferenceBudget, shouldOfferGitHubTools } from "./plugin-runtime.js";
 import { selectModel, taskProfileForAgent, summarizeModelTrace } from "./model-gateway.js";
-import { GPT_OSS_MODEL_ID, mayUseGptOss, reserveGptOssCall, extractModelAnswer } from "./gpt-oss.js";
+import { GPT_OSS_MODEL_ID, mayUseGptOss, reserveGptOssCall, extractModelAnswer, isOutputTokenLimited } from "./gpt-oss.js";
 import { planFeedbackForm, generateFormsScript } from "./form-draft.js";
 import { COMMUNICATION_NOTICE, CAPABILITY_NOTICE, AGENTS } from "./prompts.js";
 import { json, sha256Hex } from "./http.js";
@@ -189,6 +189,18 @@ export function localizedChatNotice(language, type, item = "") {
       "ℹ️ 답변은 생성되었지만 메모리에 저장하지 못했습니다. 메모리 메뉴에서 다시 시도하세요.",
       "ℹ️ 已生成回答，但无法保存到记忆。请在“记忆”菜单中重试。",
       "ℹ️ تم إنشاء الإجابة، ولكن تعذّر حفظها في الذاكرة. حاول مرة أخرى من قائمة الذاكرة."
+    ],
+    outputLimited: [
+      "**Partial answer:** the model reached its output limit. The remaining details may be missing.",
+      "**Jawaban belum lengkap:** model mencapai batas keluaran. Sebagian detail mungkin belum tercakup.",
+      "**Respuesta parcial:** el modelo alcanzó su límite de salida; pueden faltar detalles.",
+      "**Réponse partielle :** le modèle a atteint sa limite de sortie ; des détails peuvent manquer.",
+      "**Teilantwort:** Das Modell hat sein Ausgabelimit erreicht; Details können fehlen.",
+      "**Resposta parcial:** o modelo atingiu o limite de saída; alguns detalhes podem faltar.",
+      "**回答は途中です：** モデルが出力上限に達したため、一部の詳細が欠けている可能性があります。",
+      "**부분 답변:** 모델이 출력 한도에 도달하여 일부 내용이 누락되었을 수 있습니다.",
+      "**回答尚不完整：** 模型已达到输出上限，可能缺少部分细节。",
+      "**إجابة جزئية:** بلغ النموذج حد الإخراج، وقد تكون بعض التفاصيل ناقصة."
     ],
     saveWarning: [
       "The answer was generated, but chat history could not be saved. Copy it before leaving the page.",
@@ -617,7 +629,7 @@ async function runAgent(env, agentId, userMessage, context = "", history = [], p
     const greeting=/^(?:(?:hi|hey|hai|halo|hello|hola|bonjour|pagi|siang|sore|malam)(?:[\s,]+(?:bor(?:\s+ai)?|there))?|selamat\s+(?:pagi|siang|sore|malam))[!.?\s]*$/i.test(userMessage.trim());
     // Retry once only when content is actually missing or nontrivial prompts
     // receive an unusably short answer.
-    if (!cleaned || (!greeting && (countWords(cleaned).length < 8 || cleaned.length < 35))) {
+    if (!cleaned || (!greeting && !isOutputTokenLimited(result) && (countWords(cleaned).length < 8 || cleaned.length < 35))) {
       result = await generate(
         "RETRY REQUIRED: Your previous answer contained empty Markdown headings or bullets and was unusable. Return substantive content in plain text or simple numbered points. Do not output empty headings, empty bullets, or Markdown-only lines. Include at least 3 concrete findings when appropriate. Every bullet must contain a complete sentence. Answer in the user's language."
       );
@@ -640,9 +652,12 @@ async function runAgent(env, agentId, userMessage, context = "", history = [], p
       throw new Error(`Agent ${agentId} returned unusable output after retry`);
     }
 
-    traceEntry.outcome = "success";
+    const outputLimited = isOutputTokenLimited(result);
+    traceEntry.outcome = outputLimited ? "partial" : "success";
     emitTelemetry();
-    return cleaned;
+    // Keep the partial content, including any unfinished code block, without
+    // silently making another billable call. The notice precedes the content.
+    return outputLimited ? localizedChatNotice(env.BOR_RESPONSE_LANGUAGE, "outputLimited") + "\n\n" + cleaned : cleaned;
   } catch (error) {
     traceEntry.outcome = "error";
     traceEntry.failureType = error instanceof AiTimeoutError ? "timeout"

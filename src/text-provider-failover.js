@@ -92,7 +92,7 @@ export function withTextProviderFailover(env, fetcher = fetch) {
       const message = result.choices?.[0]?.message;
       const answer = message?.content;
       if ((typeof answer === "string" && answer.trim()) || (Array.isArray(message?.tool_calls) && message.tool_calls.length)) {
-        return { choices: [{ message }], response: typeof answer === "string" ? answer : "", borTextBackupModel: BACKUP_MODEL, borTextLunaPrimary: preferLuna };
+        return { choices: [{ message, ...(result.choices[0].finish_reason === "length" ? { finish_reason: "length" } : {}) }], response: typeof answer === "string" ? answer : "", borTextBackupModel: BACKUP_MODEL, borTextLunaPrimary: preferLuna };
       }
     } catch {
       // Paid attempts remain reserved even if their outcome is ambiguous.
