@@ -1,3 +1,4 @@
+import { qualityOutputLimit, answerDepth } from "./answer-quality.js";
 import { googleGroundingAllowed, planWebSearch, runWebSearchV2, searchMode, searchV2Configured, webSearchUserAllowed } from "./web-search-v2.js";
 import { streamChatSearch } from "./chat-search-progress.js";
 import { BACKUP_MODEL, withTextProviderFailover } from "./text-provider-failover.js";
@@ -467,8 +468,9 @@ async function runAgent(env, agentId, userMessage, context = "", history = [], p
     const modelMessages = extraInstruction
       ? [...messages, { role: "user", content: extraInstruction }]
       : messages;
-    const baselineMaxTokens = Math.min(2200, (tokenLimits[agentId] || 950) +
+    const standardMaxTokens = Math.min(2200, (tokenLimits[agentId] || 950) +
       (/\b(mendalam|detail|lengkap|komprehensif|thorough|in.depth|step.by.step|detailed|comprehensive)\b/i.test(userMessage) ? 300 : 0));
+    const baselineMaxTokens = qualityOutputLimit(standardMaxTokens, agentId, userMessage, env);
     let maxTokens = baselineMaxTokens;
     let modelId = selection.model.id;
     // Opt-in high-reasoning inference for signed-in turns only. Atomically reserve
@@ -629,7 +631,9 @@ async function runAgent(env, agentId, userMessage, context = "", history = [], p
     const greeting=/^(?:(?:hi|hey|hai|halo|hello|hola|bonjour|pagi|siang|sore|malam)(?:[\s,]+(?:bor(?:\s+ai)?|there))?|selamat\s+(?:pagi|siang|sore|malam))[!.?\s]*$/i.test(userMessage.trim());
     // Retry once only when content is actually missing or nontrivial prompts
     // receive an unusably short answer.
-    if (!cleaned || (!greeting && !isOutputTokenLimited(result) && (countWords(cleaned).length < 8 || cleaned.length < 35))) {
+    const compactRequested = env.BOR_ANSWER_QUALITY_PROFILE === "enhanced" &&
+      agentId === "coordinator" && answerDepth(userMessage, env.BOR_CUSTOMIZATION?.length) === "compact";
+    if (!cleaned || (!greeting && !compactRequested && !isOutputTokenLimited(result) && (countWords(cleaned).length < 8 || cleaned.length < 35))) {
       result = await generate(
         "RETRY REQUIRED: Your previous answer contained empty Markdown headings or bullets and was unusable. Return substantive content in plain text or simple numbered points. Do not output empty headings, empty bullets, or Markdown-only lines. Include at least 3 concrete findings when appropriate. Every bullet must contain a complete sentence. Answer in the user's language."
       );
@@ -1828,7 +1832,7 @@ async function handleWorkerRequest(request, env, onSearch) {
             const searchSignal = AbortSignal.any([request.signal, AbortSignal.timeout(Math.max(1, deadline - Date.now()))]);
             grounded = await runWebSearchV2(env, plan, { allowGoogle, signal: searchSignal, onSearch, userId: user?.id });
             if (grounded?.links.length) links = grounded.links;
-            toolActivity.push({ tool: "web_search", status: grounded ? "completed" : "unavailable",
+            toolActivity.push({ tool: "web_search", status: grounded?.partial ? "partial" : grounded ? "completed" : "unavailable",
               provider: grounded?.provider, count: grounded?.links.length || 0, version: 2,
               corroboration: grounded?.provider === "OpenAI" && !grounded.corroborated ? "limited" : undefined });
           }
@@ -1852,7 +1856,8 @@ async function handleWorkerRequest(request, env, onSearch) {
             ? (language === "id" ? "Hasil Google ditampilkan untuk giliran ini." : "Google results are displayed for this turn.")
             : (language === "id" ? "Pencarian web belum menemukan sumber yang dapat dikutip. Coba lagi atau tambahkan lokasi, rentang tanggal, atau nama yang lebih spesifik."
               : "Web search could not find a citable answer. Try again or add a more specific location, date range, or name."));
-          result = { agent: AGENTS[agentId].name, workflow: "web-search-v2", response };
+          result = { agent: AGENTS[agentId].name, workflow: "web-search-v2", response: grounded?.partial
+            ? localizedChatNotice(language, "outputLimited") + "\n\n" + response : response };
           // Grounding stays in the initiating browser response and never enters stored history.
           if (grounded?.googleGrounding) result.googleGrounding = grounded.googleGrounding;
         } else if (useMultiAgent) result = { ...await runMultiAgent(aiEnv, message, history, pages) };

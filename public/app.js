@@ -1032,7 +1032,7 @@ function appendToolActivity(items) {
     if(item.version===2){
       const indonesian=window.BORLocale?.current==="id";
       const label=(indonesian?"Pencarian web":"Web search")+provider;
-      line.textContent=label+" · "+(item.status==="completed"?(indonesian?"Selesai":"Completed"):(indonesian?"Sumber tidak tersedia":"Sources unavailable"));
+      line.textContent=label+" · "+(item.status==="completed"?(indonesian?"Selesai":"Completed"):item.status==="partial"?(indonesian?"Jawaban sebagian":"Partial answer"):(indonesian?"Sumber tidak tersedia":"Sources unavailable"));
       if(item.corroboration==="limited")line.textContent+=indonesian?" · Konfirmasi lintas sumber terbatas":" · Limited cross-source corroboration";
     }else line.textContent=noun+provider+" · "+(item.status==="completed"?(Number(item.count)||0)+" sumber berhasil":"Tidak tersedia atau gagal");
     list.append(line);

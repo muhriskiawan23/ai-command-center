@@ -12,6 +12,7 @@ const SEARCH_OUTPUT_TOKENS = 1200;
 export const LUNA_SEARCH_RESERVATION_MICRO_USD = 260000;
 const LUNA_SEARCH_OUTPUT_TOKENS = 2000;
 const LUNA_SEARCH_TOOL_CALLS = 2;
+const PUBLIC_QUERY_BYTES = 1200;
 const LUNA_SEARCH_TIMEOUT_MS = 40000;
 const MAX_PROVIDER_BYTES = 256 * 1024;
 const encoder = new TextEncoder();
@@ -120,12 +121,14 @@ export async function planWebSearch(ai, message, history = [], signal) {
     .map(item => publicText(item.content, 420)).filter(Boolean);
   try {
     const result = await ai.run(DEFAULT_MODEL_ID, {
-      max_tokens: 220,
+      // Preserve multi-part requests instead of forcing a long JSON plan into 220 tokens.
+      max_tokens: prompt.length > 350 || (prompt.match(/\?/g) || []).length >= 2 ||
+        (message.match(/^\s*(?:\d+[.)]|[-*])\s+\S/gm) || []).length >= 3 ? 520 : 220,
       temperature: 0,
       messages: [{ role: "system", content: ROUTER }, { role: "user", content: JSON.stringify({ previous, prompt }) }]
     }, { signal });
     const decision = JSON.parse(extractModelAnswer(result).trim().replace(/^```(?:json)?\s*|\s*```$/gi, ""));
-    const query = publicText(decision?.query, 620);
+    const query = publicText(decision?.query, PUBLIC_QUERY_BYTES);
     if (decision?.search !== true || !query || !categories.has(decision.category)) return null;
     const queries = Array.isArray(decision.queries)
       ? [...new Set(decision.queries.slice(0, 2).map(value => publicText(value, 320)).filter(value => value && value !== query))]
@@ -290,7 +293,8 @@ function publisher(host) {
 }
 
 function parseOpenAI(data) {
-  if (data?.status !== "completed" || !Array.isArray(data.output) ||
+  const partial = data?.status === "incomplete" && data?.incomplete_details?.reason === "max_output_tokens";
+  if ((!partial && data?.status !== "completed") || !Array.isArray(data.output) ||
       !data.output.some(item => item?.type === "web_search_call" && item.status === "completed")) return null;
   const sources = new Map();
   const paragraphs = [];
@@ -334,7 +338,7 @@ function parseOpenAI(data) {
   }
   if (!sources.size || !paragraphs.length) return null;
   const links = [...sources.values()];
-  return { provider: "OpenAI", text: paragraphs.join("\n\n"), links, corroborated, publishers: new Set(links.map(link => publisher(link.host))).size };
+  return { provider: "OpenAI", text: paragraphs.join("\n\n"), links, corroborated, publishers: new Set(links.map(link => publisher(link.host))).size, ...(partial ? { partial: true } : {}) };
 }
 
 function parseGoogle(data) {
@@ -404,7 +408,7 @@ async function callProvider(provider, plan, deeper, fetcher, signal, onProviderR
 
 export async function runWebSearchV2(env, plan, { allowGoogle = false, signal, onSearch, now = Date.now(), singleOpenAiAttempt = false, onProviderReceipt, userId } = {}) {
   if (!webSearchUserAllowed(env, userId) || !searchV2Configured(env, allowGoogle) ||
-      !categories.has(plan?.category) || publicText(plan?.query, 620) !== plan.query) return null;
+      !categories.has(plan?.category) || publicText(plan?.query, PUBLIC_QUERY_BYTES) !== plan.query) return null;
   const fetcher = env.WEB_SEARCH_V2_FETCHER || fetch;
   // The successful Luna evaluation used a 40-second request deadline. Keep a bounded
   // overall search window, also subject to the calling chat's cancellation/deadline.
@@ -425,6 +429,9 @@ export async function runWebSearchV2(env, plan, { allowGoogle = false, signal, o
         continue;
       }
       if (result?.provider === "Google") return result;
+      // Keep cited partial output rather than losing useful evidence or retrying
+      // a known exhausted output budget. Prefer a previously completed answer.
+      if (result?.partial) return best || result;
       if (result && (!best || result.corroborated && !best.corroborated ||
           result.corroborated === best.corroborated && result.publishers > best.publishers)) best = result;
       if (best?.corroborated) return best;

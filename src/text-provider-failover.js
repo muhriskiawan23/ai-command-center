@@ -72,7 +72,12 @@ export function withTextProviderFailover(env, fetcher = fetch) {
     try {
       const total = await consumeUsage(env, usageDay(), COUNTER, reserved, limit);
       if (total === null || signal?.aborted) return null;
-      const timeout = AbortSignal.timeout(8000);
+      // Opt-in reasoning only on longer, tool-free requests. The existing metered
+      // completion cap includes reasoning tokens; no extra provider call is added.
+      const enhancedReasoning = env.BOR_ANSWER_QUALITY_PROFILE === "enhanced" &&
+        env.BOR_TEXT_LUNA_REASONING_LOW_ENABLED === "true" && payload.max_tokens >= 1800 && !tools &&
+        !messages.some(message => message.role === "tool" || message.tool_calls);
+      const timeout = AbortSignal.timeout(enhancedReasoning ? 20000 : 8000);
       const response = await fetcher(ENDPOINT, {
         method: "POST",
         redirect: "manual",
@@ -81,7 +86,7 @@ export function withTextProviderFailover(env, fetcher = fetch) {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          model: BACKUP_MODEL, messages, store: false, reasoning_effort: "none",
+          model: BACKUP_MODEL, messages, store: false, reasoning_effort: enhancedReasoning ? "low" : "none",
           max_completion_tokens: payload.max_tokens,
           ...(tools ? { tools, tool_choice: "auto" } : {})
         }),
