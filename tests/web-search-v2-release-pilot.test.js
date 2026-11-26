@@ -43,13 +43,78 @@ function setup() {
 const search = (env, userId, now = april) => runWebSearchV2(env, query, { userId, now });
 const ledger = (env, day) => env.DB.sqlite.prepare("SELECT calls, reserved_micro_usd FROM web_search_v2_usage WHERE day=?").get(day);
 const origin = "https://bor.example";
-async function chat(env, message, token) {
+async function chat(env, message, token, options = {}) {
   return worker.fetch(new Request(origin + "/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json", Origin: origin, ...(token ? { Cookie: "__Host-borai_session=" + token } : {}) },
-    body: JSON.stringify({ message, language: "en" })
+    body: JSON.stringify({ message, language: "en", ...options })
   }), env);
 }
+
+test("a signed-in search follow-up retains the hotel job context and cites fresh Doha sources", async t => {
+  const { env } = setup();
+  t.after(() => env.DB.sqlite.close());
+  env.BOR_WEB_SEARCH_USER_DAILY_CALLS = "2";
+  const cookie = seedSession(env.DB, { id: "pilot-a", email: "pilot-a@example.invalid" });
+  const firstQuestion = "Cari agensi di Jakarta untuk kerja perhotelan di Timur Tengah.";
+  const followUp = "Kalau posisi di Doha?";
+  const dohaQuery = "Agensi di Jakarta untuk posisi kerja perhotelan di Doha, Qatar";
+  const routerInputs = [];
+  const searchQueries = [];
+  const results = [
+    {
+      answer: "Sumber simulasi mencantumkan agensi di Jakarta untuk kerja perhotelan di Timur Tengah.",
+      urls: ["https://example.com/jakarta", "https://example.org/middle-east"]
+    },
+    {
+      answer: "Sumber simulasi mencantumkan posisi resepsionis hotel di Doha.",
+      urls: ["https://example.com/doha-careers", "https://example.org/doha-careers"]
+    }
+  ];
+  env.AI = { async run(_model, body) {
+    const input = JSON.parse(body.messages[1].content);
+    routerInputs.push(input);
+    const hasContext = input.prompt === followUp && input.previous.includes(firstQuestion);
+    return { response: JSON.stringify({
+      search: input.prompt === firstQuestion || hasContext,
+      category: "general",
+      query: hasContext ? dohaQuery : firstQuestion
+    }) };
+  } };
+  env.WEB_SEARCH_V2_FETCHER = async (_url, options) => {
+    const { question } = JSON.parse(JSON.parse(options.body).input);
+    searchQueries.push(question);
+    const { answer, urls } = results[searchQueries.length - 1];
+    return Response.json({ status: "completed", output: [
+      { type: "web_search_call", status: "completed" },
+      { type: "message", role: "assistant", content: [{ type: "output_text", text: answer,
+        annotations: urls.map(url => ({
+          type: "url_citation", url, title: "Sumber simulasi", start_index: 0, end_index: answer.length
+        }))
+      }] }
+    ] });
+  };
+
+  const first = await chat(env, firstQuestion, cookie, { language: "id" });
+  assert.equal(first.status, 200);
+  const initial = await first.json();
+  assert.equal(initial.workflow, "web-search-v2");
+  assert.equal(initial.saved, true);
+  assert.ok(initial.conversationId);
+  assert.deepEqual(initial.links.map(link => link.url), results[0].urls);
+
+  const second = await chat(env, followUp, cookie, { language: "id", conversationId: initial.conversationId });
+  assert.equal(second.status, 200);
+  const reply = await second.json();
+  assert.deepEqual(routerInputs, [{ previous: [], prompt: firstQuestion }, { previous: [firstQuestion], prompt: followUp }]);
+  assert.deepEqual(searchQueries, [firstQuestion, dohaQuery]);
+  assert.equal(reply.workflow, "web-search-v2");
+  assert.equal(reply.saved, true);
+  assert.equal(reply.conversationId, initial.conversationId);
+  assert.match(reply.response, /resepsionis hotel di Doha/);
+  assert.match(reply.response, /⟦1⟧/);
+  assert.deepEqual(reply.links.map(link => link.url), results[1].urls);
+});
 
 test("concurrent requests enforce the per-account and shared caps in the same D1 statement", async () => {
   const { env, requests } = setup();
