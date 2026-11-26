@@ -1,0 +1,81 @@
+{
+  "schema": 1,
+  "worker": "bor-ai-luna-staging",
+  "candidateCommit": "af5dd9b473576affbcc269b90b28e852d506ca82",
+  "sourceVersion": "2b99a156-92d6-4ebb-bfa4-02a7cc9efe6a",
+  "expectedActiveTrafficPercentage": 100,
+  "plannedTrafficChange": false,
+  "budgetMicroUsd": 500000,
+  "runtime": {
+    "compatibility_date": "2026-10-28",
+    "compatibility_flags": [
+      "enable_request_signal"
+    ],
+    "usage_model": "standard"
+  },
+  "requiredBindings": [
+    {
+      "name": "AI",
+      "type": "ai"
+    },
+    {
+      "name": "BOR_LUNA_STAGING_TOKEN",
+      "type": "secret_text"
+    },
+    {
+      "name": "BOR_LUNA_STAGING_URL_READER_ENABLED",
+      "type": "plain_text",
+      "value": "false"
+    },
+    {
+      "name": "BOR_LUNA_STAGING_WEB_SEARCH_ENABLED",
+      "type": "plain_text",
+      "value": "false"
+    },
+    {
+      "name": "BOR_TEXT_BACKUP_API_KEY",
+      "type": "secret_text"
+    },
+    {
+      "name": "BOR_WEB_SEARCH_GOOGLE_KEY",
+      "type": "secret_text"
+    },
+    {
+      "name": "BOR_WEB_SEARCH_KILL_SWITCH",
+      "type": "plain_text",
+      "value": "true"
+    },
+    {
+      "name": "BOR_WEB_SEARCH_MODE",
+      "type": "plain_text",
+      "value": "off"
+    },
+    {
+      "name": "BOR_WEB_SEARCH_OPENAI_KEY",
+      "type": "secret_text"
+    },
+    {
+      "name": "BOR_WEB_SEARCH_OPENAI_ORG",
+      "type": "plain_text"
+    },
+    {
+      "name": "BOR_WEB_SEARCH_OPENAI_PROJECT",
+      "type": "plain_text"
+    },
+    {
+      "name": "DB",
+      "type": "d1"
+    }
+  ],
+  "routingBaseline": {
+    "workersDev": true,
+    "versionUrls": false
+  },
+  "classification": "read-only-review",
+  "candidateEntrypoint": {
+    "file": "src/luna-staging-worker.js",
+    "gitBlob": "fbcc1c752d04703c6c6a2bec4de4ae2a65caddaf",
+    "benchmarkEligible": false
+  },
+  "requiredApproval": "A permitted release environment must authorize the staging version creation; this manifest does not authorize or configure upload."
+}
