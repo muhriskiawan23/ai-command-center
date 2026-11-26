@@ -62,3 +62,24 @@ test("local D1 adaptor binds repeated numbered parameters and ordinary placehold
     await assert.rejects(db.prepare("SELECT ?2").bind(11).first(), /Missing numbered D1 test parameter/);
   } finally { db.sqlite.close(); }
 });
+
+test("invalid public search plans fail before reserving quota or calling a provider", async () => {
+  const DB = createD1();
+  let calls = 0;
+  const env = {
+    DB, BOR_WEB_SEARCH_MODE: "v2", BOR_WEB_SEARCH_PILOT_USER_IDS: "pilot",
+    BOR_WEB_SEARCH_USER_DAILY_CALLS: "1", BOR_WEB_SEARCH_DAILY_CALLS: "1",
+    BOR_WEB_SEARCH_DAILY_MICRO_USD: "260000", BOR_WEB_SEARCH_MONTHLY_MICRO_USD: "260000",
+    BOR_WEB_SEARCH_OPENAI_CALL_MICRO_USD: "260000", BOR_WEB_SEARCH_OPENAI_KEY: "mock",
+    WEB_SEARCH_V2_FETCHER: async () => { calls++; throw Error("Unexpected provider call"); }
+  };
+  try {
+    for (const query of ["", " ", null, undefined, 123, "Contact owner@example.invalid", "x".repeat(1201)]) {
+      assert.equal(await runWebSearchV2(env, { category: "general", query }, { userId: "pilot" }), null);
+    }
+    assert.equal(calls, 0);
+    for (const table of ["web_search_v2_usage", "web_search_v2_user_usage"]) {
+      assert.equal(DB.sqlite.prepare("SELECT COUNT(*) AS n FROM " + table).get().n, 0);
+    }
+  } finally { DB.sqlite.close(); }
+});

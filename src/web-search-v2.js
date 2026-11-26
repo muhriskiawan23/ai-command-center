@@ -408,7 +408,7 @@ async function callProvider(provider, plan, deeper, fetcher, signal, onProviderR
 
 export async function runWebSearchV2(env, plan, { allowGoogle = false, signal, onSearch, now = Date.now(), singleOpenAiAttempt = false, onProviderReceipt, userId } = {}) {
   if (!webSearchUserAllowed(env, userId) || !searchV2Configured(env, allowGoogle) ||
-      !categories.has(plan?.category) || publicText(plan?.query, PUBLIC_QUERY_BYTES) !== plan.query) return null;
+      !categories.has(plan?.category) || !plan?.query || publicText(plan.query, PUBLIC_QUERY_BYTES) !== plan.query) return null;
   const fetcher = env.WEB_SEARCH_V2_FETCHER || fetch;
   // The successful Luna evaluation used a 40-second request deadline. Keep a bounded
   // overall search window, also subject to the calling chat's cancellation/deadline.

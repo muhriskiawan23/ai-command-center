@@ -10,6 +10,8 @@ import { createD1, seedSession } from "./e2e/harness.js";
 const enhanced = { BOR_ANSWER_QUALITY_PROFILE: "enhanced" };
 test("adaptive detail is opt-in, respects brevity and caps final-agent output", () => {
   assert.equal(answerDepth("Jawab singkat: apa itu data?", "detailed"), "compact");
+  assert.equal(answerDepth("Jawab hanya angka: 17 dikali 19."), "compact");
+  assert.equal(answerDepth("Answer with only the number: 17 times 19."), "compact");
   assert.equal(answerDepth("Jelaskan detail proses ini", "short"), "detailed");
   assert.equal(answerDepth("Apa penyebabnya? Apa dampaknya?"), "detailed");
   assert.equal(qualityOutputLimit(950, "coordinator", "Jelaskan detail proses ini", {}), 950);
@@ -21,7 +23,8 @@ test("adaptive detail is opt-in, respects brevity and caps final-agent output", 
 test("chat uses adaptive allowance once and accepts an explicitly concise answer", async () => {
   for (const [message, text, tokens] of [
     ["Apa fungsi panel surya? Apa manfaatnya?", "Panel surya mengubah sinar matahari menjadi listrik yang dapat mengurangi penggunaan energi dari jaringan.", 1800],
-    ["Jawab singkat: ibu kota Jepang?", "Tokyo.", 950]
+    ["Jawab singkat: ibu kota Jepang?", "Tokyo.", 950],
+    ["Jawab hanya angka: 17 dikali 19.", "323", 950]
   ]) {
     let calls = 0;
     const response = await worker.fetch(new Request("https://bor.example/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message, language: "id" }) }), { ...enhanced, BOR_WEB_SEARCH_MODE: "off", AI: { run: async (_model, payload) => { calls++; assert.equal(payload.max_tokens, tokens); return { response: text }; } } });
