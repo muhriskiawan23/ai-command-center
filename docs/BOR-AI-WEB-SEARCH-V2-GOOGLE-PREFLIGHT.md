@@ -1,0 +1,7 @@
+# Google Grounding staging credential checkpoint — 26 November 2026
+
+The owner added the Gemini key to bor-ai-luna-staging through Workers Secrets. The resulting v34 inherited prior temporary smoke configuration (kill switch false, smoke enabled, temporary expiry and base ID). Restored 100% traffic to safe v32 immediately. Created v35 using the exact 41 modules from v32 and inherited the new Google secret from the latest v34 through the official version upload API. Verified every module's base64 content identical, exact binding name set, Google secret type, both smoke flags false, mode off, and kill switch true before deploying.
+
+Active staging: v35 (2b99a156-92d6-4ebb-bfa4-02a7cc9efe6a), 100% traffic. Safe rollback: v32 (0e7ba8cf-5cb9-4715-94db-f9a7797304b6), which does not bind the Google key. Do not roll back to v34. Production remains c6dcf354-46c3-4772-9521-55f97cb2fb78. No secrets exposed. No provider requests, new charges, or code changes in this session.
+
+Google key binding is installed, not yet authenticated against Gemini. Before a live synthetic Google-only test, verify project Free Tier and supported model/grounding availability, current provider terms, authorized test-account eligibility and an approved staging execution path. Do not enable billing, change production, replay OpenAI smoke, or send private user data. Keep flags disabled when not testing. Live Google Grounding and URL Reader remain pending. Existing OpenAI live evidence remains valid for the unchanged code.
