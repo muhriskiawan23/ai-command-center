@@ -77,5 +77,36 @@
     "gitBlob": "fbcc1c752d04703c6c6a2bec4de4ae2a65caddaf",
     "benchmarkEligible": false
   },
-  "requiredApproval": "A permitted release environment must authorize the staging version creation; this manifest does not authorize or configure upload."
+  "requiredApproval": "A permitted release environment must authorize the staging version creation; this manifest does not authorize or configure upload.",
+  "benchmarkRunner": {
+    "sourceCommit": "d1e5ee93c0b17b686eb5177866b4b53bc679b9c8",
+    "file": "src/luna-answer-quality-benchmark-worker.js",
+    "gitBlob": "570df575f261bee7d2fe5d00c8835023e32cea09",
+    "requiredExistingBindings": [
+      "BOR_LUNA_STAGING_TOKEN",
+      "BOR_LUNA_STAGING_URL_READER_ENABLED",
+      "BOR_LUNA_STAGING_WEB_SEARCH_ENABLED",
+      "BOR_WEB_SEARCH_KILL_SWITCH",
+      "BOR_WEB_SEARCH_MODE",
+      "BOR_WEB_SEARCH_OPENAI_KEY",
+      "BOR_WEB_SEARCH_OPENAI_ORG",
+      "BOR_WEB_SEARCH_OPENAI_PROJECT",
+      "DB"
+    ],
+    "activationBindings": [
+      {
+        "name": "BOR_LUNA_ANSWER_BENCHMARK_ENABLED",
+        "type": "plain_text",
+        "approvedValue": "true"
+      },
+      {
+        "name": "BOR_LUNA_ANSWER_BENCHMARK_EXPIRES_AT",
+        "type": "plain_text",
+        "format": "epoch milliseconds",
+        "maxWindowMs": 300000
+      }
+    ],
+    "dormantKillSwitch": "true",
+    "approvedWindowKillSwitch": "false"
+  }
 }

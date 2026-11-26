@@ -18,10 +18,15 @@ The [official Worker Versions API](https://developers.cloudflare.com/workers/obs
 
 The previous upload was rejected by the Work safety review. This checklist is for read-only verification and formal release review. It does not provide instructions to replay the rejected operation via dashboard code edit, Wrangler, a different connector, or alternate credentials. A Cloudflare account owner does not gain approval for that action via the Cloudflare Deployments page.
 
-## Concrete blocker found in the pinned source
+## Smoke-test wrapper at the core revision
 
 The GitHub blob for `src/luna-staging-worker.js` at `af5dd9b` is `fbcc1c752d04703c6c6a2bec4de4ae2a65caddaf`. The wrapper accepts only two fixed synthetic operator POST routes and calls the app with the fixed prompt `hi bor`. It has a per-day smoke quota. It does not expose the six-case integration benchmark or the shared one-shot US$0.50 reservation. Uploading that entrypoint alone would therefore not unblock live evaluation. Exposing the general app entrypoint or adding secrets to the public mock preview would change the protection boundary.
 
 The local exact-wrapper bundle compiled with esbuild 0.28.2 and passed `node --check`. Its SHA-256 is `780b0693fb1e8d8499ec2476e5969684ac5878e1856943a4ab50da0d84b28510`. It was a compile check, not a deployment artifact or live runner.
 
-Resume only when an independently approved, operator-restricted staging runner can invoke the exact candidate under a verified shared campaign ledger. Verify the release gates, run the benchmark and authenticated regression, then evaluate production. No production change or paid request was made.
+## Benchmark runner readiness
+
+- The current review pins `src/luna-answer-quality-benchmark-worker.js` at `d1e5ee9`. The manifest records its full source commit and Git blob. The runner evaluates the unchanged application core at `af5dd9b`. Its six scenarios span seven turns. See the [adapter notes](./BOR-AI-STAGING-BENCHMARK-ADAPTER.md).
+- Read-only Cloudflare metadata verified v35 at 100% of staging traffic, all 12 baseline binding names and types, the four safety settings, the runtime settings, and disabled version URLs. Nine existing bindings are consumed directly by the runner. Preserve all 12 baseline bindings in the staging review. Secret values were excluded from inspection output.
+- The active v35 has neither `BOR_LUNA_ANSWER_BENCHMARK_ENABLED` nor `BOR_LUNA_ANSWER_BENCHMARK_EXPIRES_AT`. They are listed in the manifest as activation settings for an approved benchmark window. Keep the review dormant with the kill switch on. During an approved operator-only window, the runner requires an explicit enable flag, an expiry at most five minutes away and the staging kill switch off. Ordinary staging Web Search and URL Reader remain disabled. Restore the dormant state when the window closes.
+- After approval, verify the candidate and staging D1 identity, then validate the isolated runtime with synthetic responses. Reconcile the shared one-shot campaign ledger before any live benchmark. The US$0.50 ceiling, authenticated browser regression and production release gates still apply.
