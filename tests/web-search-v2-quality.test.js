@@ -50,3 +50,15 @@ test("public search task requests all subquestions, keeps quota and canonicalize
   assert.equal(providerCalls,1);
   assert.match(COMMUNICATION_NOTICE,/answer every explicit subquestion/);
 });
+
+// D1's positional bind API must behave the same in the SQLite test harness.
+test("local D1 adaptor binds repeated numbered parameters and ordinary placeholders", async () => {
+  const db = createD1();
+  try {
+    const row = await db.prepare("SELECT ?2 AS second, ?1 AS first, ?2 AS repeated").bind(11, 22).first();
+    assert.deepEqual({ ...row }, { second: 22, first: 11, repeated: 22 });
+    const ordinary = await db.prepare("SELECT ? AS first, ? AS second").bind(11, 22).all();
+    assert.deepEqual({ ...ordinary.results[0] }, { first: 11, second: 22 });
+    await assert.rejects(db.prepare("SELECT ?2").bind(11).first(), /Missing numbered D1 test parameter/);
+  } finally { db.sqlite.close(); }
+});
