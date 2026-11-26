@@ -19,3 +19,9 @@ The owner expressly authorized the saved Google account for Cloudflare Community
 ## Google-only account recovery
 
 The owner confirmed Google Riskiawan is the only account and method authorized. The previously selected GitHub option reached its credential form, with no credentials submitted, and was discontinued. Official Cloudflare documentation limits social login to accounts that signed up socially or have verified email. The dashboard did not expose a precise cause for the Google return failure. The official forum login landing page was reopened for a manual Google sign-in, with no account or credential changes. The hourly task retains all release gates and continues independent checks while sign-in is pending.
+
+## Official API verification and forum pause
+
+The owner paused Community sign-in and requests that forum participation not gate release. The linked Cloudflare connector's OpenAPI spec and the official 10057 guide identify the beta Worker Versions API as the endpoint that accepts an explicit source version for inherited bindings. Its read operation independently resolved active staging v35 (`2b99a156`), currently at 100% traffic. The connector reports 12 binding metadata entries, including both required staging secret bindings and the active kill switch. No secret values were retrieved.
+
+The read-only result validates the choice of source version. It does not validate a benchmark upload, runner authorization, one-shot budget enforcement, or inference. The earlier automated safety denial still applies to that protected upload; no write was sent. Continue by checking for an independently authorized staging runner with the exact candidate and budget checks, and use the remaining release gates in the finalization status. Forum access and replies are optional. No production change, provider call, or new reservation.
