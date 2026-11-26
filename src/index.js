@@ -229,12 +229,24 @@ const HISTORY_MAX_CHARS = 8000;         // total characters across all history m
 const HISTORY_MESSAGE_MAX_CHARS = 2000; // a single long message is truncated
 const HISTORY_MAX_INPUT_ITEMS = 40;     // reject absurd client payloads outright
 
+function historyExcerpt(value) {
+  const text = String(value ?? "").trim();
+  if (text.length <= HISTORY_MESSAGE_MAX_CHARS) return text;
+  const marker = "\n[... earlier message excerpt: middle omitted ...]\n";
+  const available = HISTORY_MESSAGE_MAX_CHARS - marker.length;
+  const head = Math.ceil(available * 0.6);
+  const tail = available - head;
+  // Avoid splitting UTF-16 surrogate pairs at either boundary.
+  return text.slice(0, head).replace(/[\uD800-\uDBFF]$/, "") + marker +
+    text.slice(-tail).replace(/^[\uDC00-\uDFFF]/, "");
+}
+
 // Keep the most recent messages that fit the budget; the window must start with a user turn.
 function trimHistory(items) {
   const kept = [];
   let total = 0;
   for (let i = items.length - 1; i >= 0 && kept.length < HISTORY_MAX_MESSAGES; i--) {
-    const content = String(items[i].content ?? "").trim().slice(0, HISTORY_MESSAGE_MAX_CHARS);
+    const content = historyExcerpt(items[i].content);
     if (!content) continue;
     if (total + content.length > HISTORY_MAX_CHARS) break;
     total += content.length;
@@ -757,7 +769,7 @@ async function runMultiAgent(env, message, history = [], pages = "") {
       "Research findings:",
       research,
       "",
-      "Treat the research as input, not a draft to rewrite.",
+      "Treat the research as input, not a draft to rewrite. Carry forward its hard constraints, relevant prior decisions and unresolved evidence gaps; distinguish user facts from researcher assumptions.",
       "Do not repeat the Researcher's findings.",
       "Choose and rank a practical approach, explain trade-offs, and define measurable results."
     ].join("\n")
@@ -787,7 +799,7 @@ async function runMultiAgent(env, message, history = [], pages = "") {
         "Audit the proposed approach against the original request and all hard constraints.",
         "Actively search for hidden costs, unsupported claims, unrealistic targets, and logical gaps.",
         "For each issue, provide the correction the Writer must apply.",
-        "Do not rubber-stamp the plan or rewrite it wholesale."
+        "Do not rubber-stamp the plan or rewrite it wholesale. Check arithmetic, units, time periods, and whether each material recommendation has evidence; label unsupported claims instead of treating upstream prose as verified fact."
       ].join("\n")
     );
 
@@ -828,7 +840,8 @@ async function runMultiAgent(env, message, history = [], pages = "") {
     "15. Finish the answer completely without ending mid-sentence.",
     "16. Match the requested number of points exactly; do not add an unrequested conclusion or repeat the key points.",
     "17. Number ordered lists sequentially with one consistent Markdown format (1., 2., 3., ...).",
-    "18. Qualify context-dependent metrics and avoid presenting illustrative examples as universal requirements."
+    "18. Qualify context-dependent metrics and avoid presenting illustrative examples as universal requirements.",
+    "19. Check the latest user request against retained history, each requested deliverable, the actual supplied evidence, and any explicit exclusions. Preserve prior decisions unless the user revises them. Where upstream agents disagree, use supported evidence or state the uncertainty; never invent a resolution."
   ].join("\n");
 
   let finalResponse = await runAgent(

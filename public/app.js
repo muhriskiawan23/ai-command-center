@@ -887,10 +887,21 @@ async function loadMoreHistory(){
 }
 /* Konteks yang dikirim ke server. Sama dengan batas di server (12 pesan / 8000 karakter / 2000 per pesan);
    giliran yang gagal tidak pernah masuk chat.messages sehingga tidak ikut terkirim. */
+function historyExcerpt(value) {
+  const text = String(value ?? "").trim();
+  if (text.length <= 2000) return text;
+  const marker = "\n[... earlier message excerpt: middle omitted ...]\n";
+  const available = 2000 - marker.length;
+  const head = Math.ceil(available * 0.6);
+  const tail = available - head;
+  // Avoid splitting UTF-16 surrogate pairs at either boundary.
+  return text.slice(0, head).replace(/[\uD800-\uDBFF]$/, "") + marker +
+    text.slice(-tail).replace(/^[\uDC00-\uDFFF]/, "");
+}
 function buildHistory(chat){
   const out=[];let total=0;
   for(let i=chat.messages.length-1;i>=0&&out.length<12;i--){
-    const m=chat.messages[i];const content=String(m.content||"").trim().slice(0,2000);
+    const m=chat.messages[i];const content=historyExcerpt(m.content);
     if(!content)continue;if(total+content.length>8000)break;
     total+=content.length;out.unshift({role:m.role==="assistant"?"assistant":"user",content});
   }
