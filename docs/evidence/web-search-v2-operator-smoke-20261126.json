@@ -109,9 +109,15 @@
       "project": "BOR AI Staging",
       "matchingCredentialsLabel": "BOR AI Staging - Luna Test",
       "lastSevenDaysUsdDisplayed": 0.13,
-      "november26UsdDisplayed": 0,
+      "november26UsdDisplayed": 0.01,
       "smokeBillingMatched": false,
-      "url": "https://platform.openai.com/analytics/spend?range=today"
+      "url": "https://platform.openai.com/analytics/spend?range=today",
+      "november26KeyUsdDisplayed": 0.01,
+      "november26ToolUsdDisplayed": 0.01,
+      "monthlyUsdDisplayed": 0.14,
+      "webSearchToolFeeMatched": true,
+      "modelTokenCostMicroUsdEstimated": 939,
+      "modelTokenLineItemObserved": false
     }
   },
   "protection": {

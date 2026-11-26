@@ -15,7 +15,7 @@ Version 33 enabled the authenticated smoke for a four-minute maximum window. One
 | Campaign estimated total | US$0.239886 including US$0.228947 from prior usage |
 | Campaign admission | US$0.488947 including the retained US$0.26 reservation, within the US$0.50 cap |
 
-After the smoke, the OpenAI dashboard still showed US$0.13 for 20–26 November and US$0.00 with no rows for the 26 November selection. The project dashboard had yet to show a separate charge for the smoke. Request-level invoice reconciliation remains pending. The estimate uses the usage recorded in D1. The receipt did not contain cache-write token counts. The D1 one-shot marker and full reservation remain in place.
+On a later refresh, OpenAI Analytics showed US$0.01 for BOR AI Staging on 26 November, with the same US$0.01 attributed to BOR AI Staging - Luna Test and to the web search tool calls line item. Project monthly spend rose from approximately US$0.13 to US$0.14. The posted tool fee matches the one request in D1. The remaining estimated US$0.000939 in token costs had no separate line item in the inspected daily view. Exact request-level invoice reconciliation remains pending. The estimate uses the usage recorded in D1. The receipt did not contain cache-write token counts. The D1 one-shot marker and full reservation remain in place.
 
 Staging was restored to 100% version 32 (`0e7ba8cf-5cb9-4715-94db-f9a7797304b6`), deployment `2c8ed9ce-82a3-4350-9a61-b02b6c4325e7`. The rotated token remains in Cloudflare. The kill switch is on, search mode is off, both smoke flags are off, and the active version has no temporary triggers or cron. Production and Tavily were untouched.
 
