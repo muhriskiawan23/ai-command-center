@@ -4,6 +4,31 @@ import { blockedHostReason, validateUrl } from './links.js';
 // Bind EGRESS_PROXY to a private Cloudflare VPC Service after security review.
 // Never substitute global fetch or an arbitrary public endpoint.
 const MAX_BODY_BASE64 = 1_400_000;
+const MAX_PROXY_RESPONSE_BYTES = MAX_BODY_BASE64 + 64 * 1024;
+
+async function readProxyResponse(response) {
+  if (!response.body) throw Error("invalid_proxy_response");
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder("utf-8", { fatal: true });
+  let size = 0;
+  let text = "";
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > MAX_PROXY_RESPONSE_BYTES) throw Error("proxy_response_too_large");
+      text += decoder.decode(value, { stream: true });
+    }
+    return JSON.parse(text + decoder.decode());
+  } catch (error) {
+    void reader.cancel().catch(() => {});
+    throw error;
+  } finally {
+    reader.releaseLock();
+  }
+}
+
 function decodeBase64(value) {
   if (typeof value !== "string" || value.length > MAX_BODY_BASE64 || !/^[A-Za-z0-9+/]*={0,2}$/.test(value)) throw Error("invalid_proxy_body");
   const binary = atob(value);
@@ -39,8 +64,11 @@ export function createVerifiedLinkFetcher(env) {
       redirect: "manual",
       signal
     });
-    if (!response.ok) throw Error("proxy_unavailable");
-    const data = await response.json();
+    if (!response.ok) {
+      void response.body?.cancel().catch(() => {});
+      throw Error("proxy_unavailable");
+    }
+    const data = await readProxyResponse(response);
     if (!data || !Number.isInteger(data.status) || data.status < 100 || data.status > 599 ||
         !publicPeerIp(data.peerIp) || !data.transport ||
         data.transport.peerIpVerified !== true ||

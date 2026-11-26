@@ -53,6 +53,19 @@ test("proxy 401 and 502 never fall back to global fetch", async () => {
   }
 });
 
+test("the private adapter cancels a streaming proxy envelope above its byte limit", async () => {
+  let cancelled = false;
+  const chunk = new Uint8Array(750_000).fill(32);
+  const body = new ReadableStream({
+    pull(controller) { controller.enqueue(chunk); },
+    cancel() { cancelled = true; }
+  });
+  const fetcher = createVerifiedLinkFetcher(fakeEnv(async () => new Response(body)));
+
+  await assert.rejects(() => fetcher("https://example.com/"), /proxy_response_too_large/);
+  assert.equal(cancelled, true);
+});
+
 test("configured credentials do not activate reader without explicit opt-in", () => {
   for (const value of [undefined, false, true, "false", "TRUE", "1"]) {
     const env = fakeEnv(() => { throw Error("must not contact proxy"); });
