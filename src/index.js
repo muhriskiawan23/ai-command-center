@@ -25,6 +25,7 @@ import { planFeedbackForm, generateFormsScript } from "./form-draft.js";
 import { COMMUNICATION_NOTICE, CAPABILITY_NOTICE, AGENTS } from "./prompts.js";
 import { json, sha256Hex } from "./http.js";
 import { handleBillingShadowAccountRequest } from "./billing-account-shadow.js";
+import { voiceAdmissionStatus } from "../staging/bor-voice/voice-admission.mjs";
 import { dailyLimit, usageDay, secondsUntilNextUtcDay, consumeUsage, refundUsage, limitResponse, enforceDailyLimits, DAILY_LIMIT_DEFAULTS, MULTI_AGENT_UNITS } from "./daily-limits.js";
 import { VISION_MODEL, VisionInferenceError, validateImageVision, analyzeImageWithVision, buildImageVisionContext, reserveVisionDailyUsage, VISION_MAX_REQUEST_BYTES } from "./image-vision.js";
 
@@ -1515,6 +1516,9 @@ export default {
   async fetch(request, env) {
     env = withTextProviderFailover(withTextInferenceBudget(env));
     const url = new URL(request.url);
+    if (url.pathname === "/api/voice/admission/status") {
+      return voiceAdmissionStatus(request, env, { getSession, json });
+    }
     if (url.pathname === "/api/billing/account") {
       // Read-only readiness shadow. OFF unless separately enabled and a
       // dedicated HMAC-attested D1 is explicitly bound by an operator.
