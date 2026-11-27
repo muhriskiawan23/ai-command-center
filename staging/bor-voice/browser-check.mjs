@@ -7,14 +7,22 @@ const require = createRequire(import.meta.url);
 const { chromium, devices } = require(process.env.BOR_VOICE_PLAYWRIGHT || 'playwright');
 const app = await startHarness();
 const mockPeer = process.env.BOR_VOICE_MOCK_PEER === '1';
+const loopback = process.env.BOR_VOICE_LOOPBACK === '1';
+const checks = [['desktop', {}], ['mobile viewport', devices['Pixel 7']]];
 let browser;
 try {
-  browser = await chromium.launch({
-    executablePath: process.env.BOR_VOICE_CHROMIUM || undefined,
-    args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'],
-  });
-
-  for (const [label, device] of [['desktop', {}], ['mobile viewport', devices['Pixel 7']]]) {
+  for (const [label, device] of checks) {
+    browser = await chromium.launch({
+      executablePath: process.env.BOR_VOICE_CHROMIUM || undefined,
+      args: [
+        '--use-fake-device-for-media-stream',
+        '--use-fake-ui-for-media-stream',
+        ...(loopback ? [
+          '--allow-loopback-in-peer-connection', '--single-process',
+          '--disable-features=WebRtcHideLocalIpsWithMdns',
+        ] : []),
+      ],
+    });
     const initialCalls = app.aiCalls.length;
     const context = await browser.newContext({ ...device, permissions: ['microphone', 'camera'] });
     try {
@@ -29,6 +37,7 @@ try {
         });
       });
       await context.addInitScript(mockPeer => {
+        if (!navigator.mediaDevices) return;
         const native = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
         window.voiceTracks = [];
         navigator.mediaDevices.getUserMedia = async options => {
@@ -76,6 +85,7 @@ try {
         window.BORVoicePreview = {
           async exchange(offer, signal) {
             const peer = new RTCPeerConnection();
+            window.testRemotePeer = peer;
             signal.addEventListener('abort', () => peer.close(), { once: true });
             // An actual second WebRTC peer, standing in for the provider.
             const output = new AudioContext();
@@ -114,6 +124,13 @@ try {
       await panel.getByRole('button', { name: 'Mulai suara' }).click();
       await page.waitForFunction(() => document.querySelector('[data-voice-user]').textContent === 'Bagaimana cuaca?');
       await page.waitForFunction(() => document.querySelector('#voicePreview audio').srcObject?.getAudioTracks().length === 1);
+      if (!mockPeer) {
+        await page.waitForFunction(async () => {
+          const stats = [...(await window.testRemotePeer.getStats()).values()];
+          return stats.some(report => report.type === 'inbound-rtp' && report.kind === 'audio' && report.packetsReceived > 0) &&
+            stats.some(report => report.type === 'outbound-rtp' && report.kind === 'audio' && report.packetsSent > 0);
+        });
+      }
       assert.equal(await panel.locator('[data-voice-assistant]').textContent(), '<img src=x onerror=alert(1)>');
       assert.equal(await panel.locator('[data-voice-assistant] img').count(), 0);
       await panel.getByRole('button', { name: 'Salin dikte ke chat' }).click();
@@ -145,6 +162,8 @@ try {
       console.log(label + ' (' + (mockPeer ? 'simulated transport' : 'local WebRTC peer') + '): captions, media controls, attachments, dictation, permission denial and read-aloud control passed.');
     } finally {
       await context.close();
+      await browser.close();
+      browser = undefined;
     }
   }
 } finally {
