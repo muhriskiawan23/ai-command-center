@@ -18,6 +18,7 @@ import { handleTelegramWebhook } from "./telegram.js";
 import { handleGitHubReadRoute } from "./github-reader.js";
 import { handleGitHubOAuthRoute } from "./github-oauth.js";
 import { pluginCapabilities } from "./plugin-capabilities.js";
+import { handleFeedbackReport } from "./feedback-report.js";
 import { availableGitHubTools, executeGitHubChatTool, extractGitHubToolCalls, pluginBudgetMessage, reserveGitHubToolInferenceBudget, shouldOfferGitHubTools } from "./plugin-runtime.js";
 import { selectModel, taskProfileForAgent, summarizeModelTrace } from "./model-gateway.js";
 import { GPT_OSS_MODEL_ID, mayUseGptOss, reserveGptOssCall, extractModelAnswer } from "./gpt-oss.js";
@@ -1583,6 +1584,7 @@ export default {
       try { return await handleFeedbackRoute(request, env, url); }
       catch (error) { console.error("Feedback request failed:", safeError(error)); return json({ error: "Feedback gagal diproses." }, 503); }
     }
+    if (url.pathname === "/internal/feedback") return handleFeedbackReport(request, env, url, getSession);
     if (url.pathname === "/api/usage") {
       try { return await handleUsageRoute(request, env); }
       catch (error) { console.error("Usage request failed:", safeError(error)); return json({ error: "Data penggunaan gagal diproses." }, 503); }
