@@ -1,0 +1,15 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { voiceBudgetGuard } from '../voice-budget-guard.mjs';
+const baseline={enabled:true,providerMaxSeconds:120,legacyState:'none',committedMicrousd:0,pilotCommittedMicrousd:0,attempts:0,userAttemptsToday:0};
+const gate=patch=>voiceBudgetGuard({...baseline,...patch});
+test('disabled flag denies admission',()=>assert.equal(gate({enabled:false}).reason,'disabled'));
+test('old unconfirmed session denies admission',()=>assert.equal(gate({legacyState:'unconfirmed'}).reason,'legacy_unconfirmed'));
+test('no verified cap denies admission',()=>assert.equal(gate({providerMaxSeconds:undefined}).reason,'provider_cap_unverified'));
+test('provider cap exceeding reserve denies admission',()=>assert.equal(gate({providerMaxSeconds:121}).reason,'provider_cap_unverified'));
+test('bad accounting fails closed',()=>assert.equal(gate({committedMicrousd:NaN}).reason,'invalid_ledger'));
+test('global budget prevents overspend',()=>assert.equal(gate({committedMicrousd:400001}).reason,'budget_exhausted'));
+test('pilot pool prevents fourth reservation',()=>assert.equal(gate({committedMicrousd:200001,pilotCommittedMicrousd:200001}).reason,'budget_exhausted'));
+test('per-user quota prevents duplicate session',()=>assert.equal(gate({userAttemptsToday:1}).reason,'budget_exhausted'));
+test('attempt count prevents fourth session',()=>assert.equal(gate({attempts:3}).reason,'budget_exhausted'));
+test('only confirmed cap and ledger fit policy',()=>assert.deepEqual(gate({legacyState:'settled',committedMicrousd:400000,pilotCommittedMicrousd:200000,attempts:2}),{ok:true,reserveMicrousd:100000,maximumVoiceMicrousd:100000}));
