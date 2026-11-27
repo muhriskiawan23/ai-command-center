@@ -6,8 +6,22 @@ export async function voiceAdmissionStatus(request,env,{getSession,json}){
  if(request.method!=="GET")return json({error:"method_not_allowed"},405,{Allow:"GET"});
  let user;try{user=await getSession(request,env);}catch{return json({error:"voice_auth_unavailable"},503);}
  if(!validVoiceUser(user?.id))return json({error:"voice_auth_required"},401);
- // Read-only readiness endpoint; never allocates, calls OpenAI, or exposes a user identifier.
- return json({ready:false,reason:"voice_paid_disabled_pending_verified_provider_limit_and_reconciliation",policy:VOICE_POLICY});
+ const base={ready:false,authenticated:true,reason:"voice_paid_disabled_pending_verified_provider_limit_and_reconciliation",policy:VOICE_POLICY};
+ if(!env.BOR_VOICE_STATUS?.fetch)return json(base);
+ try{
+  // Private service binding receives no identity, cookie, SDP or browser headers.
+  const result=await env.BOR_VOICE_STATUS.fetch("https://voice-status.internal/api/voice/session/status",{method:"GET",signal:AbortSignal.timeout(4000)});
+  if(!result.ok)throw Error("voice_status_failed");
+  const type=result.headers.get("content-type")??"";
+  if(!/^application\/json(?:;|$)/i.test(type)||Number(result.headers.get("content-length")??0)>4096||!result.body)throw Error("invalid_voice_status");
+  const reader=result.body.getReader();const decoder=new TextDecoder("utf-8",{fatal:true});let size=0,raw="";
+  try{for(;;){const {done,value}=await reader.read();if(done)break;size+=value.byteLength;if(size>4096){await reader.cancel();throw Error("invalid_voice_status");}raw+=decoder.decode(value,{stream:true});}raw+=decoder.decode();}
+  finally{reader.releaseLock();}
+  const data=JSON.parse(raw);
+  const states=["available","pilot_budget_used","pilot_session_pending","pilot_session_unconfirmed"];
+  if(!states.includes(data?.state))throw Error("invalid_voice_status");
+  return json({...base,sessionState:data.state});
+ }catch{return json({...base,reason:"voice_status_unavailable"},503);}
 }
 
 export function voiceReservation(rows,{userId,attemptId,nowMs}){
