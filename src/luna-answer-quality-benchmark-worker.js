@@ -24,6 +24,7 @@ if (maxTextCalls * textTurnCostCeilingMicroUsd > textBudget) throw new Error("Be
 const stagingHost = "bor-ai-luna-staging.muhriskiawan23.workers.dev";
 const campaignRoute = "/__staging/answer-quality-benchmark";
 const encoder = new TextEncoder();
+const agentPrompts = Object.entries(AGENTS).map(([name, { prompt }]) => [name, prompt]);
 
 const expectedCases = [
   ["compact-id", "chat", 1], ["arithmetic-id", "chat", 1], ["context-id", "chat", 2],
@@ -146,8 +147,14 @@ function receipt(response, data, kind) {
 }
 
 function textFrom(data) {
-  return data.output.flatMap(item => item?.type === "message" && Array.isArray(item.content) ? item.content : [])
-    .filter(item => item?.type === "output_text" && typeof item.text === "string").map(item => item.text).join("\n");
+  const parts = [];
+  for (const item of data.output) {
+    if (item?.type !== "message" || !Array.isArray(item.content)) continue;
+    for (const part of item.content) {
+      if (part?.type === "output_text" && typeof part.text === "string") parts.push(part.text);
+    }
+  }
+  return parts.join("\n");
 }
 
 function routingHeaders(env) {
@@ -171,8 +178,9 @@ function boundedTextRun(send, classifierOnly = false) {
       denied = true;
       throw new Error("benchmark_text_request_out_of_scope");
     }
-    const stage = classifierOnly ? "classifier" : Object.keys(AGENTS).find(name =>
-      input[0].role === "system" && input[0].content.includes(AGENTS[name].prompt));
+    const stage = classifierOnly ? "classifier" : input[0].role === "system"
+      ? agentPrompts.find(([, prompt]) => input[0].content.includes(prompt))?.[0]
+      : undefined;
     if (!stage || attempted.has(stage) || attempted.size >= 4) {
       denied = true;
       throw new Error("benchmark_text_retry_denied");
@@ -216,6 +224,8 @@ export function createAnswerQualityBenchmarkWorker(fetcher = (...args) => fetch(
     let current;
     let textCalls = 0;
     let searchCalls = 0;
+    let textSpend = 0;
+    let searchSpend = 0;
     let providerFailed = false;
     let journal = Promise.resolve();
     async function send(body, kind, stage = kind, upstreamSignal) {
@@ -252,10 +262,11 @@ export function createAnswerQualityBenchmarkWorker(fetcher = (...args) => fetch(
         const response = await fetcher(endpoint, { method: "POST", redirect: "error", signal: deadline,
           headers: { Authorization: "Bearer " + key, "Content-Type": "application/json", ...routing }, body: serialized });
         const data = await readProvider(response);
-        Object.assign(attempt, receipt(response, data, kind));
-        const phaseSpend = evidence.receipts.filter(item => (item.kind === "search") === (kind === "search"))
-          .reduce((sum, item) => sum + (item.estimatedMicroUsd ?? 0), 0);
-        if (phaseSpend > (kind === "search" ? searchBudget : textBudget)) throw new Error("reservation_overrun");
+        const verified = receipt(response, data, kind);
+        Object.assign(attempt, verified);
+        if (kind === "search") searchSpend += verified.estimatedMicroUsd;
+        else textSpend += verified.estimatedMicroUsd;
+        if (textSpend > textBudget || searchSpend > searchBudget) throw new Error("reservation_overrun");
         return data;
       } catch (error) {
         providerFailed = true;
