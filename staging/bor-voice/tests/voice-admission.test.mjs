@@ -1,0 +1,23 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { voiceAdmissionStatus, voiceReservation, reserveVoiceAtomic } from '../voice-admission.mjs';
+
+const nowMs=Date.parse('2026-11-27T00:00:00Z');
+const input={userId:'u1',attemptId:'attempt_0000000001',nowMs};
+const next={...input,userId:'u2',attemptId:'attempt_0000000002'};
+const row=voiceReservation([],input).row;
+const closed={...row,state:'closed',actualMicrousd:0};
+const json=(body,status=200)=>({body,status});
+const status=(request,getSession)=>voiceAdmissionStatus(request,{}, {getSession,json});
+test('guest denied',async()=>assert.equal((await status({method:'GET'},async()=>null)).status,401));
+test('forged identity denied',async()=>assert.equal((await status({method:'GET',headers:{'x-user-id':'u1'}},async()=>null)).status,401));
+test('auth outage fails closed',async()=>assert.equal((await status({method:'GET'},async()=>{throw Error()})).status,503));
+test('authenticated read-only response stays disabled',async()=>{const r=await status({method:'GET'},async()=>({id:'u1'}));assert.equal(r.status,200);assert.equal(r.body.ready,false);assert.ok(!JSON.stringify(r.body).includes('u1'));});
+test('POST denied',async()=>assert.equal((await status({method:'POST'},async()=>({id:'u1'}))).status,405));
+test('reservation includes cost headroom',()=>{assert.equal(row.reservedMicrousd,100000);assert.equal(row.deadlineMs-nowMs,60000);});
+test('duplicate attempt denied',()=>assert.equal(voiceReservation([closed],input).reason,'duplicate'));
+test('unconfirmed attempt blocks all users',()=>assert.equal(voiceReservation([row],next).reason,'unconfirmed_or_overrun'));
+test('overrun blocks all users',()=>assert.equal(voiceReservation([{...closed,actualMicrousd:100001}],next).reason,'unconfirmed_or_overrun'));
+test('one attempt per UTC day per user',()=>assert.equal(voiceReservation([closed],{...next,userId:'u1'}).reason,'user_limit'));
+test('three attempts globally',()=>assert.equal(voiceReservation([closed,{...closed,user:'u2',attemptId:next.attemptId},{...closed,user:'u3',attemptId:'attempt_0000000003'}],{...next,userId:'u4',attemptId:'attempt_0000000004'}).reason,'global_limit'));
+test('atomic quota serializes concurrent requests',async()=>{let rows,tail=Promise.resolve();const storage={transaction(fn){const p=tail.then(()=>fn({get:async()=>rows,put:async(k,v)=>{rows=v}}));tail=p.catch(()=>{});return p;}};const result=await Promise.all([reserveVoiceAtomic(storage,input),reserveVoiceAtomic(storage,next)]);assert.equal(result.filter(x=>x.ok).length,1);assert.equal(rows.length,1);});
