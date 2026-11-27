@@ -1,0 +1,16 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {normalizeUsage,observeUsage,disconnectUsage,admissionAfterSettlement} from '../voice-settlement.mjs';
+const r={sessionId:'fixture-session',model:'gpt-live-1.1',reservedMicrousd:100000};
+const update=seconds=>({type:'session.usage.updated',usage:{seconds}});
+const close=(seconds,id=r.sessionId)=>({type:'session.closed',session:{id,model:r.model},usage:{seconds}});
+test('missing usage is not zero',()=>assert.equal(normalizeUsage(undefined),null));
+test('total alone is conservative not exact',()=>assert.deepEqual(normalizeUsage({seconds:60}),{seconds:60,upperMicrousd:50000,exactMicrousd:null}));
+test('split rates are priced separately',()=>assert.equal(normalizeUsage({seconds:60,active_seconds:30,paused_seconds:30}).exactMicrousd,35000));
+test('invalid splits denied',()=>assert.equal(normalizeUsage({seconds:60,active_seconds:30,paused_seconds:20}),null));
+test('cumulative events are not summed or regressed',()=>{const a=observeUsage(observeUsage(r,update(12)),update(15));assert.equal(observeUsage(a,update(10)).latest.seconds,15);});
+test('disconnect preserves evidence but does not settle',()=>{const a=disconnectUsage(observeUsage(r,update(15)));assert.equal(a.latest.seconds,15);assert.equal(a.finalization,'unconfirmed');assert.equal(admissionAfterSettlement(a).allowed,false);});
+test('wrong session cannot settle',()=>assert.equal(observeUsage(r,close(60,'another')).final,undefined));
+test('final is immutable',()=>{const a=observeUsage(r,close(60));assert.equal(observeUsage(a,close(70)),a);assert.equal(disconnectUsage(a),a);});
+test('overrun fails closed',()=>assert.equal(admissionAfterSettlement(observeUsage(r,close(121))).reason,'overrun'));
+test('settlement alone never opens paid access',()=>assert.equal(admissionAfterSettlement(observeUsage(r,close(60))).allowed,false));
