@@ -108,6 +108,9 @@ test("retry after AI provider error reuses extracted file context even after com
 test("signed-in photo conversation never stores image pixels in D1 chat messages",async({page,context,app})=>{
  await loginAs(context,app,account);
  await page.goto(app.url);
+ const composer=page.locator("#prompt");
+ await expect(composer).toBeVisible();
+ await expect(composer).toBeEditable();
  await setTextImage(page,"blue.jpg");
  await expect(page.locator("#csvAttachment")).toBeVisible();
  await expect(page.locator("#attachmentProgress")).toBeHidden();

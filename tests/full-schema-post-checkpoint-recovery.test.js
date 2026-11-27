@@ -18,7 +18,7 @@ function setup(){
 const add=(h,eventId,ownerId,kind,payload)=>addSyntheticTailEvent(h.journal,
   {eventId,ownerId,kind,payload});
 
-test('all 13 migrations: snapshot + verified post-checkpoint tail restore original IDs, session, feedback, image ledger, privacy deletion',async()=>{
+test('all 15 migrations: snapshot + verified post-checkpoint tail restore original IDs, session, feedback, image ledger, privacy deletion',async()=>{
   const result=await drillFullSchemaPostCheckpointRecovery();
   for(const key of ['passed','syntheticOnly','atomicPairRollback',
     'postCheckpointTurnPreserved','originalIntegerIdsPreserved',
@@ -26,7 +26,7 @@ test('all 13 migrations: snapshot + verified post-checkpoint tail restore origin
     'deletionTombstonesApplied','noDeletedChatOrAccountResurrection',
     'noDuplicateFeedbackOrImageCharge','foreignKeysClean'])
     assert.equal(result[key],true,key);
-  assert.equal(result.migrationsReplayed,13);
+  assert.equal(result.migrationsReplayed,15);
   assert.equal(result.tailEventsApplied,5);
   assert.equal(result.checkpoint,5);
   assert.equal(result.cloudflareCalled,false);

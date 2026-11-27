@@ -1,3 +1,4 @@
+import { searchMode, searchV2Configured } from "./web-search-v2.js";
 import { imageConfig } from "./image-jobs.js";
 import { isSearchProviderConfigured } from "./research.js";
 
@@ -22,11 +23,12 @@ export function pluginCapabilities(env = {}) {
   const pinnedProxyReady = readerEnabled && env.URL_READER_PROVIDER !== "tavily" &&
     typeof env.EGRESS_PROXY?.fetch === "function" &&
     typeof env.EGRESS_PROXY_TOKEN === "string" && env.EGRESS_PROXY_TOKEN.length >= 32;
+  const mode = searchMode(env);
   return {
     version: 1,
     tools: {
       webSearch: {
-        available: isSearchProviderConfigured(env),
+        available: mode !== "off" && (isSearchProviderConfigured(env) || searchV2Configured(env, false)),
         invocation: "automatic",
         scope: "search_result_snippets"
       },

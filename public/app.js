@@ -86,24 +86,49 @@ let activeChatController=null;
 let pendingRetryRequest=null;
 let routingImageRequest=false;
 async function api(path,opts={}){
-  const {timeoutMs,...fetchOpts}=opts;let res,timer,timedOut=false;
+  const {timeoutMs,onSearch,...fetchOpts}=opts;let res,data=null,status,timer,timedOut=false;
   const externalSignal=fetchOpts.signal;
   const ctrl=timeoutMs?new AbortController():null;
   if(ctrl){fetchOpts.signal=externalSignal?AbortSignal.any([externalSignal,ctrl.signal]):ctrl.signal;timer=setTimeout(()=>{timedOut=true;ctrl.abort()},timeoutMs)}
-  try{res=await fetch(API+path,{credentials:"same-origin",...fetchOpts})}
+  try{
+    res=await fetch(API+path,{credentials:"same-origin",...fetchOpts});
+    status=res.status;
+    if(onSearch&&res.headers.get("Content-Type")?.startsWith("application/x-ndjson")){
+      const result=await readChatProgress(res.body,onSearch);
+      ({status,data}=result);
+    }else{try{data=await res.json()}catch(error){if(fetchOpts.signal?.aborted)throw error;}}
+  }
   catch(error){
     if(externalSignal?.aborted)throw Object.assign(new Error("Generasi dihentikan."),{name:"AbortError",cancelled:true,status:0});
     throw Object.assign(new Error(timedOut?"Server terlalu lama merespons (lebih dari "+Math.round(timeoutMs/1000)+" detik). Coba lagi.":"Tidak dapat terhubung ke server. Periksa koneksi Anda."),{status:0});
   }finally{clearTimeout(timer)}
-  let data=null;try{data=await res.json()}catch{}
-  if(!res.ok){
-    const err=new Error((data&&data.error)||"HTTP "+res.status);err.status=res.status;err.code=data&&data.code;err.data=data;
-    if(res.status===401&&state===AppState.AUTH)expireSession();
+  if(status<200||status>=300){
+    const err=new Error((data&&data.error)||"HTTP "+status);err.status=status;err.code=data&&data.code;err.data=data;
+    if(status===401&&state===AppState.AUTH)expireSession();
     throw err;
   }
   return data||{};
 }
-const postJson=(path,body,timeoutMs,signal,vision=false)=>api(path,{method:"POST",headers:{"Content-Type":"application/json",...(vision?{"X-BOR-Vision":"1"}:{})},body:JSON.stringify(body),timeoutMs,signal});
+async function readChatProgress(body,onSearch){
+  const reader=body.pipeThrough(new TextDecoderStream()).getReader();
+  let buffer="";
+  try{
+    while(true){
+      const {value,done}=await reader.read();
+      if(done)throw new Error("Incomplete chat response");
+      buffer+=value;
+      if(buffer.length>512000)throw new Error("Chat response too large");
+      let end;
+      while((end=buffer.indexOf("\n"))>=0){
+        const event=JSON.parse(buffer.slice(0,end));
+        buffer=buffer.slice(end+1);
+        if(event.type==="result")return event;
+        if(event.type==="searching")onSearch(event.provider);
+      }
+    }
+  }finally{reader.cancel().catch(()=>{});reader.releaseLock();}
+}
+const postJson=(path,body,timeoutMs,signal,vision=false,onSearch)=>api(path,{method:"POST",headers:{"Content-Type":"application/json",...(vision?{"X-BOR-Vision":"1"}:{}),...(onSearch?{"X-BOR-Chat-Progress":"1"}:{})},body:JSON.stringify(body),timeoutMs,signal,onSearch});
 function copyText(value){
   const text=String(value||"").trim();
   if(!text){toast("Tidak ada konten untuk disalin.");return;}
@@ -879,10 +904,21 @@ async function loadMoreHistory(){
 }
 /* Konteks yang dikirim ke server. Sama dengan batas di server (12 pesan / 8000 karakter / 2000 per pesan);
    giliran yang gagal tidak pernah masuk chat.messages sehingga tidak ikut terkirim. */
+function historyExcerpt(value) {
+  const text = String(value ?? "").trim();
+  if (text.length <= 2000) return text;
+  const marker = "\n[... earlier message excerpt: middle omitted ...]\n";
+  const available = 2000 - marker.length;
+  const head = Math.ceil(available * 0.6);
+  const tail = available - head;
+  // Avoid splitting UTF-16 surrogate pairs at either boundary.
+  return text.slice(0, head).replace(/[\uD800-\uDBFF]$/, "") + marker +
+    text.slice(-tail).replace(/^[\uDC00-\uDFFF]/, "");
+}
 function buildHistory(chat){
   const out=[];let total=0;
   for(let i=chat.messages.length-1;i>=0&&out.length<12;i--){
-    const m=chat.messages[i];const content=String(m.content||"").trim().slice(0,2000);
+    const m=chat.messages[i];const content=historyExcerpt(m.content);
     if(!content)continue;if(total+content.length>8000)break;
     total+=content.length;out.unshift({role:m.role==="assistant"?"assistant":"user",content});
   }
@@ -894,15 +930,29 @@ function buildHistory(chat){
 /* Menunjukkan link mana yang benar-benar terbaca (atau gagal dan kenapa) di bawah jawaban; teks diisi lewat textContent. */
 function appendSources(links){
   const row=messagesEl.lastElementChild;const body=row&&row.querySelector(".message-body");if(!body||!links||!links.length)return;
-  const box=document.createElement("div");box.className="sources";
-  const head=document.createElement("strong");head.textContent="Sumber dan status pembacaan:";box.append(head);
+  const box=document.createElement("div");box.className="sources message-link-sources";
+  // Re-render only this message's link panel; leave attachment/tool panels untouched.
+  const grounded=links.filter(link=>link?.sourceType==="web_search_v2");
+  if(grounded.length)renderInlineWebCitations(body.querySelector(".message-text"),grounded);
+  const head=document.createElement("strong");
+  head.textContent=grounded.length?(window.BORLocale?.current==="id"?"Sumber web":"Web sources"):"Sumber dan status pembacaan:";
+  box.append(head);
+  const displayed=new Set();
   for(const l of links){
+    if(!l)continue;
+    const key=JSON.stringify([l.sourceId,l.url,l.ok]);
+    if(displayed.has(key))continue;displayed.add(key);
     const item=document.createElement("div");item.className="source "+(l.ok?"ok":"fail");
     if(l.ok){
       item.append(document.createTextNode("✓ ["+l.sourceId+"] "));
       if(typeof l.url==="string"&&/^https?:\/\//i.test(l.url)){
         const link=document.createElement("a");link.href=l.url;link.target="_blank";link.rel="noopener noreferrer";
-        link.textContent=l.url+(l.title?" — "+l.title:"");item.append(link);
+        if(l.sourceType==="web_search_v2"){
+          let host=l.host||"";try{host=new URL(link.href).hostname}catch{}
+          link.textContent=l.title||host;link.title=link.href;
+          const domain=document.createElement("small");domain.className="web-source-domain";domain.textContent=host;
+          item.append(link,domain);
+        }else{link.textContent=l.url+(l.title?" — "+l.title:"");item.append(link);}
         if(l.resolvedUrl&&l.resolvedUrl!==l.url){const redirect=document.createElement("small");redirect.textContent="Dialihkan ke "+l.resolvedUrl;item.append(redirect);}
       }else item.append(document.createTextNode(l.host+(l.title?" — "+l.title:"")));
       if(l.sourceType==="news")item.append(document.createTextNode(" · Berita"));
@@ -920,7 +970,80 @@ function appendSources(links){
     }else item.textContent="✗ "+(l.host||"sumber")+" — "+(l.reason||"tidak tersedia");
     box.append(item);
   }
+  for(const previous of body.querySelectorAll(":scope > .message-link-sources"))previous.remove();
   body.append(box);
+}
+function clickableWebCitation(source,label){
+  let url;
+  try{url=new URL(source.url);}catch{return null;}
+  if(url.protocol!=="https:"||url.username||url.password||url.port)return null;
+  const link=document.createElement("a");
+  link.className="web-citation";
+  link.href=url.href;link.target="_blank";link.rel="noopener noreferrer";
+  link.textContent=label;link.title=source.title||url.hostname;
+  return link;
+}
+function renderInlineWebCitations(container,links){
+  if(!container)return;
+  const byId=new Map(links.map(link=>[String(link.sourceId),link]));
+  const walker=document.createTreeWalker(container,NodeFilter.SHOW_TEXT);
+  const nodes=[];
+  for(let node=walker.nextNode();node;node=walker.nextNode())if(node.data.includes("⟦"))nodes.push(node);
+  for(const node of nodes){
+    if(node.parentElement.closest("a"))continue;
+    const pieces=node.data.split(/⟦(\d+)⟧/g);
+    node.replaceWith(...pieces.map((piece,index)=>{
+      if(index%2===0)return document.createTextNode(piece);
+      const source=byId.get(piece);
+      return (source&&clickableWebCitation(source,"["+piece+"]"))||document.createTextNode("");
+    }));
+  }
+}
+function appendGoogleGrounding(grounding){
+  const body=messagesEl.lastElementChild?.querySelector(".message-body");
+  if(!body||!grounding?.suggestions?.length||!grounding?.blocks?.length)return;
+  const panel=document.createElement("section");
+  const content=document.createElement("div");
+  content.hidden=true;
+  for(const block of grounding.blocks){
+    const paragraph=document.createElement("div");
+    paragraph.className="grounded-google-text";
+    let cursor=0;
+    const chars=Array.from(block.text);
+    const citations=block.citations.filter(item=>Number.isInteger(item.end)&&item.end>0&&item.end<=chars.length)
+      .sort((left,right)=>left.end-right.end);
+    for(const item of citations){
+      paragraph.append(chars.slice(cursor,item.end).join(""));
+      const link=clickableWebCitation(item,item.host);
+      if(link)paragraph.append(" ",link," ");
+      cursor=item.end;
+    }
+    paragraph.append(chars.slice(cursor).join(""));
+    content.append(paragraph);
+  }
+  const frame=document.createElement("iframe");
+  frame.className="grounded-google-widget";
+  frame.title="Google Search";
+  frame.setAttribute("sandbox","allow-scripts allow-popups allow-popups-to-escape-sandbox");
+  frame.referrerPolicy="no-referrer";
+  frame.src="/api/web-search/grounding-frame";
+  const status=document.createElement("p");
+  const indonesian=window.BORLocale?.current==="id";
+  status.textContent=indonesian?"Memuat hasil Google…":"Loading Google results…";
+  const finish=ok=>{
+    clearTimeout(timeout);
+    window.removeEventListener("message",receive);
+    if(ok){content.hidden=false;status.remove();}
+    else{frame.remove();status.textContent=indonesian?"Hasil Google tidak dapat ditampilkan.":"Google results could not be displayed.";}
+  };
+  const receive=event=>{
+    if(event.source===frame.contentWindow&&event.origin==="null"&&event.data?.type==="bor-google-grounding-ready")finish(event.data.ok===true);
+  };
+  const timeout=setTimeout(()=>finish(false),4000);
+  window.addEventListener("message",receive);
+  frame.addEventListener("load",()=>frame.contentWindow?.postMessage({type:"bor-google-grounding",suggestions:grounding.suggestions},"*"),{once:true});
+  panel.append(status,content,frame);
+  body.append(panel);
 }
 /* Auditable tool summary. Only report actual server activity, never pretend Google was opened. */
 function appendToolActivity(items) {
@@ -933,8 +1056,13 @@ function appendToolActivity(items) {
     if(!["web_search","read_links"].includes(item?.tool))continue;
     const line=document.createElement("li");
     const noun=item.tool==="web_search"?"Pencarian web":"Pembacaan tautan";
-    const provider=item.tool==="web_search"&&["Tavily","Brave"].includes(item.provider)?" ("+item.provider+")":"";
-    line.textContent=noun+provider+" · "+(item.status==="completed"?(Number(item.count)||0)+" sumber berhasil":"Tidak tersedia atau gagal");
+    const provider=item.tool==="web_search"&&["Tavily","Brave","OpenAI","Google"].includes(item.provider)?" ("+item.provider+")":"";
+    if(item.version===2){
+      const indonesian=window.BORLocale?.current==="id";
+      const label=(indonesian?"Pencarian web":"Web search")+provider;
+      line.textContent=label+" · "+(item.status==="completed"?(indonesian?"Selesai":"Completed"):item.status==="partial"?(indonesian?"Jawaban sebagian":"Partial answer"):(indonesian?"Sumber tidak tersedia":"Sources unavailable"));
+      if(item.corroboration==="limited")line.textContent+=indonesian?" · Konfirmasi lintas sumber terbatas":" · Limited cross-source corroboration";
+    }else line.textContent=noun+provider+" · "+(item.status==="completed"?(Number(item.count)||0)+" sumber berhasil":"Tidak tersedia atau gagal");
     list.append(line);
   }
   if(!list.children.length)return;details.append(list);body.append(details);
@@ -1279,11 +1407,18 @@ async function submit(options={}){
   const stillActive=()=>activeId===startId;const start=Date.now();
   try{
     const payload={message:savedText,agent,requestId,imageMode:$("imageTask").value,language:window.BORLocale?.current||"en"};const customization=readCustomization();if(customization)payload.customization=customization;if(selectedPdf)payload.document={name:selectedPdf.name,content:selectedPdf.content,truncated:selectedPdf.truncated};if(selectedCsv?.kind==="image-vision")payload.imageVision={name:selectedCsv.name,dataUrl:selectedCsv.dataUrl};else if(selectedCsv?.kind==="image-ocr")payload.imageOcr={name:selectedCsv.name,content:selectedCsv.content,truncated:selectedCsv.truncated};else if(selectedCsv?.kind==="word-document")payload.wordDocument={name:selectedCsv.name,content:selectedCsv.content,paragraphCount:selectedCsv.paragraphCount,truncated:selectedCsv.truncated};else if(selectedCsv?.kind==="presentation")payload.presentation={name:selectedCsv.name,content:selectedCsv.content,slideCount:selectedCsv.slideCount,truncated:selectedCsv.truncated};else if(selectedCsv)payload.spreadsheet={name:selectedCsv.name,content:selectedCsv.content,rowCount:selectedCsv.rowCount,columnCount:selectedCsv.columnCount,truncated:selectedCsv.truncated};if(history.length)payload.history=history;if(state===AppState.AUTH&&chat.serverId)payload.conversationId=chat.serverId;if(replacing&&state===AppState.AUTH&&chat.serverId)payload.replaceLastTurn=true;
-    const data=await postJson("/api/chat",payload,CHAT_TIMEOUT_MS,activeChatController.signal,selectedCsv?.kind==="image-vision");
+    const data=await postJson("/api/chat",payload,CHAT_TIMEOUT_MS,activeChatController.signal,selectedCsv?.kind==="image-vision",provider=>{
+      if(!stillActive()||!["OpenAI","Google"].includes(provider))return;
+      const typing=$("typing")?.querySelector(".message-body");
+      if(!typing)return;
+      let status=typing.querySelector('[role="status"]');
+      if(!status){status=document.createElement("span");status.setAttribute("role","status");typing.append(" ",status);}
+      status.textContent=(window.BORLocale?.current==="id"?"Mencari di web dengan ":"Searching the web with ")+provider+"…";
+    });
     if(typeof data.response!=="string"||!data.response.trim())throw new Error("AI tidak menghasilkan jawaban.");
     if(pendingRetryRequest?.requestId===requestId)pendingRetryRequest=null;
     chat.messages.push({role:"assistant",content:data.response,id:data.responseId||null,feedback:null,links:data.links||[],pdf:data.pdf||null,spreadsheet:data.spreadsheet||null,wordDocument:selectedCsv?.kind==="word-document"?{name:selectedCsv.name,paragraphCount:selectedCsv.paragraphCount,truncated:selectedCsv.truncated}:null});chat.updated=Date.now();
-    if(stillActive()){$("typing")?.remove();appendMessage("assistant",data.response,true,{regenerate:true,responseId:data.saved?data.responseId:null,conversationId:data.saved?data.conversationId:null});addEditActionToLastUser();appendSources(data.links);appendToolActivity(data.toolActivity);appendFormDraft(data.formDraft);if(data.pdf)appendPdfSource(data.pdf);if(data.spreadsheet)appendSpreadsheetSource(data.spreadsheet);if(data.presentation)appendPresentationSource(data.presentation);if(selectedCsv?.kind==="word-document")appendWordDocumentSource(selectedCsv);if(selectedCsv?.kind==="image-ocr")appendImageOcrSource(selectedCsv);renderWorkflow(data.steps)}
+    if(stillActive()){$("typing")?.remove();appendMessage("assistant",data.response,true,{regenerate:true,responseId:data.saved?data.responseId:null,conversationId:data.saved?data.conversationId:null});addEditActionToLastUser();appendSources(data.links);appendToolActivity(data.toolActivity);appendGoogleGrounding(data.googleGrounding);appendFormDraft(data.formDraft);if(data.pdf)appendPdfSource(data.pdf);if(data.spreadsheet)appendSpreadsheetSource(data.spreadsheet);if(data.presentation)appendPresentationSource(data.presentation);if(selectedCsv?.kind==="word-document")appendWordDocumentSource(selectedCsv);if(selectedCsv?.kind==="image-ocr")appendImageOcrSource(selectedCsv);renderWorkflow(data.steps)}
     if(state===AppState.AUTH&&data.saved&&data.conversationId){
       chat.serverId=data.conversationId;chat.id=data.conversationId;chat.loaded=true;
       if(stillActive()){activeId=chat.id;replaceRoute({name:"chat",id:chat.id})}

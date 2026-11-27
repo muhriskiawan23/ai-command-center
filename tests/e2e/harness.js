@@ -19,12 +19,23 @@ export function createD1() {
   const sqlite = new DatabaseSync(":memory:");
   sqlite.exec("PRAGMA foreign_keys = ON");
   for (const file of readdirSync(join(ROOT, "migrations")).sort()) sqlite.exec(readFileSync(join(ROOT, "migrations", file), "utf8"));
+  // D1 bind(...) accepts numbered SQLite placeholders as positional arguments.
+  // node:sqlite treats ?NNN as named parameters; pass a name/value map for
+  // those statements so repeated indices bind once, with the same semantics.
+  const parameters = (sql, values) => {
+    const numbered = [...new Set(sql.match(/\?\d+/g) || [])];
+    if (!numbered.length) return values;
+    if (numbered.some(name => Number(name.slice(1)) < 1 || Number(name.slice(1)) > values.length)) {
+      throw new Error("Missing numbered D1 test parameter");
+    }
+    return [Object.fromEntries(numbered.map(name => [name, values[Number(name.slice(1)) - 1]]))];
+  };
   const stmt = (sql, values = []) => ({
     bind: (...v) => stmt(sql, v),
-    first: async () => sqlite.prepare(sql).get(...values) ?? null,
-    all: async () => ({ results: sqlite.prepare(sql).all(...values) }),
-    run: async () => { const r = sqlite.prepare(sql).run(...values); return { meta: { changes: Number(r.changes) } }; },
-    _run: () => sqlite.prepare(sql).run(...values)
+    first: async () => sqlite.prepare(sql).get(...parameters(sql, values)) ?? null,
+    all: async () => ({ results: sqlite.prepare(sql).all(...parameters(sql, values)) }),
+    run: async () => { const r = sqlite.prepare(sql).run(...parameters(sql, values)); return { meta: { changes: Number(r.changes) } }; },
+    _run: () => sqlite.prepare(sql).run(...parameters(sql, values))
   });
   return {
     sqlite,

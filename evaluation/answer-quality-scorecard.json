@@ -1,0 +1,129 @@
+{
+  "plan": "evaluation/answer-quality-smoke.json",
+  "candidate": "af5dd9b473576affbcc269b90b28e852d506ca82",
+  "status": "not_run",
+  "notes": "Do not copy reference answers or checks into the model request. Score independently, excluding and documenting only truly inapplicable dimensions. Null is not zero. Critical failure overrides numeric score.",
+  "cases": [
+    {
+      "id": "compact-id",
+      "route": "chat",
+      "actualAnswers": [
+        null
+      ],
+      "scores": {
+        "accuracy": null,
+        "completion": null,
+        "reasoning": null,
+        "context": null,
+        "evidence": null,
+        "readability": null
+      },
+      "weightedScore": null,
+      "criticalFailure": null,
+      "evidence": null,
+      "providerReceipts": [],
+      "status": "not_run"
+    },
+    {
+      "id": "arithmetic-id",
+      "route": "chat",
+      "actualAnswers": [
+        null
+      ],
+      "scores": {
+        "accuracy": null,
+        "completion": null,
+        "reasoning": null,
+        "context": null,
+        "evidence": null,
+        "readability": null
+      },
+      "weightedScore": null,
+      "criticalFailure": null,
+      "evidence": null,
+      "providerReceipts": [],
+      "status": "not_run"
+    },
+    {
+      "id": "context-id",
+      "route": "chat",
+      "actualAnswers": [
+        null,
+        null
+      ],
+      "scores": {
+        "accuracy": null,
+        "completion": null,
+        "reasoning": null,
+        "context": null,
+        "evidence": null,
+        "readability": null
+      },
+      "weightedScore": null,
+      "criticalFailure": null,
+      "evidence": null,
+      "providerReceipts": [],
+      "status": "not_run"
+    },
+    {
+      "id": "code-en",
+      "route": "chat",
+      "actualAnswers": [
+        null
+      ],
+      "scores": {
+        "accuracy": null,
+        "completion": null,
+        "reasoning": null,
+        "context": null,
+        "evidence": null,
+        "readability": null
+      },
+      "weightedScore": null,
+      "criticalFailure": null,
+      "evidence": null,
+      "providerReceipts": [],
+      "status": "not_run"
+    },
+    {
+      "id": "evidence-id",
+      "route": "chat",
+      "actualAnswers": [
+        null
+      ],
+      "scores": {
+        "accuracy": null,
+        "completion": null,
+        "reasoning": null,
+        "context": null,
+        "evidence": null,
+        "readability": null
+      },
+      "weightedScore": null,
+      "criticalFailure": null,
+      "evidence": null,
+      "providerReceipts": [],
+      "status": "not_run"
+    },
+    {
+      "id": "bennu-id",
+      "route": "web_search",
+      "actualAnswers": [
+        null
+      ],
+      "scores": {
+        "accuracy": null,
+        "completion": null,
+        "reasoning": null,
+        "context": null,
+        "evidence": null,
+        "readability": null
+      },
+      "weightedScore": null,
+      "criticalFailure": null,
+      "evidence": null,
+      "providerReceipts": [],
+      "status": "not_run"
+    }
+  ]
+}

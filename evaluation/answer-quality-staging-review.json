@@ -1,0 +1,112 @@
+{
+  "schema": 1,
+  "worker": "bor-ai-luna-staging",
+  "candidateCommit": "af5dd9b473576affbcc269b90b28e852d506ca82",
+  "sourceVersion": "2b99a156-92d6-4ebb-bfa4-02a7cc9efe6a",
+  "expectedActiveTrafficPercentage": 100,
+  "plannedTrafficChange": false,
+  "budgetMicroUsd": 500000,
+  "runtime": {
+    "compatibility_date": "2026-10-28",
+    "compatibility_flags": [
+      "enable_request_signal"
+    ],
+    "usage_model": "standard"
+  },
+  "requiredBindings": [
+    {
+      "name": "AI",
+      "type": "ai"
+    },
+    {
+      "name": "BOR_LUNA_STAGING_TOKEN",
+      "type": "secret_text"
+    },
+    {
+      "name": "BOR_LUNA_STAGING_URL_READER_ENABLED",
+      "type": "plain_text",
+      "value": "false"
+    },
+    {
+      "name": "BOR_LUNA_STAGING_WEB_SEARCH_ENABLED",
+      "type": "plain_text",
+      "value": "false"
+    },
+    {
+      "name": "BOR_TEXT_BACKUP_API_KEY",
+      "type": "secret_text"
+    },
+    {
+      "name": "BOR_WEB_SEARCH_GOOGLE_KEY",
+      "type": "secret_text"
+    },
+    {
+      "name": "BOR_WEB_SEARCH_KILL_SWITCH",
+      "type": "plain_text",
+      "value": "true"
+    },
+    {
+      "name": "BOR_WEB_SEARCH_MODE",
+      "type": "plain_text",
+      "value": "off"
+    },
+    {
+      "name": "BOR_WEB_SEARCH_OPENAI_KEY",
+      "type": "secret_text"
+    },
+    {
+      "name": "BOR_WEB_SEARCH_OPENAI_ORG",
+      "type": "plain_text"
+    },
+    {
+      "name": "BOR_WEB_SEARCH_OPENAI_PROJECT",
+      "type": "plain_text"
+    },
+    {
+      "name": "DB",
+      "type": "d1"
+    }
+  ],
+  "routingBaseline": {
+    "workersDev": true,
+    "versionUrls": false
+  },
+  "classification": "read-only-review",
+  "candidateEntrypoint": {
+    "file": "src/luna-staging-worker.js",
+    "gitBlob": "fbcc1c752d04703c6c6a2bec4de4ae2a65caddaf",
+    "benchmarkEligible": false
+  },
+  "requiredApproval": "A permitted release environment must authorize the staging version creation; this manifest does not authorize or configure upload.",
+  "benchmarkRunner": {
+    "sourceCommit": "d1e5ee93c0b17b686eb5177866b4b53bc679b9c8",
+    "file": "src/luna-answer-quality-benchmark-worker.js",
+    "gitBlob": "570df575f261bee7d2fe5d00c8835023e32cea09",
+    "requiredExistingBindings": [
+      "BOR_LUNA_STAGING_TOKEN",
+      "BOR_LUNA_STAGING_URL_READER_ENABLED",
+      "BOR_LUNA_STAGING_WEB_SEARCH_ENABLED",
+      "BOR_WEB_SEARCH_KILL_SWITCH",
+      "BOR_WEB_SEARCH_MODE",
+      "BOR_WEB_SEARCH_OPENAI_KEY",
+      "BOR_WEB_SEARCH_OPENAI_ORG",
+      "BOR_WEB_SEARCH_OPENAI_PROJECT",
+      "DB"
+    ],
+    "activationBindings": [
+      {
+        "name": "BOR_LUNA_ANSWER_BENCHMARK_ENABLED",
+        "type": "plain_text",
+        "approvedValue": "true"
+      },
+      {
+        "name": "BOR_LUNA_ANSWER_BENCHMARK_EXPIRES_AT",
+        "type": "plain_text",
+        "format": "epoch milliseconds",
+        "maxWindowMs": 300000
+      }
+    ],
+    "dormantKillSwitch": "true",
+    "approvedWindowKillSwitch": "false"
+  }
+}

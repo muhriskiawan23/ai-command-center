@@ -73,3 +73,10 @@ export function extractModelAnswer(result) {
   ).filter(part => part?.type === "output_text" && typeof part.text === "string")
     .map(part => part.text).join("\n");
 }
+
+// Explicit provider signals only: never guess truncation from prose or word count.
+export function isOutputTokenLimited(result) {
+  const value = result?.result ?? result;
+  return value?.choices?.[0]?.finish_reason === "length" ||
+    (value?.status === "incomplete" && value?.incomplete_details?.reason === "max_output_tokens");
+}

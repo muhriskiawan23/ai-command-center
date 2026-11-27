@@ -1,3 +1,6 @@
+import { qualityOutputLimit, answerDepth } from "./answer-quality.js";
+import { googleGroundingAllowed, planWebSearch, runWebSearchV2, searchMode, searchV2Configured, webSearchUserAllowed } from "./web-search-v2.js";
+import { streamChatSearch } from "./chat-search-progress.js";
 import { BACKUP_MODEL, withTextProviderFailover } from "./text-provider-failover.js";
 import { chatCapabilityOverview } from "./chat-capability-overview.js";
 import { TextInferenceBudgetError, withTextInferenceBudget } from "./text-inference-budget.js";
@@ -22,7 +25,7 @@ import { pluginCapabilities } from "./plugin-capabilities.js";
 import { handleFeedbackReport } from "./feedback-report.js";
 import { availableGitHubTools, executeGitHubChatTool, extractGitHubToolCalls, pluginBudgetMessage, reserveGitHubToolInferenceBudget, shouldOfferGitHubTools } from "./plugin-runtime.js";
 import { selectModel, taskProfileForAgent, summarizeModelTrace } from "./model-gateway.js";
-import { GPT_OSS_MODEL_ID, mayUseGptOss, reserveGptOssCall, extractModelAnswer } from "./gpt-oss.js";
+import { GPT_OSS_MODEL_ID, mayUseGptOss, reserveGptOssCall, extractModelAnswer, isOutputTokenLimited } from "./gpt-oss.js";
 import { planFeedbackForm, generateFormsScript } from "./form-draft.js";
 import { COMMUNICATION_NOTICE, CAPABILITY_NOTICE, AGENTS } from "./prompts.js";
 import { voiceAdmissionStatus } from "./voice-admission.mjs";
@@ -193,6 +196,18 @@ export function localizedChatNotice(language, type, item = "") {
       "ℹ️ 已生成回答，但无法保存到记忆。请在“记忆”菜单中重试。",
       "ℹ️ تم إنشاء الإجابة، ولكن تعذّر حفظها في الذاكرة. حاول مرة أخرى من قائمة الذاكرة."
     ],
+    outputLimited: [
+      "**Partial answer:** the model reached its output limit. The remaining details may be missing.",
+      "**Jawaban belum lengkap:** model mencapai batas keluaran. Sebagian detail mungkin belum tercakup.",
+      "**Respuesta parcial:** el modelo alcanzó su límite de salida; pueden faltar detalles.",
+      "**Réponse partielle :** le modèle a atteint sa limite de sortie ; des détails peuvent manquer.",
+      "**Teilantwort:** Das Modell hat sein Ausgabelimit erreicht; Details können fehlen.",
+      "**Resposta parcial:** o modelo atingiu o limite de saída; alguns detalhes podem faltar.",
+      "**回答は途中です：** モデルが出力上限に達したため、一部の詳細が欠けている可能性があります。",
+      "**부분 답변:** 모델이 출력 한도에 도달하여 일부 내용이 누락되었을 수 있습니다.",
+      "**回答尚不完整：** 模型已达到输出上限，可能缺少部分细节。",
+      "**إجابة جزئية:** بلغ النموذج حد الإخراج، وقد تكون بعض التفاصيل ناقصة."
+    ],
     saveWarning: [
       "The answer was generated, but chat history could not be saved. Copy it before leaving the page.",
       "Jawaban berhasil dibuat, tetapi riwayat gagal disimpan. Salin jawaban ini sebelum meninggalkan halaman.",
@@ -219,12 +234,24 @@ const HISTORY_MAX_CHARS = 8000;         // total characters across all history m
 const HISTORY_MESSAGE_MAX_CHARS = 2000; // a single long message is truncated
 const HISTORY_MAX_INPUT_ITEMS = 40;     // reject absurd client payloads outright
 
+function historyExcerpt(value) {
+  const text = String(value ?? "").trim();
+  if (text.length <= HISTORY_MESSAGE_MAX_CHARS) return text;
+  const marker = "\n[... earlier message excerpt: middle omitted ...]\n";
+  const available = HISTORY_MESSAGE_MAX_CHARS - marker.length;
+  const head = Math.ceil(available * 0.6);
+  const tail = available - head;
+  // Avoid splitting UTF-16 surrogate pairs at either boundary.
+  return text.slice(0, head).replace(/[\uD800-\uDBFF]$/, "") + marker +
+    text.slice(-tail).replace(/^[\uDC00-\uDFFF]/, "");
+}
+
 // Keep the most recent messages that fit the budget; the window must start with a user turn.
 function trimHistory(items) {
   const kept = [];
   let total = 0;
   for (let i = items.length - 1; i >= 0 && kept.length < HISTORY_MAX_MESSAGES; i--) {
-    const content = String(items[i].content ?? "").trim().slice(0, HISTORY_MESSAGE_MAX_CHARS);
+    const content = historyExcerpt(items[i].content);
     if (!content) continue;
     if (total + content.length > HISTORY_MAX_CHARS) break;
     total += content.length;
@@ -267,7 +294,7 @@ async function serveAsset(request, env) {
   if (/^text\/html(?:;|$)/i.test(headers.get("Content-Type") || "")) {
     headers.set(
       "Content-Security-Policy",
-      "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; connect-src 'self' https://accounts.google.com https://forms.googleapis.com https://cdn.jsdelivr.net https://tessdata.projectnaptha.com; script-src 'self' https://accounts.google.com/gsi/client https://cdn.jsdelivr.net https://cdn.sheetjs.com; worker-src 'self' blob: https://cdn.jsdelivr.net; style-src 'self' https://accounts.google.com/gsi/style; style-src-attr 'unsafe-inline'; img-src 'self' data: blob: https://*.googleusercontent.com; media-src 'self' blob:; frame-src https://accounts.google.com/gsi/; upgrade-insecure-requests"
+      "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; connect-src 'self' https://accounts.google.com https://forms.googleapis.com https://cdn.jsdelivr.net https://tessdata.projectnaptha.com; script-src 'self' https://accounts.google.com/gsi/client https://cdn.jsdelivr.net https://cdn.sheetjs.com; worker-src 'self' blob: https://cdn.jsdelivr.net; style-src 'self' https://accounts.google.com/gsi/style; style-src-attr 'unsafe-inline'; img-src 'self' data: blob: https://*.googleusercontent.com; media-src 'self' blob:; frame-src " + new URL("/api/web-search/grounding-frame", request.url).href + " https://accounts.google.com/gsi/; upgrade-insecure-requests"
     );
   }
 
@@ -486,8 +513,9 @@ async function runAgent(env, agentId, userMessage, context = "", history = [], p
     const modelMessages = extraInstruction
       ? [...messages, { role: "user", content: extraInstruction }]
       : messages;
-    const baselineMaxTokens = Math.min(2200, (tokenLimits[agentId] || 950) +
+    const standardMaxTokens = Math.min(2200, (tokenLimits[agentId] || 950) +
       (/\b(mendalam|detail|lengkap|komprehensif|thorough|in.depth|step.by.step|detailed|comprehensive)\b/i.test(userMessage) ? 300 : 0));
+    const baselineMaxTokens = qualityOutputLimit(standardMaxTokens, agentId, userMessage, env);
     let maxTokens = baselineMaxTokens;
     let modelId = selection.model.id;
     // Opt-in high-reasoning inference for signed-in turns only. Atomically reserve
@@ -648,7 +676,9 @@ async function runAgent(env, agentId, userMessage, context = "", history = [], p
     const greeting=/^(?:(?:hi|hey|hai|halo|hello|hola|bonjour|pagi|siang|sore|malam)(?:[\s,]+(?:bor(?:\s+ai)?|there))?|selamat\s+(?:pagi|siang|sore|malam))[!.?\s]*$/i.test(userMessage.trim());
     // Retry once only when content is actually missing or nontrivial prompts
     // receive an unusably short answer.
-    if (!cleaned || (!greeting && (countWords(cleaned).length < 8 || cleaned.length < 35))) {
+    const compactRequested = env.BOR_ANSWER_QUALITY_PROFILE === "enhanced" &&
+      agentId === "coordinator" && answerDepth(userMessage, env.BOR_CUSTOMIZATION?.length) === "compact";
+    if (!cleaned || (!greeting && !compactRequested && !isOutputTokenLimited(result) && (countWords(cleaned).length < 8 || cleaned.length < 35))) {
       result = await generate(
         "RETRY REQUIRED: Your previous answer contained empty Markdown headings or bullets and was unusable. Return substantive content in plain text or simple numbered points. Do not output empty headings, empty bullets, or Markdown-only lines. Include at least 3 concrete findings when appropriate. Every bullet must contain a complete sentence. Answer in the user's language."
       );
@@ -671,9 +701,12 @@ async function runAgent(env, agentId, userMessage, context = "", history = [], p
       throw new Error(`Agent ${agentId} returned unusable output after retry`);
     }
 
-    traceEntry.outcome = "success";
+    const outputLimited = isOutputTokenLimited(result);
+    traceEntry.outcome = outputLimited ? "partial" : "success";
     emitTelemetry();
-    return cleaned;
+    // Keep the partial content, including any unfinished code block, without
+    // silently making another billable call. The notice precedes the content.
+    return outputLimited ? localizedChatNotice(env.BOR_RESPONSE_LANGUAGE, "outputLimited") + "\n\n" + cleaned : cleaned;
   } catch (error) {
     traceEntry.outcome = "error";
     traceEntry.failureType = error instanceof AiTimeoutError ? "timeout"
@@ -769,7 +802,7 @@ async function runMultiAgent(env, message, history = [], pages = "") {
       "Research findings:",
       research,
       "",
-      "Treat the research as input, not a draft to rewrite.",
+      "Treat the research as input, not a draft to rewrite. Carry forward its hard constraints, relevant prior decisions and unresolved evidence gaps; distinguish user facts from researcher assumptions.",
       "Do not repeat the Researcher's findings.",
       "Choose and rank a practical approach, explain trade-offs, and define measurable results."
     ].join("\n")
@@ -799,7 +832,7 @@ async function runMultiAgent(env, message, history = [], pages = "") {
         "Audit the proposed approach against the original request and all hard constraints.",
         "Actively search for hidden costs, unsupported claims, unrealistic targets, and logical gaps.",
         "For each issue, provide the correction the Writer must apply.",
-        "Do not rubber-stamp the plan or rewrite it wholesale."
+        "Do not rubber-stamp the plan or rewrite it wholesale. Check arithmetic, units, time periods, and whether each material recommendation has evidence; label unsupported claims instead of treating upstream prose as verified fact."
       ].join("\n")
     );
 
@@ -840,7 +873,8 @@ async function runMultiAgent(env, message, history = [], pages = "") {
     "15. Finish the answer completely without ending mid-sentence.",
     "16. Match the requested number of points exactly; do not add an unrequested conclusion or repeat the key points.",
     "17. Number ordered lists sequentially with one consistent Markdown format (1., 2., 3., ...).",
-    "18. Qualify context-dependent metrics and avoid presenting illustrative examples as universal requirements."
+    "18. Qualify context-dependent metrics and avoid presenting illustrative examples as universal requirements.",
+    "19. Check the latest user request against retained history, each requested deliverable, the actual supplied evidence, and any explicit exclusions. Preserve prior decisions unless the user revises them. Where upstream agents disagree, use supported evidence or state the uncertainty; never invent a resolution."
   ].join("\n");
 
   let finalResponse = await runAgent(
@@ -1516,16 +1550,33 @@ export default {
   async queue(batch, env) { await consumeImageQueue(batch, env); },
   async scheduled(event, env, ctx) { ctx.waitUntil(cleanupImageJobs(env)); },
   async fetch(request, env) {
+    if (request.method === "POST" && new URL(request.url).pathname === "/api/chat" &&
+        request.headers.get("X-BOR-Chat-Progress") === "1" && searchMode(env) === "v2") {
+      return streamChatSearch(request, (streamRequest, onSearch) => handleWorkerRequest(streamRequest, env, onSearch));
+    }
+    return handleWorkerRequest(request, env);
+  }
+};
+
+async function handleWorkerRequest(request, env, onSearch) {
+    const searchClassifierAI = env.AI;
+    env = withTextProviderFailover(withTextInferenceBudget(env));
     const url = new URL(request.url);
     if (url.pathname === "/api/voice/admission/status") {
       return voiceAdmissionStatus(request, env, { getSession, json });
     }
-    env = withTextProviderFailover(withTextInferenceBudget(env));
     if (url.pathname === "/api/billing/account") {
       // Read-only readiness shadow. OFF unless separately enabled and a
       // dedicated HMAC-attested D1 is explicitly bound by an operator.
       // Existing getSession is the sole trusted owner identity source.
       return handleBillingShadowAccountRequest(request, env, { getSession });
+    }
+    if (url.pathname === "/api/web-search/grounding-frame" && request.method === "GET" && env.BOR_WEB_SEARCH_GOOGLE_ELIGIBILITY_APPROVED === "true" && searchV2Configured(env)) {
+      return new Response('<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Google Search</title><script defer src="/google-grounding.js"></script><main></main>', { headers: {
+        "Content-Type": "text/html; charset=utf-8", "X-Content-Type-Options": "nosniff", "X-Frame-Options": "SAMEORIGIN",
+        "Referrer-Policy": "no-referrer", "Cache-Control": "no-store",
+        "Content-Security-Policy": "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'self'; sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox"
+      } });
     }
     if (url.pathname.startsWith("/api/images/") || url.pathname.startsWith("/api/files/")) {
       try { return await handleImageRoute(request, env, url, { getSession, sameOrigin, readJsonRequest }); }
@@ -1724,7 +1775,10 @@ export default {
       const found = extractUrls(message);
       const capabilityOverview = agentId === "coordinator" && !document && !spreadsheet && !presentation &&
         !wordDocument && !imageOcr && !imageVision && chatCapabilityOverview(message, env, Boolean(user));
-      const researchMode = capabilityOverview ? null : detectResearchMode(message);
+      const configuredSearchMode = searchMode(env);
+      const useSearchV2 = !capabilityOverview && configuredSearchMode === "v2" &&
+        typeof env.BOR_WEB_SEARCH_PILOT_USER_IDS === "string" && webSearchUserAllowed(env, user?.id);
+      const researchMode = !capabilityOverview && configuredSearchMode !== "off" && !useSearchV2 ? detectResearchMode(message) : null;
       // External link reading and live search consume extra provider/network budget.
       const researchCharge = researchMode && isSearchProviderConfigured(env) ? 1 : 0;
       const linkCharge = env.URL_READER_ENABLED === "true" && found.urls.some(raw => !isFirstPartyHost(raw, url.hostname)) ? 1 : 0;
@@ -1847,6 +1901,27 @@ export default {
       }
       if (pdfContext || spreadsheetContext || presentationContext || wordDocumentContext || imageOcrContext) pages = [pages, pdfContext, spreadsheetContext, presentationContext, wordDocumentContext, imageOcrContext].filter(Boolean).join("\n\n");
       try {
+        let grounded;
+        let searchRequired = false;
+        const allowGoogle = Boolean(onSearch && sameOrigin(request) && googleGroundingAllowed(env, user));
+        if (agentId === "coordinator" && !githubToolRequest && !found.urls.length &&
+            !document && !spreadsheet && !presentation && !wordDocument && !imageOcr && !imageVision &&
+            rememberText === null && useSearchV2) {
+          pages = [pages, "Web search has not supplied evidence to this model. If the request depends on live facts, explain that those facts could not be checked. Do not invent recent names, prices, events, citations or availability."].filter(Boolean).join("\n\n");
+          const routerSignal = AbortSignal.any([request.signal, AbortSignal.timeout(5000)]);
+          // Keep classification on Workers AI; it must never fall through to billed OpenAI text inference.
+          const router = withAiDeadline({ AI: searchClassifierAI }, Math.min(deadline, Date.now() + 5000), routerSignal).AI;
+          const plan = searchV2Configured(env, allowGoogle) ? await planWebSearch(router, message, history, routerSignal) : null;
+          if (plan) {
+            searchRequired = true;
+            const searchSignal = AbortSignal.any([request.signal, AbortSignal.timeout(Math.max(1, deadline - Date.now()))]);
+            grounded = await runWebSearchV2(env, plan, { allowGoogle, signal: searchSignal, onSearch, userId: user?.id });
+            if (grounded?.links.length) links = grounded.links;
+            toolActivity.push({ tool: "web_search", status: grounded?.partial ? "partial" : grounded ? "completed" : "unavailable",
+              provider: grounded?.provider, count: grounded?.links.length || 0, version: 2,
+              corroboration: grounded?.provider === "OpenAI" && !grounded.corroborated ? "limited" : undefined });
+          }
+        }
         if (imageVision) {
           // Vision uses the bounded AI binding directly, not the text-only message wrappers.
           // Only model-produced observations enter the text-agent context, never raw pixels.
@@ -1863,6 +1938,15 @@ export default {
         let result;
         if (capabilityOverview) {
           result = { agent: AGENTS[agentId].name, workflow: "capability-overview", response: capabilityOverview };
+        } else if (searchRequired) {
+          const response = grounded?.text || (grounded?.googleGrounding
+            ? (language === "id" ? "Hasil Google ditampilkan untuk giliran ini." : "Google results are displayed for this turn.")
+            : (language === "id" ? "Pencarian web belum menemukan sumber yang dapat dikutip. Coba lagi atau tambahkan lokasi, rentang tanggal, atau nama yang lebih spesifik."
+              : "Web search could not find a citable answer. Try again or add a more specific location, date range, or name."));
+          result = { agent: AGENTS[agentId].name, workflow: "web-search-v2", response: grounded?.partial
+            ? localizedChatNotice(language, "outputLimited") + "\n\n" + response : response };
+          // Grounding stays in the initiating browser response and never enters stored history.
+          if (grounded?.googleGrounding) result.googleGrounding = grounded.googleGrounding;
         } else if (useMultiAgent) result = { ...await runMultiAgent(aiEnv, message, history, pages) };
         else if (agentId === "coordinator") {
           const response = await runAgent(aiEnv, "coordinator", message, "", history, pages, { user });
@@ -1990,5 +2074,4 @@ export default {
     if (url.pathname.startsWith("/api/")) return json({ error: "Endpoint tidak ditemukan." }, 404);
     if (request.method === "GET" || request.method === "HEAD") return serveAsset(request, env);
     return json({ error: "Endpoint tidak ditemukan." }, 404);
-  }
-};
+}
