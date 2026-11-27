@@ -42,17 +42,25 @@ function checkPublicUrl(raw, ownHost) {
   return { ok: true, url };
 }
 
+function tavilyExtractDailyLimit(rawLimit) {
+  const configured = rawLimit === undefined || rawLimit === null ? DEFAULT_DAILY_URL_BUDGET : (typeof rawLimit === "string" && !/^[0-9]+$/.test(rawLimit.trim()) ? NaN : Number(rawLimit));
+  // Explicit zero disables paid extraction; malformed limits fail closed instead of silently enabling spending.
+  return Number.isSafeInteger(configured) && configured >= 1 && configured <= 10000 ? configured : 0;
+}
+
+export function tavilyExtractionConfigured(env) {
+  return Boolean(env?.URL_READER_ENABLED === "true" && env.URL_READER_PROVIDER === "tavily" && env.DB?.prepare &&
+    tavilyExtractDailyLimit(env.TAVILY_EXTRACT_DAILY_URL_LIMIT) && typeof env.TAVILY_API_KEY === "string" && env.TAVILY_API_KEY.trim());
+}
+
 export async function reserveTavilyExtractBudget(env, urlCount) {
   // Defense in depth: the spending reservation must not be callable when
   // Reader consent or provider selection is OFF, even from a new call site.
   if (env?.URL_READER_ENABLED !== "true" || env?.URL_READER_PROVIDER !== "tavily") return false;
   // A separate atomic global D1 quota: existing chat units are not Tavily provider credits.
   if (!env.DB?.prepare) return false;
-  const rawLimit = env.TAVILY_EXTRACT_DAILY_URL_LIMIT;
-  const configured = rawLimit === undefined || rawLimit === null ? DEFAULT_DAILY_URL_BUDGET : (typeof rawLimit === "string" && !/^[0-9]+$/.test(rawLimit.trim()) ? NaN : Number(rawLimit));
-  // Explicit zero disables paid extraction; malformed limits fail closed instead of silently enabling spending.
-  if (!Number.isSafeInteger(configured) || configured < 1 || configured > 10000) return false;
-  const limit = configured;
+  const limit = tavilyExtractDailyLimit(env.TAVILY_EXTRACT_DAILY_URL_LIMIT);
+  if (!limit) return false;
   if (!Number.isSafeInteger(urlCount) || urlCount < 1 || urlCount > MAX_LINKS) return false;
   try {
     return (await consumeUsage(env, usageDay(), "provider:tavily-extract:global", urlCount, limit)) !== null;
