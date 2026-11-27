@@ -23,6 +23,7 @@ import { selectModel, taskProfileForAgent, summarizeModelTrace } from "./model-g
 import { GPT_OSS_MODEL_ID, mayUseGptOss, reserveGptOssCall, extractModelAnswer } from "./gpt-oss.js";
 import { planFeedbackForm, generateFormsScript } from "./form-draft.js";
 import { COMMUNICATION_NOTICE, CAPABILITY_NOTICE, AGENTS } from "./prompts.js";
+import { voiceAdmissionStatus } from "./voice-admission.mjs";
 import { json, sha256Hex } from "./http.js";
 import { handleBillingShadowAccountRequest } from "./billing-account-shadow.js";
 import { dailyLimit, usageDay, secondsUntilNextUtcDay, consumeUsage, refundUsage, limitResponse, enforceDailyLimits, DAILY_LIMIT_DEFAULTS, MULTI_AGENT_UNITS } from "./daily-limits.js";
@@ -1513,8 +1514,11 @@ export default {
   async queue(batch, env) { await consumeImageQueue(batch, env); },
   async scheduled(event, env, ctx) { ctx.waitUntil(cleanupImageJobs(env)); },
   async fetch(request, env) {
-    env = withTextProviderFailover(withTextInferenceBudget(env));
     const url = new URL(request.url);
+    if (url.pathname === "/api/voice/admission/status") {
+      return voiceAdmissionStatus(request, env, { getSession, json });
+    }
+    env = withTextProviderFailover(withTextInferenceBudget(env));
     if (url.pathname === "/api/billing/account") {
       // Read-only readiness shadow. OFF unless separately enabled and a
       // dedicated HMAC-attested D1 is explicitly bound by an operator.
