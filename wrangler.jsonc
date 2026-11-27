@@ -41,6 +41,12 @@
       "migrations_dir": "migrations"
     }
   ],
+  "services": [
+    {
+      "binding": "BOR_VOICE_STATUS",
+      "service": "bor-ai-voice-staging"
+    }
+  ],
   "vars": {
     "SEARCH_SHARED_BUDGET_ENABLED": "true",
     "URL_READER_ENABLED": "false",
