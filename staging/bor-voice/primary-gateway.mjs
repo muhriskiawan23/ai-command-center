@@ -1,3 +1,4 @@
+import {providerHttpError} from './voice-diagnostics.mjs';
 // Isolated server gateway candidate. Inject verified server auth, atomic fail-closed reservation, persistent settlement and the primary lifecycle. No live calls are made on import. Not mounted on production.
 export function makePrimaryGateway({getSession,ownerId,origin,enabled,reserve,connect,createVoice,settle,waitUntil,randomId}){
   return async function start(request,client){
@@ -32,15 +33,15 @@ export function makePrimaryGateway({getSession,ownerId,origin,enabled,reserve,co
     const handlers=[['close',onDisconnect],['error',onDisconnect],['message',onMessage]];
     for(const [event,handler] of handlers)client.addEventListener(event,handler);
     try{
-      if(client.readyState!==1||disconnected){final({confirmed:false,usage:null,latestSeconds:0,sessionId:null});return fail('client_closed')}
+      if(client.readyState!==1||disconnected){final({confirmed:false,usage:null,latestSeconds:null,sessionId:null});return fail('client_closed')}
       provider=await connect();
-      if(disconnected||client.readyState!==1){try{provider.close()}catch{};final({confirmed:false,usage:null,latestSeconds:0,sessionId:null});return fail('client_closed')}
+      if(disconnected||client.readyState!==1){try{provider.close()}catch{};final({confirmed:false,usage:null,latestSeconds:null,sessionId:null});return fail('client_closed')}
       voice=createVoice({socket:provider,onAudio:delta=>send({type:'audio',delta}),onTranscript:e=>send({type:'transcript',...e}),onState:state=>send({type:'state',state}),onFinal:final});
       if(disconnected)voice.close();
       return {ok:true};
-    }catch{
+    }catch(error){
       try{provider?.close()}catch{}
-      final({confirmed:false,usage:null,latestSeconds:0,sessionId:null});
+      final({confirmed:false,usage:null,latestSeconds:null,sessionId:null,diagnostic:error?.diagnostic??null});
       return fail('provider_unavailable');
     }
   }
@@ -48,7 +49,7 @@ export function makePrimaryGateway({getSession,ownerId,origin,enabled,reserve,co
 export async function connectPrimaryProvider({apiKey,fetchImpl=fetch,timeout=ms=>AbortSignal.timeout(ms)}){
   if(typeof apiKey!=='string'||!apiKey||/\s/.test(apiKey))throw Error('missing_provider_key');
   const response=await fetchImpl('https://api.openai.com/v1/live/sessions',{headers:{Authorization:'Bearer '+apiKey,Upgrade:'websocket'},redirect:'manual',signal:timeout(5000)});
-  if(response.status!==101||!response.webSocket){await response.body?.cancel().catch(()=>{});throw Error('provider_upgrade_failed')}
+  if(response.status!==101||!response.webSocket){await response.body?.cancel().catch(()=>{});throw providerHttpError('provider_upgrade_failed',response,'primary_upgrade')}
   response.webSocket.accept();
   return response.webSocket;
 }

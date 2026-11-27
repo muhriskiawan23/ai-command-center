@@ -1,4 +1,5 @@
 import { buildOffer, LIVE_MODEL, validLiveId } from './live-offer.mjs';
+import {providerHttpError,usageEvidence} from './voice-diagnostics.mjs';
 
 const sessionsUrl = 'https://api.openai.com/v1/live/sessions';
 
@@ -18,7 +19,7 @@ export function createOpenAILive({ apiKey, fetchImpl = fetch }) {
     });
     if (response.status !== 201) {
       await response.body?.cancel();
-      throw new Error('live_create_failed');
+      throw providerHttpError('live_create_failed',response,'create');
     }
     const result = await response.json();
     if (!validLiveId(result?.session?.id)) throw new Error('live_identity_unconfirmed');
@@ -37,10 +38,10 @@ export function createOpenAILive({ apiKey, fetchImpl = fetch }) {
     const socket = response.webSocket;
     if (response.status !== 101 || !socket) {
       await response.body?.cancel();
-      throw new Error('live_attach_failed');
+      throw providerHttpError('live_attach_failed',response,'attach');
     }
 
-    let resolveFinal;
+    let resolveFinal, latest = null;
     const final = new Promise(resolve => { resolveFinal = resolve; });
     const onDisconnect = () => resolveFinal(null);
 
@@ -54,9 +55,11 @@ export function createOpenAILive({ apiKey, fetchImpl = fetch }) {
       } catch {
         return;
       }
+      const next=usageEvidence(latest,event,sessionId);
+      if(next!==latest)latest=next;
       if (event?.type !== 'session.closed' || event.session?.id !== sessionId ||
           event.session.model !== LIVE_MODEL || !Number.isFinite(event.usage?.seconds) ||
-          event.usage.seconds < 0 || event.usage.seconds > 1e9) return;
+          event.usage.seconds < 0 || event.usage.seconds > 1e9 || !latest?.terminal || latest.seconds!==event.usage.seconds) return;
       resolveFinal({
         type: event.type,
         session: { id: sessionId, model: LIVE_MODEL },
@@ -67,6 +70,7 @@ export function createOpenAILive({ apiKey, fetchImpl = fetch }) {
 
     return {
       final,
+      latestUsage:()=>latest?{...latest}:null,
       requestClose() {
         socket.send(JSON.stringify({ type: 'session.close', event_id: crypto.randomUUID() }));
       },

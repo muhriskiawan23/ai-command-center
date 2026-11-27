@@ -1,3 +1,4 @@
+import {settlementEvidence} from './voice-diagnostics.mjs';
 // Candidate Durable Object ledger adapter. The existing legacy record remains unchanged. assessExposure must be the server-owned assessVoiceExposure implementation. No production route is mounted here.
 export function createPrimaryLedger({storage,assessExposure,providerMaxSeconds,now=Date.now}){
  const key='primary-voice-ledger-v1';
@@ -19,14 +20,15 @@ export function createPrimaryLedger({storage,assessExposure,providerMaxSeconds,n
     await tx.put(key,[...rows,row]);return{ok:true,attemptId};
    });
   },
-  async settle({attemptId,confirmed,sessionId,usage,latestSeconds}){
+  async settle({attemptId,confirmed,sessionId,usage,latestSeconds,diagnostic,startedMs,endedMs}){
    return storage.transaction(async tx=>{
     const rows=await tx.get(key);
     if(!Array.isArray(rows))throw Error('missing_ledger');
     const at=rows.findIndex(r=>r.attemptId===attemptId);if(at<0)throw Error('missing_attempt');
     const row=rows[at];if(row.state==='closed'||row.state==='unconfirmed')return row;
     const valid=confirmed===true&&typeof sessionId==='string'&&/^live_[A-Za-z0-9_-]{1,128}$/.test(sessionId)&&typeof usage?.seconds==='number'&&Number.isFinite(usage.seconds)&&usage.seconds>=0&&usage.seconds<=1000000&&Number.isFinite(latestSeconds)&&latestSeconds>=0&&usage.seconds>=latestSeconds;
-    const next={...row,state:valid?'closed':'unconfirmed',...(valid?{sessionId,actualMicrousd:Math.ceil(Math.max(15,usage.seconds)*50000/60)}:{}),settledMs:now()};
+    const evidence=settlementEvidence(row,{sessionId,latestSeconds,diagnostic,startedMs,endedMs});
+    const next={...evidence,state:valid?'closed':'unconfirmed',...(valid?{sessionId,actualMicrousd:Math.ceil(Math.max(15,usage.seconds)*50000/60)}:{}),settledMs:now()};
     await tx.put(key,rows.map((r,i)=>i===at?next:r));return next;
    });
   }
