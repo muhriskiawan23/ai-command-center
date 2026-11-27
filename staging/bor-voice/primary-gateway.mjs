@@ -16,7 +16,7 @@ export function makePrimaryGateway({getSession,ownerId,origin,enabled,reserve,co
     const final=result=>{
       if(finalized)return;finalized=true;
       for(const [event,handler] of handlers)client.removeEventListener(event,handler);
-      const saving=Promise.resolve().then(()=>settle({attemptId,...result})).then(()=>send({type:'final',confirmed:result.confirmed===true}),()=>send({type:'final',confirmed:false})).finally(()=>{try{client.close(1000,'voice ended')}catch{}});
+      const saving=Promise.resolve().then(()=>settle({attemptId,...result})).then(row=>send({type:'final',confirmed:result.confirmed===true&&row?.state==='closed'}),()=>send({type:'final',confirmed:false})).finally(()=>{try{client.close(1000,'voice ended')}catch{}});
       waitUntil(saving);
     };
     let windowStart=Date.now(),bytes=0;
