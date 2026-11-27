@@ -8,7 +8,7 @@ import {fileURLToPath} from 'node:url';
 import {join} from 'node:path';
 
 const ROOT=fileURLToPath(new URL('../../',import.meta.url));
-const MUTATION=/(INSERT(?:\s+OR\s+(?:IGNORE|REPLACE|ABORT|FAIL|ROLLBACK))?\s+INTO|REPLACE\s+INTO|UPDATE|DELETE\s+FROM)\s+(users|sessions|conversations|messages|answer_feedback|user_memories|user_settings|image_jobs|image_wallets|image_credit_ledger|image_pilot_meter|public_api_keys|github_connections|github_oauth_states|daily_usage|search_provider_usage)\b/gi;
+const MUTATION=/(INSERT(?:\s+OR\s+(?:IGNORE|REPLACE|ABORT|FAIL|ROLLBACK))?\s+INTO|REPLACE\s+INTO|UPDATE|DELETE\s+FROM)\s+(users|sessions|account_recovery_codes|conversations|messages|answer_feedback|user_memories|user_settings|image_jobs|image_wallets|image_credit_ledger|image_pilot_meter|public_api_keys|github_connections|github_oauth_states|daily_usage|search_provider_usage)\b/gi;
 const KEY=(path,verb,table)=>path+'|'+verb.toUpperCase().replace(/\s+/g,' ')+'|'+table.toLowerCase();
 
 // Sources listed here are exactly the live, production-linked SQL writers
@@ -18,7 +18,9 @@ const KEY=(path,verb,table)=>path+'|'+verb.toUpperCase().replace(/\s+/g,' ')+'|'
 const MATRIX=Object.freeze([
   ['src/index.js','INSERT INTO','users',1,'identity'],
   ['src/index.js','DELETE FROM','sessions',3,'sessions'],
-  ['src/index.js','INSERT INTO','sessions',1,'sessions'],
+  ['src/index.js','INSERT INTO','sessions',2,'sessions'],
+  ['src/index.js','INSERT INTO','account_recovery_codes',1,'account_recovery'],
+  ['src/index.js','DELETE FROM','account_recovery_codes',2,'account_recovery'],
   ['src/index.js','DELETE FROM','conversations',2,'chat'],
   ['src/index.js','UPDATE','conversations',2,'chat'],
   ['src/index.js','DELETE FROM','messages',1,'chat'],
@@ -72,6 +74,7 @@ export const CURRENT_CUTOVER_BLOCKERS=Object.freeze([
   'no_journal_first_coverage_for_image_associated_conversation_mutations',
   'no_original_integer_message_id_and_fk_stability_contract',
   'no_complete_user_session_memory_image_api_key_or_oauth_recovery_contract',
+  'no_proof_that_restore_cannot_reactivate_consumed_or_revoked_recovery_codes',
   'no_history_backfill_with_deletion_privacy_and_retention_proof',
   'no_production_sql_export_and_nonproduction_full_fidelity_restore_proof',
   'no_cross_store_crash_consistency_replay_and_read_your_writes_at_scale',

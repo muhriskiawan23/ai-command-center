@@ -14,7 +14,7 @@ test('production chat write surface is exhaustively pinned, source-only and NOT 
   assert.equal(report.productionJournalActive,false);
   assert.equal(report.safeToActivateProduction,false);
   assert.equal(report.productionCutoverBlocked,true);
-  assert.equal(report.reviewedSqlLiterals,58);
+  assert.equal(report.reviewedSqlLiterals,62);
   assert.equal(report.excludedIsolatedStagingSqlLiterals,6);
   assert.equal(report.productionJournalCoveredSqlLiterals,0);
   assert.ok(report.distinctReviewedSites>=30);
@@ -24,7 +24,8 @@ test('production chat write surface is exhaustively pinned, source-only and NOT 
   assert.equal(report.domains.chat,12);
   assert.equal(report.domains.chat_image,3);
   assert.equal(report.domains.image,10);
-  assert.equal(report.domains.sessions,4);
+  assert.equal(report.domains.sessions,5);
+  assert.equal(report.domains.account_recovery,3);
   assert.ok(report.blockers.length>=9);
   assert.equal(new Set(report.blockers).size,report.blockers.length);
   assert.deepEqual(report.blockers,[...CURRENT_CUTOVER_BLOCKERS]);
