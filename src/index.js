@@ -1,4 +1,5 @@
 import { BACKUP_MODEL, withTextProviderFailover } from "./text-provider-failover.js";
+import { chatCapabilityOverview } from "./chat-capability-overview.js";
 import { TextInferenceBudgetError, withTextInferenceBudget } from "./text-inference-budget.js";
 import { handleImageRoute, imageConfig, consumeImageQueue, cleanupImageJobs, listChatImageJobs } from "./image-jobs.js";
 import { imageIntent } from "../public/image-intent.js";
@@ -18,6 +19,7 @@ import { handleTelegramWebhook } from "./telegram.js";
 import { handleGitHubReadRoute } from "./github-reader.js";
 import { handleGitHubOAuthRoute } from "./github-oauth.js";
 import { pluginCapabilities } from "./plugin-capabilities.js";
+import { handleFeedbackReport } from "./feedback-report.js";
 import { availableGitHubTools, executeGitHubChatTool, extractGitHubToolCalls, pluginBudgetMessage, reserveGitHubToolInferenceBudget, shouldOfferGitHubTools } from "./plugin-runtime.js";
 import { selectModel, taskProfileForAgent, summarizeModelTrace } from "./model-gateway.js";
 import { GPT_OSS_MODEL_ID, mayUseGptOss, reserveGptOssCall, extractModelAnswer } from "./gpt-oss.js";
@@ -1587,6 +1589,7 @@ export default {
       try { return await handleFeedbackRoute(request, env, url); }
       catch (error) { console.error("Feedback request failed:", safeError(error)); return json({ error: "Feedback gagal diproses." }, 503); }
     }
+    if (url.pathname === "/internal/feedback") return handleFeedbackReport(request, env, url, getSession);
     if (url.pathname === "/api/usage") {
       try { return await handleUsageRoute(request, env); }
       catch (error) { console.error("Usage request failed:", safeError(error)); return json({ error: "Data penggunaan gagal diproses." }, 503); }
@@ -1719,7 +1722,9 @@ export default {
       const githubToolRequest = shouldOfferGitHubTools(message, user, env.BOR_GITHUB_CHAT_TOOLS_ENABLED === "true");
       const useMultiAgent = !imageVision && !githubToolRequest && agentId === "coordinator" && shouldUseMultiAgent(message);
       const found = extractUrls(message);
-      const researchMode = detectResearchMode(message);
+      const capabilityOverview = agentId === "coordinator" && !document && !spreadsheet && !presentation &&
+        !wordDocument && !imageOcr && !imageVision && chatCapabilityOverview(message, env, Boolean(user));
+      const researchMode = capabilityOverview ? null : detectResearchMode(message);
       // External link reading and live search consume extra provider/network budget.
       const researchCharge = researchMode && isSearchProviderConfigured(env) ? 1 : 0;
       const linkCharge = env.URL_READER_ENABLED === "true" && found.urls.some(raw => !isFirstPartyHost(raw, url.hostname)) ? 1 : 0;
@@ -1856,7 +1861,9 @@ export default {
           toolActivity.push({ tool: "image_vision", status: "completed" });
         }
         let result;
-        if (useMultiAgent) result = { ...await runMultiAgent(aiEnv, message, history, pages) };
+        if (capabilityOverview) {
+          result = { agent: AGENTS[agentId].name, workflow: "capability-overview", response: capabilityOverview };
+        } else if (useMultiAgent) result = { ...await runMultiAgent(aiEnv, message, history, pages) };
         else if (agentId === "coordinator") {
           const response = await runAgent(aiEnv, "coordinator", message, "", history, pages, { user });
           result = { agent: AGENTS.coordinator.name, workflow: "single-agent", agentsUsed: [AGENTS.coordinator.name], response };
@@ -1864,7 +1871,7 @@ export default {
           const response = await runAgent(aiEnv, agentId, message, "", history, pages, { user });
           result = { agent: AGENTS[agentId].name, workflow: "single-agent", response };
         }
-        Object.assign(result, summarizeModelTrace(modelTrace));
+        if (!capabilityOverview) Object.assign(result, summarizeModelTrace(modelTrace));
         throwIfCancelled(request.signal);
         // Enforce citation integrity against successful fetches; prompts alone are not a security boundary.
         if (links.length) {

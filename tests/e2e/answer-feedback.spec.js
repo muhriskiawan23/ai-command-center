@@ -21,3 +21,20 @@ test("akun dapat mengirim feedback jawaban dan melihatnya kembali setelah reload
   await expect(page.locator(".feedback-vote[aria-pressed='true']")).toHaveAttribute("aria-label", "Jawaban tidak membantu");
   await expect(page.locator(".feedback-status")).toHaveText("Feedback tersimpan");
 });
+
+test("ringkasan kemampuan muncul di chat dan tersimpan di riwayat akun", async ({ page, app, context }) => {
+  await loginAs(context, app, ALICE);
+  await page.addInitScript(() => localStorage.setItem("borai-language-preference", "id"));
+  await page.goto(app.url);
+  const prompt = page.locator("#prompt");
+  await expect(prompt).toBeEditable();
+  await prompt.fill("Apa kekuranganmu?");
+  await page.locator("#send").click();
+  const answer = page.locator(".message.assistant:not(#typing)");
+  await expect(answer).toContainText("Pencarian sumber publik belum tersedia di sesi ini");
+  await expect(answer).toContainText("Gunakan tombol + untuk mengunggah PDF");
+  await expect(answer.getByRole("button", { name: "Jawaban tidak membantu" })).toBeVisible();
+  expect(app.aiCalls).toHaveLength(0);
+  await page.reload();
+  await expect(answer).toContainText("Pencarian sumber publik belum tersedia di sesi ini");
+});
