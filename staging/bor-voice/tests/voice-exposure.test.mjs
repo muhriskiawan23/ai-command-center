@@ -1,0 +1,16 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { assessVoiceExposure as assess } from '../voice-exposure.mjs';
+const base={providerMaxSeconds:120,legacy:{state:'confirmed_closed',upperMicrousd:60000},ledger:[]};
+const check=(name, patch, reason)=>test(name,()=>assert.deepEqual(assess({...base,...patch}),{allowed:false,reason}));
+check('missing provider cap', {providerMaxSeconds:undefined}, 'provider_limit_unverified');
+check('local timer cannot stand in for provider cap', {providerMaxSeconds:121}, 'provider_exposure_exceeds_reserve');
+check('two hour exposure exceeds pilot reserve',{providerMaxSeconds:7200},'provider_exposure_exceeds_reserve');
+check('aggregate cost is not closure evidence',{legacy:{state:'unconfirmed',upperMicrousd:60000}},'legacy_unconfirmed');
+check('unknown cost never becomes zero',{legacy:{state:'confirmed_closed'}},'legacy_unconfirmed');
+check('pending reservation blocks admission',{ledger:[{state:'reserved',reservedMicrousd:100000}]},'ledger_unconfirmed_or_overrun');
+check('overrun blocks admission',{ledger:[{state:'closed',reservedMicrousd:100000,actualMicrousd:100001}]},'ledger_unconfirmed_or_overrun');
+check('legacy plus previous reserves cannot overspend',{ledger:[{state:'closed',reservedMicrousd:150000,actualMicrousd:1}]},'global_limit');
+check('negative cost invalid',{legacy:{state:'confirmed_closed',upperMicrousd:-1}},'legacy_unconfirmed');
+test('confirmed bounded exposure preserves legacy spend and prior reservation',()=>assert.deepEqual(assess({...base,ledger:[{state:'closed',reservedMicrousd:100000,actualMicrousd:1}]}),{allowed:true,worstCaseMicrousd:100000,remainingAfterReserveMicrousd:40000}));
+test('initialization minimum retained',()=>assert.equal(assess({...base,providerMaxSeconds:5}).worstCaseMicrousd,12500));
