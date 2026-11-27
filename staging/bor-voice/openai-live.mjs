@@ -1,3 +1,4 @@
+import { requestProviderHangup } from './provider-hangup.mjs';
 import { buildOffer, LIVE_MODEL, validLiveId } from './live-offer.mjs';
 
 const sessionsUrl = 'https://api.openai.com/v1/live/sessions';
@@ -76,5 +77,9 @@ export function createOpenAILive({ apiKey, fetchImpl = fetch }) {
     };
   }
 
-  return { create, attach };
+  function hangup(sessionId) {
+    return requestProviderHangup({ sessionId, authorization, fetchImpl });
+  }
+
+  return { create, attach, hangup };
 }
