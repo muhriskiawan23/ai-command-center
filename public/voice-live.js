@@ -38,7 +38,11 @@ export class LiveVoice {
     if (this.#run) return;
     const run = { abort: new AbortController(), seen: new Set() };
     this.#run = run;
+    run.offline = () => this.#close(run, 'error');
+    globalThis.window?.addEventListener('offline', run.offline);
     this.onState('connecting');
+    if (this.#run !== run) return;
+    if (navigator.onLine === false) return this.#close(run, 'error');
     run.connectTimer = setTimeout(() => this.#close(run, 'timeout'), 20000);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -67,8 +71,12 @@ export class LiveVoice {
       run.events = events;
       events.addEventListener('message', ({ data }) => this.#receive(run, data));
       events.addEventListener('close', () => this.#close(run, 'closed'));
-      await peer.setLocalDescription(await peer.createOffer());
+      const offer = await peer.createOffer();
+      if (this.#run !== run) return;
+      await peer.setLocalDescription(offer);
+      if (this.#run !== run) return;
       await gatherIce(peer, run.abort.signal);
+      if (this.#run !== run) return;
       const { answerSdp } = await this.exchange(peer.localDescription.sdp, run.abort.signal);
       if (this.#run !== run) return;
       await peer.setRemoteDescription({ type: 'answer', sdp: answerSdp });
@@ -120,13 +128,16 @@ export class LiveVoice {
       this.#close(run, 'closed');
       return;
     }
+    if (this.#run !== run) return;
     this.onState('closing');
+    if (this.#run !== run) return;
     run.closeTimer = setTimeout(() => this.#close(run, 'closed'), 1500);
   }
 
   #close(run, state) {
-    if (this.#run !== run) return;
-    this.#run = undefined;
+    if (this.#run !== run || run.closing) return;
+    run.closing = true;
+    globalThis.window?.removeEventListener('offline', run.offline);
     run.abort.abort();
     clearTimeout(run.connectTimer);
     clearTimeout(run.closeTimer);
@@ -135,6 +146,7 @@ export class LiveVoice {
     this.audio.pause();
     this.audio.srcObject = null;
     this.audio.muted = false;
+    this.#run = undefined;
     this.onState(state);
   }
 }
