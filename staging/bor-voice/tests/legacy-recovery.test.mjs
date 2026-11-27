@@ -1,0 +1,10 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {claimLegacyRecovery,recoveryFailure,recoveryStatus} from '../legacy-recovery.mjs';
+const old={id:'live_example',deadline:1000,reconciliation:'attach_failed',reservedMicrousd:100000,closeRequests:3};
+test('expired old attempt claimed without modifying reservation or id',()=>{const x=claimLegacyRecovery(old,30000);assert.equal(x.recoveryV1.state,'in_progress');assert.equal(x.reservedMicrousd,100000);assert.equal(x.id,old.id);assert.equal(x.finalMicrousd,undefined);assert.equal(old.recoveryV1,undefined)});
+test('no replay after durable marker',()=>assert.equal(claimLegacyRecovery(claimLegacyRecovery(old,30000),60000),null));
+test('already settled or fresh attempt cannot be touched',()=>{assert.equal(claimLegacyRecovery({...old,finalMicrousd:0},30000),null);assert.equal(claimLegacyRecovery(old,26000),null);assert.equal(claimLegacyRecovery({...old,reconciliation:'other'},30000),null)});
+test('missing or unsafe id cannot trigger provider call',()=>{assert.equal(claimLegacyRecovery({...old,id:undefined},30000).recoveryV1.state,'missing_or_invalid_id');assert.equal(claimLegacyRecovery({...old,id:'live_../foo'},30000).recoveryV1.state,'missing_or_invalid_id')});
+test('provider response classified without leaking body or identity',()=>{assert.equal(recoveryFailure({upstreamStatus:404,message:'secret'}),'attach_http_404');assert.equal(recoveryFailure({name:'TimeoutError'}),'attach_timeout');assert.equal(recoveryFailure({message:'secret'}),'attach_unconfirmed')});
+test('only sanitized status is public',()=>{assert.equal(recoveryStatus({recoveryV1:{state:'attach_http_403'}}),'attach_http_403');assert.equal(recoveryStatus({recoveryV1:{state:'private stuff'}}),undefined)});
