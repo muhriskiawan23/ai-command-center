@@ -26,3 +26,22 @@ Continue from the existing [review baseline](./BOR-AI-STAGING-MANUAL-REVIEW.md) 
 - Free permits 50 D1 queries per invocation, 50 external subrequests, six outgoing connections awaiting headers, 10 ms CPU per HTTP request and 128 MB memory per isolate. The runner permits up to 25 provider dispatches with redirects denied and up to four distinct agent calls per turn. Outbound bodies are capped at 32,000 bytes and provider responses at 256 KiB each. Check remaining account request and D1 row quotas before activation. Local fixture results do not establish edge CPU, memory or end-to-end duration. Before billable execution, validate on an approved isolated runtime with synthetic responses and confirm the operator can sustain the connection throughout the approved window.
 
 Limits: [Workers](https://developers.cloudflare.com/workers/platform/limits/), [D1](https://developers.cloudflare.com/d1/platform/limits/), [D1 pricing and daily quotas](https://developers.cloudflare.com/d1/platform/pricing/).
+
+## Local workerd CPU and browser follow-up
+
+The audited GitHub baseline was `898a0d4`. The runner and app entrypoint, search module, and pilot browser spec matched their GitHub blobs. The runner-only optimization in `165be09` reduces repeated receipt traversal and temporary arrays. The app core at `af5dd9b`, campaign authorization, per-dispatch journal, atomic reservation, kill switch, and limits are preserved.
+
+Local workerd 2026-11-10 with Miniflare 5.20261110.0-beta ran 25 warm measurements per mode. The synthetic provider could make no external request. The full run asserts HTTP 200, seven completed turns, 14 synthetic dispatches, and 30 D1 operations. Ledger seeding and resetting private fixtures took place outside the measured request. Values below are total process CPU in milliseconds from Linux thread scheduler counters. The D1-only mode replays the 30 recorded statements against local D1/SQLite. The application replay uses the same result sequence in memory to exclude SQLite execution and D1 IPC. The Node driver runs in a separate process. Small wrapper and synthetic-provider costs are included.
+
+| Measurement | Baseline median / p95 | Optimized median / p95 |
+| --- | ---: | ---: |
+| No-op | 0.91 / 1.61 | 0.93 / 1.76 |
+| Local D1/SQLite only | 34.13 / 51.98 | 31.87 / 41.71 |
+| Application with in-memory D1 replay | 26.33 / 44.79 | 24.90 / 31.03 |
+| Full campaign with local D1 and synthetic responses | 67.34 / 93.66 | 66.90 / 83.81 |
+
+The local trials had run-to-run variation. They do not establish the size of any improvement at the edge. In an independent V8 application replay profile, protected-output detection and normalization were the largest named self-time categories. Those checks were kept. Process high-water RSS was approximately 248 MiB baseline and 246 MiB optimized, including workerd, runtime services, local SQLite and accumulated warm-up state. This is not per-isolate heap and does not resolve the 128 MB edge memory limit. The 10 ms edge CPU gate remains open. Keep the campaign dormant until an approved isolated edge deployment passes representative synthetic runtime checks.
+
+- The runner regression after the change passed 9/9, including failure admission, one-shot and limit coverage. The broad Node regression from the preceding audit was reused. Two cases skipped there because IPv6 loopback was unavailable passed in a local environment with IPv6. The opt-in authoritative-DNS test remains outside this offline run.
+- Chromium 141 (Playwright build 1194) ran 776 local browser cases, excluding the already verified Doha regression. The initial run had 763 passes, 12 conditional viewport skips, and one attachment failure. That case passed three isolated reruns. Test-only commit `ea775d8` waits for the authenticated composer to become editable before injecting the photo, then the corrected case passed across all eight viewports. Browser login and history use local fixtures. Real staging Google sign-in and history are still separate release checks.
+- No Cloudflare deployment, provider call, live reservation, or production change was made.
