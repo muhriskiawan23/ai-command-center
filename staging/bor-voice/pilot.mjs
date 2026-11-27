@@ -1,11 +1,8 @@
 // Offline integration harness. No real provider network capability is included.
 import {PLAN} from './budget.mjs';
 import {RecoveryJournal} from './recovery.mjs';
-const validId = id=>typeof id==='string' && /^live_[A-Za-z0-9_-]{1,128}$/.test(id);
-export function buildOffer(sdp){
-  if(typeof sdp!=='string'||sdp.length>65536||!/^v=0\r?\n/.test(sdp))throw Error('invalid_offer');
-  return {session:{model:PLAN.model,store:false,instructions:'You are BOR AI Voice. Speak naturally in the user’s language. This pilot is conversation only; do not claim to search or perform external actions.',audio:{output:{voice:'marin'}},delegation:{type:'client'},client:{data_channel:{allowed_client_events:['session.close'],allowed_server_events:['session.started','session.closed']}}},transport:{type:'webrtc',sdp}};
-}
+import { buildOffer, validLiveId } from './live-offer.mjs';
+export { buildOffer } from './live-offer.mjs';
 // Bounded local wait; a timeout is NOT proof that provider billing stopped.
 async function boundedHangup(hangup, id, ms) {
   let timer;
@@ -43,7 +40,7 @@ export class OfflinePilot {
     const {id,reservation}=s;
     try{
       const answer=await this.simulation.create(offer);
-      if(!validId(answer?.session?.id))throw Error('unconfirmed_identity');
+      if(!validLiveId(answer?.session?.id))throw Error('unconfirmed_identity');
       s.providerId=answer.session.id;
       this.journal.attach(id,s.providerId);
       if(s.closing||this.ledger.shouldHangup(id,this.clock())||answer.transport?.type!=='webrtc'||typeof answer.transport.sdp!=='string'||!/^v=0\r?\n/.test(answer.transport.sdp)||answer.transport.sdp.length>65536){await this.stop();throw Error('session_not_exposed');}

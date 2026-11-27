@@ -1,5 +1,6 @@
 import { DatabaseSync } from 'node:sqlite';
-export const PLAN = Object.freeze({model:'gpt-live-1.1', ceiling:500000, voicePool:300000, backendPool:100000, contingency:100000, maxAttempts:3, reservePerAttempt:100000, stopAfterMs:60000, reserveSeconds:120});
+import { LIVE_MODEL } from './live-offer.mjs';
+export const PLAN = Object.freeze({model:LIVE_MODEL, ceiling:500000, voicePool:300000, backendPool:100000, contingency:100000, maxAttempts:3, reservePerAttempt:100000, stopAfterMs:60000, reserveSeconds:120});
 // All costs are integer micro-USD. Treat all provider time as active ($0.05/min).
 export function upperEstimate(seconds) {
   if(!Number.isFinite(seconds)||seconds<0||seconds>1e9) throw Error('invalid_usage');
