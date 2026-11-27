@@ -35,6 +35,7 @@ function markdown(input) {
     const markdownBtn=document.createElement("button");markdownBtn.type="button";markdownBtn.className="message-action";markdownBtn.textContent="Markdown";markdownBtn.addEventListener("click",()=>downloadMarkdown(visibleContent,role));
     const plainBtn=document.createElement("button");plainBtn.type="button";plainBtn.className="message-action";plainBtn.textContent="Teks";plainBtn.addEventListener("click",()=>downloadText(visibleContent,role));const printBtn=document.createElement("button");printBtn.type="button";printBtn.className="message-action print-message";printBtn.textContent="PDF / Cetak";printBtn.addEventListener("click",()=>printMessage(visibleContent,role));actions.append(copyBtn,markdownBtn,plainBtn,printBtn);
     if(role==="assistant"){
+      if(globalThis.BORVoiceChat){globalThis.BORVoiceChat.notice=toast;globalThis.BORVoiceChat.addReadButton(actions,rendered);}
       const checklistBtn=document.createElement("button");checklistBtn.type="button";checklistBtn.className="message-action checklist-action";checklistBtn.textContent="Checklist";
       checklistBtn.addEventListener("click",()=>showChecklistExport(content,actions));actions.append(checklistBtn);
     }
@@ -203,7 +204,13 @@ function readGuestFlag(){try{return sessionStorage.getItem(GUEST_FLAG)==="1"}cat
 function writeGuestFlag(on){try{if(on)sessionStorage.setItem(GUEST_FLAG,"1");else sessionStorage.removeItem(GUEST_FLAG)}catch{}}
 
 function inChatView(){return state===AppState.GUEST||state===AppState.AUTH}
+let resetVoicePreview;
+function stopVoice() {
+  globalThis.BORVoiceChat?.stop();
+  resetVoicePreview?.();
+}
 function setState(next,notice=""){
+  if(next!==AppState.GUEST&&next!==AppState.AUTH)stopVoice();
   state=next;document.body.dataset.state=next;
   $("boot").hidden=next!==AppState.INIT;
   $("gate").hidden=!(next===AppState.UNAUTH||next===AppState.EXPIRED||next===AppState.ERROR);
@@ -214,6 +221,7 @@ function setState(next,notice=""){
   syncInert();renderAuth();
 }
 function resetChatView(){
+  stopVoice();
   navSeq++;loadingChat=false;attachmentSequence++;releaseUnsentThumbnail();attachmentPending=null;activePdf=null;activeCsv=null;renderPdfAttachment();renderCsvAttachment();lockComposer();
   activeId=null;$("exportConversation").hidden=true;$("printConversation").hidden=true;messagesEl.replaceChildren();messagesEl.hidden=true;welcomeEl.hidden=false;
   $("workflow").hidden=true;promptEl.value="";resizePrompt();
@@ -813,6 +821,7 @@ function hydrateChatImageTurns(messages,imageJobs){
 }
 async function showChat(cid){
   const c=conversations.find(x=>x.id===cid);if(!c)return false;
+  stopVoice();
   const seq=++navSeq;
   if(state===AppState.AUTH&&!c.loaded&&c.serverId){
     loadingChat=true;lockComposer();
@@ -1473,6 +1482,17 @@ $("csvFile").addEventListener("change",event=>{const file=event.target.files?.[0
 $("clearCsv").addEventListener("click",()=>{clearSelectedAttachment();toast("Lampiran dilepas dari pesan.")});
 $("stopGeneration").addEventListener("click",()=>{if(busy)activeChatController?.abort()});
 promptEl.addEventListener("input",resizePrompt);
+// The exchange adapter is supplied only by the isolated voice harness.
+if (typeof globalThis.BORVoicePreview?.exchange === "function") {
+  import("/voice-preview.js").then(({ setupVoicePreview }) => {
+    resetVoicePreview = setupVoicePreview({
+      exchange: globalThis.BORVoicePreview.exchange,
+      prompt: promptEl,
+      attach: uploadAnyFile,
+      notice: toast,
+    });
+  }).catch(() => toast("Pratinjau suara gagal dimuat."));
+}
 /* Enter sengaja TIDAK mengirim: Enter = baris baru di semua perangkat. Satu-satunya cara kirim lewat UI adalah tombol panah. */
 window.addEventListener("resize",resizePrompt);
 window.visualViewport?.addEventListener("resize",resizePrompt);
