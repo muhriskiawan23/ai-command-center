@@ -1,9 +1,11 @@
 import {providerHttpError} from './voice-diagnostics.mjs';
+import {makeEvidenceWriter} from './primary-evidence.mjs';
 // Isolated server gateway candidate. Inject verified server auth, atomic fail-closed reservation, persistent settlement and the primary lifecycle. No live calls are made on import. Not mounted on production.
-export function makePrimaryGateway({getSession,ownerId,origin,enabled,reserve,connect,createVoice,settle,waitUntil,randomId}){
+export function makePrimaryGateway({getSession,ownerId,origin,enabled,reserve,connect,createVoice,settle,recordEvidence,waitUntil,randomId}){
   return async function start(request,client){
     const fail=reason=>({ok:false,reason});
     if(!enabled)return fail('disabled');
+    if(typeof recordEvidence!=='function')return fail('evidence_unavailable');
     if(request.method!=='GET'||request.headers.get('Origin')!==origin||request.headers.get('Upgrade')?.toLowerCase()!=='websocket')return fail('invalid_upgrade');
     let user;try{user=await getSession(request)}catch{return fail('auth_unavailable')}
     if(!user||typeof ownerId!=='string'||!ownerId||String(user.id)!==ownerId)return fail('not_authorized');
@@ -14,10 +16,11 @@ export function makePrimaryGateway({getSession,ownerId,origin,enabled,reserve,co
     let provider,voice,disconnected=false,finalized=false;
     const onDisconnect=()=>{disconnected=true;voice?.close()};
     const send=event=>{if(!disconnected&&client.readyState===1){try{client.send(JSON.stringify(event))}catch{onDisconnect()}}};
+    const writer=makeEvidenceWriter({write:snapshot=>recordEvidence({attemptId,...snapshot}),waitUntil,onFailure:()=>voice?.close()});
     const final=result=>{
       if(finalized)return;finalized=true;
       for(const [event,handler] of handlers)client.removeEventListener(event,handler);
-      const saving=Promise.resolve().then(()=>settle({attemptId,...result})).then(row=>send({type:'final',confirmed:result.confirmed===true&&row?.state==='closed'}),()=>send({type:'final',confirmed:false})).finally(()=>{try{client.close(1000,'voice ended')}catch{}});
+      const saving=writer.drain().then(ok=>settle({attemptId,...result,confirmed:ok&&result.confirmed===true})).then(row=>send({type:'final',confirmed:result.confirmed===true&&row?.state==='closed'}),()=>send({type:'final',confirmed:false})).finally(()=>{try{client.close(1000,'voice ended')}catch{}});
       waitUntil(saving);
     };
     let windowStart=Date.now(),bytes=0;
@@ -36,7 +39,7 @@ export function makePrimaryGateway({getSession,ownerId,origin,enabled,reserve,co
       if(client.readyState!==1||disconnected){final({confirmed:false,usage:null,latestSeconds:null,sessionId:null});return fail('client_closed')}
       provider=await connect();
       if(disconnected||client.readyState!==1){try{provider.close()}catch{};final({confirmed:false,usage:null,latestSeconds:null,sessionId:null});return fail('client_closed')}
-      voice=createVoice({socket:provider,onAudio:delta=>send({type:'audio',delta}),onTranscript:e=>send({type:'transcript',...e}),onState:state=>send({type:'state',state}),onFinal:final});
+      voice=createVoice({socket:provider,onAudio:delta=>send({type:'audio',delta}),onTranscript:e=>send({type:'transcript',...e}),onState:state=>send({type:'state',state}),onEvidence:writer.offer,onFinal:final});
       if(disconnected)voice.close();
       return {ok:true};
     }catch(error){
