@@ -28,7 +28,7 @@ export function createOpenAILive({ apiKey, fetchImpl = fetch }) {
     return { session: { id: result.session.id }, transport: result.transport };
   }
 
-  async function attach(sessionId) {
+  async function attach(sessionId, onUsage) {
     if (!validLiveId(sessionId)) throw new Error('invalid_live_session');
     const response = await fetchImpl(sessionsUrl + '/' + sessionId + '/attach', {
       redirect: 'error',
@@ -56,7 +56,10 @@ export function createOpenAILive({ apiKey, fetchImpl = fetch }) {
         return;
       }
       const next=usageEvidence(latest,event,sessionId);
-      if(next!==latest)latest=next;
+      if (next !== latest) {
+        latest = next;
+        if (event.type === 'session.usage.updated') onUsage?.(event);
+      }
       if (event?.type !== 'session.closed' || event.session?.id !== sessionId ||
           event.session.model !== LIVE_MODEL || !Number.isFinite(event.usage?.seconds) ||
           event.usage.seconds < 0 || event.usage.seconds > 1e9 || !latest?.terminal || latest.seconds!==event.usage.seconds) return;

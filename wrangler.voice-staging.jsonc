@@ -1,9 +1,10 @@
 {
   "name": "bor-ai-voice-staging",
-  "main": "staging/bor-voice/live-worker.mjs",
+  "main": "staging/bor-voice/phone-worker.mjs",
   "compatibility_date": "2026-10-28",
   "workers_dev": false,
   "preview_urls": false,
+  "rules": [{ "type": "Text", "globs": ["**/phone.html", "**/phone-client.js", "**/voice-live.js"], "fallthrough": true }],
   "durable_objects": {
     "bindings": [{ "name": "VOICE_PILOT", "class_name": "VoicePilot" }]
   },

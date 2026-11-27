@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BOR AI Voice · Staging</title>
+  <script src="/phone-client.js" type="module"></script>
+  <style>
+    :root { color-scheme: dark; font: 17px/1.55 system-ui, sans-serif; color: #f0f5ff; background: #0c1221; }
+    main { box-sizing: border-box; max-width: 36rem; margin: 6vh auto; padding: clamp(1.25rem, 5vw, 2.5rem); }
+    h1 { font-size: clamp(1.8rem, 6vw, 2.4rem); line-height: 1.2; }
+    p, label { color: #c5d1e8; }
+    button, input { box-sizing: border-box; min-height: 48px; font: inherit; margin: .25rem .3rem .25rem 0; padding: .5rem .65rem; border: 1px solid #889abb; border-radius: .4rem; }
+    input, audio { width: 100%; }
+    button { background: #aac8ff; color: #081a36; font-weight: 700; }
+    button:disabled { opacity: .65; }
+    p:empty { display: none; }
+  </style>
+</head>
+<body data-ready="__PILOT_READY__">
+  <main>
+    <h1>BOR AI Voice</h1>
+    <p id="status" role="status">Halaman uji siap. Percakapan GPT-Live belum aktif.</p>
+    <section id="controls" hidden>
+      <button type="button" id="start" disabled>Mulai ngobrol</button>
+      <button type="button" id="stop" disabled>Akhiri</button>
+      <audio id="speaker" controls aria-label="Audio BOR AI"></audio>
+      <p id="user-caption" aria-label="Ucapan lo"></p>
+      <p id="assistant-caption" aria-label="Ucapan BOR AI"></p>
+    </section>
+  </main>
+</body>
+</html>
