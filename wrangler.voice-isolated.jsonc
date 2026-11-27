@@ -1,0 +1,21 @@
+{
+  "name": "bor-ai-voice-isolated",
+  "main": "staging/bor-voice/isolated-primary-worker.mjs",
+  "compatibility_date": "2026-10-28",
+  "workers_dev": true,
+  "keep_vars": true,
+  "preview_urls": false,
+  "rules": [{
+    "type": "Text",
+    "globs": ["**/phone.html", "**/phone-client.js", "**/voice-live.js"],
+    "fallthrough": true
+  }],
+  "durable_objects": {
+    "bindings": [
+      { "name": "VOICE_PILOT", "class_name": "VoicePilot" },
+      { "name": "PRIMARY_VOICE_LEDGER", "class_name": "PrimaryVoiceLedger" }
+    ]
+  },
+  "migrations": [{ "tag": "voice-isolated-v1", "new_sqlite_classes": ["VoicePilot", "PrimaryVoiceLedger"] }],
+  "vars": { "BOR_VOICE_PAID_ENABLED": "false" }
+}
