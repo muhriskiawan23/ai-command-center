@@ -1,3 +1,4 @@
+import { closeExistingSession } from './provider-hangup.mjs';
 import { json } from '../../src/http.js';
 import { validLiveId } from './live-offer.mjs';
 import { createOpenAILive } from './openai-live.mjs';
@@ -176,13 +177,15 @@ export class VoicePilot {
       await save;
     }
 
-    try {
-      const channel = await this.#observe(attempt.id);
-      channel.requestClose();
-    } catch {
-      const channel = this.#channel;
-      this.#channel = undefined;
-      channel?.disconnect();
-    }
+    await closeExistingSession({
+      sessionId: attempt.id,
+      observe: id => this.#observe(id),
+      disconnect: () => {
+        const channel = this.#channel;
+        this.#channel = undefined;
+        channel?.disconnect();
+      },
+      hangup: id => this.live().hangup(id),
+    });
   }
 }
