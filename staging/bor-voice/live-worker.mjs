@@ -185,7 +185,6 @@ export class VoicePilot {
         this.#channel = undefined;
         channel?.disconnect();
       },
-      hangup: id => this.live().hangup(id),
     });
   }
 }
