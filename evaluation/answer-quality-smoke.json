@@ -1,0 +1,34 @@
+{
+  "version": "1.0.0",
+  "purpose": "Manual paired ChatGPT/BOR AI smoke evaluation; not proof of model parity or a release gate override",
+  "targetScore": 90,
+  "weights": { "accuracy": 30, "completion": 25, "reasoning": 15, "context": 10, "evidence": 10, "readability": 10 },
+  "scale": { "0": "incorrect or absent", "1": "major deficiencies", "2": "partially satisfactory", "3": "minor deficiencies", "4": "fully satisfactory" },
+  "cases": [
+    {
+      "id": "compact-id", "route": "chat", "turns": ["Jawab hanya angka: 17 dikali 19."],
+      "checks": ["Exactly 323; no extraneous explanation.", "No unnecessary web search or retry."], "references": []
+    },
+    {
+      "id": "arithmetic-id", "route": "chat", "turns": ["Sebuah usaha punya omzet Rp40 juta, biaya variabel Rp18 juta, biaya tetap Rp12 juta, dan pembayaran pokok utang Rp4 juta per bulan. Anggap semua pendapatan dan biaya operasi tersebut diterima atau dibayar tunai. Hitung margin kontribusi (rupiah dan persen), laba operasi, dan sisa kas setelah pokok utang. Jelaskan perbedaan laba dengan kas, serta keterbatasan kesimpulan. Jangan cari web."],
+      "checks": ["Contribution Rp22 million and 55%.", "Operating profit Rp10 million; remaining cash Rp6 million under stated assumptions.", "Principal repayment is not an operating expense; other cash flows, tax and interest are unspecified.", "Addresses every requested amount and explanation."], "references": []
+    },
+    {
+      "id": "context-id", "route": "chat", "turns": ["Buat rencana pemasaran organik tujuh hari untuk proyek pribadi. Anggaran nol, tanpa menjual kepemilikan, dan tidak menggunakan iklan berbayar. Buat tabel singkat.", "Ubah durasi menjadi tiga hari saja. Pertahankan seluruh batasan sebelumnya dan gunakan bahasa Indonesia."],
+      "checks": ["Final response covers exactly three days.", "Retains zero budget, no equity sale and no paid ads.", "Keeps requested short table and Indonesian language.", "No repeated questions about supplied constraints."], "references": []
+    },
+    {
+      "id": "code-en", "route": "chat", "turns": ["Write a JavaScript mean(values) function. Return null for non-arrays, empty arrays, or any element that is not a finite number. Show code and exactly three example calls, covering a valid array, an empty array and a non-finite value. Do not search the web."],
+      "checks": ["Valid executable JavaScript with finite-number checking.", "mean([2,4,6]) returns 4; mean([]) and mean([Infinity]) return null.", "Non-array input returns null; no silent string coercion.", "Exactly three examples; English; no unnecessary browsing."], "references": []
+    },
+    {
+      "id": "evidence-id", "route": "chat", "turns": ["Analisis dua kutipan sintetis ini saja. A: penjualan 120 unit pada Januari, 150 pada Februari. B: 170 unit pada Februari, tetapi mencakup retur 20 unit. Hitung perubahan penjualan berdasarkan A, jelaskan apakah kedua angka Februari bisa konsisten jika definisinya berbeda, dan sebutkan hal yang belum diketahui. Jangan mengarang sumber atau mencari web."],
+      "checks": ["Increase of 30 units or 25% according to A.", "170 minus 20 equals 150; possible reconciliation conditional on matching definitions, not proven.", "Distinguishes gross/net sales and identifies unknown reporting definitions.", "No invented source, external citation, or certainty."], "references": []
+    },
+    {
+      "id": "bennu-id", "route": "web_search", "turns": ["Telusuri publikasi resmi NASA tentang sampel Bennu dari OSIRIS-REx. Berapa massa yang dikumpulkan sebelum kepala TAGSAM dibuka sepenuhnya, berapa massa hasil penuangan setelah dibuka, berapa massa total, kapan hasil total diumumkan, dan kendala teknis apa yang menghambat pembukaan? Jelaskan jika angka tidak tepat dijumlahkan, dan berikan sitasi resmi dekat setiap klaim."],
+      "checks": ["Earlier collection 70.3 g, not incorrectly described as all outside the head.", "Additional poured sample 51.2 g; total 121.6 g.", "Announcement 15 February 2024; two stuck fasteners and new tools.", "Explain extra particles or rounding only as supported by NASA; no invented reconciliation.", "Relevant clickable official citations; no duplicate source listing or fabricated links."],
+      "references": ["https://science.nasa.gov/blogs/osiris-rex/2024/02/15/nasa-announces-osiris-rex-bulk-sample-mass/", "https://science.nasa.gov/blogs/osiris-rex/2024/01/11/nasas-osiris-rex-team-clears-hurdle-to-access-remaining-bennu-sample/"]
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+# Context and reasoning quality — offline evidence (26 November 2026)
+
+Base 3ca1230f9709846167d90f4192b654025de6ffe9. Owner requested no new live OpenAI tests before further quality improvements. Preserve both beginning and end of long history turns, within existing 2000-character per-message and 8000-character total limits. Explicitly mark omitted middle; preserve UTF-16 boundaries. Guest browser and server paths match; authenticated history remains scoped to server-owned D1 rows rather than client claims. Prompt instructions emphasize latest corrections, arithmetic, evidence gaps, independent sources and obscure factual research. The public search router privacy filter and its existing history limits remain unchanged. No new model calls, binding changes, quota changes or production deployment.
+
+Actual local tests: 5/5 focused, full Node suite 764 total / 763 passed / 0 failed / 1 intentionally skipped. Runtime 21509.543978 ms. Test outputs are mocked; prompts do not guarantee factual accuracy or context retention outside the existing history window. Browser automation and actual model quality/billing remain unverified.

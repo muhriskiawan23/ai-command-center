@@ -48,3 +48,21 @@ test("Customization: accepts strict optional enum values, rejects injection payl
   assert.match(hint,/Budi/);
   assert.ok(!customizationNotice(null));
 });
+
+test("Markdown: responsive semantic tables preserve alignment and citations", () => {
+  const html = render("| Fact | Mass |\n| :--- | ---: |\n| **Initial** | 70.3 g ⟦1⟧ |\n| Total | 121.6 g |\n\nAfter the table.");
+  assert.match(html, /class="md-table-scroll" tabindex="0"/);
+  assert.match(html, /<th scope="col" class="md-align-right">Mass<\/th>/);
+  assert.match(html, /<td class="md-align-right">70\.3 g ⟦1⟧<\/td>/);
+  assert.match(html, /<strong>Initial<\/strong>/);
+  assert.match(html, /<\/table><\/div>\n<p>After the table\.<\/p>/);
+});
+test("Markdown: tables escape HTML, preserve literal pipes, and reject invalid dividers", () => {
+  const html = render("| A | B |\n| --- | --- |\n| a\\|b | \x60x|y\x60 |\n| <img onerror=bad()> | [bad](javascript:bad()) |");
+  assert.match(html, /a\|b/);
+  assert.match(html, /<code>x\|y<\/code>/);
+  assert.match(html, /&lt;img/);
+  assert.doesNotMatch(html, /<img|href="javascript:/);
+  assert.doesNotMatch(render("A | B\n-- | x\nordinary prose"), /<table/);
+  assert.doesNotMatch(render("\x60\x60\x60\nA | B\n--- | ---\n\x60\x60\x60"), /<table/);
+});

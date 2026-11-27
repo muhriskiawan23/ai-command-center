@@ -1,0 +1,51 @@
+{
+  "version": "1.0.0",
+  "plan": "evaluation/answer-quality-smoke.json",
+  "candidate": "af5dd9b473576affbcc269b90b28e852d506ca82",
+  "referenceType": "Curated ChatGPT-authored answer key, with known rubric; not blind independent model outputs and not measured live API performance",
+  "date": "2026-11-26",
+  "answers": [
+    {
+      "id": "compact-id",
+      "answers": [
+        "323"
+      ]
+    },
+    {
+      "id": "arithmetic-id",
+      "answers": [
+        "Berdasarkan asumsi seluruh pendapatan dan biaya operasi dibayar tunai:\n\n| Komponen | Perhitungan | Hasil |\n| --- | --- | ---: |\n| Margin kontribusi | 40 − 18 | Rp22 juta |\n| Rasio margin kontribusi | 22 ÷ 40 × 100% | 55% |\n| Laba operasi | 22 − 12 | Rp10 juta |\n| Sisa kas setelah pembayaran pokok utang | 10 − 4 | Rp6 juta |\n\nLaba operasi mengukur hasil kegiatan usaha. Pembayaran pokok utang mengurangi kas dan saldo kewajiban, bukan laba operasi.\n\nDengan asumsi yang diberikan, kas tersisa Rp6 juta dari transaksi bulanan tersebut. Ini bukan saldo kas akhir atau laba bersih: saldo awal, pajak, bunga, investasi, dan arus kas lainnya tidak diketahui."
+      ]
+    },
+    {
+      "id": "context-id",
+      "answers": [
+        "Anggaran Rp0, tanpa menjual kepemilikan dan tanpa iklan berbayar.\n\n| Hari | Kegiatan organik | Hasil yang dituju |\n| --- | --- | --- |\n| 1 | Tentukan calon pengguna dan manfaat proyek | Pesan pemasaran jelas |\n| 2 | Buat demo singkat | Materi promosi siap |\n| 3 | Publikasikan demo di kanal sosial sendiri | Jangkauan awal |\n| 4 | Bagikan ke komunitas yang mengizinkan promosi | Calon pengguna relevan |\n| 5 | Ajak pengguna mencoba dan memberi masukan | Umpan balik |\n| 6 | Perbaiki pesan berdasarkan tanggapan | Penawaran lebih jelas |\n| 7 | Evaluasi kunjungan, pendaftaran dan tanggapan | Prioritas minggu berikutnya |",
+        "Berikut versi tiga hari, tetap dengan anggaran Rp0, tanpa menjual kepemilikan, dan tanpa iklan berbayar.\n\n| Hari | Kegiatan organik | Target |\n| --- | --- | --- |\n| 1 | Tentukan calon pengguna, siapkan pesan dan demo | Materi siap dibagikan |\n| 2 | Publikasikan demo di kanal sendiri dan komunitas yang relevan | Jangkauan dan uji coba awal |\n| 3 | Minta masukan, evaluasi kunjungan dan pendaftaran | Tentukan perbaikan berikutnya |"
+      ]
+    },
+    {
+      "id": "code-en",
+      "answers": [
+        "The function validates each element and scales the sum to reduce the risk of overflow with very large finite values.\n\n```javascript\nfunction mean(values) {\n  if (!Array.isArray(values) || values.length === 0) return null;\n  let scale = 0;\n  for (const value of values) {\n    if (!Number.isFinite(value)) return null;\n    scale = Math.max(scale, Math.abs(value));\n  }\n  if (scale === 0) return 0;\n  return (values.reduce((sum, value) => sum + value / scale, 0)\n    / values.length) * scale;\n}\n\nconsole.log(mean([2, 4, 6])); // 4\nconsole.log(mean([]));        // null\nconsole.log(mean([Infinity]));// null\n```\n\nAs with ordinary JavaScript number arithmetic, results are subject to floating-point rounding."
+      ]
+    },
+    {
+      "id": "evidence-id",
+      "answers": [
+        "Berdasarkan kutipan A, penjualan naik 30 unit, yaitu (150 − 120) ÷ 120 × 100% = 25%.\n\nAngka Februari dari A dan B mungkin konsisten jika B melaporkan penjualan kotor 170 unit dan 20 retur harus dikurangkan, sedangkan A melaporkan penjualan bersih: 170 − 20 = 150 unit.\n\nNamun, kesamaan tersebut belum membuktikan bahwa kedua laporan benar-benar memakai definisi itu. Belum diketahui apakah retur berasal dari periode yang sama, apakah cakupan produk dan transaksi sama, serta bagaimana masing-masing laporan mendefinisikan penjualan."
+      ]
+    },
+    {
+      "id": "bennu-id",
+      "answers": [
+        "NASA mengumumkan massa total sampel Bennu sebesar **121,6 gram pada 15 Februari 2024**.\n\n| Tahap pengumpulan | Massa |\n| --- | ---: |\n| Sebelum kepala TAGSAM dibuka sepenuhnya | 70,3 gram |\n| Hasil penuangan setelah pembukaan | 51,2 gram |\n| Total akhir, termasuk partikel tambahan | 121,6 gram |\n\nSampel awal berasal dari material dalam tabung penampung dan material yang dapat diakses dari bagian dalam kepala TAGSAM melalui flap Mylar, bukan seluruhnya dari luar kepala. Sumber: [NASA, 15 Februari 2024](https://science.nasa.gov/blogs/osiris-rex/2024/02/15/nasa-announces-osiris-rex-bulk-sample-mass/).\n\nPembongkaran sempat berhenti karena dua dari 35 pengikat tidak dapat dilepas menggunakan perkakas yang disetujui untuk glovebox. Tim NASA merancang dan menguji dua perkakas baru dari material yang sesuai dengan persyaratan kurasi. Pengikat berhasil dilepas pada 10 Januari 2024. Sumber: [NASA, 11 Januari 2024](https://science.nasa.gov/blogs/osiris-rex/2024/01/11/nasas-osiris-rex-team-clears-hurdle-to-access-remaining-bennu-sample/).\n\nMengapa 70,3 + 51,2 hanya menghasilkan 121,5 gram? Publikasi NASA tanggal 15 Februari menyatakan bahwa total juga memasukkan partikel tambahan yang dikumpulkan di luar proses penuangan. NASA tidak merinci massa partikel tambahan secara terpisah dalam publikasi tersebut, sehingga selisih angka yang telah dibulatkan tidak boleh dianggap sebagai pengukuran tepat 0,1 gram."
+      ]
+    }
+  ],
+  "verification": {
+    "referenceCodeChecks": 10,
+    "passed": 10,
+    "nasaSourcesOpened": true
+  }
+}

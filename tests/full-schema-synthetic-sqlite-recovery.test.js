@@ -10,11 +10,11 @@ import {
 
 const get=(db,sql,...args)=>db.prepare(sql).get(...args);
 
-test('ALL 13 checked-in migrations restore exact synthetic user, sessions, integer IDs, feedback FK, link sources and image associations',async()=>{
+test('All 15 checked-in migrations restore exact synthetic user, sessions, integer IDs, feedback FK, link sources and image associations',async()=>{
   const out=await runFullSchemaSyntheticSqliteRestoreDrill();
   assert.equal(out.passed,true);
   assert.equal(out.temporaryFilesDeleted,true);
-  assert.equal(out.migrationCount,13);
+  assert.equal(out.migrationCount,15);
   assert.ok(out.tableCount>=15);
   assert.ok(out.indexCount>=15);
   assert.ok(out.triggerCount>=4);
@@ -35,7 +35,7 @@ test('ALL 13 checked-in migrations restore exact synthetic user, sessions, integ
 test('full-schema fixture fingerprints deterministic schema, rows, SQLite sequence and real image DB triggers',()=>{
   assert.deepEqual(REVIEWED_MIGRATIONS.map(x=>x.split('_')[0]),
     ['0001','0002','0003','0004','0005','0006','0007','0008',
-      '0009','0010','0011','0012','0016']);
+      '0009','0010','0011','0012','0016','0017','0018']);
   const db=createFullSchemaSyntheticFixture();
   try{
     const first=fingerprintFullSyntheticSchema(db);
@@ -43,7 +43,8 @@ test('full-schema fixture fingerprints deterministic schema, rows, SQLite sequen
     for(const table of ['users','sessions','conversations','messages','answer_feedback',
       'user_memories','user_settings','public_api_keys','github_connections',
       'github_oauth_states','daily_usage','search_provider_usage','image_jobs',
-      'image_wallets','image_credit_ledger','image_pilot_meter']){
+      'image_wallets','image_credit_ledger','image_pilot_meter',
+      'web_search_v2_usage','web_search_v2_user_usage']){
       assert.ok(first.rowCounts[table]>0,'Missing full-schema synthetic row: '+table);
     }
     assert.equal(first.rowCounts.messages,4);

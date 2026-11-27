@@ -25,6 +25,33 @@
       .replace(/~~([^~\n]+)~~/g, "<del>$1</del>");
     return text.replace(/\uE000(\d+)\uE001/g, (_, index) => slots[Number(index)] || "");
   }
+  // Pipe tables: escaped pipes and pipes in inline code are cell text.
+  // Bound the number of columns and rows and escape every cell through inline().
+  function tableCells(line) {
+    const text = line.trim();
+    if (!text.includes("|")) return null;
+    let cells = [], cell = "", code = false;
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      if (ch === "\\" && text[i + 1] === "|" && !code) { cell += "|"; i++; continue; }
+      if (ch === "\x60") code = !code;
+      if (ch === "|" && !code) { cells.push(cell.trim()); cell = ""; }
+      else cell += ch;
+    }
+    cells.push(cell.trim());
+    if (text.startsWith("|")) cells.shift();
+    if (text.endsWith("|") && cells.at(-1) === "") cells.pop();
+    return cells.length >= 2 && cells.length <= 12 ? cells : null;
+  }
+  function tableAlignment(line, width) {
+    const cells = tableCells(line);
+    if (!cells || cells.length !== width || !cells.every(cell => /^:?-{3,}:?$/.test(cell))) return null;
+    return cells.map(cell => cell.startsWith(":") && cell.endsWith(":") ? "center" : cell.endsWith(":") ? "right" : "left");
+  }
+  function tableCell(tag, value, alignment) {
+    return "<" + tag + (tag === "th" ? ' scope="col"' : "") +
+      ' class="md-align-' + alignment + '">' + inline(value) + "</" + tag + ">";
+  }
   function render(value) {
     const lines = String(value || "").replace(/\r\n?/g, "\n").split("\n");
     const out = [], paragraph = [], list = [];
@@ -58,6 +85,23 @@
       }
       if (/^ {0,3}(?:---|\*\*\*|___)\s*$/.test(line)) {
         flushParagraph(); flushList(); out.push("<hr>"); i++; continue;
+      }
+      const header = tableCells(line);
+      const align = header && i + 1 < lines.length ? tableAlignment(lines[i + 1], header.length) : null;
+      if (align) {
+        flushParagraph(); flushList();
+        const rows = [];
+        i += 2;
+        while (i < lines.length && rows.length < 100) {
+          const cells = tableCells(lines[i]);
+          if (!cells || cells.length !== header.length) break;
+          rows.push("<tr>" + cells.map((cell, index) => tableCell("td", cell, align[index])).join("") + "</tr>");
+          i++;
+        }
+        out.push('<div class="md-table-scroll" tabindex="0" role="region" aria-label="Table"><table class="md-table"><thead><tr>' +
+          header.map((cell, index) => tableCell("th", cell, align[index])).join("") +
+          "</tr></thead><tbody>" + rows.join("") + "</tbody></table></div>");
+        continue;
       }
       const bullet = /^ {0,12}([-*+]|\d+[.)])\s+(.+)$/.exec(line);
       if (bullet) {

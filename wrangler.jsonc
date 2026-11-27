@@ -48,6 +48,10 @@
     }
   ],
   "vars": {
+    "BOR_WEB_SEARCH_MODE": "legacy",
+    "BOR_WEB_SEARCH_USER_DAILY_CALLS": "1",
+    "BOR_WEB_SEARCH_PILOT_USER_IDS": "",
+    "BOR_WEB_SEARCH_GOOGLE_ELIGIBILITY_APPROVED": "false",
     "SEARCH_SHARED_BUDGET_ENABLED": "true",
     "URL_READER_ENABLED": "false",
     "SEARCH_PROVIDER": "tavily",

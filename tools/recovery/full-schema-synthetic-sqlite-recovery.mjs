@@ -17,7 +17,8 @@ export const REVIEWED_MIGRATIONS=Object.freeze([
   '0007_answer_feedback.sql','0008_message_link_sources.sql',
   '0009_public_api_keys.sql','0010_github_connections.sql',
   '0011_search_provider_usage.sql','0012_image_jobs.sql',
-  '0016_image_chat_history.sql'
+  '0016_image_chat_history.sql','0017_web_search_v2_usage.sql',
+  '0018_web_search_v2_user_usage.sql'
 ]);
 
 function ensureReviewedMigrations(){
@@ -86,6 +87,16 @@ export function createFullSchemaSyntheticFixture(){
       'SYNTHETIC_CIPHERTEXT_NOT_A_TOKEN',null,t+3600,null,t,t);
     run(db,'INSERT INTO search_provider_usage(day,provider,requests,attempts,successes,failures,rate_limited,last_reason,updated_at) VALUES(?,?,?,?,?,?,?,?,?)',
       '2026-11-23','tavily',4,5,4,1,0,'synthetic_only',t);
+
+    // Exercise both ledger triggers before the snapshot.
+    const searchDay='2026-11-23', searchSubject='b'.repeat(64);
+    run(db,'INSERT INTO web_search_v2_user_usage(day,subject,calls,reserved_micro_usd) VALUES(?,?,?,?)',
+      searchDay,searchSubject,1,260000);
+    run(db,'UPDATE web_search_v2_user_usage SET calls=2,reserved_micro_usd=520000 WHERE day=? AND subject=?',
+      searchDay,searchSubject);
+    const searchUsage=one(db,'SELECT calls,reserved_micro_usd FROM web_search_v2_usage WHERE day=?',searchDay);
+    if(searchUsage?.calls!==2||searchUsage.reserved_micro_usd!==520000)
+      fail('full_schema_drill_search_usage_trigger_failed');
 
     // Real image triggers reserve credit, append ledger entries and increment
     // the pilot meter. We DO NOT manually duplicate their side effects.

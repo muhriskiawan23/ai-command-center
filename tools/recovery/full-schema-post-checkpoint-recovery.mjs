@@ -225,7 +225,7 @@ export async function drillFullSchemaPostCheckpointRecovery(){
        count('SELECT COUNT(*) AS n FROM offline_tail_deleted_accounts')!==1)
       fail('result_invariants_failed');
     return Object.freeze({passed:true,syntheticOnly:true,
-      migrationsReplayed:13,tailEventsApplied:5,checkpoint:5,
+      migrationsReplayed:before.migrationCount,tailEventsApplied:5,checkpoint:5,
       atomicPairRollback:true,postCheckpointTurnPreserved:true,
       originalIntegerIdsPreserved:true,originalSessionPreserved:true,
       sourceAndRestoredFingerprintsMatch:true,deletionTombstonesApplied:true,
