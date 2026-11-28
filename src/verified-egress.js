@@ -1,5 +1,6 @@
 import { blockedHostReason, validateUrl } from './links.js';
 import { reserveRailwayHop } from './railway-reader-budget.js';
+import { checkPublicUrl } from './reader-url-privacy.js';
 
 // Fail-closed Worker adapter for a dedicated, authenticated, pinned egress proxy.
 // Bind EGRESS_PROXY to a private Cloudflare VPC Service after security review.
@@ -55,7 +56,7 @@ export function createVerifiedLinkFetcher(env) {
   return async (url, { signal } = {}) => {
     // This adapter can be called outside readLink. Never assume callers have
     // performed its URL validation before transferring a URL to the proxy.
-    const checked = validateUrl(url);
+    const checked = env.URL_READER_PROVIDER === "railway" ? checkPublicUrl(url) : validateUrl(url);
     if (!checked.ok) throw Error("proxy_url_disallowed");
     const parsed = checked.url;
     if (signal?.aborted) throw Error("proxy_aborted");
