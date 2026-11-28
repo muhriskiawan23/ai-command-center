@@ -1,0 +1,11 @@
+# Railway Serverless cold-wake evidence — 2026-11-28
+
+Scope: isolated staging, synthetic URLs only. No production changes or provider AI calls.
+
+- Deployment 141261f5-c804-41f9-8625-3d5607634d05 was SLEEPING before a temporary dedicated Cloudflare Worker sent HTTPS GET /health via Railway's generated staging domain. It transitioned to SUCCESS with a fresh startup log at 04:56:41 UTC (all four local checks true). External health timed out, edge logs showed repeated connection refused and 499; the Worker returned 502. Cold activation observed, end-to-end cold request FAILED.
+- Set explicit PORT=10000 on the staging service, resulting in deployment 02d21689-b870-4e63-b020-d2da4c41ff9a. SUCCESS with local startup checks 4/4. Worker warm probe returned health=200, healthOk=true, elapsed 107ms, unauthenticated POST /fetch=401. Railway edge logs 04:58:39 UTC independently confirm 200 /health and 401 /fetch. Warm transport and unauthenticated denial PASS. Corrected deployment has not been retested after it enters SLEEPING; authenticated Worker-to-proxy URL extraction not tested.
+- Removed temporary public Railway domain and dedicated Cloudflare probe after the bounded test. Existing private tunnel and production Worker were not modified.
+- Last one-hour metrics mixed active/sleeping intervals: CPU average 0.00114024 vCPU, max 0.0186922; RAM average 0.03708865 GB, max 0.12775854 GB. These are observations, not billing receipts or a production workload forecast. Public Railway documentation indicates Free $1 monthly resource credit, CPU $20/vCPU-month and RAM $10/GB-month. Workspace tier, remaining allowance and spending cap still unverified. No upgrade or credit purchase initiated.
+- Remaining security gates: approved trust boundary for public HTTPS alternative; secure Worker-to-proxy bearer handoff; full authenticated end-to-end pinning, DNS/TLS, redirect and response-limit verification; durable budget/abuse gate; independent privacy and security signoff. Existing ADR requires private ingress until approved change. Production remains Tavily with its existing 8-URL daily configuration. Railway-first/Tavily-backup candidate stays unmerged.
+
+Decision: NO-GO for production until corrected cold wake, security and budget gates pass. Do not silently replace the private-ingress requirement or expose an unrestricted public proxy.
