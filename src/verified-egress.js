@@ -66,7 +66,11 @@ export function createVerifiedLinkFetcher(env) {
     });
     if (!response.ok) {
       void response.body?.cancel().catch(() => {});
-      throw Error("proxy_unavailable");
+      // Only explicit temporary capacity/gateway errors are fallback-eligible.
+      // 502 may encode a rejected DNS/TLS/SSRF check; never downgrade it.
+      const error = Error("proxy_unavailable");
+      if ([429, 503, 504].includes(response.status)) error.code = "EGRESS_TEMPORARY_UNAVAILABLE";
+      throw error;
     }
     const data = await readProxyResponse(response);
     if (!data || !Number.isInteger(data.status) || data.status < 100 || data.status > 599 ||
