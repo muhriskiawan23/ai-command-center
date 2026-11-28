@@ -1,4 +1,5 @@
 import { blockedHostReason, validateUrl } from './links.js';
+import { reserveRailwayHop } from './railway-reader-budget.js';
 
 // Fail-closed Worker adapter for a dedicated, authenticated, pinned egress proxy.
 // Bind EGRESS_PROXY to a private Cloudflare VPC Service after security review.
@@ -57,6 +58,11 @@ export function createVerifiedLinkFetcher(env) {
     const checked = validateUrl(url);
     if (!checked.ok) throw Error("proxy_url_disallowed");
     const parsed = checked.url;
+    if (signal?.aborted) throw Error("proxy_aborted");
+    if (env.URL_READER_PROVIDER === "railway") {
+      await reserveRailwayHop(env);
+      if (signal?.aborted) throw Error("proxy_aborted");
+    }
     const response = await binding.fetch("http://egress.internal/fetch", {
       method: "POST",
       headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
