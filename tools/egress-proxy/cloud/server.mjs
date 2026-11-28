@@ -4,10 +4,12 @@ import { createEgressProxyHandler } from "../pinned-transport.js";
 
 const port = Number(process.env.PORT || 10000);
 if (!Number.isSafeInteger(port) || port < 1 || port > 65535) throw new Error("invalid_port");
-const token = process.env.EGRESS_PROXY_TOKEN;
+// Dedicated temporary credential; never overwrite the existing tunnel secret.
+const token = process.env.EGRESS_SERVERLESS_QA_TOKEN;
+const allowedUrls = new Set(["https://example.com/", "http://127.0.0.1/"]);
 if (typeof token !== "string" || token.length < 32) throw new Error("missing_staging_token");
 const expected = Buffer.from("Bearer " + token);
-const handle = createEgressProxyHandler({token, maxConcurrentRequests: 2});
+const handle = createEgressProxyHandler({token, maxConcurrentRequests: 2, allowedUrls});
 let total = 0, minute = -1, windowCount = 0, inflight = 0;
 const server = createServer({maxHeaderSize: 8192}, (req, res) => {
   res.setHeader("cache-control", "no-store");
