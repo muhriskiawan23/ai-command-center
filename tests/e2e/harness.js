@@ -24,7 +24,11 @@ export function createD1() {
     first: async () => sqlite.prepare(sql).get(...values) ?? null,
     all: async () => ({ results: sqlite.prepare(sql).all(...values) }),
     run: async () => { const r = sqlite.prepare(sql).run(...values); return { meta: { changes: Number(r.changes) } }; },
-    _run: () => sqlite.prepare(sql).run(...values)
+    _run: () => {
+      const statement = sqlite.prepare(sql);
+      if (statement.columns().length) return { rows: statement.all(...values), changes: 0 };
+      return statement.run(...values);
+    }
   });
   return {
     sqlite,
@@ -34,7 +38,7 @@ export function createD1() {
       try {
         const results = statements.map((statement) => {
           const result = statement._run();
-          return { success: true, meta: { changes: Number(result.changes), last_row_id: Number(result.lastInsertRowid) } };
+          return { success: true, results: result.rows ?? [], meta: { changes: Number(result.changes), last_row_id: Number(result.lastInsertRowid ?? 0) } };
         });
         sqlite.exec("COMMIT");
         return results;

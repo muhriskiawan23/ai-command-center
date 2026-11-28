@@ -925,6 +925,8 @@ async function runMultiAgent(env, message, history = [], pages = "") {
 const SESSION_COOKIE = "__Host-borai_session";
 const OAUTH_NONCE_COOKIE = "__Host-borai_oauth_nonce";
 const SESSION_TTL_SECONDS = 30 * 24 * 60 * 60;
+const RECOVERY_SESSION_PREFIX = "bor-recovery.";
+const RECOVERY_KEY_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const encoder = new TextEncoder();
 let googleJwksCache = null;
 let googleJwksExpiresAt = 0;
@@ -990,11 +992,28 @@ async function verifyGoogleCredential(credential, nonce, env) {
   }
   return claims;
 }
+function recoveryKeyConfigured(env) {
+  return typeof env.BOR_ACCOUNT_RECOVERY_KEY === "string" && RECOVERY_KEY_PATTERN.test(env.BOR_ACCOUNT_RECOVERY_KEY);
+}
+
+async function recoveryDigest(env, purpose, value) {
+  const key = await crypto.subtle.importKey(
+    "raw", base64UrlBytes(env.BOR_ACCOUNT_RECOVERY_KEY), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]
+  );
+  const signature = await crypto.subtle.sign("HMAC", key, encoder.encode("borai:" + purpose + ":" + value));
+  return [...new Uint8Array(signature)].map(byte => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function sessionTokenHash(env, token) {
+  if (!token.startsWith(RECOVERY_SESSION_PREFIX)) return sha256Hex(token);
+  return recoveryKeyConfigured(env) ? recoveryDigest(env, "recovery-session", token) : null;
+}
+
 async function getSession(request, env) {
   const token = readCookie(request, SESSION_COOKIE);
-  if (!token) return null;
+  if (!token || (token.startsWith(RECOVERY_SESSION_PREFIX) && !recoveryCodesEnabled(env))) return null;
   if (!env.DB) throw new Error("Database is not configured.");
-  const tokenHash = await sha256Hex(token);
+  const tokenHash = await sessionTokenHash(env, token);
   return env.DB.prepare(
     "SELECT users.id, users.email, users.name, users.picture FROM sessions " +
     "JOIN users ON users.id = sessions.user_id WHERE sessions.token_hash = ? AND sessions.expires_at > ?"
@@ -1085,9 +1104,82 @@ async function handlePdfConversionRoute(request, env) {
   }
 }
 
+function recoveryCodesEnabled(env) {
+  return env.BOR_ACCOUNT_RECOVERY_ENABLED === "true" && recoveryKeyConfigured(env) &&
+    typeof env.DB?.batch === "function" && typeof env.CHAT_LIMITER?.limit === "function";
+}
+
+const RECENT_SESSION_SECONDS = 10 * 60;
+const RECOVERY_CODE_PATTERN = /^BOR-[A-Za-z0-9_-]{32}$/;
+
+async function handleRecoveryCodeRequest(request, env, action) {
+  const now = Math.floor(Date.now() / 1000);
+  const db = env.DB;
+
+  if (action === "redeem") {
+    const parsed = await readJsonRequest(request, 1024);
+    if (parsed.error) return parsed.error;
+    const code = typeof parsed.body?.code === "string" ? parsed.body.code.trim() : "";
+    const invalid = () => json({ error: "Kode cadangan tidak valid atau sudah dipakai." }, 401);
+    if (!RECOVERY_CODE_PATTERN.test(code)) return invalid();
+
+    const codeHash = await recoveryDigest(env, "recovery-code", code);
+    const sessionToken = RECOVERY_SESSION_PREFIX + randomToken();
+    const sessionHash = await sessionTokenHash(env, sessionToken);
+    const [created, , profile] = await db.batch([
+      db.prepare(
+        "INSERT INTO sessions (token_hash, user_id, expires_at, created_at) " +
+        "SELECT ?, user_id, ?, ? FROM account_recovery_codes WHERE code_hash = ?"
+      ).bind(sessionHash, now + SESSION_TTL_SECONDS, now, codeHash),
+      db.prepare(
+        "DELETE FROM account_recovery_codes WHERE code_hash = ? " +
+        "AND EXISTS (SELECT 1 FROM sessions WHERE token_hash = ? AND user_id = account_recovery_codes.user_id)"
+      ).bind(codeHash, sessionHash),
+      db.prepare(
+        "SELECT users.id, users.email, users.name, users.picture FROM sessions " +
+        "JOIN users ON users.id = sessions.user_id WHERE sessions.token_hash = ?"
+      ).bind(sessionHash)
+    ]);
+    const user = profile.results?.[0];
+    if (created.meta?.changes !== 1 || !user) return invalid();
+    return json({ authenticated: true, user }, 200, { "Set-Cookie": [
+      cookieHeader(SESSION_COOKIE, sessionToken, SESSION_TTL_SECONDS),
+      cookieHeader(OAUTH_NONCE_COOKIE, "", 0)
+    ] });
+  }
+
+  const token = readCookie(request, SESSION_COOKIE);
+  if (!token) return json({ error: "Masuk ke akun untuk mengelola kode cadangan." }, 401);
+  const sessionHash = await sessionTokenHash(env, token);
+  if (action === "revoke") {
+    if (!await getSession(request, env)) return json({ error: "Sesi Anda berakhir. Masuk lagi." }, 401);
+    await db.prepare(
+      "DELETE FROM account_recovery_codes WHERE user_id = " +
+      "(SELECT user_id FROM sessions WHERE token_hash = ? AND expires_at > ?)"
+    ).bind(sessionHash, now).run();
+    return json({ revoked: true });
+  }
+
+  const code = "BOR-" + randomToken(24);
+  const codeHash = await recoveryDigest(env, "recovery-code", code);
+  const result = await db.prepare(
+    "INSERT INTO account_recovery_codes (user_id, code_hash, created_at) " +
+    "SELECT user_id, ?, ? FROM sessions WHERE token_hash = ? AND expires_at > ? AND created_at >= ? " +
+    "ON CONFLICT(user_id) DO UPDATE SET code_hash = excluded.code_hash, created_at = excluded.created_at"
+  ).bind(codeHash, now, sessionHash, now, now - RECENT_SESSION_SECONDS).run();
+  if (result.meta?.changes !== 1) {
+    return json({ error: "Masuk ulang sebelum membuat kode cadangan baru." }, 403);
+  }
+  return json({ code });
+}
+
 async function handleAuthRoute(request, env, url) {
   if (url.pathname === "/api/config" && request.method === "GET") {
-    return json({ googleClientId: env.GOOGLE_CLIENT_ID || null, googleSignInEnabled: Boolean(env.GOOGLE_CLIENT_ID && env.DB) });
+    return json({
+      googleClientId: env.GOOGLE_CLIENT_ID || null,
+      googleSignInEnabled: Boolean(env.GOOGLE_CLIENT_ID && env.DB),
+      ...(recoveryCodesEnabled(env) && { recoveryCodesEnabled: true })
+    });
   }
   const authRateLimit = async (scope) => {
     if (!env.CHAT_LIMITER?.limit) return json({ error: "Pembatasan percobaan login belum tersedia." }, 503);
@@ -1101,6 +1193,16 @@ async function handleAuthRoute(request, env, url) {
     }
     return null;
   };
+  const recoveryAction = url.pathname.match(/^\/api\/auth\/recovery-code\/(issue|revoke|redeem)$/)?.[1];
+  if (recoveryAction) {
+    if (!recoveryCodesEnabled(env)) return json({ error: "Login cadangan belum tersedia." }, 404);
+    if (request.method !== "POST") return json({ error: "Metode tidak didukung." }, 405, { Allow: "POST" });
+    if (!sameOrigin(request)) return json({ error: "Origin tidak valid." }, 403);
+    const limited = await authRateLimit("recovery-" + recoveryAction);
+    if (limited) return limited;
+    try { return await handleRecoveryCodeRequest(request, env, recoveryAction); }
+    catch { return json({ error: "Layanan kode cadangan sedang bermasalah. Coba lagi." }, 503); }
+  }
   if (url.pathname === "/api/auth/nonce" && request.method === "GET") {
     if (!env.DB || !env.GOOGLE_CLIENT_ID) return json({ error: "Login Google belum dikonfigurasi." }, 503);
     const limited = await authRateLimit("nonce");
@@ -1165,7 +1267,10 @@ async function handleAuthRoute(request, env, url) {
     if (!sameOrigin(request)) return json({ error: "Origin tidak valid." }, 403);
     try {
       const token = readCookie(request, SESSION_COOKIE);
-      if (token && env.DB) await env.DB.prepare("DELETE FROM sessions WHERE token_hash = ?").bind(await sha256Hex(token)).run();
+      if (token && env.DB) {
+        const sessionHash = await sessionTokenHash(env, token);
+        if (sessionHash) await env.DB.prepare("DELETE FROM sessions WHERE token_hash = ?").bind(sessionHash).run();
+      }
       return json({ authenticated: false }, 200, { "Set-Cookie": cookieHeader(SESSION_COOKIE, "", 0) });
     } catch (error) {
       console.error("Logout failed:", safeError(error));

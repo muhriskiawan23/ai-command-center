@@ -204,6 +204,12 @@ function writeGuestFlag(on){try{if(on)sessionStorage.setItem(GUEST_FLAG,"1");els
 
 function inChatView(){return state===AppState.GUEST||state===AppState.AUTH}
 function setState(next,notice=""){
+  if(next===AppState.AUTH||next===AppState.GUEST){
+    $("recoveryLogin").open=false;
+    $("recoveryLoginCode").value="";
+    $("recoveryLoginStatus").textContent="";
+  }
+  if(next!==AppState.AUTH)clearIssuedRecoveryCode();
   state=next;document.body.dataset.state=next;
   $("boot").hidden=next!==AppState.INIT;
   $("gate").hidden=!(next===AppState.UNAUTH||next===AppState.EXPIRED||next===AppState.ERROR);
@@ -288,8 +294,16 @@ function readCustomization(){
     };
   }catch{return null;}
 }
+let recoveryViewVersion=0;
+function clearIssuedRecoveryCode(){
+  recoveryViewVersion++;
+  $("issuedRecoveryCode").value="";
+  $("issuedRecoveryCodeField").hidden=true;
+  $("recoveryManageStatus").textContent="";
+}
 function accountView(page="home"){
-  for(const [name,id] of [["home","accountHome"],["customize","accountCustomization"],["privacy","accountPrivacy"]])$(id).hidden=name!==page;
+  clearIssuedRecoveryCode();
+  for(const [name,id] of [["home","accountHome"],["customize","accountCustomization"],["privacy","accountPrivacy"],["recovery","accountRecovery"]])$(id).hidden=name!==page;
   if(page==="home")renderProfileEditor();
   $("accountBack").dataset.page=page;
   $("accountBack").setAttribute("aria-label",page==="home"?"Kembali ke chat":"Kembali ke profil");
@@ -355,8 +369,44 @@ accountDialog.addEventListener("click",event=>{
 },true);
 accountDialog.addEventListener("cancel",event=>{event.preventDefault();closeAccount();});
 accountDialog.addEventListener("close",()=>{
+  clearIssuedRecoveryCode();
   if(!returnToAccountOnChildClose && $("userProfile").isConnected&&!$("userProfile").hidden)$("userProfile").focus();
 });
+$("openRecoveryCode").addEventListener("click",()=>accountView("recovery"));
+async function manageRecoveryCode(action){
+  clearIssuedRecoveryCode();
+  const version=recoveryViewVersion;
+  const issue=$("issueRecoveryCode"),revoke=$("revokeRecoveryCode");
+  issue.disabled=true;revoke.disabled=true;
+  try{
+    const result=await postJson("/api/auth/recovery-code/"+action,{});
+    if(version!==recoveryViewVersion||!accountDialog.open||state!==AppState.AUTH)return;
+    if(action==="issue"){
+      $("issuedRecoveryCode").value=result.code;
+      $("issuedRecoveryCodeField").hidden=false;
+      $("issuedRecoveryCode").focus();
+      $("issuedRecoveryCode").select();
+    }else $("recoveryManageStatus").textContent="Kode cadangan dibatalkan.";
+  }catch(error){
+    if(version===recoveryViewVersion&&accountDialog.open)
+      $("recoveryManageStatus").textContent=error.message;
+  }finally{issue.disabled=false;revoke.disabled=false}
+}
+$("issueRecoveryCode").addEventListener("click",()=>manageRecoveryCode("issue"));
+$("revokeRecoveryCode").addEventListener("click",()=>manageRecoveryCode("revoke"));
+$("recoveryLoginForm").addEventListener("submit",async event=>{
+  event.preventDefault();
+  const input=$("recoveryLoginCode"),button=$("redeemRecoveryCode"),status=$("recoveryLoginStatus");
+  button.disabled=true;status.textContent="";
+  try{
+    const {user}=await postJson("/api/auth/recovery-code/redeem",{code:input.value});
+    currentUser=user;writeGuestFlag(false);
+    setState(AppState.AUTH);await enterChat();
+    toast("Berhasil masuk dengan kode cadangan. Buat kode baru dari profil.");
+  }catch(error){status.textContent=error.message}
+  finally{input.value="";button.disabled=false}
+});
+
 $("openCustomization").addEventListener("click",()=>{
   const prefs=readCustomization()||{nickname:"",tone:"natural",length:"balanced"};
   $("customNickname").value=prefs.nickname;$("customTone").value=prefs.tone;$("customLength").value=prefs.length;
@@ -527,6 +577,12 @@ function renderGoogleButtons(){
   window.google.accounts.id.renderButton($("googleButtonGate"),{...opts,width:260});
   window.google.accounts.id.renderButton($("googleButton"),{...opts,width:220});
 }
+async function loadAuthConfig(){
+  const config=await api("/api/config");
+  $("recoveryLogin").hidden=config.recoveryCodesEnabled!==true;
+  $("openRecoveryCode").hidden=config.recoveryCodesEnabled!==true;
+  return config;
+}
 function loadGoogle(force=false){
   if(state===AppState.AUTH)return Promise.resolve();
   if(gsi.loading)return gsi.loading;
@@ -534,7 +590,7 @@ function loadGoogle(force=false){
   gsi.loading=(async()=>{
     setGsiStatus("loading");
     try{
-      const cfg=await api("/api/config");
+      const cfg=await loadAuthConfig();
       if(!cfg.googleSignInEnabled||!cfg.googleClientId){setGsiStatus("not-configured");return}
       gsi.clientId=cfg.googleClientId;
       await waitForGsiSdk();
@@ -1418,7 +1474,7 @@ async function boot(){
   if(me.authenticated){currentUser=me.user;setState(AppState.AUTH);await enterChat();
     // Existing Google sessions skip the login button boot path. Resolve the
     // public OAuth client ID now so a later user-click can ask for Forms scope.
-    try{const cfg=await api("/api/config");if(cfg.googleSignInEnabled&&cfg.googleClientId)gsi.clientId=cfg.googleClientId;}catch{}
+    try{const cfg=await loadAuthConfig();if(cfg.googleSignInEnabled&&cfg.googleClientId)gsi.clientId=cfg.googleClientId;}catch{}
     return}
   // The Free plan is an opt-in guest-chat link, not a payment or subscription route.
   // Keep a pre-existing signed-in session above; otherwise use the same Guest flow

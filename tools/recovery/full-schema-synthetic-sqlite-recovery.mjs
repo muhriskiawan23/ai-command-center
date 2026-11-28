@@ -17,7 +17,7 @@ export const REVIEWED_MIGRATIONS=Object.freeze([
   '0007_answer_feedback.sql','0008_message_link_sources.sql',
   '0009_public_api_keys.sql','0010_github_connections.sql',
   '0011_search_provider_usage.sql','0012_image_jobs.sql',
-  '0016_image_chat_history.sql'
+  '0016_image_chat_history.sql','0019_account_recovery_codes.sql'
 ]);
 
 function ensureReviewedMigrations(){
@@ -48,6 +48,8 @@ export function createFullSchemaSyntheticFixture(){
 
     run(db,'INSERT INTO sessions(token_hash,user_id,expires_at,created_at) VALUES(?,?,?,?)',
       'synthetic-session-hash-not-a-credential',user,t+7200,t);
+    run(db,'INSERT INTO account_recovery_codes(user_id,code_hash,created_at) VALUES(?,?,?)',
+      user,'a'.repeat(64),t);
     run(db,'INSERT INTO conversations(id,user_id,title,created_at,updated_at,pinned,archived) VALUES(?,?,?,?,?,?,?)',
       'synthetic-chat-one',user,'SYNTHETIC_TITLE',t,t,1,0);
     run(db,'INSERT INTO conversations(id,user_id,title,created_at,updated_at,pinned,archived) VALUES(?,?,?,?,?,?,?)',

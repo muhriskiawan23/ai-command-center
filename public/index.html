@@ -44,6 +44,14 @@
       </div>
       <p class="gate-reason" id="googleReason" hidden></p>
       <button class="link-btn" id="googleRetry" type="button" hidden>Coba muat Google Sign-In lagi</button>
+      <details id="recoveryLogin" hidden>
+        <summary class="link-btn">Masuk dengan kode cadangan</summary>
+        <form id="recoveryLoginForm" class="customize-form">
+          <label>Kode cadangan<input id="recoveryLoginCode" type="password" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="48" required></label>
+          <button id="redeemRecoveryCode" type="submit">Masuk</button>
+          <p id="recoveryLoginStatus" role="status"></p>
+        </form>
+      </details>
       <button class="gate-btn secondary" id="continueGuest" type="button">Lanjutkan sebagai Guest</button>
       <button class="gate-btn secondary" id="gateRetry" type="button" hidden>Periksa status akun lagi</button>
     </div>
@@ -124,6 +132,7 @@
     <h3 class="account-section-title">Personalisasi dan privasi</h3>
     <div class="account-links">
      <button class="account-link" id="openCustomization" type="button"><span>✧</span><span>Sesuaikan BOR AI<small>Gaya jawaban dan sapaan</small></span><b>›</b></button>
+     <button class="account-link" id="openRecoveryCode" type="button" hidden><span>◇</span><span>Kode cadangan<small>Siapkan akses jika Google sulit diakses</small></span><b>›</b></button>
      <button class="account-link" id="openPrivacy" type="button"><span>♙</span><span>Pusat privasi<small>Penggunaan data dan kendali akun</small></span><b>›</b></button>
      <div class="account-link account-age"><span>✓</span><span>Verifikasi usia<small>Belum tersedia — memerlukan penyedia verifikasi usia yang tepercaya. Jangan unggah identitas di chat.</small></span><b>—</b></div>
     </div>
@@ -137,6 +146,16 @@
      <label>Panjang jawaban<select id="customLength"><option value="balanced">Seimbang</option><option value="short">Singkat</option><option value="detailed">Mendalam</option></select></label>
      <button type="submit">Simpan preferensi</button><p id="customizeStatus" class="account-view-copy" role="status"></p>
     </form>
+   </section>
+   <section id="accountRecovery" class="account-view" hidden aria-labelledby="recoveryTitle">
+    <h2 id="recoveryTitle">Kode cadangan</h2>
+    <p class="account-view-copy">Kode ini dapat dipakai sekali untuk masuk ke akun Anda. Simpan di tempat aman saat ditampilkan. Membuat kode baru membatalkan kode lama.</p>
+    <div class="customize-form">
+     <button id="issueRecoveryCode" type="button">Buat kode cadangan baru</button>
+     <button id="revokeRecoveryCode" type="button">Batalkan kode cadangan</button>
+     <label id="issuedRecoveryCodeField" hidden>Kode baru<input id="issuedRecoveryCode" type="text" readonly autocomplete="off" spellcheck="false"></label>
+     <p id="recoveryManageStatus" role="status"></p>
+    </div>
    </section>
    <section id="accountPrivacy" class="account-view" hidden aria-labelledby="privacyTitle">
     <div class="account-hero"><span class="account-hero-icon" aria-hidden="true">▣</span><h2 id="privacyTitle">Pusat privasi</h2><p>Keterangan jelas tentang data dan kendali yang tersedia.</p></div>
