@@ -1,0 +1,7 @@
+# Railway cold wake pass — 2026-11-28
+
+Deployment 02d21689-b870-4e63-b020-d2da4c41ff9a was SLEEPING before a dedicated staging Worker sent a fixed HTTPS health request at 05:42 UTC. Worker returned health=200, healthOk=true, coldMs=3907, unauth=401. Railway independently reported SUCCESS, health 200 at 05:42:17.457919208Z (3797ms), fetch without authentication 401 (96ms), and four startup checks true at 05:42:17.784323533Z. Corrected cold health transport PASS; authenticated Worker-to-proxy extraction not tested. Removed the temporary public domain and dedicated test Worker after the test.
+
+Owner's Usage screenshots show Trial Plan, one-time $5 credit available, current usage $0.20, credit usage period Nov 11–29, BOR AI egress $0.0004 and unrelated tranquil-healing $0.2013. Not a post-trial billing guarantee. Railway Free documentation states trial services stop at expiry and switch/redeploy may be required, Free has one project and $1 monthly allowance. Workspace currently has two projects. No paid upgrade, no unrelated project deletion, no production change. Verify plan transition and BOR AI allocation before release. https://docs.railway.com/pricing/free-plan
+
+Remaining: authenticated live URL extraction; approved public HTTPS trust boundary and independent privacy/security signoff; post-trial continuity and actual free-plan allocation; production release gate. Prior durable D1 request cap is a workload safeguard, not a provider cost ceiling. Tavily production retained.
