@@ -314,7 +314,7 @@ export async function fetchPinned(rawUrl, {
  * Request: POST /fetch with {"url":"https://public.example/path"}.
  * Response body is base64 so a Worker adapter can reconstruct the upstream bytes.
  */
-export function createEgressProxyHandler({ token, resolver = dns, timeoutMs = 8000, request = requestOneHop, maxConcurrentRequests = MAX_CONCURRENT_REQUESTS } = {}) {
+export function createEgressProxyHandler({ token, resolver = dns, timeoutMs = 8000, request = requestOneHop, maxConcurrentRequests = MAX_CONCURRENT_REQUESTS, allowedUrls = null } = {}) {
   if (typeof token !== "string" || token.length < 32) throw new Error("proxy_token_must_be_at_least_32_chars");
   if (!Number.isSafeInteger(maxConcurrentRequests) || maxConcurrentRequests < 1 || maxConcurrentRequests > 64) throw new Error("invalid_max_concurrent_requests");
   let activeRequests = 0;
@@ -381,6 +381,10 @@ export function createEgressProxyHandler({ token, resolver = dns, timeoutMs = 80
     catch { res.writeHead(400, { "cache-control": "no-store" }).end(); return; }
     if (!input || typeof input !== "object" || Array.isArray(input) || typeof input.url !== "string" || input.url.length > 4096) {
       res.writeHead(400).end();
+      return;
+    }
+    if (allowedUrls !== null && !allowedUrls.has(input.url)) {
+      res.writeHead(403, { "cache-control": "no-store" }).end();
       return;
     }
     if (activeRequests >= maxConcurrentRequests) {
