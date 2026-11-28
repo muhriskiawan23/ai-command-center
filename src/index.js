@@ -7,10 +7,9 @@ import { imageIntent } from "../public/image-intent.js";
 import { safeError, safeAiBindingFailure } from "./safe-error.js";
 import { validateCustomization, customizationNotice } from "./customization.js";
 import { CONFIDENTIALITY_NOTICE, isConfidentialityRequest, confidentialityReply, containsProtectedOutput } from "./confidentiality.js";
-import { extractUrls, validateUrl, readLinks, buildPageContext, summarizeLinks } from "./links.js";
+import { extractUrls, validateUrl, buildPageContext, summarizeLinks } from "./links.js";
 import { isFirstPartyHost, readFirstPartyPublicLink } from "./first-party-public-pages.js";
-import { createVerifiedLinkFetcher } from "./verified-egress.js";
-import { extractWithTavily } from "./tavily-extract.js";
+import { readExternalWithBackup } from "./url-reader-fallback.js";
 import { PDF_MAX_BYTES, PDF_CONTEXT_MAX_CHARS, safePdfName, normalizePdfConversion, buildPdfContext, validatePdfPageCitations, SPREADSHEET_CONTEXT_MAX_CHARS, safeSpreadsheetName, buildSpreadsheetContext, PRESENTATION_CONTEXT_MAX_CHARS, safePresentationName, buildPresentationContext, WORD_CONTEXT_MAX_CHARS, buildWordDocumentContext, IMAGE_OCR_CONTEXT_MAX_CHARS, buildImageOcrContext } from "./documents.js";
 import { validateCitationReferences } from "./citations.js";
 import { detectResearchMode, isSearchProviderConfigured, searchExternal, buildResearchContext, retrieveCuratedKnowledge } from "./research.js";
@@ -285,12 +284,7 @@ async function readChatLinks(urls, env, ownHost) {
   const externalUrls = externalIndexes.map(index => urls[index]);
   let externalResults = [];
   if (externalUrls.length && env.URL_READER_ENABLED === "true") {
-    externalResults = env.URL_READER_PROVIDER === "tavily"
-      ? await extractWithTavily(externalUrls, env, { ownHost, fetcher: env.TAVILY_EXTRACT_FETCHER || fetch })
-      : await readLinks(externalUrls, {
-        fetcher: createVerifiedLinkFetcher(env) || env.LINK_FETCHER || null,
-        ownHost
-      });
+    externalResults = await readExternalWithBackup(externalUrls, env, { ownHost });
   }
   const byIndex = new Map(externalIndexes.map((index, position) => {
     const validated = validateUrl(urls[index], ownHost);
@@ -1828,12 +1822,7 @@ async function handleWorkerRequest(request, env, onSearch) {
         let pageResults = [];
         if (pageCandidates.length && env.URL_READER_ENABLED === "true") {
           try {
-            pageResults = env.URL_READER_ENABLED === "true" && env.URL_READER_PROVIDER === "tavily"
-              ? await extractWithTavily(pageCandidates.map((item) => item.url), env, { ownHost: url.hostname, fetcher: env.TAVILY_EXTRACT_FETCHER || fetch })
-              : await readLinks(pageCandidates.map((item) => item.url), {
-                fetcher: createVerifiedLinkFetcher(env) || env.LINK_FETCHER || null,
-                ownHost: url.hostname
-              });
+            pageResults = await readExternalWithBackup(pageCandidates.map(item => item.url), env, { ownHost: url.hostname });
           } catch {
             pageResults = [];
           }
