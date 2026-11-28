@@ -2,7 +2,7 @@ import { test, expect, loginAs, seedConversation, drawerMode } from "./fixtures.
 
 test.use({ harnessOptions: {
   googleClientId: "",
-  extraEnv: { BOR_ACCOUNT_RECOVERY_ENABLED: "true" }
+  extraEnv: { BOR_ACCOUNT_RECOVERY_ENABLED: "true", BOR_ACCOUNT_RECOVERY_KEY: Buffer.alloc(32, 1).toString("base64url") }
 } });
 
 test("recover an existing conversation without Google and reject a reused code", async ({ page, context, app }) => {

@@ -1,12 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 import worker from "../src/index.js";
 import { createD1, seedSession, seedConversation } from "./e2e/harness.js";
 
 const origin = "https://example.test";
 const cookieName = "__Host-borai_session";
 const base = "/api/auth/recovery-code/";
+const recoveryKey = Buffer.alloc(32, 1).toString("base64url");
+const codeHash = code => createHmac("sha256", Buffer.from(recoveryKey, "base64url")).update("borai:recovery-code:" + code).digest("hex");
 const hash = value => createHash("sha256").update(value).digest("hex");
 
 function fixture(t) {
@@ -17,6 +19,7 @@ function fixture(t) {
   const env = {
     DB,
     BOR_ACCOUNT_RECOVERY_ENABLED: "true",
+    BOR_ACCOUNT_RECOVERY_KEY: recoveryKey,
     CHAT_LIMITER: { limit: async () => ({ success: true }) }
   };
   function post(action, { token, code, from = origin } = {}) {
@@ -41,7 +44,7 @@ test("one-time recovery signs in to the existing account and survives refresh", 
   assert.equal(issue.headers.get("Cache-Control"), "no-store");
   const { code } = await issue.json();
   assert.match(code, /^BOR-[a-zA-Z0-9_-]{32}$/);
-  assert.equal(DB.sqlite.prepare("SELECT code_hash FROM account_recovery_codes").get().code_hash, hash(code));
+  assert.equal(DB.sqlite.prepare("SELECT code_hash FROM account_recovery_codes").get().code_hash, codeHash(code));
 
   const results = await Promise.all([post("redeem", { code }), post("redeem", { code })]);
   assert.deepEqual(results.map(result => result.status).sort(), [200, 401]);
@@ -72,7 +75,7 @@ test("issue requires a recent session, replacement and revocation invalidate the
   assert.equal((await post("redeem", { code: first })).status, 401);
   const other = seedSession(DB, { id: "another", email: "other@example.test" });
   assert.equal((await post("revoke", { token: other })).status, 200);
-  assert.equal(DB.sqlite.prepare("SELECT code_hash FROM account_recovery_codes").get().code_hash, hash(second));
+  assert.equal(DB.sqlite.prepare("SELECT code_hash FROM account_recovery_codes").get().code_hash, codeHash(second));
   DB.sqlite.prepare("UPDATE sessions SET created_at = 1 WHERE token_hash = ?").run(hash(session));
   assert.equal((await post("issue", { token: session })).status, 403);
   assert.equal((await post("revoke", { token: session })).status, 200);
@@ -93,4 +96,29 @@ test("a failed transaction leaves the recovery code usable; disabled or limited 
   assert.equal(DB.sqlite.prepare("SELECT COUNT(*) AS count FROM sessions").get().count, 1);
   DB.sqlite.exec("DROP TRIGGER prevent_consume");
   assert.equal((await post("redeem", { code })).status, 200);
+});
+
+test("rotating the external key fences a restored code and recovered session", async t => {
+  const { DB, env, session, post } = fixture(t);
+  const { code: first } = await (await post("issue", { token: session })).json();
+  const recovered = await post("redeem", { code: first });
+  const issuedCookie = recovered.headers.getSetCookie()[0].split(";")[0];
+  const { code: outstanding } = await (await post("issue", { token: session })).json();
+  assert.equal((await post("revoke", { token: session })).status, 200);
+  const restored = DB.sqlite.prepare("INSERT INTO account_recovery_codes VALUES (?, ?, ?)");
+  restored.run("owner", codeHash(outstanding), 1);
+
+  const me = token => worker.fetch(new Request(origin + "/api/auth/me", { headers: { Cookie: token } }), env);
+  assert.equal((await (await me(issuedCookie)).json()).authenticated, true);
+  env.BOR_ACCOUNT_RECOVERY_ENABLED = "false";
+  assert.equal((await (await me(issuedCookie)).json()).authenticated, false);
+  env.BOR_ACCOUNT_RECOVERY_KEY = Buffer.alloc(32, 2).toString("base64url");
+  env.BOR_ACCOUNT_RECOVERY_ENABLED = "true";
+  assert.equal((await post("redeem", { code: outstanding })).status, 401);
+  assert.equal((await (await me(issuedCookie)).json()).authenticated, false);
+  assert.equal((await (await me(cookieName + "=" + session)).json()).authenticated, true);
+  const { code: current } = await (await post("issue", { token: session })).json();
+  assert.equal((await post("redeem", { code: current })).status, 200);
+  delete env.BOR_ACCOUNT_RECOVERY_KEY;
+  assert.equal((await post("issue", { token: session })).status, 404);
 });

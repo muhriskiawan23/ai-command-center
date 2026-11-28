@@ -925,6 +925,8 @@ async function runMultiAgent(env, message, history = [], pages = "") {
 const SESSION_COOKIE = "__Host-borai_session";
 const OAUTH_NONCE_COOKIE = "__Host-borai_oauth_nonce";
 const SESSION_TTL_SECONDS = 30 * 24 * 60 * 60;
+const RECOVERY_SESSION_PREFIX = "bor-recovery.";
+const RECOVERY_KEY_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const encoder = new TextEncoder();
 let googleJwksCache = null;
 let googleJwksExpiresAt = 0;
@@ -990,11 +992,28 @@ async function verifyGoogleCredential(credential, nonce, env) {
   }
   return claims;
 }
+function recoveryKeyConfigured(env) {
+  return typeof env.BOR_ACCOUNT_RECOVERY_KEY === "string" && RECOVERY_KEY_PATTERN.test(env.BOR_ACCOUNT_RECOVERY_KEY);
+}
+
+async function recoveryDigest(env, purpose, value) {
+  const key = await crypto.subtle.importKey(
+    "raw", base64UrlBytes(env.BOR_ACCOUNT_RECOVERY_KEY), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]
+  );
+  const signature = await crypto.subtle.sign("HMAC", key, encoder.encode("borai:" + purpose + ":" + value));
+  return [...new Uint8Array(signature)].map(byte => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function sessionTokenHash(env, token) {
+  if (!token.startsWith(RECOVERY_SESSION_PREFIX)) return sha256Hex(token);
+  return recoveryKeyConfigured(env) ? recoveryDigest(env, "recovery-session", token) : null;
+}
+
 async function getSession(request, env) {
   const token = readCookie(request, SESSION_COOKIE);
-  if (!token) return null;
+  if (!token || (token.startsWith(RECOVERY_SESSION_PREFIX) && !recoveryCodesEnabled(env))) return null;
   if (!env.DB) throw new Error("Database is not configured.");
-  const tokenHash = await sha256Hex(token);
+  const tokenHash = await sessionTokenHash(env, token);
   return env.DB.prepare(
     "SELECT users.id, users.email, users.name, users.picture FROM sessions " +
     "JOIN users ON users.id = sessions.user_id WHERE sessions.token_hash = ? AND sessions.expires_at > ?"
@@ -1086,7 +1105,7 @@ async function handlePdfConversionRoute(request, env) {
 }
 
 function recoveryCodesEnabled(env) {
-  return env.BOR_ACCOUNT_RECOVERY_ENABLED === "true" &&
+  return env.BOR_ACCOUNT_RECOVERY_ENABLED === "true" && recoveryKeyConfigured(env) &&
     typeof env.DB?.batch === "function" && typeof env.CHAT_LIMITER?.limit === "function";
 }
 
@@ -1104,9 +1123,9 @@ async function handleRecoveryCodeRequest(request, env, action) {
     const invalid = () => json({ error: "Kode cadangan tidak valid atau sudah dipakai." }, 401);
     if (!RECOVERY_CODE_PATTERN.test(code)) return invalid();
 
-    const codeHash = await sha256Hex(code);
-    const sessionToken = randomToken();
-    const sessionHash = await sha256Hex(sessionToken);
+    const codeHash = await recoveryDigest(env, "recovery-code", code);
+    const sessionToken = RECOVERY_SESSION_PREFIX + randomToken();
+    const sessionHash = await sessionTokenHash(env, sessionToken);
     const [created, , profile] = await db.batch([
       db.prepare(
         "INSERT INTO sessions (token_hash, user_id, expires_at, created_at) " +
@@ -1131,7 +1150,7 @@ async function handleRecoveryCodeRequest(request, env, action) {
 
   const token = readCookie(request, SESSION_COOKIE);
   if (!token) return json({ error: "Masuk ke akun untuk mengelola kode cadangan." }, 401);
-  const sessionHash = await sha256Hex(token);
+  const sessionHash = await sessionTokenHash(env, token);
   if (action === "revoke") {
     if (!await getSession(request, env)) return json({ error: "Sesi Anda berakhir. Masuk lagi." }, 401);
     await db.prepare(
@@ -1142,7 +1161,7 @@ async function handleRecoveryCodeRequest(request, env, action) {
   }
 
   const code = "BOR-" + randomToken(24);
-  const codeHash = await sha256Hex(code);
+  const codeHash = await recoveryDigest(env, "recovery-code", code);
   const result = await db.prepare(
     "INSERT INTO account_recovery_codes (user_id, code_hash, created_at) " +
     "SELECT user_id, ?, ? FROM sessions WHERE token_hash = ? AND expires_at > ? AND created_at >= ? " +
@@ -1248,7 +1267,10 @@ async function handleAuthRoute(request, env, url) {
     if (!sameOrigin(request)) return json({ error: "Origin tidak valid." }, 403);
     try {
       const token = readCookie(request, SESSION_COOKIE);
-      if (token && env.DB) await env.DB.prepare("DELETE FROM sessions WHERE token_hash = ?").bind(await sha256Hex(token)).run();
+      if (token && env.DB) {
+        const sessionHash = await sessionTokenHash(env, token);
+        if (sessionHash) await env.DB.prepare("DELETE FROM sessions WHERE token_hash = ?").bind(sessionHash).run();
+      }
       return json({ authenticated: false }, 200, { "Set-Cookie": cookieHeader(SESSION_COOKIE, "", 0) });
     } catch (error) {
       console.error("Logout failed:", safeError(error));
